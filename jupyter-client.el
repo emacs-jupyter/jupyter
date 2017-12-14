@@ -303,10 +303,10 @@ CHANNEL's recv-queue is empty."
     (unless (ring-empty-p ring)
       (let* ((ctype (oref channel type))
              (handler (cl-case ctype
-                        (:stdin #'jupyter-handle-stdin-message)
-                        (:iopub #'jupyter-handle-iopub-message)
-                        (:shell #'jupyter-handle-shell-message)
-                        (:control #'jupyter-handle-control-message)
+                        (:stdin #'jupyter--handle-stdin-message)
+                        (:iopub #'jupyter--handle-iopub-message)
+                        (:shell #'jupyter--handle-shell-message)
+                        (:control #'jupyter--handle-control-message)
                         (otherwise (error "Wrong channel type (%s)." ctype))))
              ;; Messages are stored like (idents . msg) in the ring
              (msg (cdr (ring-remove ring))))
@@ -332,7 +332,8 @@ CHANNEL's recv-queue is empty."
 
 ;;; stdin messages
 
-(cl-defmethod jupyter-handle-stdin-message ((client jupyter-kernel-client) msg)
+(defun jupyter--handle-stdin-message (client msg)
+  (cl-check-type client jupyter-kernel-client)
   (cl-destructuring-bind (&key prompt password &allow-other-keys)
       (plist-get msg :content)
     (jupyter-handle-input client prompt password)))
@@ -349,7 +350,8 @@ CHANNEL's recv-queue is empty."
 
 ;;; control messages
 
-(cl-defmethod jupyter-handle-control-message ((client jupyter-kernel-client) msg)
+(defun jupyter--handle-control-message (client msg)
+  (cl-check-type client jupyter-kernel-client)
   (cl-destructuring-bind (&key msg_type content &allow-other-keys) msg
     (pcase msg_type
       ("shutdown_reply"
@@ -379,7 +381,8 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
 ;;; shell messages
 
 ;; http://jupyter-client.readthedocs.io/en/latest/messaging.html#messages-on-the-shell-router-dealer-channel
-(cl-defmethod jupyter-handle-shell-message ((client jupyter-kernel-client) msg)
+(defun jupyter--handle-shell-message (client msg)
+  (cl-check-type client jupyter-kernel-client)
   (cl-destructuring-bind (&key msg_type content &allow-other-keys) msg
     (let ((status (plist-get content :status)))
       (if (equal status "ok")
@@ -567,7 +570,8 @@ is received."
 
 ;;; iopub messages
 
-(cl-defmethod jupyter-handle-iopub-message ((client jupyter-kernel-client) msg)
+(defun jupyter--handle-iopub-message (client msg)
+  (cl-check-type client jupyter-kernel-client)
   (cl-destructuring-bind (&key msg_type content &allow-other-keys) msg
     (pcase msg_type
       ("stream"
