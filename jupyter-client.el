@@ -1,7 +1,10 @@
+(require 'json)
 (require 'zmq)
 (eval-when-compile (require 'cl))
 (require 'jupyter-channels)
 (require 'jupyter-messages)
+
+(declare-function string-trim-right "subr-x" (str))
 
 ;;; Kernel client class
 

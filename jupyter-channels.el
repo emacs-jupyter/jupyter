@@ -1,5 +1,6 @@
 (require 'zmq)
 (eval-when-compile (require 'cl))
+(require 'ring)
 (require 'eieio)
 
 (defconst jupyter-channel-socket-types
