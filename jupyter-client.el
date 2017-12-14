@@ -142,6 +142,7 @@ in the jupyter runtime directory."
                      (list 'shell-channel
                            'iopub-channel
                            'hb-channel
+                           'control-channel
                            'stdin-channel))
    when (jupyter-channel-alive-p channel)
    ;; hb channels create their sockets in a subprocess which gets stopped in
@@ -156,6 +157,7 @@ in the jupyter runtime directory."
    for channel in (list 'shell-channel
                         'iopub-channel
                         'hb-channel
+                        'control-channel
                         'stdin-channel)
    if (jupyter-channel-alive-p (eieio-oref client channel))
    return t))
