@@ -193,7 +193,7 @@ connected."
 (cl-defmethod jupyter-start-channel ((channel jupyter-hb-channel) &key identity)
   "Start a CHANNEL."
   (declare (indent 1))
-  (jupyter-channel-stop channel)
+  (jupyter-stop-channel channel)
   ;; https://github.com/jupyter/jupyter_client/blob/master/jupyter_client/channels.py
   (let*
       ((time-to-dead (oref channel time-to-dead))
