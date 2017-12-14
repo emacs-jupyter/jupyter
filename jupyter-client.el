@@ -588,8 +588,6 @@ is received."
                                     metadata
                                     &allow-other-keys)
            content
-         (message "execute-result: %s" (plist-get (plist-get msg :parent_header)
-                                                  :msg_id))
          (jupyter-handle-execute-result client execution_count data metadata)))
       ("error"
        (cl-destructuring-bind (&key ename evalue traceback &allow-other-keys)
