@@ -33,24 +33,23 @@
 
 (defun jupyter--new-uuid ()
   "Make a version 4 UUID."
-  (let ((rs (cl-make-random-state t)))
-    (format "%04x%04x-%04x-%04x-%04x-%06x%06x"
-            (cl-random 65536 rs)
-            (cl-random 65536 rs)
-            (cl-random 65536 rs)
-            ;; https://tools.ietf.org/html/rfc4122
-            (let ((r (cl-random 65536 rs)))
-              (if (= (byteorder) ?l)
-                  ;; ?l = little-endian
-                  (logior (logand r 4095) 16384)
-                ;; big-endian
-                (logior (logand r 65295) 64)))
-            (let ((r (cl-random 65536 rs)))
-              (if (= (byteorder) ?l)
-                  (logior (logand r 49151) 32768)
-                (logior (logand r 65471) 128)))
-            (cl-random 16777216 rs)
-            (cl-random 16777216 rs))))
+  (format "%04x%04x-%04x-%04x-%04x-%06x%06x"
+          (cl-random 65536)
+          (cl-random 65536)
+          (cl-random 65536)
+          ;; https://tools.ietf.org/html/rfc4122
+          (let ((r (cl-random 65536)))
+            (if (= (byteorder) ?l)
+                ;; ?l = little-endian
+                (logior (logand r 4095) 16384)
+              ;; big-endian
+              (logior (logand r 65295) 64)))
+          (let ((r (cl-random 65536)))
+            (if (= (byteorder) ?l)
+                (logior (logand r 49151) 32768)
+              (logior (logand r 65471) 128)))
+          (cl-random 16777216)
+          (cl-random 16777216)))
 
 (defun jupyter--split-identities (parts)
   "Extract the identities from a list of message PARTS."
