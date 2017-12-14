@@ -393,8 +393,6 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                           payload
                                           &allow-other-keys)
                  content
-               (message "execute-reply: %s" (plist-get (plist-get msg :parent_header)
-                                                       :msg_id))
                (jupyter-handle-execute
                 client execution_count user_expressions payload)))
             ("inspect_reply"
