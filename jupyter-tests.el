@@ -1,3 +1,5 @@
+;; -*- lexical-binding: t -*-
+
 (require 'jupyter-client)
 (require 'jupyter-messages)
 (require 'cl-lib)
@@ -144,12 +146,55 @@
            and do (should (jupyter-channel-alive-p (eieio-oref client cname)))))
       (mapc (lambda (se) (zmq-close (car se))) sock-endpoint))))
 
-(ert-deftest jupyter-execution-callbacks ()
-  (cl-destructuring-bind (&key content &allow-other-keys)
-      (jupyter-wait-until-received client "execute_result"
-        (jupyter-execute client :code "y = 1+2\ny"))
-    (cl-destructuring-bind (&key data &allow-other-keys) content
-      (should (equal (plist-get data :text/plain) "3")))))
+(ert-deftest jupyter-message-callbacks ()
+  (let ((client (jupyter-kernel-client-using-kernel "python")))
+    (jupyter-start-channels client)
+    ;; Let channels start
+    (sleep-for 1)
+    (unwind-protect
+        (progn
+          (ert-info ("Invalid message type")
+            (should-error
+             (jupyter-add-receive-callback
+                 client 'exe-res (jupyter-send-execute client :code "y = 1+2\ny")
+               (lambda (msg) (+ 1 2)))))
+          (ert-info ("Execute on correct message ID")
+            (let ((id (jupyter-send-kernel-info client))
+                  (recv-id nil))
+              (jupyter-send-kernel-info client)
+              (jupyter-add-receive-callback client 'kernel-info-reply id
+                (lambda (msg)
+                  (setq recv-id (plist-get (plist-get msg :parent_header)
+                                           :msg_id))))
+              ;; Receive messages from kernel
+              (sleep-for 1)
+              (should (equal id recv-id))))
+          (ert-info ("Multiple callbacks on the same message")
+            (let ((id (jupyter-send-execute client :code "y = 1+2\ny"))
+                  (msg-res nil)
+                  (msg-rep nil))
+              (jupyter-add-receive-callback client 'execute-result id
+                (lambda (msg) (setq msg-res msg)))
+              (jupyter-add-receive-callback client 'execute-reply id
+                (lambda (msg) (setq msg-rep msg)))
+              ;; Receive messages from kernel
+              (sleep-for 1)
+              (should-not (null msg-res))
+              (should-not (null msg-rep))
+              ;; execute_result
+              (should (equal id (plist-get (plist-get msg-res :parent_header)
+                                           :msg_id)))
+              (should (equal (plist-get msg-res :msg_type) "execute_result"))
+              (cl-destructuring-bind (&key data &allow-other-keys)
+                  (plist-get msg-res :content)
+                (should (equal (plist-get data :text/plain) "3")))
+              ;; execute_reply
+              (should (equal id (plist-get (plist-get msg-rep :parent_header)
+                                           :msg_id)))
+              (should (equal (plist-get msg-rep :msg_type) "execute_reply")))))
+      (jupyter-stop-channels client)
+      (delete-process (oref client kernel))
+      (kill-buffer (process-buffer (oref client kernel))))))
 
 (ert-deftest jupyter-processing-messages ()
   (setq client (jupyter-kernel-client-using-kernel "python"))
