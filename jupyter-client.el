@@ -213,7 +213,7 @@ for more details."
       (jupyter--recv channel flags)
     (cons idents (jupyter--decode-message (oref client session) parts))))
 
-;;; Processing messages
+;;; Processing received messages
 
 ;; TODO: Override `jupyter-kernel-client' to hook into receiving these
 ;; messages. How would an `ob-jupyter' client do this?
@@ -328,7 +328,7 @@ CHANNEL's recv-queue is empty."
                   (funcall cb msg))))))
       (run-with-timer 0.01 nil #'jupyter--process-message client channel))))
 
-;;; Message handlers
+;;; Received message handlers
 
 ;;; stdin messages
 
