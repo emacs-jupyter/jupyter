@@ -260,6 +260,7 @@ CHANNEL's recv-queue is empty."
                         (:stdin #'jupyter-handle-stdin-message)
                         (:iopub #'jupyter-handle-iopub-message)
                         (:shell #'jupyter-handle-shell-message)
+                        (:control #'jupyter-handle-control-message)
                         (otherwise (error "Wrong channel type (%s)." ctype))))
              ;; Messages are stored like (idents . msg) in the ring
              (msg (cdr (ring-remove ring))))
@@ -299,6 +300,35 @@ CHANNEL's recv-queue is empty."
     ;; TODO: Check for 'allow_stdin'
     ;; http://jupyter-client.readthedocs.io/en/latest/messaging.html#stdin-messages
     (jupyter--send-encoded client channel "input_reply" msg)))
+
+;;; control messages
+
+(cl-defmethod jupyter-handle-control-message ((client jupyter-kernel-client) msg)
+  (cl-destructuring-bind (&key msg_type content &allow-other-keys) msg
+    (pcase msg_type
+      ("shutdown_reply"
+       (cl-destructuring-bind (&key restart &allow-other-keys)
+           content
+         (jupyter-handle-shutdown client restart)))
+      ("interrupt_reply"
+       (jupyter-handle-interrupt client)))))
+
+(cl-defmethod jupyter-send-shutdown ((client jupyter-kernel-client) &optional restart)
+  "Request a shutdown of the kernel CLIENT is communicating with.
+If RESTART is non-nil, request a restart instead of a complete shutdown."
+  (let ((channel (oref client control-channel))
+        (msg (jupyter-shutdown-request :restart restart)))
+    (jupyter--send-encoded client channel "shutdown_request" msg)))
+
+(cl-defmethod jupyter-handle-shutdown ((client jupyter-kernel-client) restart)
+  "Default shutdown reply handler.")
+
+(cl-defmethod jupyter-send-interrupt ((client jupyter-kernel-client))
+  (let ((channel (oref client control-channel)))
+    (jupyter--send-encoded client channel "interrupt_request" ())))
+
+(cl-defmethod jupyter-handle-interrupt ((client jupyter-kernel-client))
+  "Default interrupt reply handler.")
 
 ;;; shell messages
 
@@ -352,16 +382,7 @@ is received."
                   client channel "kernel_info_request" ()))
                :content)))
 
-(cl-defmethod jupyter-shutdown ((client jupyter-kernel-client) &optional restart)
-  "Request a shutdown of the kernel CLIENT is communicating with.
-If RESTART is non-nil, request a restart instead of a complete shutdown."
-  (let ((channel (oref client shell-channel))
-        (msg (jupyter-shutdown-request :restart restart)))
-    (jupyter-send-encoded client channel "shutdown_request" msg)))
 
-(cl-defmethod jupyter-interrupt ((client jupyter-kernel-client))
-  (let ((channel (oref client shell-channel)))
-    (jupyter-send-encoded client channel "interrupt_request" ())))
 
 ;;; iopub messages
 ;; TODO: Display data, update display data
