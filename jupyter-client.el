@@ -607,10 +607,7 @@ is received."
       (_ (error "Message type not handled yet.")))))
 
 (cl-defmethod jupyter-handle-stream ((client jupyter-kernel-client) name text)
-  "Default stream handler."
-  (cond
-   ((equal name "stdout") (print text))
-   ((equal name "stderr") (error text))))
+  "Default stream handler.")
 
 (cl-defmethod jupyter-handle-execute-input ((client jupyter-kernel-client)
                                             code
@@ -629,9 +626,6 @@ is received."
                                     traceback)
   "Default error handler.")
 
-;; TODO Have a queue of execution results, when status goes idle,
-;; send/update/do something with the execution results that were previously
-;; stored.
 (cl-defmethod jupyter-handle-status ((client jupyter-kernel-client) execution_state)
   "Default status handler.")
 
