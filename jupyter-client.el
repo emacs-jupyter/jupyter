@@ -224,7 +224,7 @@ other registered functions for MSG-ID, will be executed."
         (puthash msg-id (list (cons msg-type function)) message-callbacks)
       (let ((cb-for-type (assoc msg-type callbacks)))
         (if cb-for-type (setcdr cb-for-type function)
-          (nconc callbacks (cons msg-type function)))))))
+          (nconc callbacks (list (cons msg-type function))))))))
 
 (defun jupyter-wait-until-received (client msg-type pmsg-id)
   "Wait until MSG-ID is received on CLIENT.
