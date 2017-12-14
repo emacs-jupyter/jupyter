@@ -97,6 +97,7 @@ in the jupyter runtime directory."
     (while (not (file-exists-p path))
       (sleep-for 0 10))
     (let ((client (jupyter-kernel-client-from-connection-file path)))
+      (set-process-query-on-exit-flag proc nil)
       (oset client kernel proc)
       client)))
 
