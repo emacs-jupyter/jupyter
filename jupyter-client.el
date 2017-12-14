@@ -101,15 +101,15 @@ in the jupyter runtime directory."
       (oset client kernel proc)
       client)))
 
-(defun jupyter-ioloop-callback (client channel)
+(defun jupyter--ioloop-callback (client channel)
   (let* ((ring (oref channel recv-queue)))
     ;; TODO: How many messages does ZMQ store in its internal buffers before it
     ;; starts droping messages? And what socket option can be examined to
     ;; figure this out?
     (unless (= (ring-length ring) (ring-size ring))
-      (let* ((res (jupyter-recv-decoded client channel)))
+      (let* ((res (jupyter--recv-decoded client channel)))
         (ring-insert ring res)
-        (run-with-timer 0.01 nil #'jupyter-process-message client channel)))))
+        (run-with-timer 0.01 nil #'jupyter--process-message client channel)))))
 
 (cl-defmethod jupyter-start-channels ((client jupyter-kernel-client)
                                       &key (shell t)
@@ -133,7 +133,7 @@ in the jupyter runtime directory."
        (zmq-ioloop
         (oref channel socket)
         (function
-         (lambda () (jupyter-ioloop-callback client channel))))))))
+         (lambda () (jupyter--ioloop-callback client channel))))))))
 
 (cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
   "Stop any running channels of CLIENT."
@@ -162,7 +162,7 @@ in the jupyter runtime directory."
 
 ;;; Sending and receiving messages
 
-(cl-defmethod jupyter-send ((channel jupyter-channel) parts &optional flags)
+(cl-defmethod jupyter--send ((channel jupyter-channel) parts &optional flags)
   "Send a message with PARTS on the socket associated with CHANNEL.
 Optional variable FLAGS, are the flags argument of the `zmq-send'
 or `zmq-send-multipart' call used to send parts."
@@ -172,11 +172,11 @@ or `zmq-send-multipart' call used to send parts."
         (zmq-send-multipart sock parts flags)
       (zmq-send sock parts flags))))
 
-(cl-defmethod jupyter-send-encoded ((client jupyter-kernel-client)
-                                    channel
-                                    type
-                                    message
-                                    &optional flags)
+(cl-defmethod jupyter--send-encoded ((client jupyter-kernel-client)
+                                     channel
+                                     type
+                                     message
+                                     &optional flags)
   "Encode MESSAGE and send it on CLIENT's CHANNEL.
 The message should have a TYPE as found in the jupyter messaging
 protocol. Optional variable FLAGS are the flags sent to the
@@ -185,11 +185,11 @@ underlying `zmq-send-multipart' call using the CHANNEL's socket."
   (unless (jupyter-channel-alive-p channel)
     (error "Channel not alive: %s" (oref channel type)))
   (cl-destructuring-bind (msg-id . msg)
-      (jupyter-encode-message (oref client session) type :content message)
-    (jupyter-send channel msg flags)
+      (jupyter--encode-message (oref client session) type :content message)
+    (jupyter--send channel msg flags)
     msg-id))
 
-(cl-defmethod jupyter-recv ((channel jupyter-channel) &optional flags)
+(cl-defmethod jupyter--recv ((channel jupyter-channel) &optional flags)
   "Recieve a message on CHANNEL.
 Optional variable FLAGS is the flags argument of the
 `zmq-recv-multipart' call using the CHANNEL's socket. The return
@@ -198,12 +198,15 @@ routing identities of the message and PARTS are the message
 parts. See
 http://jupyter-client.readthedocs.io/en/latest/messaging.html#the-wire-protocol
 for more details."
-  (jupyter-split-identities (zmq-recv-multipart (oref channel socket) flags)))
+  (jupyter--split-identities (zmq-recv-multipart (oref channel socket) flags)))
 
-(cl-defmethod jupyter-recv-decoded ((client jupyter-kernel-client) channel &optional flags)
+;; TODO: Maybe instead of decoding the message directly, use `apply-partially'
+;; to delay decoding until the message is actually handled registered with
+;; `jupyter-add-receive-callback' or in some subclass.
+(cl-defmethod jupyter--recv-decoded ((client jupyter-kernel-client) channel &optional flags)
   (cl-destructuring-bind (idents . parts)
-      (jupyter-recv channel flags)
-    (cons idents (jupyter-decode-message (oref client session) parts))))
+      (jupyter--recv channel flags)
+    (cons idents (jupyter--decode-message (oref client session) parts))))
 
 ;;; Processing messages
 
@@ -244,7 +247,7 @@ error is raised."
       (sleep-for 0 10))
     msg))
 
-(defun jupyter-process-message (client channel)
+(defun jupyter--process-message (client channel)
   "Process a message on CLIENT's CHANNEL.
 This function processes a single message on CLIENT's CHANNEL and
 schedules to process more messages at a future time until
@@ -276,7 +279,7 @@ CHANNEL's recv-queue is empty."
             (when cb
               (unwind-protect
                   (funcall cb msg))))))
-      (run-with-timer 0.01 nil #'jupyter-process-message client channel))))
+      (run-with-timer 0.01 nil #'jupyter--process-message client channel))))
 
 ;;; Message handlers
 
@@ -295,7 +298,7 @@ CHANNEL's recv-queue is empty."
                               prompt))))
     ;; TODO: Check for 'allow_stdin'
     ;; http://jupyter-client.readthedocs.io/en/latest/messaging.html#stdin-messages
-    (jupyter-send-encoded client channel "input_reply" msg)))
+    (jupyter--send-encoded client channel "input_reply" msg)))
 
 ;;; shell messages
 
@@ -336,7 +339,7 @@ CHANNEL's recv-queue is empty."
               :user-expressions user-expressions
               :allow-stdin allow-stdin
               :stop-on-error stop-on-error)))
-    (jupyter-send-encoded client channel "execute_request" msg)))
+    (jupyter--send-encoded client channel "execute_request" msg)))
 
 (cl-defmethod jupyter-kernel-info ((client jupyter-kernel-client))
   "Get the info of the kernel CLIENT is connected to.

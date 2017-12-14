@@ -10,7 +10,7 @@
                (:constructor nil)
                (:constructor
                 jupyter-session
-                (&key (key nil) &aux (id (jupyter-new-uuid)))))
+                (&key (key nil) &aux (id (jupyter--new-uuid)))))
   (id nil :read-only t)
   (key nil :read-only t))
 
@@ -21,7 +21,7 @@
   (secure-hash 'sha256 object nil nil t))
 (define-hmac-function hmac-sha256 sha256 64 32)
 
-(defun jupyter-sign-message (session parts)
+(defun jupyter--sign-message (session parts)
   (if (> (length (jupyter-session-key session)) 0)
       (cl-loop
        for b across (hmac-sha256 (mapconcat #'identity parts "")
@@ -29,7 +29,7 @@
        concat (format "%02x" b))
     ""))
 
-(defun jupyter-new-uuid ()
+(defun jupyter--new-uuid ()
   "Make a version 4 UUID."
   (let ((rs (cl-make-random-state t)))
     (format "%04x%04x-%04x-%04x-%04x-%06x%06x"
@@ -50,10 +50,7 @@
             (cl-random 16777216 rs)
             (cl-random 16777216 rs))))
 
-(defun jupyter-new-message-id ()
-  (jupyter-new-uuid))
-
-(defun jupyter-split-identities (parts)
+(defun jupyter--split-identities (parts)
   "Extract the identities from a list of message PARTS."
   (let ((idents nil))
     (if (catch 'found-delim
@@ -67,9 +64,9 @@
         (cons idents parts)
       (error "Message delimiter not in message list"))))
 
-(defun jupyter-message-header (session msg-type)
+(defun jupyter--message-header (session msg-type)
   (list
-   :msg_id (jupyter-new-message-id)
+   :msg_id (jupyter--new-uuid)
    :msg_type msg-type
    :version jupyter-protocol-version
    :username user-login-name
@@ -78,43 +75,42 @@
 
 ;;; Encode/decoding messages
 
-(defun jupyter-encode-object (object)
+(defun jupyter--encode-object (object)
   ;; Encodes nil or "" to \"{}\"
   (encode-coding-string (json-encode-plist object) 'utf-8))
 
-(defun jupyter-decode-string (str)
+(defun jupyter--decode-string (str)
   (let ((json-object-type 'plist)
         (json-array-type 'list))
     (json-read-from-string (decode-coding-string str 'utf-8))))
 
-(cl-defun jupyter-encode-message (session
-                                  type
-                                  &key idents
-                                  content
-                                  parent-header
-                                  metadata
-                                  buffers)
+(cl-defun jupyter--encode-message (session
+                                   type
+                                   &key idents
+                                   content
+                                   parent-header
+                                   metadata
+                                   buffers)
   (declare (indent 2))
   (cl-check-type session jupyter-session)
   (cl-check-type metadata json-plist)
   (cl-check-type content json-plist)
   (cl-check-type buffers list)
-  (let* ((header (jupyter-message-header session type))
+  (let* ((header (jupyter--message-header session type))
          (msg-id (plist-get header :msg_id))
-         (parts (mapcar #'jupyter-encode-object (list header
-                                                 parent-header
-                                                 metadata
-                                                 content))))
+         (parts (mapcar #'jupyter--encode-object (list header
+                                                  parent-header
+                                                  metadata
+                                                  content))))
     (cons msg-id
           (append
            (when idents (if (stringp idents) (list idents) idents))
            (list jupyter-message-delimiter
-                 (jupyter-sign-message session parts))
+                 (jupyter--sign-message session parts))
            parts
            buffers))))
 
-;; TODO: method for session
-(defun jupyter-decode-message (session parts)
+(defun jupyter--decode-message (session parts)
   (when (< (length parts) 5)
     (error "Malformed message. Minimum length of parts is 5."))
   (when (jupyter-session-key session)
@@ -123,20 +119,20 @@
         (error "Unsigned message."))
       ;; TODO: digest_history
       ;; https://github.com/jupyter/jupyter_client/blob/7a0278af7c1652ac32356d6f00ae29d24d78e61c/jupyter_client/session.py#L915
-      (unless (string= (jupyter-sign-message session (seq-subseq parts 1 5))
+      (unless (string= (jupyter--sign-message session (seq-subseq parts 1 5))
                        signature)
         (error "Invalid signature: %s" signature))))
   (cl-destructuring-bind
       (header parent-header metadata content &optional buffers)
       (cdr parts)
-    (let ((header (jupyter-decode-string header)))
+    (let ((header (jupyter--decode-string header)))
       (list
        :header header
        :msg_id (plist-get header :msg_id)
        :msg_type (plist-get header :msg_type)
-       :parent_header (jupyter-decode-string parent-header)
-       :metadata (jupyter-decode-string metadata)
-       :content (jupyter-decode-string content)
+       :parent_header (jupyter--decode-string parent-header)
+       :metadata (jupyter--decode-string metadata)
+       :content (jupyter--decode-string content)
        :buffers buffers))))
 
 ;;; stdin messages
