@@ -335,31 +335,73 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
 ;; http://jupyter-client.readthedocs.io/en/latest/messaging.html#messages-on-the-shell-router-dealer-channel
 (cl-defmethod jupyter-handle-shell-message ((client jupyter-kernel-client) msg)
   (cl-destructuring-bind (&key msg_type content &allow-other-keys) msg
-    (cl-destructuring-bind (&key status &allow-other-keys) content
+    (let ((status (plist-get content :status)))
       (if (equal status "ok")
           (pcase msg_type
-            ("execute_reply")
-            ("inspect_reply")
-            ("complete_reply")
-            ("history_reply")
-            ("is_complete_reply")
-            ("comm_info_reply")
-            ("kernel_info_reply")
-            ("shutdown_reply")
-            ("interrupt_reply")
+            ("execute_reply"
+             (cl-destructuring-bind (&key execution_count
+                                          user_expressions
+                                          payload
+                                          &allow-other-keys)
+                 content
+               (message "execute-reply: %s" (plist-get (plist-get msg :parent_header)
+                                                       :msg_id))
+               (jupyter-handle-execute
+                client execution_count user_expressions payload)))
+            ("inspect_reply"
+             (cl-destructuring-bind (&key found
+                                          data
+                                          metadata
+                                          &allow-other-keys)
+                 content
+               (jupyter-handle-inspect
+                client found data metadata)))
+            ("complete_reply"
+             (cl-destructuring-bind (&key matches
+                                          cursor_start
+                                          cursor_end
+                                          metadata
+                                          &allow-other-keys)
+                 content
+               (jupyter-handle-complete
+                client matches cursor_start cursor_end metadata)))
+            ("history_reply"
+             (cl-destructuring-bind (&key history &allow-other-keys)
+                 content
+               (jupyter-handle-history client history)))
+            ("is_complete_reply"
+             (cl-destructuring-bind (&key status indent &allow-other-keys)
+                 content
+               (jupyter-handle-is-complete client status indent)))
+            ("comm_info_reply"
+             (cl-destructuring-bind (&key comms &allow-other-keys)
+                 content
+               (jupyter-handle-comm-info client comms)))
+            ("kernel_info_reply"
+             (cl-destructuring-bind (&key protocol_version
+                                          implementation
+                                          implementation_version
+                                          language_info
+                                          banner
+                                          help_links
+                                          &allow-other-keys)
+                 content
+               (jupyter-handle-kernel-info
+                client protocol_version implementation implementation_version
+                language_info banner help_links)))
             (_ (error "Message type not handled yet.")))
         (if (equal status "error")
             (error "Error (%s): %s"
                    (plist-get content :ename) (plist-get content :evalue))
           (error "Error: aborted"))))))
 
-(cl-defmethod jupyter-execute ((client jupyter-kernel-client)
-                               &key code
-                               (silent nil)
-                               (store-history t)
-                               (user-expressions nil)
-                               (allow-stdin t)
-                               (stop-on-error nil))
+(cl-defmethod jupyter-send-execute ((client jupyter-kernel-client)
+                                    &key code
+                                    (silent nil)
+                                    (store-history t)
+                                    (user-expressions nil)
+                                    (allow-stdin t)
+                                    (stop-on-error nil))
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
         (msg (jupyter-execute-request
@@ -371,50 +413,198 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
               :stop-on-error stop-on-error)))
     (jupyter--send-encoded client channel "execute_request" msg)))
 
-(cl-defmethod jupyter-kernel-info ((client jupyter-kernel-client))
+(cl-defmethod jupyter-handle-execute ((client jupyter-kernel-client)
+                                      execution-count
+                                      user-expressions
+                                      payload)
+  "Default execute reply handler.")
+
+(cl-defmethod jupyter-send-inspect ((client jupyter-kernel-client)
+                                    &key code
+                                    (pos 0)
+                                    (detail 0))
+  (declare (indent 1))
+  (let ((channel (oref client shell-channel))
+        (msg (jupyter-inspect-request
+              :code code :pos pos :detail detail)))
+    (jupyter--send-encoded client channel "inspect_request" msg)))
+
+(cl-defmethod jupyter-handle-inspect ((client jupyter-kernel-client)
+                                      found
+                                      data
+                                      metadata)
+  "Default inspect reply handler.")
+
+(cl-defmethod jupyter-send-complete ((client jupyter-kernel-client)
+                                     &key code
+                                     (pos 0))
+  (declare (indent 1))
+  (let ((channel (oref client shell-channel))
+        (msg (jupyter-complete-request
+              :code code :pos pos)))
+    (jupyter--send-encoded client channel "complete_request" msg)))
+
+(cl-defmethod jupyter-handle-complete ((client jupyter-kernel-client)
+                                       matches
+                                       cursor-start
+                                       cursor-end
+                                       metadata)
+  "Default complete reply handler.")
+
+(cl-defmethod jupyter-send-history ((client jupyter-kernel-client)
+                                    &key
+                                    output
+                                    raw
+                                    hist-access-type
+                                    session
+                                    start
+                                    stop
+                                    n
+                                    pattern
+                                    unique)
+  (declare (indent 1))
+  (let ((channel (oref client shell-channel))
+        (msg (jupyter-history-request
+              :output output
+              :raw raw
+              :hist-access-type hist-access-type
+              :session session
+              :start start
+              :stop stop
+              :n n
+              :patten pattern
+              :unique unique)))
+    (jupyter--send-encoded client channel "history_request" msg)))
+
+(cl-defmethod jupyter-handle-history ((client jupyter-kernel-client) history)
+  "Default history reply handler.")
+
+(cl-defmethod jupyter-send-is-complete ((client jupyter-kernel-client)
+                                        &key code)
+  (declare (indent 1))
+  (let ((channel (oref client shell-channel))
+        (msg (jupyter-is-complete-request
+              :code code)))
+    (jupyter--send-encoded client channel "is_complete_request" msg)))
+
+(cl-defmethod jupyter-handle-is-complete
+    ((client jupyter-kernel-client) status indent)
+  "Default is complete reply handler.")
+
+(cl-defmethod jupyter-send-comm-info ((client jupyter-kernel-client)
+                                      &key target-name)
+  (declare (indent 1))
+  (let ((channel (oref client shell-channel))
+        (msg (jupyter-complete-request
+              :target-name target-name)))
+    (jupyter--send-encoded client channel "comm_info_request" msg)))
+
+(cl-defmethod jupyter-handle-comm-info ((client jupyter-kernel-client) comms)
+  "Default comm info. reply handler.")
+
+(cl-defmethod jupyter-send-kernel-info ((client jupyter-kernel-client))
   "Get the info of the kernel CLIENT is connected to.
 This function returns the `:content' of the kernel-info request.
 Note that this function also blocks until the kernel-info reply
 is received."
   (let* ((channel (oref client shell-channel)))
-    (plist-get (jupyter-wait-until-received client "kernel_info_reply"
-                 (jupyter-send-encoded
-                  client channel "kernel_info_request" ()))
-               :content)))
+    (jupyter--send-encoded client channel "kernel_info_request" ())))
 
-
+(cl-defmethod jupyter-handle-kernel-info ((client jupyter-kernel-client)
+                                          protocol-version
+                                          implementation
+                                          implementation-version
+                                          language-info
+                                          banner
+                                          help-links)
+  "Default kernel-info reply handler.")
 
 ;;; iopub messages
-;; TODO: Display data, update display data
 
 (cl-defmethod jupyter-handle-iopub-message ((client jupyter-kernel-client) msg)
   (cl-destructuring-bind (&key msg_type content &allow-other-keys) msg
     (pcase msg_type
-      ("stream" (jupyter-handle-stream client
-                                       (plist-get content :name)
-                                       (plist-get content :text)))
-      ("execute_input" (jupyter-handle-execute-input
-                        client
-                        (plist-get content :code)
-                        (plist-get content :execution_count)))
-      ("execute_result")
-      ("error")
-      ("status")
-      ("clear_output")
-      ("display_data")
-      ("update_display_data")
+      ("stream"
+       (cl-destructuring-bind (&key name text &allow-other-keys)
+           content
+         (jupyter-handle-stream client name text)))
+      ("execute_input"
+       (cl-destructuring-bind (&key code execution_count &allow-other-keys)
+           content
+         (jupyter-handle-execute-input client code execution_count)))
+      ("execute_result"
+       (cl-destructuring-bind (&key execution_count
+                                    data
+                                    metadata
+                                    &allow-other-keys)
+           content
+         (message "execute-result: %s" (plist-get (plist-get msg :parent_header)
+                                                  :msg_id))
+         (jupyter-handle-execute-result client execution_count data metadata)))
+      ("error"
+       (cl-destructuring-bind (&key ename evalue traceback &allow-other-keys)
+           content
+         (jupyter-handle-error client ename evalue traceback)))
+      ("status"
+       (cl-destructuring-bind (&key execution_state &allow-other-keys)
+           content
+         (jupyter-handle-status client execution_state)))
+      ("clear_output"
+       (cl-destructuring-bind (&key wait &allow-other-keys)
+           content
+         (jupyter-handle-clear-output client wait)))
+      ("display_data"
+       (cl-destructuring-bind (&key data metadata transient &allow-other-keys)
+           content
+         (jupyter-handle-display-data client data metadata transient)))
+      ("update_display_data"
+       (cl-destructuring-bind (&key data metadata transient &allow-other-keys)
+           content
+         (jupyter-handle-update-display-data client data metadata transient)))
       (_ (error "Message type not handled yet.")))))
 
 (cl-defmethod jupyter-handle-stream ((client jupyter-kernel-client) name text)
+  "Default stream handler."
   (cond
    ((equal name "stdout") (print text))
-   ;; TODO: DO something better
    ((equal name "stderr") (error text))))
 
 (cl-defmethod jupyter-handle-execute-input ((client jupyter-kernel-client)
                                             code
                                             execution-count)
-  ;; TODO
-  )
+  "Default execute input handler.")
+
+(cl-defmethod jupyter-handle-execute-result ((client jupyter-kernel-client)
+                                             execution-count
+                                             data
+                                             metadata)
+  "Default execute result handler.")
+
+(cl-defmethod jupyter-handle-error ((client jupyter-kernel-client)
+                                    ename
+                                    evalue
+                                    traceback)
+  "Default error handler.")
+
+;; TODO Have a queue of execution results, when status goes idle,
+;; send/update/do something with the execution results that were previously
+;; stored.
+(cl-defmethod jupyter-handle-status ((client jupyter-kernel-client) execution_state)
+  "Default status handler.")
+
+(cl-defmethod jupyter-handle-clear-output ((client jupyter-kernel-client) wait)
+  "Default clear output handler.")
+
+(cl-defmethod jupyter-handle-display-data ((client jupyter-kernel-client)
+                                           data
+                                           metadata
+                                           transient)
+  "Default display data handler.")
+
+(cl-defmethod jupyter-handle-update-display-data ((client jupyter-kernel-client)
+                                                  data
+                                                  metadata
+                                                  transient)
+  "Default update display data handler.")
 
 (provide 'jupyter-client)
