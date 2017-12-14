@@ -1,8 +1,10 @@
 (require 'hmac-def)
 (require 'cl-lib)
+(require 'json)
 
 (defconst jupyter-protocol-version "5.3")
 (defconst jupyter-message-delimiter "<IDS|MSG>")
+(defconst jupyter--false :json-false)
 
 ;;; Session object
 
@@ -137,7 +139,7 @@
 
 ;;; stdin messages
 
-(defun jupyter-input-reply (&key value)
+(cl-defun jupyter-input-reply (&key value)
   (cl-check-type value string)
   (list :value value))
 
@@ -152,13 +154,13 @@
                                    (stop-on-error nil))
   (cl-check-type code string)
   (cl-check-type user-expressions json-plist)
-  (list :code code :silent (if silent t :json-false)
-        :store_history (if store-history t :json-false)
+  (list :code code :silent (if silent t jupyter--false)
+        :store_history (if store-history t jupyter--false)
         :user_expressions user-expressions
-        :allow_stdin (if allow-stdin t :json-false)
-        :stop_on_error (if stop-on-error t :json-false)))
+        :allow_stdin (if allow-stdin t jupyter--false)
+        :stop_on_error (if stop-on-error t jupyter--false)))
 
-(defun jupyter-inspect-request (&key code pos detail)
+(cl-defun jupyter-inspect-request (&key code pos detail)
   (setq detail (or detail 0))
   (unless (member detail '(0 1))
     (error "Detail can only be 0 or 1 (%s)" detail))
@@ -168,7 +170,7 @@
   (cl-check-type pos integer)
   (list :code code :cursor_pos pos :detail_level detail))
 
-(defun jupyter-complete-request (&key code pos)
+(cl-defun jupyter-complete-request (&key code pos)
   (when (markerp pos)
     (setq pos (marker-position pos)))
   (cl-check-type code string)
@@ -188,7 +190,7 @@
   (unless (member hist-access-type '("range" "tail" "search"))
     (error "History access type can only be one of (range, tail, search)"))
   (append
-   (list :output (if output t :json-false) :raw (if raw t :json-false)
+   (list :output (if output t jupyter--false) :raw (if raw t jupyter--false)
          :hist_access_type hist-access-type)
    (cond
     ((equal hist-access-type "range")
@@ -202,19 +204,19 @@
     ((equal hist-access-type "search")
      (cl-check-type pattern string)
      (cl-check-type n integer)
-     (list :pattern pattern :unique (if unique t :json-false) :n n)))))
+     (list :pattern pattern :unique (if unique t jupyter--false) :n n)))))
 
-(defun jupyter-is-complete-request (&key code)
+(cl-defun jupyter-is-complete-request (&key code)
   (cl-check-type code string)
   (list :code code))
 
-(defun jupyter-comm-info-request (&key target-name)
+(cl-defun jupyter-comm-info-request (&key target-name)
   (when target-name
     (cl-check-type target-name string)
     (list :target_name target-name)))
 
-(defun jupyter-shutdown-request (&key restart)
-  (list :restart (if restart t :json-false)))
+(cl-defun jupyter-shutdown-request (&key restart)
+  (list :restart (if restart t jupyter--false)))
 
 (provide 'jupyter-messages)
 
