@@ -1,4 +1,5 @@
 (require 'zmq)
+(eval-when-compile (require 'cl))
 (require 'eieio)
 
 (defconst jupyter-channel-socket-types
@@ -194,7 +195,7 @@ connected."
   (declare (indent 1))
   (jupyter-channel-stop channel)
   ;; https://github.com/jupyter/jupyter_client/blob/master/jupyter_client/channels.py
-  (lexical-let*
+  (let*
       ((time-to-dead (oref channel time-to-dead))
        (proc
         (zmq-start-process
@@ -245,20 +246,21 @@ connected."
                              (prin1 (cons 'beating (setq beating nil)))
                              (zmq-flush 'stdout)
                              (throw 'restart t)))))))))))
-         (lambda (event)
-           (cl-case (car event)
-             (pause (oset channel paused (cdr event)))
-             (unpause (oset channel paused (not (cdr event))))
-             (beating (oset channel beating (cdr event)))
-             (otherwise (error "Invalid event from heartbeat channel.")))
-           ;; Keep feeding the process. Note that this is necessary for emacs
-           ;; subprocesses since `read-minibuffer' in batch mode calls
-           ;; `getchar' from the standard c library. There is no way (that I
-           ;; have found) to peek at STDIN to determine if there is anything
-           ;; available. So having this ping-pong messaging is a work around
-           ;; to ensure that the polling loop runs smoothly.
-           (unless (oref channel paused)
-             (process-send-string (oref channel process) "nil\n"))))))
+         (lexical-let ((channel channel))
+           (lambda (event)
+             (cl-case (car event)
+               (pause (oset channel paused (cdr event)))
+               (unpause (oset channel paused (not (cdr event))))
+               (beating (oset channel beating (cdr event)))
+               (otherwise (error "Invalid event from heartbeat channel.")))
+             ;; Keep feeding the process. Note that this is necessary for emacs
+             ;; subprocesses since `read-minibuffer' in batch mode calls
+             ;; `getchar' from the standard c library. There is no way (that I
+             ;; have found) to peek at STDIN to determine if there is anything
+             ;; available. So having this ping-pong messaging is a work around
+             ;; to ensure that the polling loop runs smoothly.
+             (unless (oref channel paused)
+               (process-send-string (oref channel process) "nil\n")))))))
     ;; Send a first command to kick of the loop
     (process-send-string proc "beating\n")
     ;; Don't query when exiting
