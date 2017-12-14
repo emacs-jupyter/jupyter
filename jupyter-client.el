@@ -160,7 +160,7 @@ in the jupyter runtime directory."
    if (jupyter-channel-alive-p (eieio-oref client channel))
    return t))
 
-;;; Sending and receiving messages
+;;; Lower level sending/receiving
 
 (cl-defmethod jupyter--send ((channel jupyter-channel) parts &optional flags)
   "Send a message with PARTS on the socket associated with CHANNEL.
@@ -258,14 +258,28 @@ other registered functions for MSG-ID, will be executed."
           (nconc callbacks (list (cons msg-type function))))))))
 
 (defun jupyter-wait-until-received (client msg-type pmsg-id)
-  "Wait until MSG-ID is received on CLIENT.
-This function registers a callback using
-`jupyter-add-receive-callback' and waits for the callback to be
-executed. After execution, it returns the corresponding message
-reply whose parent header has a message id of MSG-ID.
+  "Wait for a message with MSG-TYPE to be received on CLIENT.
+This function waits until CLIENT receives a message from the
+kernel that satisfies the following conditions:
 
-If CLIENT is not waiting for any reply that can match MSG-ID, an
-error is raised."
+1. The message has a type of MSG-TYPE
+2. The parent header of the message has a message ID of PMSG-ID
+
+Note that MSG-TYPE should be one of the keys found in
+`jupyter--recieved-message-types'. If it is not, an error is
+raised.
+
+All of the `jupyter-send-*' functions return a message ID that
+can be passed to this function as the PMSG-ID. If the message
+associated with PMSG-ID is not expecting to receive a message
+with MSG-TYPE, this function will wait forever so be sure that
+you are expecting to receive a message of a certain type after
+sending one. For example you would not be expecting an
+`execute-reply' when you send a kernel info request with
+`jupyter-send-kernel-info', but you would be expecting a
+`kernel-info-reply'. See the jupyter messaging specification for
+more info
+http://jupyter-client.readthedocs.io/en/latest/messaging.html"
   (declare (indent 2))
   (lexical-let ((msg nil))
     (jupyter-add-receive-callback client msg-type pmsg-id
