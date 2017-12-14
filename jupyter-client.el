@@ -212,6 +212,30 @@ for more details."
 
 ;; TODO: Override `jupyter-kernel-client' to hook into receiving these
 ;; messages. How would an `ob-jupyter' client do this?
+(defconst jupyter--recieved-message-types
+  (list 'execute-result "execute_result"
+        'execute-reply "execute_reply"
+        'inspect-reply "inspect_reply"
+        'complete-reply "complete_reply"
+        'history-reply "history_reply"
+        'is-complete-reply "is_complete_reply"
+        'comm-info-reply "comm_info_reply"
+        'kernel-info-reply "kernel_info_reply"
+        'shutdown-reply "shutdown_reply"
+        'interrupt-reply "interrupt_reply"
+        'stream "stream"
+        'display-data "display_data"
+        'update-display-data "update_display_data"
+        'execute-input "execute_input"
+        'error "error"
+        'status "status"
+        'clear-output "clear_output"
+        'input-reply "input_reply")
+  "A plist mapping symbols to received message types.
+This is used to give some type of protection against invalid
+message types in `jupyter-add-receive-callback'. If the MSG-TYPE
+argument does not match one of the keys in this plist, an error
+is thrown.")
 
 (defun jupyter-add-receive-callback (client msg-type msg-id function)
   "Add FUNCTION to run when receiving a message reply.
@@ -222,6 +246,9 @@ header has an ID that matches MSG-ID FUNCTION, along with any
 other registered functions for MSG-ID, will be executed."
   (declare (indent 3))
   (cl-check-type client jupyter-kernel-client)
+  (let ((mt (plist-get jupyter--recieved-message-types msg-type)))
+    (if mt (setq msg-type mt)
+      (error "Not a valid message type (`%s')" msg-type)))
   (let* ((message-callbacks (oref client message-callbacks))
          (callbacks (gethash msg-id message-callbacks)))
     (if (not callbacks)
