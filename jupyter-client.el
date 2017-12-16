@@ -352,7 +352,6 @@ To process a message the following steps are taken:
 4. Any callbacks previously registered for the message are run
 5. This function is scheduled to process another message of
    CHANNEL in the future"
-  (cl-check-type channel jupyter-channel)
   (let ((ring (oref channel recv-queue)))
     (unless (ring-empty-p ring)
       (let* ((ctype (oref channel type))
