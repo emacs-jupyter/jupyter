@@ -333,7 +333,6 @@ CHANNEL's recv-queue is empty."
 ;;; stdin messages
 
 (defun jupyter--handle-stdin-message (client msg)
-  (cl-check-type client jupyter-kernel-client)
   (cl-destructuring-bind (&key prompt password &allow-other-keys)
       (plist-get msg :content)
     (jupyter-handle-input client prompt password)))
@@ -351,7 +350,6 @@ CHANNEL's recv-queue is empty."
 ;;; control messages
 
 (defun jupyter--handle-control-message (client msg)
-  (cl-check-type client jupyter-kernel-client)
   (cl-destructuring-bind (&key msg_type content &allow-other-keys) msg
     (pcase msg_type
       ("shutdown_reply"
@@ -382,7 +380,6 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
 
 ;; http://jupyter-client.readthedocs.io/en/latest/messaging.html#messages-on-the-shell-router-dealer-channel
 (defun jupyter--handle-shell-message (client msg)
-  (cl-check-type client jupyter-kernel-client)
   (cl-destructuring-bind (&key msg_type content &allow-other-keys) msg
     (let ((status (plist-get content :status)))
       (if (equal status "ok")
@@ -569,7 +566,6 @@ is received."
 ;;; iopub messages
 
 (defun jupyter--handle-iopub-message (client msg)
-  (cl-check-type client jupyter-kernel-client)
   (cl-destructuring-bind (&key msg_type content &allow-other-keys) msg
     (pcase msg_type
       ("stream"
