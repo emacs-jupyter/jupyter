@@ -2,9 +2,17 @@
 (require 'cl-lib)
 (require 'json)
 
-(defconst jupyter-protocol-version "5.3")
-(defconst jupyter-message-delimiter "<IDS|MSG>")
-(defconst jupyter--false :json-false)
+(defconst jupyter-protocol-version "5.3"
+  "The jupyter protocol version that is implemented.")
+
+(defconst jupyter-message-delimiter "<IDS|MSG>"
+  "The message delimiter required in the jupyter messaging
+protocol.")
+
+(defconst jupyter--false :json-false
+  "The symbol used to disambiguate nil from a true boolean
+false.")
+
 (defconst jupyter--received-message-types
   (list 'execute-result "execute_result"
         'execute-reply "execute_reply"
