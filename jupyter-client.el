@@ -22,7 +22,15 @@
  kernel was started by this client.")
    (message-callbacks
     :type hash-table
-    :initform (make-hash-table :weakness 'key :test 'equal)
+    ;; Callbacks are removed once the status for a request is idle so no need
+    ;; for a weak table here.
+    ;;
+    ;; FIXME: Take into account never receiving an idle status message. This
+    ;; could happen when messages get dropped or you lose connection to a
+    ;; kernel. If a connection is lost, it doesn't mean that we won't receive
+    ;; previous requests since the IOPub channel broadcasts messages for every
+    ;; client.
+    :initform (make-hash-table :test 'equal)
     :documentation "A hash table with message ID's as keys. This
  is used to register callback functions to run once a reply from
  a previously sent request is received. See
@@ -220,10 +228,23 @@ for the heartbeat channel."
    if (jupyter-channel-alive-p (eieio-oref client channel))
    return t))
 
+;;; Message callbacks
 
-
-;;; Processing received messages
-
+(defun jupyter--callback-for-message (client msg)
+  (let* ((message-callbacks (oref client message-callbacks))
+         (pmsg-id (jupyter-message-parent-id msg))
+         (callbacks (gethash pmsg-id message-callbacks))
+         (cb nil))
+    (when (and callbacks (not (eq callbacks t)))
+      (setq cb (cdr (assoc (jupyter-message-type msg) callbacks))))
+    ;; Remove callbacks once status is idle for request PMSG-ID
+    ;;
+    ;; Changed in version 5.0: Busy and idle messages should be sent
+    ;; before/after handling every request, not just execution.
+    ;; -- http://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-status
+    (when (jupyter-message-status-idle-p msg)
+      (remhash pmsg-id message-callbacks))
+    cb))
 
 (defun jupyter-add-receive-callback (client msg-type msg-id function)
   "Add FUNCTION to run when receiving a message reply.
@@ -248,11 +269,14 @@ from the kernel without any processing done to it."
       (error "Not a valid message type (`%s')" msg-type)))
   (let* ((message-callbacks (oref client message-callbacks))
          (callbacks (gethash msg-id message-callbacks)))
-    (if (not callbacks)
-        (puthash msg-id (list (cons msg-type function)) message-callbacks)
-      (let ((cb-for-type (assoc msg-type callbacks)))
-        (if cb-for-type (setcdr cb-for-type function)
-          (nconc callbacks (list (cons msg-type function))))))))
+    ;; If a message is sent with MSG-ID, then its entry in message-callbacks is
+    ;; either t or an alist of callbacks.
+    (if (null callbacks) (error "Invalid message ID.")
+      (if (eq callbacks t)
+          (puthash msg-id (list (cons msg-type function)) message-callbacks)
+        (let ((cb-for-type (assoc msg-type callbacks)))
+          (if cb-for-type (setcdr cb-for-type function)
+            (nconc callbacks (list (cons msg-type function)))))))))
 
 (defun jupyter-wait-until (client msg-type pmsg-id timeout cond)
   "Wait until COND returns non-nil for a received message.
@@ -342,21 +366,12 @@ To process a message the following steps are taken:
              (msg (cdr (ring-remove ring))))
         (unwind-protect
             (funcall handler client msg)
-          ;; Run the message callback stored with `jupyter-run-when-received'.
-          ;; Currently this is only used for shell messages since those are the
-          ;; only ones that send a reply. Note that IOPub messages will have
-          ;; the same parent header as the execute_reply which is why we need
-          ;; to check the channel type. If we didn't check the channel type,
-          ;; the callback would run on the IOPub messages.
-          (let* ((message-callbacks (oref client message-callbacks))
-                 (pmsg-id (plist-get (plist-get msg :parent_header) :msg_id))
-                 (msg-type (plist-get msg :msg_type))
-                 (callbacks (gethash pmsg-id message-callbacks))
-                 (cb (cdr (and callbacks (assoc msg-type callbacks)))))
-            (when cb
-              (unwind-protect
-                  (funcall cb msg))))))
-      (run-with-timer 0.01 nil #'jupyter--handle-message client channel))))
+          (unwind-protect
+              (let ((cb (jupyter--callback-for-message client msg)))
+                (when cb (funcall cb msg)))
+            (unless (ring-empty-p ring)
+              (run-with-timer
+               0.01 nil #'jupyter--handle-message client channel))))))))
 
 ;;; Received message handlers
 
