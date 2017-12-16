@@ -109,6 +109,8 @@ in the jupyter runtime directory."
                  (shell-command-to-string "jupyter --runtime-dir")))))
     (while (not (file-exists-p path))
       (sleep-for 0 10))
+    ;; FIXME: Ensure that the file is done writing
+    (sleep-for 1)
     (let ((client (jupyter-kernel-client-from-connection-file path)))
       (set-process-query-on-exit-flag proc nil)
       (oset client kernel proc)
