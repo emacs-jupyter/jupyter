@@ -192,11 +192,9 @@ for the heartbeat channel."
    do (jupyter-start-channel
        channel :identity (jupyter-session-id (oref client session)))
    (unless (eq (oref channel type) :hb)
-     (lexical-let ((channel channel)
-                   (client client))
-       (zmq-ioloop
-        (oref channel socket)
-        (apply-partially #'jupyter--queue-message client channel))))))
+     (zmq-ioloop
+      (oref channel socket)
+      (apply-partially #'jupyter--queue-message client channel)))))
 
 (cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
   "Stop any running channels of CLIENT."
