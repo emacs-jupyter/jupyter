@@ -18,14 +18,21 @@
   ((kernel
     :type (or null process)
     :initform nil
-    :documentation "The local kernel process or nil if there is no local kernel.")
+    :documentation "The local kernel process or nil if no local
+ kernel was started by this client.")
    (message-callbacks
     :type hash-table
     :initform (make-hash-table :weakness 'key :test 'equal)
     :documentation "A hash table with message ID's as keys. This
  is used to register callback functions to run once a reply from
  a previously sent request is received. See
- `jupyter-add-receive-callback'.")
+ `jupyter-add-receive-callback'. Note that this is also used to
+ filter received messages that originated from a previous request
+ by this client. Whenever the client sends a message in which a
+ reply is expected, it sets an entry in this table to represent
+ the fact that the message has been sent. So if there is a
+ non-nil value for a message ID it means that a message has been
+ sent and the client is expecting a reply from the kernel.")
    (session
     :type jupyter-session
     :initarg :session
@@ -119,6 +126,20 @@ in the jupyter runtime directory."
                                       (iopub t)
                                       (stdin t)
                                       (hb t))
+  "Start the pre-configured channels of CLIENT.
+This function calls `jupyter-start-channel' for every channel
+that has a non-nil value passed to this function. All channels
+are started by default, so to prevent a channel from starting you
+would have to pass a nil value for the channel's key. As an
+example, to prevent the control channel from starting you would
+call this function like so
+
+    (jupyter-start-channels client :control nil)
+
+In addition to calling `jupyter-start-channel', a subprocess is
+created for each channel which monitors the channel's socket for
+input events. Note that this polling subprocess is not created
+for the heartbeat channel."
   (cl-loop
    with channel = nil
    for (cname . start) in (list (cons 'shell-channel shell)
@@ -154,8 +175,8 @@ in the jupyter runtime directory."
         (zmq-stop-ioloop (oref channel socket)))
    (jupyter-stop-channel channel)))
 
-(cl-defmethod jupyter-channels-running ((client jupyter-kernel-client))
-  "Are any of the channels of CLIENT created and running?"
+(cl-defmethod jupyter-channels-running-p ((client jupyter-kernel-client))
+  "Are any channels of CLIENT alive?"
   (cl-loop
    for channel in (list 'shell-channel
                         'iopub-channel
@@ -245,10 +266,19 @@ is thrown.")
 (defun jupyter-add-receive-callback (client msg-type msg-id function)
   "Add FUNCTION to run when receiving a message reply.
 
-MSG-ID corresponds to the ID of one a message type which expects
-a reply. Whenever CLIENT receives a reply message whose parent
-header has an ID that matches MSG-ID FUNCTION, along with any
-other registered functions for MSG-ID, will be executed."
+The function will be run when CLIENT receives a reply message
+that has a type of MSG-TYPE and is a reply due to a request that
+has an ID of MSG-ID. As an example, suppose you want to register
+a callback when you recieve an `execute-reply' after sending an
+execute request. This can be done like so:
+
+    (jupyter-add-receive-callback client 'execute-reply
+        (jupyter-request-execute client :code \"y = 1 + 2\")
+      (lambda (msg)
+        (cl-assert (equal (jupyter-message-type msg) \"execute_reply\"))))
+
+Note that the callback is given the raw decoded message received
+from the kernel without any processing done to it."
   (declare (indent 3))
   (cl-check-type client jupyter-kernel-client)
   (let ((mt (plist-get jupyter--recieved-message-types msg-type)))
@@ -338,6 +368,10 @@ CHANNEL's recv-queue is empty."
     (jupyter-handle-input client prompt password)))
 
 (cl-defmethod jupyter-handle-input ((client jupyter-kernel-client) prompt password)
+  "Handle an input request from CLIENT's kernel.
+PROMPT is the prompt the kernel would like to show the user. If
+PASSWORD is non-nil, then `read-passwd' is used to get input from
+the user. Otherwise `read-from-minibuffer' is used."
   (let ((channel (oref client stdin-channel))
         (msg (jupyter-input-reply
               :value (funcall (if password #'read-passwd
@@ -360,7 +394,7 @@ CHANNEL's recv-queue is empty."
        (jupyter-handle-interrupt client)))))
 
 (cl-defmethod jupyter-request-shutdown ((client jupyter-kernel-client) &optional restart)
-  "Request a shutdown of the kernel CLIENT is communicating with.
+  "Request a shutdown of CLIENT's kernel.
 If RESTART is non-nil, request a restart instead of a complete shutdown."
   (let ((channel (oref client control-channel))
         (msg (jupyter-shutdown-request :restart restart)))
@@ -446,6 +480,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                        (user-expressions nil)
                                        (allow-stdin t)
                                        (stop-on-error nil))
+  "Send an execute request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
         (msg (jupyter-execute-request
@@ -467,6 +502,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                        &key code
                                        (pos 0)
                                        (detail 0))
+  "Send an inspect request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
         (msg (jupyter-inspect-request
@@ -482,6 +518,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
 (cl-defmethod jupyter-request-complete ((client jupyter-kernel-client)
                                         &key code
                                         (pos 0))
+  "Send a complete request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
         (msg (jupyter-complete-request
@@ -506,6 +543,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                        n
                                        pattern
                                        unique)
+  "Send a history request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
         (msg (jupyter-history-request
@@ -525,6 +563,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
 
 (cl-defmethod jupyter-request-is-complete ((client jupyter-kernel-client)
                                            &key code)
+  "Send an is-complete request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
         (msg (jupyter-is-complete-request
@@ -537,9 +576,10 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
 
 (cl-defmethod jupyter-request-comm-info ((client jupyter-kernel-client)
                                          &key target-name)
+  "Send a comm-info request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
-        (msg (jupyter-complete-request
+        (msg (jupyter-comm-info-request
               :target-name target-name)))
     (jupyter--send-encoded client channel "comm_info_request" msg)))
 
@@ -547,10 +587,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
   "Default comm info. reply handler.")
 
 (cl-defmethod jupyter-request-kernel-info ((client jupyter-kernel-client))
-  "Get the info of the kernel CLIENT is connected to.
-This function returns the `:content' of the kernel-info request.
-Note that this function also blocks until the kernel-info reply
-is received."
+  "Send a kernel-info request."
   (let* ((channel (oref client shell-channel)))
     (jupyter--send-encoded client channel "kernel_info_request" ())))
 
