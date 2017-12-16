@@ -111,7 +111,8 @@ in the jupyter runtime directory."
       (oset client kernel proc)
       client)))
 
-(defun jupyter--ioloop-callback (client channel)
+(defun jupyter--queue-message (client channel)
+  "Queue a message to be processed for CLIENT's CHANNEL."
   (let* ((ring (oref channel recv-queue)))
     ;; TODO: How many messages does ZMQ store in its internal buffers before it
     ;; starts droping messages? And what socket option can be examined to
@@ -158,8 +159,7 @@ for the heartbeat channel."
                    (client client))
        (zmq-ioloop
         (oref channel socket)
-        (function
-         (lambda () (jupyter--ioloop-callback client channel))))))))
+        (apply-partially #'jupyter--queue-message client channel))))))
 
 (cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
   "Stop any running channels of CLIENT."
