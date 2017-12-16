@@ -111,6 +111,38 @@ in the jupyter runtime directory."
       (oset client kernel proc)
       client)))
 
+;;; Lower level sending/receiving
+
+(cl-defmethod jupyter--send-encoded ((client jupyter-kernel-client)
+                                     channel
+                                     type
+                                     message
+                                     &optional flags)
+  "Encode MESSAGE and send it on CLIENT's CHANNEL.
+The message should have a TYPE as found in the jupyter messaging
+protocol. Optional variable FLAGS are the flags sent to the
+underlying `zmq-send-multipart' call using the CHANNEL's socket."
+  (declare (indent 1))
+  (unless (jupyter-channel-alive-p channel)
+    (error "Channel not alive: %s" (oref channel type)))
+  (cl-destructuring-bind (msg-id . msg)
+      (jupyter--encode-message (oref client session) type :content message)
+    (zmq-send-multipart (oref channel socket) msg flags)
+    ;; stdin messages do not expect a reply
+    (unless (eq (oref channel type) :stdin)
+      ;; indicate that this message is expecting a reply
+      (puthash msg-id t (oref client message-callbacks)))
+    msg-id))
+
+;; TODO: Maybe instead of decoding the message directly, use `apply-partially'
+;; to delay decoding until the message is actually handled registered with
+;; `jupyter-add-receive-callback' or in some subclass.
+(cl-defmethod jupyter--recv-decoded ((client jupyter-kernel-client) channel &optional flags)
+  (cl-destructuring-bind (idents . parts)
+      (jupyter--split-identities
+       (zmq-recv-multipart (oref channel socket) flags))
+    (cons idents (jupyter--decode-message (oref client session) parts))))
+
 (defun jupyter--queue-message (client channel)
   "Queue a message to be processed for CLIENT's CHANNEL."
   (let* ((ring (oref channel recv-queue)))
@@ -188,53 +220,7 @@ for the heartbeat channel."
    if (jupyter-channel-alive-p (eieio-oref client channel))
    return t))
 
-;;; Lower level sending/receiving
 
-(cl-defmethod jupyter--send ((channel jupyter-channel) parts &optional flags)
-  "Send a message with PARTS on the socket associated with CHANNEL.
-Optional variable FLAGS, are the flags argument of the `zmq-send'
-or `zmq-send-multipart' call used to send parts."
-  (declare (indent 1))
-  (let ((sock (oref channel socket)))
-    (if (listp parts)
-        (zmq-send-multipart sock parts flags)
-      (zmq-send sock parts flags))))
-
-(cl-defmethod jupyter--send-encoded ((client jupyter-kernel-client)
-                                     channel
-                                     type
-                                     message
-                                     &optional flags)
-  "Encode MESSAGE and send it on CLIENT's CHANNEL.
-The message should have a TYPE as found in the jupyter messaging
-protocol. Optional variable FLAGS are the flags sent to the
-underlying `zmq-send-multipart' call using the CHANNEL's socket."
-  (declare (indent 1))
-  (unless (jupyter-channel-alive-p channel)
-    (error "Channel not alive: %s" (oref channel type)))
-  (cl-destructuring-bind (msg-id . msg)
-      (jupyter--encode-message (oref client session) type :content message)
-    (jupyter--send channel msg flags)
-    msg-id))
-
-(cl-defmethod jupyter--recv ((channel jupyter-channel) &optional flags)
-  "Recieve a message on CHANNEL.
-Optional variable FLAGS is the flags argument of the
-`zmq-recv-multipart' call using the CHANNEL's socket. The return
-value is a cons cell, (IDENTS . PARTS), where IDENTS are the
-routing identities of the message and PARTS are the message
-parts. See
-http://jupyter-client.readthedocs.io/en/latest/messaging.html#the-wire-protocol
-for more details."
-  (jupyter--split-identities (zmq-recv-multipart (oref channel socket) flags)))
-
-;; TODO: Maybe instead of decoding the message directly, use `apply-partially'
-;; to delay decoding until the message is actually handled registered with
-;; `jupyter-add-receive-callback' or in some subclass.
-(cl-defmethod jupyter--recv-decoded ((client jupyter-kernel-client) channel &optional flags)
-  (cl-destructuring-bind (idents . parts)
-      (jupyter--recv channel flags)
-    (cons idents (jupyter--decode-message (oref client session) parts))))
 
 ;;; Processing received messages
 
