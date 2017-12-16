@@ -8,11 +8,6 @@
 
 ;;; Kernel client class
 
-;; TODO: Sometimes I am not receiving any polling messages from the
-;; `zmq-ioloop' polling channels. Why is that? I may send some messages and
-;; then get some replies, but then it seems that after I send a message, I
-;; never get any reply back.
-
 (defclass jupyter-kernel-client ()
   ;; TODO: start local kernel process or populate with kernel connection info
   ((kernel
