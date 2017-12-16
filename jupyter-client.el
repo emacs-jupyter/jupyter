@@ -125,6 +125,7 @@ in the jupyter runtime directory."
                                       &key (shell t)
                                       (iopub t)
                                       (stdin t)
+                                      (control t)
                                       (hb t))
   "Start the pre-configured channels of CLIENT.
 This function calls `jupyter-start-channel' for every channel
@@ -145,6 +146,7 @@ for the heartbeat channel."
    for (cname . start) in (list (cons 'shell-channel shell)
                                 (cons 'iopub-channel iopub)
                                 (cons 'hb-channel hb)
+                                (cons 'control-channel control)
                                 (cons 'stdin-channel stdin))
    when start
    do (setq channel (eieio-oref client cname))
