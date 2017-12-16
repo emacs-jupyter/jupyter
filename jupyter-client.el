@@ -152,7 +152,7 @@ underlying `zmq-send-multipart' call using the CHANNEL's socket."
     (unless (= (ring-length ring) (ring-size ring))
       (let* ((res (jupyter--recv-decoded client channel)))
         (ring-insert ring res)
-        (run-with-timer 0.01 nil #'jupyter--process-message client channel)))))
+        (run-with-timer 0.01 nil #'jupyter--handle-message client channel)))))
 
 (cl-defmethod jupyter-start-channels ((client jupyter-kernel-client)
                                       &key (shell t)
@@ -313,11 +313,21 @@ http://jupyter-client.readthedocs.io/en/latest/messaging.html"
   (jupyter-wait-until client msg-type pmsg-id timeout
     #'identity))
 
-(defun jupyter--process-message (client channel)
+(defun jupyter--handle-message (client channel)
   "Process a message on CLIENT's CHANNEL.
-This function processes a single message on CLIENT's CHANNEL and
-schedules to process more messages at a future time until
-CHANNEL's recv-queue is empty."
+When a message is received on CLIENT's channel it is decoded and
+added to the CHANNEL's recv-queue and this function is scheduled
+to be run at a later time to process the messages in the queue.
+
+To process a message the following steps are taken:
+
+1. A message is removed from the recv-queue
+2. A handler function is found base on CHANNEL's type
+3. The handler function is called with the CLIENT and the message
+   as arguments
+4. Any callbacks previously registered for the message are run
+5. This function is scheduled to process another message of
+   CHANNEL in the future"
   (cl-check-type channel jupyter-channel)
   (let ((ring (oref channel recv-queue)))
     (unless (ring-empty-p ring)
@@ -346,7 +356,7 @@ CHANNEL's recv-queue is empty."
             (when cb
               (unwind-protect
                   (funcall cb msg))))))
-      (run-with-timer 0.01 nil #'jupyter--process-message client channel))))
+      (run-with-timer 0.01 nil #'jupyter--handle-message client channel))))
 
 ;;; Received message handlers
 
