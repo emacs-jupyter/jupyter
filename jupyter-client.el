@@ -354,15 +354,15 @@ To process a message the following steps are taken:
    CHANNEL in the future"
   (let ((ring (oref channel recv-queue)))
     (unless (ring-empty-p ring)
-      (let* ((ctype (oref channel type))
+      ;; Messages are stored like (idents . msg) in the ring
+      (let* ((msg (cdr (ring-remove ring)))
+             (ctype (oref channel type))
              (handler (cl-case ctype
                         (:stdin #'jupyter--handle-stdin-message)
                         (:iopub #'jupyter--handle-iopub-message)
                         (:shell #'jupyter--handle-shell-message)
                         (:control #'jupyter--handle-control-message)
-                        (otherwise (error "Wrong channel type (%s)." ctype))))
-             ;; Messages are stored like (idents . msg) in the ring
-             (msg (cdr (ring-remove ring))))
+                        (otherwise (error "Wrong channel type (%s)." ctype)))))
         (unwind-protect
             (funcall handler client msg)
           (unwind-protect
