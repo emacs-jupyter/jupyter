@@ -241,6 +241,23 @@ in this plist, an error is thrown.")
 (cl-defun jupyter-shutdown-request (&key restart)
   (list :restart (if restart t jupyter--false)))
 
+;;; Convenience functions
+
+(defun jupyter-message-id (msg)
+  (plist-get msg :msg_id))
+
+(defun jupyter-message-parent-id (msg)
+  (jupyter-message-id
+   (plist-get msg :parent_header)))
+
+(defun jupyter-message-status-idle-p (msg)
+  (and (equal (plist-get msg :msg_type) "status")
+       (equal (plist-get (plist-get msg :content) :execution_state)
+              "idle")))
+
+(defun jupyter-message-type (msg)
+  (plist-get msg :msg_type))
+
 (provide 'jupyter-messages)
 
 ;; Local Variables:
