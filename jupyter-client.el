@@ -268,7 +268,39 @@ from the kernel without any processing done to it."
         (if cb-for-type (setcdr cb-for-type function)
           (nconc callbacks (list (cons msg-type function))))))))
 
-(defun jupyter-wait-until-received (client msg-type pmsg-id)
+(defun jupyter-wait-until (client msg-type pmsg-id timeout cond)
+  "Wait until COND returns non-nil for a received message.
+COND is run for every received message that has a type of
+MSG-TYPE and whose parent header has a message ID of PMSG-ID. If
+no messages are received that pass these two conditions before
+TIMEOUT (in seconds), this function returns nil. Otherwise it
+returns the received message. Note that if TIMEOUT is nil, it
+defaults to 1 second."
+  (declare (indent 4))
+  (setq timeout (if timeout (* 1000 timeout) 1000))
+  (lexical-let ((msg nil)
+                (cond cond))
+    (jupyter-add-receive-callback client msg-type pmsg-id
+      (lambda (m)
+        (setq msg (if (funcall cond m) m nil))))
+    (let ((time 0))
+      (catch 'timeout
+        (while (null msg)
+          (when (>= time timeout)
+            (throw 'timeout nil))
+          (sleep-for 0 10)
+          (setq time (+ time 10)))
+        msg))))
+
+(defun jupyter-wait-until-idle (client pmsg-id &optional timeout)
+  "Wait until a status: idle message is received for PMSG-ID.
+This function waits until TIMEOUT for CLIENT to receive an idle
+status message for the request associate with PMSG-ID. If TIMEOUT
+is non-nil, it defaults to 1 second."
+  (jupyter-wait-until client 'status pmsg-id timeout
+    #'jupyter-message-status-idle-p))
+
+(defun jupyter-wait-until-received (client msg-type pmsg-id &optional timeout)
   "Wait for a message with MSG-TYPE to be received on CLIENT.
 This function waits until CLIENT receives a message from the
 kernel that satisfies the following conditions:
@@ -292,12 +324,8 @@ sending one. For example you would not be expecting an
 more info
 http://jupyter-client.readthedocs.io/en/latest/messaging.html"
   (declare (indent 2))
-  (lexical-let ((msg nil))
-    (jupyter-add-receive-callback client msg-type pmsg-id
-      (lambda (m) (setq msg m)))
-    (while (null msg)
-      (sleep-for 0 10))
-    msg))
+  (jupyter-wait-until client msg-type pmsg-id timeout
+    #'identity))
 
 (defun jupyter--process-message (client channel)
   "Process a message on CLIENT's CHANNEL.
