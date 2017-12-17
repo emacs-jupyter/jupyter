@@ -74,16 +74,19 @@ socket."
     (zmq-connect sock endpoint)
     sock))
 
+(defun jupyter-connect-channel (ctype endpoint &optional identity)
+  (jupyter-connect-endpoint
+   (plist-get jupyter-channel-socket-types ctype)
+   endpoint
+   identity))
+
 (cl-defmethod jupyter-start-channel ((channel jupyter-channel) &key identity)
   "Start a CHANNEL.
 If IDENTITY is non-nil, it is used as the ROUTING_ID of the
 underlying channel's socket."
   (unless (jupyter-channel-alive-p channel)
-    (let ((sock (jupyter-connect-endpoint
-                 (plist-get jupyter-channel-socket-types
-                            (oref channel type))
-                 (oref channel endpoint)
-                 identity)))
+    (let ((sock (jupyter-connect-channel
+                 (oref channel type) (oref channel endpoint) identity)))
       (oset channel socket sock))))
 
 (cl-defmethod jupyter-start-channel ((channel jupyter-iopub-channel) &key identity)
