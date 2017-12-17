@@ -304,9 +304,21 @@ for the heartbeat channel."
   (let* ((message-callbacks (oref client message-callbacks))
          (pmsg-id (jupyter-message-parent-id msg))
          (callbacks (gethash pmsg-id message-callbacks))
+         (all-type-cb nil)
          (cb nil))
     (when (and callbacks (not (eq callbacks t)))
-      (setq cb (cdr (assoc (jupyter-message-type msg) callbacks))))
+      (setq cb (cdr (assoc (jupyter-message-type msg) callbacks))
+            ;; TODO: Better name
+            all-type-cb (cdr (assoc t callbacks))))
+    (if (and cb all-type-cb)
+        (setq cb (lexical-let ((f1 cb)
+                               (f2 all-type-cb))
+                   (lambda (msg)
+                     (funcall f1 msg)
+                     (funcall f2 msg)
+                     msg)))
+      (when all-type-cb
+        (setq cb all-type-cb)))
     ;; Remove callbacks once status is idle for request PMSG-ID
     ;;
     ;; Changed in version 5.0: Busy and idle messages should be sent
@@ -345,7 +357,10 @@ from the kernel without any processing done to it."
   (cl-check-type client jupyter-kernel-client)
   (let ((mt (plist-get jupyter--received-message-types msg-type)))
     (if mt (setq msg-type mt)
-      (error "Not a valid message type (`%s')" msg-type)))
+      ;; msg-type = t means to run for every message type associated with
+      ;; msg-id
+      (unless (eq msg-type t)
+        (error "Not a valid received message type (`%s')" msg-type))))
   ;; Ensure that the message ID is ready
   (setq msg-id (jupyter-ensure-id msg-id))
   (let* ((message-callbacks (oref client message-callbacks))
