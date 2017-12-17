@@ -663,7 +663,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
               :start start
               :stop stop
               :n n
-              :patten pattern
+              :pattern pattern
               :unique unique)))
     (jupyter--send-encoded client channel "history_request" msg)))
 
