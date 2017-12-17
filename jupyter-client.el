@@ -15,6 +15,7 @@
     :initform nil
     :documentation "The local kernel process or nil if no local
  kernel was started by this client.")
+   ;; TODO: Better name, message-requests?
    (message-callbacks
     :type hash-table
     ;; Callbacks are removed once the status for a request is idle so no need
@@ -143,6 +144,7 @@ underlying `zmq-send-multipart' call using the CHANNEL's socket."
     (error "Channel not alive: %s" (oref channel type)))
   (cl-destructuring-bind (msg-id . msg)
       (jupyter--encode-message (oref client session) type :content message)
+    ;; TODO: Check for EAGAIN and reschedule the message for sending
     (zmq-send-multipart (oref channel socket) msg flags)
     ;; stdin messages do not expect a reply
     (unless (eq (oref channel type) :stdin)
@@ -279,7 +281,7 @@ from the kernel without any processing done to it."
          (callbacks (gethash msg-id message-callbacks)))
     ;; If a message is sent with MSG-ID, then its entry in message-callbacks is
     ;; either t or an alist of callbacks.
-    (if (null callbacks) (error "Invalid message ID.")
+    (if (null callbacks) (error "Invalid message ID or message has already been received.")
       (if (eq callbacks t)
           (puthash msg-id (list (cons msg-type function)) message-callbacks)
         (let ((cb-for-type (assoc msg-type callbacks)))
@@ -299,8 +301,7 @@ defaults to 1 second."
   (lexical-let ((msg nil)
                 (cond cond))
     (jupyter-add-receive-callback client msg-type pmsg-id
-      (lambda (m)
-        (setq msg (if (funcall cond m) m nil))))
+      (lambda (m) (setq msg (if (funcall cond m) m nil))))
     (let ((time 0))
       (catch 'timeout
         (while (null msg)
@@ -313,8 +314,8 @@ defaults to 1 second."
 (defun jupyter-wait-until-idle (client pmsg-id &optional timeout)
   "Wait until a status: idle message is received for PMSG-ID.
 This function waits until TIMEOUT for CLIENT to receive an idle
-status message for the request associate with PMSG-ID. If TIMEOUT
-is non-nil, it defaults to 1 second."
+status message for the request associated with PMSG-ID. If
+TIMEOUT is non-nil, it defaults to 1 second."
   (jupyter-wait-until client 'status pmsg-id timeout
     #'jupyter-message-status-idle-p))
 
