@@ -36,6 +36,11 @@
  the fact that the message has been sent. So if there is a
  non-nil value for a message ID it means that a message has been
  sent and the client is expecting a reply from the kernel.")
+   (channel-timers
+    :type (or null (list-of timer))
+    :initform nil
+    :documentation "The process which polls for events on all
+ live channels of the client.")
    (session
     :type jupyter-session
     :initarg :session
@@ -118,6 +123,12 @@ in the jupyter runtime directory."
 
 ;;; Lower level sending/receiving
 
+(defun jupyter--channel-readable-p (channel)
+  (and channel
+       (/= (logand (zmq-socket-get (oref channel socket) zmq-EVENTS)
+                   zmq-POLLIN)
+           0)))
+
 (cl-defmethod jupyter--send-encoded ((client jupyter-kernel-client)
                                      channel
                                      type
@@ -150,13 +161,14 @@ underlying `zmq-send-multipart' call using the CHANNEL's socket."
 
 (defun jupyter--queue-message (client channel)
   "Queue a message to be processed for CLIENT's CHANNEL."
-  (let* ((ring (oref channel recv-queue)))
-    ;; TODO: How many messages does ZMQ store in its internal buffers before it
-    ;; starts droping messages? And what socket option can be examined to
-    ;; figure this out?
-    (unless (= (ring-length ring) (ring-size ring))
-      (let* ((res (jupyter--recv-decoded client channel)))
-        (ring-insert ring res)
+  (when (jupyter--channel-readable-p channel)
+    (let* ((ring (oref channel recv-queue)))
+      ;; TODO: How many messages does ZMQ store in its internal buffers before it
+      ;; starts droping messages? And what socket option can be examined to
+      ;; figure this out?
+      (unless (= (ring-length ring) (ring-size ring))
+        (let* ((res (jupyter--recv-decoded client channel)))
+          (ring-insert ring res))
         (run-with-timer 0.01 nil #'jupyter--handle-message client channel)))))
 
 (cl-defmethod jupyter-start-channels ((client jupyter-kernel-client)
@@ -179,22 +191,25 @@ In addition to calling `jupyter-start-channel', a subprocess is
 created for each channel which monitors the channel's socket for
 input events. Note that this polling subprocess is not created
 for the heartbeat channel."
-  (cl-loop
-   with channel = nil
-   for (cname . start) in (list (cons 'shell-channel shell)
-                                (cons 'iopub-channel iopub)
-                                (cons 'hb-channel hb)
-                                (cons 'control-channel control)
-                                (cons 'stdin-channel stdin))
-   when start
-   do (setq channel (eieio-oref client cname))
-   and unless (jupyter-channel-alive-p channel)
-   do (jupyter-start-channel
-       channel :identity (jupyter-session-id (oref client session)))
-   (unless (eq (oref channel type) :hb)
-     (zmq-ioloop
-      (oref channel socket)
-      (apply-partially #'jupyter--queue-message client channel)))))
+  (let ((timers (cl-loop
+                 with channel = nil
+                 ;; NOTE: The order determines the order in which messages are
+                 ;; processed when a message can be read from multiple channels.
+                 for (cname . start) in (list
+                                         (cons 'control-channel control)
+                                         (cons 'stdin-channel stdin)
+                                         (cons 'iopub-channel iopub)
+                                         (cons 'shell-channel shell)
+                                         (cons 'hb-channel hb))
+                 when start
+                 do (setq channel (eieio-oref client cname))
+                 and unless (jupyter-channel-alive-p channel)
+                 do (jupyter-start-channel
+                     channel :identity (jupyter-session-id
+                                        (oref client session)))
+                 and unless (eq (oref channel type) :hb)
+                 collect (run-with-timer 0 0.01 #'jupyter--queue-message client channel))))
+    (oset client channel-timers timers)))
 
 (cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
   "Stop any running channels of CLIENT."
@@ -206,11 +221,9 @@ for the heartbeat channel."
                            'control-channel
                            'stdin-channel))
    when (jupyter-channel-alive-p channel)
-   ;; hb channels create their sockets in a subprocess which gets stopped in
-   ;; `jupyter-channel-stop'
-   do (unless (eq (oref channel type) :hb)
-        (zmq-stop-ioloop (oref channel socket)))
-   (jupyter-stop-channel channel)))
+   do (jupyter-stop-channel channel))
+  (mapc #'cancel-timer (oref client channel-timers))
+  (oset client channel-timers nil))
 
 (cl-defmethod jupyter-channels-running-p ((client jupyter-kernel-client))
   "Are any channels of CLIENT alive?"
