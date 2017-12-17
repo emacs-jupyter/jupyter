@@ -168,6 +168,30 @@ in this plist, an error is thrown.")
        :content (jupyter--decode-string content)
        :buffers buffers))))
 
+;;; Sending/receiving
+
+(cl-defmethod jupyter--send-encoded ((session jupyter-session)
+                                     socket
+                                     type
+                                     message
+                                     &optional flags)
+  "Encode MESSAGE and send it on CLIENT's CHANNEL.
+The message should have a TYPE as found in the jupyter messaging
+protocol. Optional variable FLAGS are the flags sent to the
+underlying `zmq-send-multipart' call using the CHANNEL's socket."
+  (declare (indent 1))
+  (cl-destructuring-bind (msg-id . msg)
+      (jupyter--encode-message session type :content message)
+    ;; TODO: Check for EAGAIN and reschedule the message for sending
+    (zmq-send-multipart socket msg flags)
+    msg-id))
+
+(cl-defmethod jupyter--recv-decoded ((session jupyter-session) socket &optional flags)
+  (cl-destructuring-bind (idents . parts)
+      (jupyter--split-identities
+       (zmq-recv-multipart socket flags))
+    (cons idents (jupyter--decode-message session parts))))
+
 ;;; stdin messages
 
 (cl-defun jupyter-input-reply (&key value)
