@@ -565,7 +565,9 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
 (defun jupyter--handle-shell-message (client msg)
   (cl-destructuring-bind (&key msg_type content &allow-other-keys) msg
     (let ((status (plist-get content :status)))
-      (if (equal status "ok")
+      ;; We check for error or abort since "is_complete_reply" also contains a
+      ;; status field
+      (if (not (member status '("error" "abort")))
           (pcase msg_type
             ("execute_reply"
              (cl-destructuring-bind (&key execution_count
