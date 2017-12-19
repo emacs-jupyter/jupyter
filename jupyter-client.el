@@ -180,53 +180,74 @@ underlying `zmq-send-multipart' call using the CHANNEL's socket."
                               (cons stdin :stdin)
                               (cons shell :shell)
                               (cons iopub :iopub))))
-         (with-zmq-poller
-          ;; Also poll for standard-in events to be able to read commands from
-          ;; the parent emacs process without blocking
-          (zmq-poller-register (current-zmq-poller) 0 zmq-POLLIN)
-          (mapc (lambda (x) (zmq-poller-register (current-zmq-poller)
-                                         (car x)
-                                         zmq-POLLIN))
-             channels)
-          (while t
-            ;; TODO: Dynamic polling period, if the rate of received events is
-            ;; high, reduce the period. If the rate of received events is low
-            ;; increase it. Sample the rate in a time window that spans
-            ;; multiple polling periods. Polling at 10 ms periods was causing a
-            ;; pretty sizable portion of CPU time to be eaten up.
-            (let ((events (zmq-poller-wait-all (current-zmq-poller) 5 20)))
-              (cl-loop
-               for (sock . event) in events
-               if (integerp sock) do
-               (cl-destructuring-bind (cmd . data) (zmq-subprocess-read)
-                 (cl-case cmd
-                   ;; (stop-channel
-                   ;;  (let* ((type data))
-                   ;;    (cl-destructuring-bind (sock . channel)
-                   ;;        (cl-find-if (lambda (x) (eq type (oref (cdr x) type))) channels)
-                   ;;      (zmq-poller-unregister (current-zmq-poller) sock)
-                   ;;      (jupyter-stop-channel channel))))
-                   ;; (start-channel
-                   ;;  (let* ((elem (assoc data channels))
-                   ;;         (sock (cadr elem))
-                   ;;         (endpoint (cddr elem)))
-                   ;;    (zmq-connect sock endpoint)
-                   ;;    (zmq-poller-register (current-zmq-poller) sock zmq-POLLIN)))
-                   (send
-                    (cl-destructuring-bind (ctype . rest) data
-                      (zmq-prin1
-                       (cons 'sent
-                             (cons
-                              ctype
-                              (apply #'jupyter--send-encoded session
-                                     (car (rassoc ctype channels))
-                                     rest))))))))
-               else do
-               (zmq-prin1
-                (cons 'recvd
-                      (cons
-                       (cdr (assoc sock channels))
-                       (jupyter--recv-decoded session sock))))))))))))
+         (cl-flet ((recv-message
+                    (sock ctype)
+                    (zmq-prin1
+                     (cons 'recvd
+                           (cons ctype (jupyter--recv-decoded
+                                        session sock)))))
+                   (send-message
+                    (sock ctype rest)
+                    (zmq-prin1
+                     (cons 'sent
+                           (cons ctype (apply #'jupyter--send-encoded session
+                                              sock rest)))))
+                   (start-channel
+                    (sock)
+                    (zmq-connect
+                     sock (zmq-socket-get sock zmq-LAST_ENDPOINT))
+                    (zmq-poller-register
+                     (current-zmq-poller) sock zmq-POLLIN))
+                   (stop-channel
+                    (sock)
+                    (zmq-poller-unregister (current-zmq-poller) sock)
+                    (condition-case err
+                        (zmq-disconnect
+                         sock (zmq-socket-get sock zmq-LAST_ENDPOINT))
+                      (zmq-ENOENT nil)
+                      (error (signal (car err) (cdr err))))))
+           (with-zmq-poller
+            ;; Also poll for standard-in events to be able to read commands from
+            ;; the parent emacs process without blocking
+            (zmq-poller-register (current-zmq-poller) 0 zmq-POLLIN)
+            (mapc (lambda (x) (zmq-poller-register (current-zmq-poller)
+                                           (car x)
+                                           zmq-POLLIN))
+               channels)
+            (unwind-protect
+                (while t
+                  ;; TODO: Dynamic polling period, if the rate of received
+                  ;; events is high, reduce the period. If the rate of received
+                  ;; events is low increase it. Sample the rate in a time
+                  ;; window that spans multiple polling periods. Polling at 10
+                  ;; ms periods was causing a pretty sizable portion of CPU
+                  ;; time to be eaten up.
+                  (let ((events (zmq-poller-wait-all (current-zmq-poller) 5 20)))
+                    (when events
+                      (when (alist-get 0 events)
+                        (cl-destructuring-bind (cmd . data)
+                            (zmq-subprocess-read)
+                          (cl-case cmd
+                            (start-channel
+                             (let* ((ctype data)
+                                    (sock (car (rassoc ctype channels))))
+                               (start-channel sock)))
+                            (stop-channel
+                             (let* ((ctype data)
+                                    (sock (car (rassoc ctype channels))))
+                               (stop-channel sock)))
+                            (send
+                             (let* ((ctype (car data))
+                                    (sock (car (rassoc ctype channels)))
+                                    (rest (cdr data)))
+                               (send-message sock ctype rest))))))
+                      (cl-loop for (sock . ctype) in channels
+                               when (alist-get sock events)
+                               do (recv-message sock ctype)))))
+              (mapc (lambda (s)
+                   (zmq-socket-set s zmq-LINGER 0)
+                   (zmq-close s))
+                 (mapcar #'car channels)))))))))
 
 (defun jupyter--ioloop-filter (client event)
   (cl-destructuring-bind (ctype . data) (cdr event)
@@ -275,17 +296,21 @@ In addition to calling `jupyter-start-channel', a subprocess is
 created for each channel which monitors the channel's socket for
 input events. Note that this polling subprocess is not created
 for the heartbeat channel."
+  (when hb (jupyter-start-channel (oref client hb-channel)))
   (oset client ioloop
         (zmq-start-process
          (jupyter--ioloop client)
          (apply-partially #'jupyter--ioloop-filter client))))
 
-(cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
-  "Stop any running channels of CLIENT."
-  ;; TODO: Better cleanup
-  (delete-process (oref client ioloop))
-  (kill-buffer (process-buffer (oref client ioloop)))
-  (oset client ioloop nil))
+    (cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
+      "Stop any running channels of CLIENT."
+      ;; TODO: Better cleanup
+      (jupyter-stop-channel (oref client hb-channel))
+      (let ((ioloop (oref client ioloop)))
+        (when ioloop
+          (delete-process (oref client ioloop))
+          (kill-buffer (process-buffer (oref client ioloop)))
+          (oset client ioloop nil))))
 
 (cl-defmethod jupyter-channels-running-p ((client jupyter-kernel-client))
   "Are any channels of CLIENT alive?"
