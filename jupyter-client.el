@@ -519,13 +519,17 @@ the user. Otherwise `read-from-minibuffer' is used."
 
 (defun jupyter--handle-control-message (client msg)
   (cl-destructuring-bind (&key msg_type content &allow-other-keys) msg
-    (pcase msg_type
-      ("shutdown_reply"
-       (cl-destructuring-bind (&key restart &allow-other-keys)
-           content
-         (jupyter-handle-shutdown client restart)))
-      ("interrupt_reply"
-       (jupyter-handle-interrupt client)))))
+    (let ((status (plist-get content :status)))
+      (if (equal status "ok")
+          ;; fIXME: An interrupt reply is only sent when interrupt_mode is set
+          ;; to message in a kernel's kernelspec.
+          (pcase msg_type
+            ("interrupt_reply"
+             (jupyter-handle-interrupt client)))
+        (if (equal status "error")
+            (error "Error (%s): %s"
+                   (plist-get content :ename) (plist-get content :evalue))
+          (error "Error: aborted"))))))
 
 (cl-defmethod jupyter-request-shutdown ((client jupyter-kernel-client) &optional restart)
   "Request a shutdown of CLIENT's kernel.
@@ -535,9 +539,20 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
     (jupyter--send-encoded client channel "shutdown_request" msg)))
 
 (cl-defmethod jupyter-handle-shutdown ((client jupyter-kernel-client) restart)
-  "Default shutdown reply handler.")
+  "Default shutdown reply handler."
+  (unless restart
+    (let ((kernel (oref client kernel)))
+      (when kernel
+        (jupyter-stop-channels client)
+        (delete-process kernel)
+        (kill-buffer (process-buffer kernel))
+        (oset client kernel nil)))))
 
+;; FIXME: This breaks the convention that all jupyter-request-* functions
+;; returns a message-id future object.
 (cl-defmethod jupyter-request-interrupt ((client jupyter-kernel-client))
+  ;; TODO: Check for interrupt_mode of the kernel's kernelspec
+  ;; http://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-interrupt
   (let ((channel (oref client control-channel)))
     (jupyter--send-encoded client channel "interrupt_request" ())))
 
@@ -739,6 +754,10 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
 (defun jupyter--handle-iopub-message (client msg)
   (cl-destructuring-bind (&key msg_type content &allow-other-keys) msg
     (pcase msg_type
+      ("shutdown_reply"
+       (cl-destructuring-bind (&key restart &allow-other-keys)
+           content
+         (jupyter-handle-shutdown client restart)))
       ("stream"
        (cl-destructuring-bind (&key name text &allow-other-keys)
            content
