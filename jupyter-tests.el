@@ -49,7 +49,6 @@
       (should-not (jupyter-channel-alive-p channel))
       (jupyter-start-channel channel :identity "foo")
       (should (oref channel socket))
-      (cl-check-type (oref channel socket) zmq-socket)
       (should (equal (zmq-socket-get (oref channel socket) zmq-ROUTING_ID)
                      "foo"))
       (should (jupyter-channel-alive-p channel)))
@@ -61,46 +60,50 @@
         (should-error (zmq-close sock) :type 'zmq-ENOTSOCK)
         ;; All pending messages are droped when a channel is stopped
         (should (= (ring-length (oref channel recv-queue)) 0))
-        (should-not (jupyter-channel-alive-p channel)))))
-  (ert-info ("Heartbeat channel")
-    (let ((proc (zmq-start-process
-                 (lambda (ctx)
-                   (with-zmq-socket sock zmq-REP
-                     (zmq-bind sock "tcp://127.0.0.1:5555")
-                     (while t
-                       (zmq-recv sock)
-                       (zmq-send sock "pong"))))))
-          (channel (jupyter-hb-channel :endpoint "tcp://127.0.0.1:5555")))
-      (unwind-protect
-          (progn
-            (ert-info ("Starting the channel")
-              (oset channel process nil)
-              (should-not (jupyter-channel-alive-p channel))
-              (should-not (jupyter-hb-beating-p channel))
-              (jupyter-start-channel channel)
-              (should (jupyter-channel-alive-p channel))
-              (should (jupyter-hb-beating-p channel))
-              (should-not (oref channel paused)))
-            ;; TODO: Fix pausing the channel
-            (ert-info ("Pausing the channel")
-              (jupyter-hb-pause channel)
-              ;; TODO: Improve these wait times
-              (sleep-for 2)
-              (should (oref channel paused)))
-            (ert-info ("Unpausing the channel")
-              (jupyter-hb-unpause channel)
-              (sleep-for 2)
-              (should-not (oref channel paused)))
-            (ert-info ("Checking the status")
-              (jupyter-hb-pause channel)
-              (sleep-for 2)
-              (should (jupyter-hb-beating-p channel))
-              ;; Asking if the hb is beating unpauses the channel
-              (should-not (oref channel paused))))
-        (delete-process proc)
-        ;; TODO: Refactor to remove this
-        (jupyter-channel-stop channel)
-        (kill-buffer (process-buffer proc))))))
+        (should-not (jupyter-channel-alive-p channel))))
+    (ert-info ("Heartbeat channel")
+      (cl-flet ((start-hb () (zmq-start-process
+                              (lambda (ctx)
+                                (with-zmq-socket sock zmq-REP
+                                  (zmq-bind sock "tcp://127.0.0.1:5556")
+                                  (while t
+                                    (zmq-send sock (zmq-recv sock))))))))
+        (let ((proc (start-hb))
+              (channel (jupyter-hb-channel :endpoint "tcp://127.0.0.1:5556")))
+          (unwind-protect
+              (progn
+                (ert-info ("Starting the channel")
+                  (should-not (jupyter-channel-alive-p channel))
+                  (jupyter-start-channel channel)
+                  ;; Let the channel start
+                  (sleep-for 1)
+                  (should (jupyter-channel-alive-p channel))
+                  (should (jupyter-hb-beating-p channel))
+                  (should-not (oref channel paused)))
+                (ert-info ("Pausing the channel")
+                  (jupyter-hb-pause channel)
+                  (should (oref channel paused)))
+                (ert-info ("Unpausing the channel")
+                  (jupyter-hb-unpause channel)
+                  (should-not (oref channel paused))
+                  (should (jupyter-hb-beating-p channel)))
+                (ert-info ("Checking the heartbeat")
+                  (should (jupyter-hb-beating-p channel))
+                  (delete-process proc)
+                  (kill-buffer (process-buffer proc))
+                  (sleep-for (* 2 (oref channel time-to-dead)))
+                  (should-not (jupyter-hb-beating-p channel))
+                  (setq proc (start-hb))
+                  (sleep-for 1)
+                  (should (jupyter-hb-beating-p channel)))
+                (ert-info ("Stopping the channel")
+                  (let ((p (oref channel process)))
+                    (jupyter-stop-channel channel)
+                    (should-not (process-live-p p))
+                    (should-not (oref channel process)))))
+            (when (process-live-p proc)
+              (delete-process proc))
+            (kill-buffer (process-buffer proc))))))))
 
 (ert-deftest jupyter-client ()
   (let* ((socks (cl-loop repeat 4

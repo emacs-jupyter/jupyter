@@ -157,33 +157,32 @@ A channel is alive if its socket property is bound to a
  heartbeat channel and communicates with the kernel."))
   :documentation "A base class for heartbeat channels.")
 
-(cl-defmethod jupyter-hb-beating-p ((channel jupyter-hb-channel))
-  "Return non-nil if the kernel associated with CHANNEL is still
-connected."
-  (when (jupyter-channel-alive-p channel)
-    ;; unpause the channel if we are asking for its heartbeat
-    (when (oref channel paused)
-      (jupyter-hb-unpause channel))
-    (oset channel beating 'beating)
-    (while (eq (oref channel beating) 'beating)
-      (sleep-for 0 10))
-    (oref channel beating)))
-
 (cl-defmethod jupyter-channel-alive-p ((channel jupyter-hb-channel))
   "Return non-nil if CHANNEL is alive."
   (process-live-p (oref channel process)))
 
+(cl-defmethod jupyter-hb-beating-p ((channel jupyter-hb-channel))
+  "Return non-nil if the kernel associated with CHANNEL is still
+connected."
+  (unless (jupyter-channel-alive-p channel)
+    (error "Heartbeat process not started"))
+  (process-send-string (oref channel process) "beating\n")
+  (accept-process-output (oref channel process) nil nil 1)
+  (oref channel beating))
+
 (cl-defmethod jupyter-hb-pause ((channel jupyter-hb-channel))
   "Pause checking for heartbeat events on CHANNEL."
-  (unless (process-live-p (oref channel process))
+  (unless (jupyter-channel-alive-p channel)
     (error "Heartbeat process not started"))
-  (process-send-string (oref channel process) "pause\n"))
+  (process-send-string (oref channel process) "pause\n")
+  (accept-process-output (oref channel process) nil nil 1))
 
 (cl-defmethod jupyter-hb-unpause ((channel jupyter-hb-channel))
   "Unpause checking for heatbeat events on CHANNEL."
-  (unless (process-live-p (oref channel process))
+  (unless (jupyter-channel-alive-p channel)
     (error "Heartbeat process not started"))
-  (process-send-string (oref channel process) "unpause\n"))
+  (process-send-string (oref channel process) "unpause\n")
+  (accept-process-output (oref channel process) nil nil 1))
 
 (cl-defmethod jupyter-stop-channel ((channel jupyter-hb-channel))
   "Stop a CHANNEL."
@@ -193,7 +192,9 @@ connected."
       (kill-buffer (process-buffer proc))
       (oset channel process nil))))
 
-;; TODO: Either use `zmq-poll' here or use the poller in zmq-subprocess.
+;; TODO: Convert the heartbeat to a timer function that runs every second
+;; instead. I can just check zmq-EVENTS every second to see if the channel is
+;; beating
 (cl-defmethod jupyter-start-channel ((channel jupyter-hb-channel) &key identity)
   "Start a CHANNEL."
   (declare (indent 1))
@@ -206,8 +207,9 @@ connected."
          `(lambda (ctx)
             (let ((beating t)
                   (paused nil)
-                  (cmd nil)
-                  (request-time nil))
+                  (request-time nil)
+                  (wait-time nil)
+                  (last-success nil))
               (while t
                 (catch 'restart
                   (with-zmq-socket sock ,(plist-get jupyter-channel-socket-types
@@ -217,56 +219,66 @@ connected."
                        `(zmq-socket-set sock zmq-ROUTING_ID ,identity))
                     (zmq-connect sock ,(oref channel endpoint))
                     (with-zmq-poller
+                     ;; Poll STDIN to avoid blocking
+                     (zmq-poller-register (current-zmq-poller) 0 zmq-POLLIN)
                      (zmq-poller-register (current-zmq-poller) sock zmq-POLLIN)
                      (while t
-                       (when (setq cmd (read-minibuffer ""))
-                         (cl-case cmd
-                           (beating (prin1 (cons 'beating beating)))
-                           (pause (setq paused t) (prin1 '(pause . t)))
-                           (unpause (setq paused nil) '(unpause . t)))
-                         (zmq-flush 'stdout))
-                       (unless paused
-                         ;; Wait to poll again, but only after communicating
-                         ;; with the parent process.
-                         (when request-time
-                           (sit-for
-                            (time-to-seconds
-                             (time-subtract
-                              ,time-to-dead (time-subtract
-                                             (current-time)
-                                             request-time)))))
-                         (zmq-send sock "ping")
-                         (setq request-time (current-time))
-                         ;; TODO: Handle errors
-                         (let ((event (zmq-poller-wait
-                                       (current-zmq-poller)
-                                       ,(* (ceiling (time-to-seconds
-                                                     time-to-dead))
-                                           1000))))
-                           (if event (progn (zmq-recv sock)
-                                            (prin1 (cons 'beating
-                                                         (setq beating t)))
-                                            (zmq-flush 'stdout))
-                             (prin1 (cons 'beating (setq beating nil)))
-                             (zmq-flush 'stdout)
-                             (throw 'restart t)))))))))))
+                       ;; Send a ping request to the heartbeat channel and poll
+                       ;; for the reply. If any commands from stdin arrive
+                       ;; while polling, handle those and continue waiting.
+                       ;; Once the reply is received, keep polling for stdin
+                       ;; for the remaining time-to-dead period. After waiting
+                       ;; send another ping.
+                       (if request-time
+                           (setq wait-time (* (ceiling
+                                               (- ,time-to-dead
+                                                  (float-time
+                                                   (time-subtract
+                                                    (current-time)
+                                                    request-time))))
+                                              1000))
+                         (unless paused
+                           (zmq-send sock "ping"))
+                         (setq request-time (current-time)
+                               wait-time ,(* (ceiling time-to-dead) 1000)))
+                       (let ((event (zmq-poller-wait
+                                     (current-zmq-poller)
+                                     (if (> wait-time 0) wait-time 0))))
+                         (cond
+                          ((and event (integerp (car event)))
+                           (cl-case (read-minibuffer "")
+                             (beating
+                              (zmq-prin1 (cons 'beating beating)))
+                             (pause
+                              (setq paused t)
+                              (zmq-prin1 '(pause . t)))
+                             (unpause
+                              (setq paused nil)
+                              (zmq-prin1 '(unpause . t)))))
+                          (event
+                           (zmq-recv sock)
+                           (setq beating t
+                                 last-success t))
+                          ;; When no events have arrived after the poll, its an
+                          ;; indication that a reply has been received and we
+                          ;; should send another one so set request-time to nil
+                          ;; to force another send, note that the send will not
+                          ;; happen if we are paused.
+                          ((or paused last-success)
+                           (setq request-time nil
+                                 last-success nil))
+                          (t
+                           (setq beating nil
+                                 request-time nil
+                                 last-success nil)
+                           (throw 'restart t)))))))))))
          (lexical-let ((channel channel))
            (lambda (event)
              (cl-case (car event)
                (pause (oset channel paused (cdr event)))
                (unpause (oset channel paused (not (cdr event))))
                (beating (oset channel beating (cdr event)))
-               (otherwise (error "Invalid event from heartbeat channel.")))
-             ;; Keep feeding the process. Note that this is necessary for emacs
-             ;; subprocesses since `read-minibuffer' in batch mode calls
-             ;; `getchar' from the standard c library. There is no way (that I
-             ;; have found) to peek at STDIN to determine if there is anything
-             ;; available. So having this ping-pong messaging is a work around
-             ;; to ensure that the polling loop runs smoothly.
-             (unless (oref channel paused)
-               (process-send-string (oref channel process) "nil\n")))))))
-    ;; Send a first command to kick of the loop
-    (process-send-string proc "beating\n")
+               (otherwise (error "Invalid event from heartbeat channel."))))))))
     ;; Don't query when exiting
     (set-process-query-on-exit-flag proc nil)
     (oset channel process proc)))
