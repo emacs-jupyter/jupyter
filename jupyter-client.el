@@ -300,15 +300,15 @@ for the heartbeat channel."
          (jupyter--ioloop client)
          (apply-partially #'jupyter--ioloop-filter client))))
 
-    (cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
-      "Stop any running channels of CLIENT."
-      ;; TODO: Better cleanup
-      (jupyter-stop-channel (oref client hb-channel))
-      (let ((ioloop (oref client ioloop)))
-        (when ioloop
-          (delete-process (oref client ioloop))
-          (kill-buffer (process-buffer (oref client ioloop)))
-          (oset client ioloop nil))))
+(cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
+  "Stop any running channels of CLIENT."
+  ;; TODO: Better cleanup
+  (jupyter-stop-channel (oref client hb-channel))
+  (let ((ioloop (oref client ioloop)))
+    (when ioloop
+      (delete-process (oref client ioloop))
+      (kill-buffer (process-buffer (oref client ioloop)))
+      (oset client ioloop nil))))
 
 (cl-defmethod jupyter-channels-running-p ((client jupyter-kernel-client))
   "Are any channels of CLIENT alive?"
