@@ -398,7 +398,8 @@ TIMEOUT (in seconds), this function returns nil. Otherwise it
 returns the received message. Note that if TIMEOUT is nil, it
 defaults to 1 second."
   (declare (indent 4))
-  (setq timeout (if timeout (* 1000 timeout) 1000))
+  (setq timeout (or timeout 1))
+  (cl-check-type timeout number)
   (lexical-let ((msg nil)
                 (cond cond))
     (jupyter-add-receive-callback client msg-type req
@@ -408,8 +409,8 @@ defaults to 1 second."
         (while (null msg)
           (when (>= time timeout)
             (throw 'timeout nil))
-          (sleep-for 0 10)
-          (setq time (+ time 10)))
+          (accept-process-output (oref client ioloop) 0.01)
+          (setq time (+ time 0.01)))
         msg))))
 
 (defun jupyter-wait-until-idle (client req &optional timeout)
