@@ -202,52 +202,62 @@ underlying `zmq-send-multipart' call using the CHANNEL's socket."
                          sock (zmq-socket-get sock zmq-LAST_ENDPOINT))
                       (zmq-ENOENT nil)
                       (error (signal (car err) (cdr err))))))
-           (with-zmq-poller
-            ;; Also poll for standard-in events to be able to read commands from
-            ;; the parent emacs process without blocking
-            (zmq-poller-register (current-zmq-poller) 0 zmq-POLLIN)
-            (mapc (lambda (x) (zmq-poller-register (current-zmq-poller)
-                                           (car x)
-                                           zmq-POLLIN))
-               channels)
-            (unwind-protect
-                (while t
-                  ;; TODO: Dynamic polling period, if the rate of received
-                  ;; events is high, reduce the period. If the rate of received
-                  ;; events is low increase it. Sample the rate in a time
-                  ;; window that spans multiple polling periods. Polling at 10
-                  ;; ms periods was causing a pretty sizable portion of CPU
-                  ;; time to be eaten up.
-                  (let ((events (zmq-poller-wait-all (current-zmq-poller) 5 20)))
-                    (when events
-                      (when (alist-get 0 events)
-                        (cl-destructuring-bind (cmd . data)
-                            (zmq-subprocess-read)
-                          (cl-case cmd
-                            (start-channel
-                             (let* ((ctype data)
-                                    (sock (car (rassoc ctype channels))))
-                               (start-channel sock)))
-                            (stop-channel
-                             (let* ((ctype data)
-                                    (sock (car (rassoc ctype channels))))
-                               (stop-channel sock)))
-                            (send
-                             (let* ((ctype (car data))
-                                    (sock (car (rassoc ctype channels)))
-                                    (rest (cdr data)))
-                               (send-message sock ctype rest))))))
-                      (cl-loop for (sock . ctype) in channels
-                               when (alist-get sock events)
-                               do (recv-message sock ctype)))))
-              (mapc (lambda (s)
-                   (zmq-socket-set s zmq-LINGER 0)
-                   (zmq-close s))
-                 (mapcar #'car channels)))))))))
+           (condition-case nil
+               (with-zmq-poller
+                ;; Also poll for standard-in events to be able to read commands from
+                ;; the parent emacs process without blocking
+                (zmq-poller-register (current-zmq-poller) 0 zmq-POLLIN)
+                (mapc (lambda (x) (zmq-poller-register (current-zmq-poller)
+                                               (car x)
+                                               zmq-POLLIN))
+                   channels)
+                (unwind-protect
+                    (while t
+                      ;; TODO: Dynamic polling period, if the rate of received
+                      ;; events is high, reduce the period. If the rate of received
+                      ;; events is low increase it. Sample the rate in a time
+                      ;; window that spans multiple polling periods. Polling at 10
+                      ;; ms periods was causing a pretty sizable portion of CPU
+                      ;; time to be eaten up.
+                      (let ((events (zmq-poller-wait-all (current-zmq-poller) 5 20)))
+                        (when events
+                          (when (alist-get 0 events)
+                            (cl-destructuring-bind (cmd . data)
+                                (zmq-subprocess-read)
+                              (cl-case cmd
+                                (quit
+                                 (signal 'quit nil))
+                                (start-channel
+                                 (let* ((ctype data)
+                                        (sock (car (rassoc ctype channels))))
+                                   (start-channel sock)))
+                                (stop-channel
+                                 (let* ((ctype data)
+                                        (sock (car (rassoc ctype channels))))
+                                   (stop-channel sock)))
+                                (send
+                                 (let* ((ctype (car data))
+                                        (sock (car (rassoc ctype channels)))
+                                        (rest (cdr data)))
+                                   (send-message sock ctype rest))))))
+                          (cl-loop for (sock . ctype) in channels
+                                   when (alist-get sock events)
+                                   do (recv-message sock ctype)))))
+                  (mapc (lambda (s)
+                       (zmq-socket-set s zmq-LINGER 0)
+                       (zmq-close s))
+                     (mapcar #'car channels))))
+             (quit (zmq-prin1 (cons 'quit (cons nil nil))))))))))
+
+(defun jupyter--delete-ioloop (client)
+  (delete-process (oref client ioloop))
+  (kill-buffer (process-buffer (oref client ioloop)))
+  (oset client ioloop nil))
 
 (defun jupyter--ioloop-filter (client event)
   (cl-destructuring-bind (ctype . data) (cdr event)
     (cl-case (car event)
+      (quit (jupyter--delete-ioloop client))
       ;; data = sent message id
       (sent
        ;; Anything sent on stdin is a reply and therefore never added to
@@ -302,13 +312,13 @@ for the heartbeat channel."
 
 (cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
   "Stop any running channels of CLIENT."
-  ;; TODO: Better cleanup
   (jupyter-stop-channel (oref client hb-channel))
   (let ((ioloop (oref client ioloop)))
     (when ioloop
-      (delete-process (oref client ioloop))
-      (kill-buffer (process-buffer (oref client ioloop)))
-      (oset client ioloop nil))))
+      (zmq-subprocess-send ioloop (cons 'quit nil))
+      (with-timeout (1 (jupyter--delete-ioloop client))
+        (while (oref client ioloop)
+          (sleep-for 0 100))))))
 
 (cl-defmethod jupyter-channels-running-p ((client jupyter-kernel-client))
   "Are any channels of CLIENT alive?"
@@ -340,8 +350,9 @@ for the heartbeat channel."
   (cb nil))
 
 (defun jupyter-request-id (req)
-  (while (null (jupyter-request--id req))
-    (sleep-for 0 1))
+  (with-timeout (0.5 (error "Request not processed."))
+    (while (null (jupyter-request--id req))
+      (sleep-for 0 10)))
   (jupyter-request--id req))
 
 (defun jupyter--run-callbacks-for-message (req msg)
