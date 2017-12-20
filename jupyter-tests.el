@@ -206,28 +206,102 @@
         (kill-buffer (process-buffer (oref client kernel)))))))
 
 
-(ert-deftest jupyter-processing-messages ()
-  (setq client (jupyter-kernel-client-using-kernel "python"))
-  (jupyter-start-channels client)
-  ;; TODO: Better interface for this. It looks like I will have to handle
-  ;; certain messages specially. For a shutdown message, I will also have to
-  ;; delete the process as is done here. Also, I don't like these receive
-  ;; callbacks without some type of error handling on the msg-type of the
-  ;; reply. If something is mispelled, then it won't fire. And if a certain
-  ;; message is not expecting a reply, it will also never fire. This will cause
-  ;; hangs when using `jupyter-wait-until-received'.
-  ;;
-  ;; TODO: `jupyter-shutdown' seems ambiguous. Prefix the sending messages like
-  ;; `jupyter-request-shutdown', `jupyter-request-execute', ...
-  (lexical-let ((proc (oref client kernel))
-                (id (jupyter-shutdown client)))
-    (jupyter-add-receive-callback
-        client "shutdown_reply" id
-      (lambda (msg)
-        (when (equal (plist-get (plist-get msg :content) :status)
-                     "ok")
-          (delete-process proc)
-          (kill-buffer (process-buffer proc)))))))
+(ert-deftest jupyter-message-types ()
+  (let ((client (jupyter-kernel-client-using-kernel "python")))
+    (jupyter-start-channels client)
+    ;; Let the channels start
+    (sleep-for 1)
+    (unwind-protect
+        (progn
+          (ert-info ("Kernel info")
+            (let ((res (jupyter-wait-until-received client 'kernel-info-reply
+                         (jupyter-request-kernel-info client))))
+              (should-not (null res))
+              (should (json-plist-p res))
+              (should (equal (jupyter-message-type res) "kernel_info_reply"))))
+          (ert-info ("Comm info")
+            (let ((res (jupyter-wait-until-received client 'comm-info-reply
+                         (jupyter-request-comm-info client))))
+              (should-not (null res))
+              (should (json-plist-p res))
+              (should (equal (jupyter-message-type res) "comm_info_reply"))))
+          (ert-info ("Execute")
+            (let ((res (jupyter-wait-until-received client 'execute-reply
+                         (jupyter-request-execute client :code "y = 1 + 2"))))
+              (should-not (null res))
+              (should (json-plist-p res))
+              (should (equal (jupyter-message-type res) "execute_reply"))))
+          (ert-info ("Input")
+            (cl-letf (((symbol-function 'read-from-minibuffer)
+                       (lambda (prompt &rest args) "foo")))
+              (let ((res (jupyter-wait-until-received client 'execute-result
+                           (jupyter-request-execute client :code "input('')"))))
+                (should-not (null res))
+                (should (json-plist-p res))
+                (should (equal (jupyter-message-type res) "execute_result"))
+                (cl-destructuring-bind (&key data &allow-other-keys)
+                    (plist-get res :content)
+                  (should (equal (plist-get data :text/plain) "'foo'"))))))
+          (ert-info ("Inspect")
+            (let ((res (jupyter-wait-until-received client 'inspect-reply
+                         (jupyter-request-inspect
+                          client
+                          :code "list((1, 2, 3))"
+                          :pos 2
+                          :detail 0))))
+              (should-not (null res))
+              (should (json-plist-p res))
+              (should (equal (jupyter-message-type res) "inspect_reply"))))
+          (ert-info ("Complete")
+            (let ((res (jupyter-wait-until-received client 'complete-reply
+                         (jupyter-request-complete
+                          client
+                          :code "foo = lis"
+                          :pos 8))))
+              (should-not (null res))
+              (should (json-plist-p res))
+              (should (equal (jupyter-message-type res) "complete_reply"))))
+          (ert-info ("History")
+            (let ((res (jupyter-wait-until-received client 'history-reply
+                         ;; TODO: "tail" -> 'tail
+                         (jupyter-request-history
+                          client :hist-access-type "tail" :n 2))))
+              (should-not (null res))
+              (should (json-plist-p res))
+              (should (equal (jupyter-message-type res) "history_reply"))))
+          (ert-info ("Is Complete")
+            (let ((res (jupyter-wait-until-received client 'is-complete-reply
+                         (jupyter-request-is-complete
+                          client :code "for i in range(5):"))))
+              (should-not (null res))
+              (should (json-plist-p res))
+              (should (equal (jupyter-message-type res) "is_complete_reply"))))
+          (ert-info ("Interrupt")
+            (lexical-let ((time (current-time))
+                          (interrupt-time nil))
+              (jupyter-add-receive-callback
+                  client 'status (jupyter-request-execute
+                                  client :code "import time\ntime.sleep(2)")
+                (lambda (msg)
+                  (when (jupyter-message-status-idle-p msg)
+                    (setq interrupt-time (current-time)))))
+              (sleep-for 0.2)
+              (let ((res (jupyter-wait-until-received client 'interrupt-reply
+                           (jupyter-request-interrupt client))))
+                (should-not (null res))
+                (should (json-plist-p res))
+                (message "%s " res)
+                (should (equal (jupyter-message-type res) "interrupt_reply"))
+                (should (< (float-time (time-subtract interrupt-time time))
+                           2)))))
+          (ert-info ("Shutdown")
+            (let ((res (jupyter-wait-until-received client 'shutdown-reply
+                         (jupyter-request-shutdown client))))
+              (should-not (null res))
+              (should (json-plist-p res))
+              (should (equal (jupyter-message-type res) "shutdown_reply")))))
+      (jupyter-stop-channels client)
+      (jupyter-stop-kernel client))))
 
 ;; Local Variables:
 ;; byte-compile-warnings: (not free-vars)
