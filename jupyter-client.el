@@ -15,8 +15,6 @@
     :initform nil
     :documentation "The local kernel process or nil if no local
  kernel was started by this client.")
-   ;; TODO: Better name, message-requests?
-   (message-callbacks
   ((requests
     :type hash-table
     :initform (make-hash-table :test 'equal)
