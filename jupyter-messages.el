@@ -1,6 +1,7 @@
 (require 'hmac-def)
 (require 'cl-lib)
 (require 'json)
+(require 'jupyter-channels)
 
 (defconst jupyter-protocol-version "5.3"
   "The jupyter protocol version that is implemented.")
@@ -63,6 +64,8 @@ in this plist, an error is thrown.")
        concat (format "%02x" b))
     ""))
 
+;; TODO: Better UUID randomness, `cl-random' seeds the random state with the
+;; current time but only to second resolution.
 (defun jupyter--new-uuid ()
   "Make a version 4 UUID."
   (format "%04x%04x-%04x-%04x-%04x-%06x%06x"
@@ -119,8 +122,18 @@ in this plist, an error is thrown.")
 
 (defun jupyter--decode-string (str)
   (let ((json-object-type 'plist)
-        (json-array-type 'list))
+        (json-array-type 'list)
+        (json-false nil))
     (json-read-from-string (decode-coding-string str 'utf-8))))
+
+(defun jupyter--decode-time (str)
+  (let* ((time (date-to-time str)))
+    (when (string-match "T.+\\(\\(?:\\.\\|,\\)[0-9]+\\)" str)
+      (setcar (cddr time)
+              (ceiling
+               (* 1000000 (string-to-number
+                           (match-string 1 date))))))
+    time))
 
 (cl-defun jupyter--encode-message (session
                                    type
@@ -163,12 +176,18 @@ in this plist, an error is thrown.")
   (cl-destructuring-bind
       (header parent-header metadata content &optional buffers)
       (cdr parts)
-    (let ((header (jupyter--decode-string header)))
+    (let ((header (jupyter--decode-string header))
+          (parent-header (jupyter--decode-string parent-header)))
+      ;; Decode dates to time objects as returned by `current-time'
+      (mapc (lambda (plist) (plist-put
+                     plist :date (jupyter--decode-time
+                                  (plist-get plist :date))))
+         (list header parent-header))
       (list
        :header header
        :msg_id (plist-get header :msg_id)
        :msg_type (plist-get header :msg_type)
-       :parent_header (jupyter--decode-string parent-header)
+       :parent_header parent-header
        :metadata (jupyter--decode-string metadata)
        :content (jupyter--decode-string content)
        :buffers buffers))))
@@ -180,10 +199,6 @@ in this plist, an error is thrown.")
                                      type
                                      message
                                      &optional flags)
-  "Encode MESSAGE and send it on CLIENT's CHANNEL.
-The message should have a TYPE as found in the jupyter messaging
-protocol. Optional variable FLAGS are the flags sent to the
-underlying `zmq-send-multipart' call using the CHANNEL's socket."
   (declare (indent 1))
   (cl-destructuring-bind (msg-id . msg)
       (jupyter--encode-message session type :content message)
@@ -197,6 +212,11 @@ underlying `zmq-send-multipart' call using the CHANNEL's socket."
        (zmq-recv-multipart socket flags))
     (cons idents (jupyter--decode-message session parts))))
 
+;;; Control messages
+
+(cl-defun jupyter-interrupt-request ()
+  (list))
+
 ;;; stdin messages
 
 (cl-defun jupyter-input-reply (&key value)
@@ -204,6 +224,9 @@ underlying `zmq-send-multipart' call using the CHANNEL's socket."
   (list :value value))
 
 ;;; shell messages
+
+(cl-defun jupyter-kernel-info-request ()
+  (list))
 
 (cl-defun jupyter-execute-request (&key
                                    code
@@ -291,6 +314,14 @@ underlying `zmq-send-multipart' call using the CHANNEL's socket."
   (and (equal (plist-get msg :msg_type) "status")
        (equal (plist-get (plist-get msg :content) :execution_state)
               "idle")))
+
+(defun jupyter-message-content (msg)
+  (plist-get msg :content))
+
+(defun jupyter-message-time (msg)
+  "Convert the `:date' field of the message into a time object.
+See `current-time'."
+  (plist-get (plist-get msg :header) :date))
 
 (defun jupyter-message-type (msg)
   (plist-get msg :msg_type))
