@@ -1,5 +1,3 @@
-;; -*- lexical-binding: t -*-
-
 (require 'jupyter-client)
 (require 'cl-lib)
 (require 'ert)
