@@ -109,8 +109,13 @@ in this plist, an error is thrown.")
 ;;; Encode/decoding messages
 
 (defun jupyter--encode-object (object)
-  ;; Encodes nil or "" to \"{}\"
-  (encode-coding-string (json-encode-plist object) 'utf-8))
+  ;; Fix encoding recursive objects so that nil will get turned into "{}"
+  (cl-letf (((symbol-function 'json-encode-keyword)
+             (lambda (keyword)
+               (cond ((eq keyword t)          "true")
+                     ((eq keyword json-false) "false")
+                     ((eq keyword json-null)  "{}")))))
+    (encode-coding-string (json-encode-plist object) 'utf-8)))
 
 (defun jupyter--decode-string (str)
   (let ((json-object-type 'plist)
