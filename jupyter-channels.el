@@ -241,9 +241,12 @@ connected."
                            (zmq-send sock "ping"))
                          (setq request-time (current-time)
                                wait-time ,(* (ceiling time-to-dead) 1000)))
-                       (let ((event (zmq-poller-wait
-                                     (current-zmq-poller)
-                                     (if (> wait-time 0) wait-time 0))))
+                       (let ((event
+                              (condition-case err
+                                  (zmq-poller-wait (current-zmq-poller)
+                                                   (if (> wait-time 0) wait-time 0))
+                                (zmq-EINTR nil)
+                                (error (signal (car err) (cdr err))))))
                          (cond
                           ((and event (integerp (car event)))
                            (cl-case (read-minibuffer "")
