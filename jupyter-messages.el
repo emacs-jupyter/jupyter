@@ -104,7 +104,7 @@ in this plist, an error is thrown.")
    :version jupyter-protocol-version
    :username user-login-name
    :session (jupyter-session-id session)
-   :date (format-time-string "%FT%T%z" (current-time))))
+   :date (format-time-string "%FT%T.%6N%z" (current-time))))
 
 ;;; Encode/decoding messages
 
