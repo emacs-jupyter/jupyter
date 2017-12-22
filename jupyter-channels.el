@@ -75,10 +75,10 @@ socket."
     sock))
 
 (defun jupyter-connect-channel (ctype endpoint &optional identity)
-  (jupyter-connect-endpoint
-   (plist-get jupyter-channel-socket-types ctype)
-   endpoint
-   identity))
+  (let ((sock-type (plist-get jupyter-channel-socket-types ctype)))
+    (unless sock-type
+      (error "Invalid channel type (%s)" ctype))
+    (jupyter-connect-endpoint sock-type endpoint identity)))
 
 (cl-defmethod jupyter-start-channel ((channel jupyter-channel) &key identity)
   "Start a CHANNEL.
