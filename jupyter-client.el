@@ -8,13 +8,256 @@
 
 ;;; Kernel client class
 
-(defclass jupyter-kernel-client ()
-  ;; TODO: start local kernel process or populate with kernel connection info
-  ((kernel
+;;; Kernel manager
+
+(defclass jupyter-connection ()
+  ((session
+    :type jupyter-session
+    :initarg :session
+    :documentation "The `jupyter-session' object which holds the
+ key for authenticating messages.")
+   (conn-info
+    :type json-plist
+    :initarg :conn-info
+    :documentation "The connection plist which holds the channel
+ ports and other information required for connecting to a kernel.
+ See
+ http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files"))
+  :abstract t)
+
+(defclass jupyter-kernel-manager (jupyter-connection)
+  ((name
+    :initarg :name
+    :type string)
+   (conn-file
+    :type string)
+   (kernel
     :type (or null process)
     :initform nil
     :documentation "The local kernel process or nil if no local
  kernel was started by this client.")
+   (control-channel
+    :type (or null jupyter-control-channel)
+    :initform nil)
+   (kernel-info
+    :type (or null json-plist)
+    :initform nil
+    :documentation "Contains the result of an initial kernel_info_request
+ to the kernel after starting the kernel.")
+   (kernel-spec
+    :type (or null json-plist)
+    :initform nil)))
+
+(cl-defmethod initialize-instance ((manager jupyter-kernel-manager) &rest slots)
+  (unless (slot-boundp manager 'name)
+    (oset manager name "python")))
+
+(defvar jupyter--kernelspec-dirs nil
+  "An alist matching kernel names to their kernelspec
+  directories.")
+
+(defun jupyter-available-kernelspecs (&optional force-new)
+  (unless (or jupyter--kernelspec-dirs force-new)
+    (setq jupyter--kernelspec-dirs
+          (mapcar (lambda (s) (let ((s (split-string s " " 'omitnull)))
+                      (cons (car s) (cadr s))))
+             (seq-subseq
+              (split-string
+               (shell-command-to-string "jupyter kernelspec list")
+               "\n" 'omitnull "[ \t]+")
+              1))))
+  jupyter--kernelspec-dirs)
+
+(defun jupyter-find-kernelspec (prefix)
+  (let ((kname-path (cl-find-if
+                     (lambda (s) (string-prefix-p prefix (car s)))
+                     (jupyter-available-kernelspecs)))
+        (json-object-type 'plist)
+        (json-array-type 'list)
+        (json-false nil))
+    (when kname-path
+      (cons (car kname-path)
+            (json-read-file (expand-file-name
+                             "kernel.json" (cdr kname-path)))))))
+
+(cl-defun jupyter-create-connection-info (&key
+                                          (kernel-name "python")
+                                          (transport "tcp")
+                                          (ip "127.0.0.1")
+                                          (signature-scheme "hmac-sha256")
+                                          (key (jupyter--new-uuid))
+                                          (hb-port 0)
+                                          (stdin-port 0)
+                                          (control-port 0)
+                                          (shell-port 0)
+                                          (iopub-port 0))
+  "Create a jupyter connection plist.
+
+The plist has the standard keys found in the jupyter spec. See
+http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
+  (unless (or (= (length key) 0)
+              (equal signature-scheme "hmac-sha256"))
+    (error "Only hmac-sha256 signing is currently supported."))
+  (append
+   (list :kernel_name kernel-name
+         :transport transport
+         :ip ip)
+   (when (> (length key) 0)
+     (list :signature_scheme signature-scheme
+           :key key))
+   (cl-loop
+    with sock = (zmq-socket (current-zmq-context) zmq-REP)
+    with addr = (concat transport "://" ip)
+    for (channel . port) in (list (cons :hb_port hb-port)
+                                  (cons :stdin_port stdin-port)
+                                  (cons :control_port control-port)
+                                  (cons :shell_port shell-port)
+                                  (cons :iopub_port iopub-port))
+    collect channel and
+    if (= port 0) do (setq port (zmq-bind-to-random-port sock addr))
+    and collect port and
+    do (zmq-unbind sock (zmq-socket-get sock zmq-LAST_ENDPOINT)) else
+    collect port
+    finally (zmq-close sock))))
+
+(defun jupyter--start-kernel (kernel-name conn-file env &rest args)
+  (let ((process-environment
+         (append
+          ;; The first entry takes precedence when duplicated variables
+          ;; are found in `process-environment'
+          (cl-loop
+           for e on env by #'cddr
+           for k = (car e)
+           for v = (cadr e)
+           collect (format "%s=%s" (cl-subseq (symbol-name k) 1) v))
+          process-environment)))
+    (apply #'start-process
+           (format "jupyter-kernel-%s" kernel-name)
+           (generate-new-buffer (format "*jupyter-kernel-%s*" kernel-name))
+           (car args) (cdr args))))
+
+;; TODO: Allow passing arguments like a different kernel file name or different
+;; ports and arguments to the kernel
+(cl-defmethod jupyter-start-kernel ((manager jupyter-kernel-manager))
+  (let ((kname-spec (jupyter-find-kernelspec (oref manager name))))
+    (unless kname-spec
+      (error "No kernel found that starts with name (%s)" (oref manager name)))
+    (cl-destructuring-bind (kernel-name . spec) kname-spec
+      ;; Ensure we use the full name of the kernel
+      ;; TODO: Require a valid kernel name when initializing the manager
+      (oset manager name kernel-name)
+      (oset manager kernel-spec spec)
+      (let* ((name (oref manager name))
+             (conn-info (jupyter-create-connection-info :kernel-name kernel-name))
+             (session-key (plist-get conn-info :key))
+             (conn-file (expand-file-name
+                         (concat "kernel-" session-key ".json")
+                         (string-trim-right (shell-command-to-string
+                                             "jupyter --runtime-dir")))))
+        (oset manager conn-info conn-info)
+        (oset manager session (jupyter-session :key session-key))
+        ;; Write the connection file
+        (with-temp-buffer
+          (let ((json-encoding-pretty-print t))
+            (insert (json-encode-plist (oref manager conn-info)))
+            (write-file conn-file)))
+        (let ((atime (nth 4 (file-attributes conn-file))))
+          ;; Start the kernel
+          (oset manager kernel
+                (jupyter--start-kernel
+                 kernel-name conn-file (plist-get spec :env)
+                 (cl-loop
+                  for arg in (plist-get spec :argv)
+                  if (equal arg "{connection_file}") collect conn-file
+                  else collect arg)))
+          ;; TODO: Figure out a better way to talk to a kernel without creating
+          ;; a client.
+          (if (with-timeout (2 nil)
+                (while (equal atime (nth 4 (file-attributes conn-file)))
+                  (sleep-for 0 100))
+                t)
+              (let ((new-conn-file (expand-file-name
+                                    (format "kernel-%d.json"
+                                            (process-id (oref manager kernel)))
+                                    (file-name-directory conn-file))))
+                (rename-file conn-file new-conn-file)
+                (oset manager conn-file new-conn-file)
+                (jupyter-start-channels manager))
+            (error "Kernel did not read connection file within timeout.")))))))
+
+(cl-defmethod jupyter-start-channels ((manager jupyter-kernel-manager))
+  (let ((control-channel (oref manager control-channel)))
+    (if control-channel
+        (unless (jupyter-channel-alive-p control-channel)
+          (jupyter-start-channel
+           control-channel
+           :identity (jupyter-session-id (oref manager session))))
+      (let ((conn-info (oref manager conn-info)))
+        (oset manager control-channel
+              (jupyter-control-channel
+               :endpoint (format "%s://%s:%d"
+                                 (plist-get conn-info :transport)
+                                 (plist-get conn-info :ip)
+                                 (plist-get conn-info :control_port))))
+        (jupyter-start-channels manager)))))
+
+(cl-defmethod jupyter-stop-channels ((manager jupyter-kernel-manager))
+  (let ((control-channel (oref manager control-channel)))
+    (when control-channel
+      (jupyter-stop-channel control-channel)
+      (oset manager control-channel nil))))
+
+(cl-defmethod jupyter--send-encoded ((manager jupyter-kernel-manager) type message)
+  (unless (member type '("shutdown_request" "interrupt_request"))
+    (error "Only shutdown or interrupt requests on control channel (%s)."
+           type))
+  (let ((session (oref manager session))
+        (sock (oref (oref manager control-channel) socket)))
+    ;; TODO: Rename to just `jupyter--send'
+    (jupyter--send-encoded session sock type message)))
+
+(cl-defmethod jupyter-stop-kernel ((manager jupyter-kernel-manager))
+  (when (jupyter-kernel-alive-p manager)
+    (jupyter-request-shutdown manager)
+    (with-timeout (5 nil)
+      (while (jupyter-kernel-alive-p manager)
+        (sleep-for 1)))
+    ;; Clean up
+    (let ((proc (oref manager kernel)))
+      (delete-process proc)
+      (kill-buffer (process-buffer proc))
+      (delete-file (oref manager conn-file)))
+    (jupyter-stop-channels manager)
+    (oset manager kernel nil)
+    (oset manager session nil)
+    (oset manager conn-file nil)))
+
+(cl-defmethod jupyter-kernel-alive-p ((manager jupyter-kernel-manager))
+  (process-live-p (oref manager kernel)))
+
+(cl-defmethod jupyter-new-kernel-client ((manager jupyter-kernel-manager)
+                                         class)
+  (unless (oref manager kernel)
+    (error "Kernel not started."))
+  (let ((client (jupyter-kernel-client-from-conn-info
+                 class (oref manager conn-info))))
+    client))
+
+(cl-defmethod jupyter-request-shutdown ((manager jupyter-kernel-manager))
+  "Request a shutdown of MANAGER's kernel.
+If RESTART is non-nil, request a restart instead of a complete shutdown."
+  (let ((msg (jupyter-shutdown-request)))
+    (jupyter--send-encoded manager "shutdown_request" msg)))
+
+(cl-defmethod jupyter-request-interrupt ((manager jupyter-kernel-manager))
+  (if (equal (plist-get (oref manager kernel-spec) :interrupt_mode) "message")
+      (let ((msg (jupyter-interrupt-request)))
+        (jupyter--send-encoded manager "interrupt_request" msg))
+    (interrupt-process (oref manager kernel) t)))
+
+;;; Kernel client class
+
+(defclass jupyter-kernel-client (jupyter-connection)
   ((requests
     :type hash-table
     :initform (make-hash-table :test 'equal)
@@ -33,21 +276,10 @@
     :initform nil
     :documentation "The process which polls for events on all
  live channels of the client.")
-   (session
-    :type jupyter-session
-    :initarg :session
-    :documentation "The `jupyter-session' object which holds the
- key for authenticating messages. It also holds the unique
- session identification for this client.")
    (shell-channel
     :type (or null jupyter-shell-channel)
     :initarg :shell-channel
     :documentation "The shell channel.")
-   (control-channel
-    :type (or null jupyter-control-channel)
-    :initform nil
-    :initarg :control-channel
-    :documentation "The control channel.")
    (iopub-channel
     :type (or null jupyter-iopub-channel)
     :initform nil
@@ -64,58 +296,64 @@
     :initarg :stdin-channel
     :documentation "The stdin channel.")))
 
-(defun jupyter-kernel-client-from-connection-file (file)
-  "Read a connection FILE and return a `jupyter-kernel-client'.
-The connection file should have the same form as those found in
-in the jupyter runtime directory."
-  (cl-destructuring-bind
-      (&key shell_port iopub_port stdin_port hb_port control_port ip
-            key transport signature_scheme kernel_name
-            &allow-other-keys)
-      (let ((json-array-type 'list)
-            (json-object-type 'plist))
-        (json-read-file file))
-    (when (and (> (length key) 0)
-               (not (functionp (intern signature_scheme))))
-      (error "Unsupported signature scheme: %s" signature_scheme))
-    (let ((addr (concat transport "://" ip)))
-      (jupyter-kernel-client
-       :session (jupyter-session :key key)
-       :stdin-channel (jupyter-stdin-channel
-                       :endpoint (format "%s:%d" addr stdin_port))
-       :shell-channel (jupyter-shell-channel
-                       :endpoint (format "%s:%d" addr shell_port))
-       :control-channel (jupyter-control-channel
-                         :endpoint (format "%s:%d" addr control_port))
-       :hb-channel (jupyter-hb-channel
-                    :endpoint (format "%s:%d" addr hb_port))
-       :iopub-channel (jupyter-iopub-channel
-                       :endpoint (format "%s:%d" addr iopub_port))))))
+(cl-defmethod jupyter-client-initialize-connection
+    ((client jupyter-kernel-client)
+     channel-class
+     file-or-plist)
+  "Read a connection FILE-OR-PLIST and return a `jupyter-kernel-client'.
+If FILE-OR-PLIST is a file name, the connection info is read from
+the file. If FILE-OR-PLIST is a plist, it is assumed to be a
+connection plist containing the keys required for a connection
+plist. See
+http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
+  (cl-check-type file-or-plist (or json-plist file-exists))
+  (unless (child-of-class-p channel-class 'jupyter-channel-base)
+    (error "Not a valid channel class (%s)" channel-class))
 
-(defun jupyter-start-kernel (name &rest args)
-  (let ((buf (get-buffer-create (format "*jupyter-kernel-%s*" name))))
-    ;; NOTE: `start-file-process' would start the process on a remote host if
-    ;; `default-directory' was a remote directory.
-    (apply #'start-process
-           (format "jupyter-kernel-%s" name) buf
-           "jupyter" "console" "--simple-prompt" args)))
+  (let ((conn-info (let ((json-array-type 'list)
+                         (json-object-type 'plist)
+                         (json-false nil))
+                     (if (json-plist-p file-or-plist) file-or-plist
+                       (json-read-file file-or-plist)))))
+    (oset client conn-info conn-info)
+    (cl-destructuring-bind
+        (&key shell_port iopub_port stdin_port hb_port control_port ip
+              key transport signature_scheme kernel_name
+              &allow-other-keys)
+        conn-info
+      (when (and (> (length key) 0)
+                 (not (functionp (intern signature_scheme))))
+        (error "Unsupported signature scheme: %s" signature_scheme))
+      ;; Stop the channels if connected to some other kernel
+      ;; TODO: Does this flush the channel queues?
+      (jupyter-stop-channels client)
+      (let ((addr (concat transport "://" ip)))
+        (oset client session (jupyter-session :key key))
+        (oset client stdin-channel
+              (make-instance
+               channel-class
+               :type :stdin
+               :endpoint (format "%s:%d" addr stdin_port)))
+        (oset client shell-channel
+              (make-instance
+               channel-class
+               :type :shell
+               :endpoint (format "%s:%d" addr shell_port)))
+        (oset client hb-channel
+              (jupyter-hb-channel
+               :endpoint (format "%s:%d" addr hb_port)))
+        (oset client iopub-channel
+              (make-instance
+               :type :iopub
+               :endpoint (format "%s:%d" addr iopub_port)))))))
 
-(defun jupyter-kernel-client-using-kernel (name)
-  ;; TODO;: kernel existence
-  (let* ((proc (jupyter-start-kernel name "--kernel" name))
-         (path (expand-file-name
-                ;; Default connection file name
-                (format "kernel-%d.json" (process-id proc))
-                (string-trim-right
-                 (shell-command-to-string "jupyter --runtime-dir")))))
-    (while (not (file-exists-p path))
-      (sleep-for 0 10))
-    ;; FIXME: Ensure that the file is done writing
-    (sleep-for 1)
-    (let ((client (jupyter-kernel-client-from-connection-file path)))
-      (set-process-query-on-exit-flag proc nil)
-      (oset client kernel proc)
-      client)))
+(cl-defmethod initialize-instance ((client jupyter-kernel-client) &rest slots)
+  (let ((km (car (alist-get :kernel-manager slots))))
+    (when km
+      (cl-check-type km jupyter-kernel-manager)
+      (jupyter-client-initialize-connection client (oref km conn-info)))
+    client))
+
 
 ;;; Lower level sending/receiving
 
