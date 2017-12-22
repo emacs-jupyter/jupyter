@@ -40,23 +40,27 @@
  key for authenticating messages. It also holds the unique
  session identification for this client.")
    (shell-channel
-    :type jupyter-shell-channel
+    :type (or null jupyter-shell-channel)
     :initarg :shell-channel
     :documentation "The shell channel.")
    (control-channel
-    :type jupyter-control-channel
+    :type (or null jupyter-control-channel)
+    :initform nil
     :initarg :control-channel
     :documentation "The control channel.")
    (iopub-channel
-    :type jupyter-iopub-channel
+    :type (or null jupyter-iopub-channel)
+    :initform nil
     :initarg :iopub-channel
     :documentation "The IOPub channel.")
    (hb-channel
-    :type jupyter-hb-channel
+    :type (or null jupyter-hb-channel)
+    :initform nil
     :initarg :hb-channel
     :documentation "The heartbeat channel.")
    (stdin-channel
-    :type jupyter-stdin-channel
+    :type (or null jupyter-stdin-channel)
+    :initform nil
     :initarg :stdin-channel
     :documentation "The stdin channel.")))
 
@@ -302,15 +306,17 @@ In addition to calling `jupyter-start-channel', a subprocess is
 created for each channel which monitors the channel's socket for
 input events. Note that this polling subprocess is not created
 for the heartbeat channel."
-  (when hb (jupyter-start-channel (oref client hb-channel)))
-  (oset client ioloop
-        (zmq-start-process
-         (jupyter--ioloop client)
-         (apply-partially #'jupyter--ioloop-filter client))))
+  (unless (oref client ioloop)
+    (when hb (jupyter-start-channel (oref client hb-channel)))
+    (oset client ioloop
+          (zmq-start-process
+           (jupyter--ioloop client)
+           (apply-partially #'jupyter--ioloop-filter client)))))
 
 (cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
   "Stop any running channels of CLIENT."
-  (jupyter-stop-channel (oref client hb-channel))
+  (when (oref client hb-channel)
+    (jupyter-stop-channel (oref client hb-channel)))
   (let ((ioloop (oref client ioloop)))
     (when ioloop
       (zmq-subprocess-send ioloop (cons 'quit nil))
