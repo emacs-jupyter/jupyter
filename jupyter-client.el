@@ -172,18 +172,61 @@ underlying `zmq-send-multipart' call using the CHANNEL's socket."
                (jupyter-connect-channel
                 :control ,(oref (oref client control-channel) endpoint)
                 (jupyter-session-id session)))
-              ;; NOTE: Order matters here since when multiple events arrive for
-              ;; different channels they will be processed in this order.
               (channels (list (cons control :control)
                               (cons stdin :stdin)
                               (cons shell :shell)
-                              (cons iopub :iopub))))
-         (cl-flet ((recv-message
+                              (cons iopub :iopub)))
+              (priorities (list (cons :control 8)
+                                (cons :iopub 4)
+                                (cons :stdin 4)
+                                (cons :shell 2)))
+              (idle-count 0)
+              (queue (make-ring 10)))
+         (cl-flet ((send-recvd
+                    ()
+                    ;; Try and have a consistent order with which messages are
+                    ;; received in the parent process. We queue messages
+                    ;; received from the kernel and send them up to the parent
+                    ;; process only when (1) no messages have been received in
+                    ;; two polling periods or (2) when the queue is filled.
+                    ;; When sending, the messages are sorted by their send time
+                    ;; using the `:date' field of the message `:header'. In the
+                    ;; case that two messages have the same send time from the
+                    ;; kernel (i.e. when they don't have fractional resolution)
+                    ;; the messages are sorted by channel priority.
+                    (cl-sort (cddr queue)
+                             ;; [<sorted non-nil elements> nil nil ...]
+                             (lambda (a b)
+                               (cond
+                                ((and (eq a nil) (eq a b)) t)
+                                ((eq a nil) nil)
+                                ((eq b nil) t)
+                                (t (or (< (car a) (car b))
+                                       (when (= (car a) (car b))
+                                         (> (alist-get (cadr a) priorities)
+                                            (alist-get (cadr b) priorities))))))))
+                    (cl-loop
+                     while (not (ring-empty-p queue))
+                     do (zmq-prin1 (cons 'recvd (cdr (ring-remove queue))))))
+                   (recv-message
                     (sock ctype)
-                    (zmq-prin1
-                     (cons 'recvd
-                           (cons ctype (jupyter--recv-decoded
-                                        session sock)))))
+                    (when (= (ring-length queue) (ring-size queue))
+                      (send-recvd))
+                    ;; msg = (idents . plist)
+                    (let* ((msg (jupyter--recv-decoded session sock))
+                           (date (plist-get (plist-get (cdr msg) :header) :date))
+                           (time (+ (float-time (date-to-time date))
+                                    ;; Use the fractional seconds if available
+                                    ;; for sorting purposes.
+                                    ;;
+                                    ;; NOTE: If no fractional time is available
+                                    ;; it kind of defeats the purpose of
+                                    ;; queuing the messages in this subprocess.
+                                    (if (string-match
+                                         "T.+\\(\\(?:\\.\\|,\\)[0-9]+\\)" date)
+                                        (string-to-number (match-string 1 date))
+                                      0))))
+                      (ring-insert queue (cons time (cons ctype msg)))))
                    (send-message
                     (sock ctype rest)
                     (zmq-prin1
@@ -216,14 +259,22 @@ underlying `zmq-send-multipart' call using the CHANNEL's socket."
                 (unwind-protect
                     (while t
                       ;; TODO: Dynamic polling period, if the rate of received
-                      ;; events is high, reduce the period. If the rate of received
-                      ;; events is low increase it. Sample the rate in a time
-                      ;; window that spans multiple polling periods. Polling at 10
-                      ;; ms periods was causing a pretty sizable portion of CPU
-                      ;; time to be eaten up.
-                      (let ((events (zmq-poller-wait-all (current-zmq-poller) 5 20)))
-                        (when events
+                      ;; events is high, reduce the period. If the rate of
+                      ;; received events is low increase it. Sample the rate in
+                      ;; a time window that spans multiple polling periods.
+                      ;; Polling at 10 ms periods was causing a pretty sizable
+                      ;; portion of CPU time to be eaten up.
+                      (when (and (= idle-count 2)
+                                 (> (ring-length queue) 0))
+                        (send-recvd))
+                      (let ((events (condition-case err
+                                        (zmq-poller-wait-all (current-zmq-poller) 5 20)
+                                      (zmq-EINTR nil)
+                                      (error (signal (car err) (cdr err))))))
+                        (if (null events) (setq idle-count (1+ idle-count))
+                          (setq idle-count 0)
                           (when (alist-get 0 events)
+                            (setf (alist-get 0 events nil 'remove) nil)
                             (cl-destructuring-bind (cmd . data)
                                 (zmq-subprocess-read)
                               (cl-case cmd
@@ -242,9 +293,9 @@ underlying `zmq-send-multipart' call using the CHANNEL's socket."
                                         (sock (car (rassoc ctype channels)))
                                         (rest (cdr data)))
                                    (send-message sock ctype rest))))))
-                          (cl-loop for (sock . ctype) in channels
-                                   when (alist-get sock events)
-                                   do (recv-message sock ctype)))))
+                          (cl-loop for (sock . event) in events
+                                   do (recv-message
+                                       sock (alist-get sock channels))))))
                   (mapc (lambda (s)
                        (zmq-socket-set s zmq-LINGER 0)
                        (zmq-close s))
