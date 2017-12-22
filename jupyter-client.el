@@ -492,29 +492,30 @@ To process a message the following steps are taken:
              (pmsg-id (jupyter-message-parent-id msg))
              (requests (oref client requests))
              (req (gethash pmsg-id requests)))
-        (unless req
-          (error "No request found for message."))
-        (when (jupyter-message-status-idle-p msg)
-          (setf (jupyter-request-idle-received-p req) t))
-        (unwind-protect
-            (funcall handler client req msg)
+        ;; Drop messages not sent by us.
+        ;; TODO: Some messages might be useful.
+        (when req
+          (when (jupyter-message-status-idle-p msg)
+            (setf (jupyter-request-idle-received-p req) t))
           (unwind-protect
-              (jupyter--run-callbacks-for-message req msg)
-            ;; Remove the request once an idle message has been received and
-            ;; all callbacks have run atleast once. This is done because it is
-            ;; not gauranteed that the idle message is received after all other
-            ;; messages for a request. Note that this probably doesn't handle
-            ;; all cases.
-            (when (and (jupyter-request-idle-received-p req)
-                       ;; Check if all callbacks for req have run at least once
-                       (if (not (jupyter-request-callbacks req)) t
-                         (cl-loop
-                          for (reply-type . cb) in (jupyter-request-callbacks req)
-                          unless (jupyter-callback-ran-p cb) return nil
-                          finally return t)))
-              (remhash pmsg-id requests))
-            (run-with-timer
-             0.01 nil #'jupyter--handle-message client channel)))))))
+              (funcall handler client req msg)
+            (unwind-protect
+                (jupyter--run-callbacks-for-message req msg)
+              ;; Remove the request once an idle message has been received and
+              ;; all callbacks have run atleast once. This is done because it
+              ;; is not gauranteed that the idle message is received after all
+              ;; other messages for a request.
+              ;;
+              ;; NOTE: this probably doesn't handle all cases.
+              (when (and (jupyter-request-idle-received-p req)
+                         ;; Check if all callbacks for req have run at least
+                         ;; once
+                         (if (not (jupyter-request-callbacks req)) t
+                           (cl-loop
+                            for (reply-type . cb) in (jupyter-request-callbacks req)
+                            unless (jupyter-callback-ran-p cb) return nil
+                            finally return t)))
+                (remhash pmsg-id requests)))))))))
 
 ;;; Received message handlers
 
