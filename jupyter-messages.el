@@ -129,10 +129,11 @@ in this plist, an error is thrown.")
 (defun jupyter--decode-time (str)
   (let* ((time (date-to-time str)))
     (when (string-match "T.+\\(\\(?:\\.\\|,\\)[0-9]+\\)" str)
-      (setcar (cddr time)
-              (ceiling
-               (* 1000000 (string-to-number
-                           (match-string 1 date))))))
+      (setq time (list (car time)
+                       (cadr time)
+                       (ceiling (* 1000000 (string-to-number
+                                            (match-string 1 str))))
+                       0)))
     time))
 
 (cl-defun jupyter--encode-message (session
