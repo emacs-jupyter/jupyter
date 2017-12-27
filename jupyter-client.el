@@ -50,6 +50,7 @@
     :initform nil)))
 
 (cl-defmethod initialize-instance ((manager jupyter-kernel-manager) &rest slots)
+  (cl-call-next-method)
   (unless (slot-boundp manager 'name)
     (oset manager name "python")))
 
