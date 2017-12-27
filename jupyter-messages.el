@@ -210,10 +210,11 @@ in this plist, an error is thrown.")
     msg-id))
 
 (cl-defmethod jupyter--recv-decoded ((session jupyter-session) socket &optional flags)
-  (cl-destructuring-bind (idents . parts)
-      (jupyter--split-identities
-       (zmq-recv-multipart socket flags))
-    (cons idents (jupyter--decode-message session parts))))
+  (let ((msg (zmq-recv-multipart socket flags)))
+    (when msg
+      (cl-destructuring-bind (idents . parts)
+          (jupyter--split-identities msg)
+        (cons idents (jupyter--decode-message session parts))))))
 
 ;;; Control messages
 
