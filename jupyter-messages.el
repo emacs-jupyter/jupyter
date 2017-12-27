@@ -180,9 +180,11 @@ in this plist, an error is thrown.")
     (let ((header (jupyter--decode-string header))
           (parent-header (jupyter--decode-string parent-header)))
       ;; Decode dates to time objects as returned by `current-time'
-      (mapc (lambda (plist) (plist-put
-                     plist :date (jupyter--decode-time
-                                  (plist-get plist :date))))
+      (mapc (lambda (plist)
+           (let ((date (plist-get plist :date)))
+             (when date
+               (plist-put
+                plist :date (jupyter--decode-time date)))))
          (list header parent-header))
       (list
        :header header
