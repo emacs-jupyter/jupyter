@@ -31,7 +31,7 @@
     :initarg :name
     :type string)
    (conn-file
-    :type string)
+    :type (or null string))
    (kernel
     :type (or null process)
     :initform nil
@@ -402,11 +402,10 @@ http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
 
 (cl-defmethod initialize-instance ((client jupyter-kernel-client) &rest slots)
   (let ((km (car (alist-get :kernel-manager slots))))
-    (when km
+    (if (not km) (cl-call-next-method)
       (cl-check-type km jupyter-kernel-manager)
-      (jupyter-client-initialize-connection client (oref km conn-info)))
-    client))
-
+      (jupyter-client-initialize-connection client (oref km conn-info))
+      client)))
 
 ;;; Lower level sending/receiving
 
