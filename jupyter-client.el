@@ -356,7 +356,6 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
 
 (cl-defmethod jupyter-client-initialize-connection
     ((client jupyter-kernel-client)
-     channel-class
      file-or-plist)
   "Read a connection FILE-OR-PLIST and return a `jupyter-kernel-client'.
 If FILE-OR-PLIST is a file name, the connection info is read from
@@ -365,8 +364,6 @@ connection plist containing the keys required for a connection
 plist. See
 http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
   (cl-check-type file-or-plist (or json-plist file-exists))
-  (unless (child-of-class-p channel-class 'jupyter-channel-base)
-    (error "Not a valid channel class (%s)" channel-class))
 
   (let ((conn-info (let ((json-array-type 'list)
                          (json-object-type 'plist)
@@ -389,20 +386,18 @@ http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
         (oset client session (jupyter-session :key key))
         (oset client stdin-channel
               (make-instance
-               channel-class
-               :type :stdin
+               'jupyter-stdin-channel
                :endpoint (format "%s:%d" addr stdin_port)))
         (oset client shell-channel
               (make-instance
-               channel-class
-               :type :shell
+               'jupyter-shell-channel
                :endpoint (format "%s:%d" addr shell_port)))
         (oset client hb-channel
               (jupyter-hb-channel
                :endpoint (format "%s:%d" addr hb_port)))
         (oset client iopub-channel
               (make-instance
-               :type :iopub
+               'jupyter-iopub-channel
                :endpoint (format "%s:%d" addr iopub_port)))))))
 
 (cl-defmethod initialize-instance ((client jupyter-kernel-client) &rest slots)
@@ -443,8 +438,7 @@ underlying `zmq-send-multipart' call using the CHANNEL's socket."
 (defun jupyter--ioloop (client)
   (let ((iopub-channel (oref client iopub-channel))
         (shell-channel (oref client shell-channel))
-        (stdin-channel (oref client stdin-channel))
-        (control-channel (oref client control-channel)))
+        (stdin-channel (oref client stdin-channel)))
     `(lambda (ctx)
        (require 'jupyter-channels ,(locate-library "jupyter-channels"))
        (require 'jupyter-messages ,(locate-library "jupyter-messages"))
@@ -464,16 +458,10 @@ underlying `zmq-send-multipart' call using the CHANNEL's socket."
                (jupyter-connect-channel
                 :stdin ,(oref (oref client stdin-channel) endpoint)
                 (jupyter-session-id session)))
-              (control
-               (jupyter-connect-channel
-                :control ,(oref (oref client control-channel) endpoint)
-                (jupyter-session-id session)))
-              (channels (list (cons control :control)
-                              (cons stdin :stdin)
+              (channels (list (cons stdin :stdin)
                               (cons shell :shell)
                               (cons iopub :iopub)))
-              (priorities (list (cons :control 8)
-                                (cons :iopub 4)
+              (priorities (list (cons :iopub 4)
                                 (cons :stdin 4)
                                 (cons :shell 2)))
               (idle-count 0)
@@ -634,7 +622,6 @@ underlying `zmq-send-multipart' call using the CHANNEL's socket."
                         (mapcar (lambda (x) (eieio-oref client x))
                            '(stdin-channel
                              shell-channel
-                             control-channel
                              iopub-channel))))
               (ring (oref channel recv-queue)))
          (when jupyter--debug
@@ -692,7 +679,6 @@ for the heartbeat channel."
    for channel in (list 'shell-channel
                         'iopub-channel
                         'hb-channel
-                        'control-channel
                         'stdin-channel)
    if (jupyter-channel-alive-p (eieio-oref client channel))
    return t))
@@ -921,7 +907,7 @@ the user. Otherwise `read-from-minibuffer' is used."
 (cl-defmethod jupyter-request-shutdown ((client jupyter-kernel-client) &optional restart)
   "Request a shutdown of CLIENT's kernel.
 If RESTART is non-nil, request a restart instead of a complete shutdown."
-  (let ((channel (oref client control-channel))
+  (let ((channel (oref client shell-channel))
         (msg (jupyter-shutdown-request :restart restart)))
     (jupyter--send-encoded client channel "shutdown_request" msg)))
 
@@ -930,14 +916,14 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
 
 ;; FIXME: This breaks the convention that all jupyter-request-* functions
 ;; returns a message-id future object.
-(cl-defmethod jupyter-request-interrupt ((client jupyter-kernel-client))
-  ;; TODO: Check for interrupt_mode of the kernel's kernelspec
-  ;; http://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-interrupt
-  (let ((channel (oref client control-channel)))
-    (jupyter--send-encoded client channel "interrupt_request" ())))
+;; (cl-defmethod jupyter-request-interrupt ((client jupyter-kernel-client))
+;;   ;; TODO: Check for interrupt_mode of the kernel's kernelspec
+;;   ;; http://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-interrupt
+;;   (let ((channel (oref client control-channel)))
+;;     (jupyter--send-encoded client channel "interrupt_request" ())))
 
-(cl-defmethod jupyter-handle-interrupt ((client jupyter-kernel-client) req)
-  "Default interrupt reply handler.")
+;; (cl-defmethod jupyter-handle-interrupt ((client jupyter-kernel-client) req)
+;;   "Default interrupt reply handler.")
 
 ;;; shell messages
 
