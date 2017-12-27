@@ -4,16 +4,6 @@
 ;; TODO: Read up on how method tags can be used, see
 ;; https://ericabrahamsen.net/tech/2016/feb/bbdb-eieio-object-oriented-elisp.html
 
-;; TODO: How to get around the fact that messages can appear out of order. I am
-;; consistently getting out of order messages, execute-reply -> execute-result
-;; or execute-result -> execute-reply. This means that I wont be able always
-;; show the result in the execute-result handler.
-;;
-;; Maybe I can bundle messages to enforce an order. Wait until I receive all
-;; messages from a request before updating the interface. Or maybe its because
-;; `run-with-timer' chooses functions to run from a pool and not in the order
-;; they were defined in.
-
 ;; TODO: Still need to figure out how to remove requests from the client's
 ;; request table.
 
