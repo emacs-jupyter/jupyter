@@ -485,32 +485,22 @@ underlying `zmq-send-multipart' call using the CHANNEL's socket."
                                 ((and (eq a nil) (eq a b)) t)
                                 ((eq a nil) nil)
                                 ((eq b nil) t)
-                                (t (or (< (car a) (car b))
-                                       (when (= (car a) (car b))
-                                         (> (alist-get (cadr a) priorities)
-                                            (alist-get (cadr b) priorities))))))))
+                                (t
+                                 ;; elements are (ctype idents . msg)
+                                 (let ((ta (jupyter-message-time (cddr a)))
+                                       (tb (jupyter-message-time (cddr b))))
+                                   (or (time-less-p ta tb)
+                                       (when (equal ta tb)
+                                         (> (alist-get (car a) priorities)
+                                            (alist-get (car b) priorities)))))))))
                     (cl-loop
                      while (not (ring-empty-p queue))
-                     do (zmq-prin1 (cons 'recvd (cdr (ring-remove queue))))))
+                     do (zmq-prin1 (cons 'recvd (ring-remove queue)))))
                    (recv-message
                     (sock ctype)
                     (when (= (ring-length queue) (ring-size queue))
                       (send-recvd))
-                    ;; msg = (idents . plist)
-                    (let* ((msg (jupyter--recv-decoded session sock))
-                           (date (plist-get (plist-get (cdr msg) :header) :date))
-                           (time (+ (float-time (date-to-time date))
-                                    ;; Use the fractional seconds if available
-                                    ;; for sorting purposes.
-                                    ;;
-                                    ;; NOTE: If no fractional time is available
-                                    ;; it kind of defeats the purpose of
-                                    ;; queuing the messages in this subprocess.
-                                    (if (string-match
-                                         "T.+\\(\\(?:\\.\\|,\\)[0-9]+\\)" date)
-                                        (string-to-number (match-string 1 date))
-                                      0))))
-                      (ring-insert queue (cons time (cons ctype msg)))))
+                    (ring-insert queue (cons ctype (jupyter--recv-decoded session sock))))
                    (send-message
                     (sock ctype rest)
                     (zmq-prin1
