@@ -70,16 +70,17 @@
   jupyter--kernelspec-dirs)
 
 (defun jupyter-find-kernelspec (prefix)
-  (let ((kname-path (cl-find-if
-                     (lambda (s) (string-prefix-p prefix (car s)))
-                     (jupyter-available-kernelspecs)))
-        (json-object-type 'plist)
-        (json-array-type 'list)
-        (json-false nil))
-    (when kname-path
-      (cons (car kname-path)
-            (json-read-file (expand-file-name
-                             "kernel.json" (cdr kname-path)))))))
+  (when prefix
+    (let ((kname-path (cl-find-if
+                       (lambda (s) (string-prefix-p prefix (car s)))
+                       (jupyter-available-kernelspecs)))
+          (json-object-type 'plist)
+          (json-array-type 'list)
+          (json-false nil))
+      (when kname-path
+        (cons (car kname-path)
+              (json-read-file (expand-file-name
+                               "kernel.json" (cdr kname-path))))))))
 
 (cl-defun jupyter-create-connection-info (&key
                                           (kernel-name "python")
