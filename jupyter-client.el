@@ -1013,11 +1013,11 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                        &key
                                        output
                                        raw
-                                       hist-access-type
+                                       (hist-access-type "tail")
                                        session
                                        start
                                        stop
-                                       n
+                                       (n 10)
                                        pattern
                                        unique)
   "Send a history request."
