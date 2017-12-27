@@ -122,25 +122,98 @@ http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
     collect port
     finally (zmq-close sock))))
 
-(defun jupyter--start-kernel (kernel-name conn-file env &rest args)
-  (let ((process-environment
-         (append
-          ;; The first entry takes precedence when duplicated variables
-          ;; are found in `process-environment'
-          (cl-loop
-           for e on env by #'cddr
-           for k = (car e)
-           for v = (cadr e)
-           collect (format "%s=%s" (cl-subseq (symbol-name k) 1) v))
-          process-environment)))
-    (apply #'start-process
-           (format "jupyter-kernel-%s" kernel-name)
-           (generate-new-buffer (format "*jupyter-kernel-%s*" kernel-name))
-           (car args) (cdr args))))
+(defun jupyter--kernel-sentinel (manager kernel event)
+  (cond
+   ((or (string-prefix-p "exited" event)
+        (string-prefix-p "failed" event)
+        (equal event "finished\n")
+        (equal event "killed\n")
+        (equal event "deleted\n"))
+    (jupyter-stop-channels manager)
+    (delete-file (oref manager conn-file))
+    (oset manager kernel nil)
+    (oset manager conn-file nil)
+    (oset manager conn-info nil))))
+
+(defun jupyter--start-kernel (kernel-name conn-file env args)
+  "Start a kernel.
+A kernel named KERNEL-NAME is started using the connection
+information in CONN-FILE. The name of the command used to start
+the kernel subprocess should be the first element of ARGS and the
+rest of the elements of ARGS are the command line parameters
+passed to the command. If ENV is non-nil, then it should be a
+plist containing environment variable names as keywords along
+with their corresponding values. These will be set before
+starting the kernel.
+
+After the kernel reads CONN-FILE, CONN-FILE is renamed to
+kernel-<pid>.json where <pid> is the process id of the kernel
+subprocess.
+
+The return value of this function is a cons cell
+
+    (NEW-CONN-FILE . PROC)
+
+Where NEW-CONN-FILE is the renamed connection file and PROC is
+the kernel subprocess."
+  (let* ((atime (nth 4 (file-attributes conn-file)))
+         (process-environment
+          (append
+           ;; The first entry takes precedence when duplicated variables
+           ;; are found in `process-environment'
+           (cl-loop
+            for e on env by #'cddr
+            for k = (car e)
+            for v = (cadr e)
+            collect (format "%s=%s" (cl-subseq (symbol-name k) 1) v))
+           process-environment))
+         (proc (apply #'start-process
+                      (format "jupyter-kernel-%s" kernel-name)
+                      nil (car args) (cdr args))))
+    (with-timeout
+        (10 (delete-file conn-file)
+            (delete-process proc)
+            (error "Kernel did not read connection file within timeout."))
+      (while (equal atime (nth 4 (file-attributes conn-file)))
+        (sleep-for 0 100)))
+    (let ((new-conn-file (expand-file-name
+                          (format "kernel-%d.json" (process-id proc))
+                          (file-name-directory conn-file))))
+      (rename-file conn-file new-conn-file)
+      (cons new-conn-file proc))))
 
 ;; TODO: Allow passing arguments like a different kernel file name or different
 ;; ports and arguments to the kernel
 (cl-defmethod jupyter-start-kernel ((manager jupyter-kernel-manager))
+  "Start a kernel and associate it with MANAGER.
+
+The MANAGER's `name' property is passed to
+`jupyter-find-kernelspec' in order to find the kernel to start,
+this means that `name' can be a prefix of a kernel name as well
+as a full kernel name. For example, if `name' is \"julia\" it
+will match the full kernel names \"julia-0.6\", \"julia-0.4\",
+etc. The kernel used will be the first one matched from the list
+of kernels returned by:
+
+    jupyter kernelspec list
+
+If a valid kernel is found, its kernelspec is used to start a new
+kernel. Starting a kernel involves the following steps:
+
+1. Generating a new connection info with random ports for the
+   channels. See `jupyter-create-connection-info'.
+
+2. Assigning a new `jupyter-session' to the MANAGER using the
+   generated key from the connection info. (TODO: Should first
+   start with generating a session key and then assigning it to
+   the connection info)
+
+3. Writing the connection info to file
+
+4. Starting a new subprocess kernel
+
+5. Starting a control channel for the MANAGER to send
+shutdown/interrupt requests"
   (let ((kname-spec (jupyter-find-kernelspec (oref manager name))))
     (unless kname-spec
       (error "No kernel found that starts with name (%s)" (oref manager name)))
@@ -159,35 +232,25 @@ http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
         (oset manager conn-info conn-info)
         (oset manager session (jupyter-session :key session-key))
         ;; Write the connection file
-        (with-temp-buffer
+        (with-temp-file conn-file
           (let ((json-encoding-pretty-print t))
-            (insert (json-encode-plist (oref manager conn-info)))
-            (write-file conn-file)))
-        (let ((atime (nth 4 (file-attributes conn-file))))
-          ;; Start the kernel
-          (oset manager kernel
-                (jupyter--start-kernel
-                 kernel-name conn-file (plist-get spec :env)
-                 (cl-loop
-                  for arg in (plist-get spec :argv)
-                  if (equal arg "{connection_file}") collect conn-file
-                  else collect arg)))
-          ;; TODO: Figure out a better way to talk to a kernel without creating
-          ;; a client.
-          (if (with-timeout (2 nil)
-                (while (equal atime (nth 4 (file-attributes conn-file)))
-                  (sleep-for 0 100))
-                t)
-              (let ((new-conn-file (expand-file-name
-                                    (format "kernel-%d.json"
-                                            (process-id (oref manager kernel)))
-                                    (file-name-directory conn-file))))
-                (rename-file conn-file new-conn-file)
-                (oset manager conn-file new-conn-file)
-                (jupyter-start-channels manager))
-            (error "Kernel did not read connection file within timeout.")))))))
+            (insert (json-encode-plist (oref manager conn-info)))))
+        (cl-destructuring-bind (new-conn-file . kernel)
+            (jupyter--start-kernel
+             kernel-name conn-file (plist-get spec :env)
+             (cl-loop
+              for arg in (plist-get spec :argv)
+              if (equal arg "{connection_file}") collect conn-file
+              else collect arg))
+          (oset manager conn-file new-conn-file)
+          (oset manager kernel kernel)
+          (set-process-sentinel
+           kernel (apply-partially #'jupyter--kernel-sentinel manager))
+          (jupyter-start-channels manager)
+          manager)))))
 
 (cl-defmethod jupyter-start-channels ((manager jupyter-kernel-manager))
+  "Start a control channel on MANAGER."
   (let ((control-channel (oref manager control-channel)))
     (if control-channel
         (unless (jupyter-channel-alive-p control-channel)
@@ -204,6 +267,7 @@ http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
         (jupyter-start-channels manager)))))
 
 (cl-defmethod jupyter-stop-channels ((manager jupyter-kernel-manager))
+  "Stop the control channel on MANAGER."
   (let ((control-channel (oref manager control-channel)))
     (when control-channel
       (jupyter-stop-channel control-channel)
@@ -221,18 +285,9 @@ http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
 (cl-defmethod jupyter-stop-kernel ((manager jupyter-kernel-manager))
   (when (jupyter-kernel-alive-p manager)
     (jupyter-request-shutdown manager)
-    (with-timeout (5 nil)
+    (with-timeout (5 (delete-process (oref manager kernel)))
       (while (jupyter-kernel-alive-p manager)
-        (sleep-for 1)))
-    ;; Clean up
-    (let ((proc (oref manager kernel)))
-      (delete-process proc)
-      (kill-buffer (process-buffer proc))
-      (delete-file (oref manager conn-file)))
-    (jupyter-stop-channels manager)
-    (oset manager kernel nil)
-    (oset manager session nil)
-    (oset manager conn-file nil)))
+        (sleep-for 1)))))
 
 (cl-defmethod jupyter-kernel-alive-p ((manager jupyter-kernel-manager))
   (process-live-p (oref manager kernel)))
