@@ -5,6 +5,7 @@
 (require 'jupyter-messages)
 
 (declare-function string-trim-right "subr-x" (str))
+(defvar jupyter--debug nil)
 
 ;;; Kernel client class
 
@@ -566,6 +567,8 @@ underlying `zmq-send-multipart' call using the CHANNEL's socket."
                        (oref client ioloop) :jupyter-pending-requests))
                 (req (ring-remove ring)))
            (setf (jupyter-request--id req) data)
+           (when jupyter--debug
+             (message "SEND: %s" (jupyter-request-id req)))
            (puthash data req (oref client requests)))))
       ;; data = (idents . msg)
       (recvd
@@ -577,6 +580,10 @@ underlying `zmq-send-multipart' call using the CHANNEL's socket."
                              control-channel
                              iopub-channel))))
               (ring (oref channel recv-queue)))
+         (when jupyter--debug
+           (message "RECV: %s %s %s" (jupyter-message-type (cdr data))
+                    (jupyter-message-parent-id (cdr data))
+                    (plist-get (cdr data) :content)))
          (if (= (ring-length ring) (ring-size ring))
              ;; Try to process at a later time when the recv-queue is full
              (run-with-timer 0.05 nil #'jupyter--ioloop-filter client event)
