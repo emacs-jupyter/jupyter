@@ -540,15 +540,23 @@ underlying `zmq-send-multipart' call using the CHANNEL's socket."
                      (mapcar #'car channels))))
              (quit (zmq-prin1 (cons 'quit (cons nil nil))))))))))
 
-(defun jupyter--delete-ioloop (client)
-  (delete-process (oref client ioloop))
-  (kill-buffer (process-buffer (oref client ioloop)))
-  (oset client ioloop nil))
+(defun jupyter--ioloop-sentinel (client ioloop event)
+  (cond
+   ((or (string-prefix-p "exited" event)
+        (string-prefix-p "failed" event)
+        (equal event "finished\n")
+        (equal event "killed\n")
+        (equal event "deleted\n"))
+    (kill-buffer (process-buffer ioloop))
+    (when (jupyter-channel-alive-p (oref client hb-channel))
+      (jupyter-stop-channel (oref client hb-channel)))
+    (oset client ioloop nil))))
 
 (defun jupyter--ioloop-filter (client event)
   (cl-destructuring-bind (ctype . data) (cdr event)
     (cl-case (car event)
-      (quit (jupyter--delete-ioloop client))
+      ;; Cleanup handled in sentinel
+      (quit)
       ;; data = sent message id
       (sent
        ;; Anything sent on stdin is a reply and therefore never added to
@@ -600,7 +608,8 @@ for the heartbeat channel."
     (oset client ioloop
           (zmq-start-process
            (jupyter--ioloop client)
-           (apply-partially #'jupyter--ioloop-filter client)))))
+           (apply-partially #'jupyter--ioloop-filter client)
+           (apply-partially #'jupyter--ioloop-sentinel client)))))
 
 (cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
   "Stop any running channels of CLIENT."
@@ -609,7 +618,7 @@ for the heartbeat channel."
   (let ((ioloop (oref client ioloop)))
     (when ioloop
       (zmq-subprocess-send ioloop (cons 'quit nil))
-      (with-timeout (1 (jupyter--delete-ioloop client))
+      (with-timeout (1 (delete-process ioloop))
         (while (oref client ioloop)
           (sleep-for 0 100))))))
 
