@@ -512,52 +512,32 @@ FIXME: If `point' is within a prompt return nil."
   (when (eq major-mode 'jupyter-repl-mode)
     (cond
      ;; Don't do anything when just typing normally
-     ((and (> (- end beg) 1)
-           ;; Only for insertions
-           (= len 0))
-      ;; If the text changed is part of a code cell make sure to add line
-      ;; continuations for multiline text
-      (when (get-text-property beg 'jupyter-prompt)
-        (save-excursion
-          (goto-char beg)
-          (goto-char (point-at-bol))
-          (let ((inhibit-read-only t)
-                (p1 nil))
-            (while (and (= (forward-line) 0)
-                        (< (point) end))
-              (setq p1 (point))
-              (delete-char -1)
-              (jupyter-repl-insert-prompt 'continuation)
-              (setq end (+ end (- (point) p1)))))))))))
+     ((and
+       ;; Only for insertions
+       (= len 0))
+      (goto-char beg)
+      (when (jupyter-repl-point-in-cell-code-p)
+        (let ((inhibit-read-only t)
+              (prompt-width (jupyter-repl-cell-prompt-width)))
+          (while (search-forward "\n" end 'noerror)
+            (jupyter-repl-insert-prompt 'continuation)
+            (setq end (+ end prompt-width)))))
+      (goto-char end)))))
 
 (defun jupyter-repl-before-buffer-change (beg end)
   (when (eq major-mode 'jupyter-repl-mode)
-    (message "b %s e %s" beg end)))
-
-(add-hook 'after-change-functions 'jupyter-repl-after-buffer-change nil t)
-(add-hook 'before-change-functions 'jupyter-repl-before-buffer-change nil t)
-
-(defun jupyter-repl-delete-backward-char (n &optional killflag)
-  (interactive "p\nP")
-  (condition-case err
-      (call-interactively #'delete-backward-char)
-    (text-read-only
-     (let ((input-marker (oref jupyter-repl-current-client
-                               input-start-marker))
-           (lbp (point-at-bol)))
-       (if (and (get-text-property lbp 'jupyter-prompt)
-                (> (point) input-marker))
-           (let ((inhibit-read-only t)
-                 (prompt-end (or (next-single-property-change
-                                  lbp 'jupyter-prompt)
-                                 (point-max))))
-             (delete-region lbp prompt-end)
-             (join-line))
-         (signal (car err) (cdr err)))))))
+    (cond
+     ;; Only for deletions
+     ((/= beg end)
+      (let ((start beg))
+        (goto-char beg)
+        (when (jupyter-repl-prompt-end-p)
+          (let ((inhibit-read-only t))
+            (delete-field)
+            (backward-char))))))))
 
 (defvar jupyter-repl-mode-map (let ((map (make-sparse-keymap)))
                                 (define-key map (kbd "RET") #'jupyter-repl-ret)
-                                (define-key map (kbd "DEL") #'jupyter-repl-delete-backward-char)
                                 (define-key map (kbd "TAB") #'jupyter-repl-tab)
                                 (define-key map (kbd "C-n") #'jupyter-reply-history-next)
                                 (define-key map (kbd "C-p") #'jupyter-reply-history-previous)
@@ -640,7 +620,8 @@ FIXME: If `point' is within a prompt return nil."
 (define-derived-mode jupyter-repl-mode fundamental-mode
   "Jupyter-REPL"
   "A major mode for interacting with a Jupyter kernel."
-  (buffer-disable-undo))
+  (add-hook 'after-change-functions 'jupyter-repl-after-buffer-change nil t)
+  (add-hook 'before-change-functions 'jupyter-repl-before-buffer-change nil t))
 
 (defun run-jupyter-repl (kernel-name)
   (interactive
