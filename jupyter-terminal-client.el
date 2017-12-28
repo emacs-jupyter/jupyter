@@ -515,27 +515,34 @@ Returns the count of cells left to move."
 
 (defun jupyter-repl-ret (arg)
   (interactive "P")
-  (let* ((client jupyter-repl-current-client)
-         (mark (oref client input-start-marker)))
-    (if (not (marker-position mark))
-        (jupyter-wait-until-idle
-         client (jupyter-request-execute client :code ""))
-      (if (< (point) mark)
-          (goto-char (point-max))
-        ;; TODO: Not all kernels will respond to an is_complete_request. The
-        ;; jupyter console will switch to its own internal handler when the
-        ;; request times out.
-        (let* ((code (with-jupyter-repl-buffer client
-                       (jupyter-repl-cell-code)))
-               (res (jupyter-wait-until-received
-                        client 'is-complete-reply
-                      (jupyter-request-is-complete client :code code))))
-          ;; If the kernel responds to an is-complete request then the
-          ;; is-complete handler takes care of executing the code.
-          (unless res
-            ;; TODO: Indent or send (on prefix arg)?
-            )
-          )))))
+  (let (current-cell-pos)
+    (setq current-cell-pos
+          (save-excursion
+            (goto-char (point-max))
+            (condition-case nil
+                (jupyter-repl-cell-beginning-position)
+              ;; No way to find end of previous cell if we go to `point-max'
+              (beginning-of-buffer nil))))
+    (if current-cell-pos
+        (if (< (point) current-cell-pos)
+            (goto-char (point-max))
+          ;; TODO: Not all kernels will respond to an is_complete_request. The
+          ;; jupyter console will switch to its own internal handler when the
+          ;; request times out.
+          (let* ((code (jupyter-repl-cell-code))
+                 (res (jupyter-wait-until-received
+                          jupyter-repl-current-client
+                          'is-complete-reply
+                        (jupyter-request-is-complete
+                         jupyter-repl-current-client
+                         :code code))))
+            ;; If the kernel responds to an is-complete request then the
+            ;; is-complete handler takes care of executing the code.
+            (unless res
+              ;; TODO: Indent or send (on prefix arg)?
+              )))
+      (let ((inhibit-read-only t))
+        (jupyter-repl-insert-prompt 'in)))))
 
 ;; TODO: Before change function to delete prompt when attempting to delete
 ;; past the code/prompt boundary.
