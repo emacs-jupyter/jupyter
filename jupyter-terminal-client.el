@@ -1,5 +1,6 @@
 (require 'jupyter-client)
 (require 'xterm-color)
+(require 'shr)
 
 ;; TODO: Read up on how method tags can be used, see
 ;; https://ericabrahamsen.net/tech/2016/feb/bbdb-eieio-object-oriented-elisp.html
@@ -63,6 +64,16 @@
        (prog1 (progn ,@body)
          (let ((win (get-buffer-window)))
            (when win (set-window-point win (point))))))))
+
+(defmacro jupyter-repl-do-request-output (req &rest body)
+  (declare (indent 1) (debug (symbolp &rest form)))
+  `(save-excursion
+     (jupyter-repl-goto-request req)
+     (jupyter-repl-next-cell)
+     (jupyter-repl-insert "\n")
+     (unless (eq (point) (point-max))
+       (forward-line -1))
+     ,@body))
 
 (defmacro with-jupyter-repl-lang-buffer (&rest body)
   (declare (indent 0) (debug (&rest form)))
@@ -328,36 +339,73 @@ Returns the count of cells left to move."
         (beginning-of-line)
         (delete-region (point-min) (point))))))
 
+(defun jupyter-repl-goto-request (req)
+  (goto-char (point-max))
+  (condition-case nil
+      (goto-char (jupyter-repl-cell-beginning-position))
+    ;; Handle error when seeing the end of the previous cell
+    (error (jupyter-repl-previous-cell)))
+  (while (not (eq (get-text-property (point) 'jupyter-request) req))
+    (jupyter-repl-previous-cell)))
+
+(cl-defmethod jupyter-handle-status ((client jupyter-repl-client)
+                                     req
+                                     execution-state)
+  (with-jupyter-repl-buffer client
+    (save-excursion
+      ;; FIXME: Only do it for execute requests. Either store the request
+      ;; type/the actual request in the `jupyter-request' object or have a
+      ;; queue of execution requests on the client.
+      (unless (jupyter-request-callbacks req)
+        (jupyter-repl-goto-request req)
+        (pcase execution-state
+          ("busy"
+           (when (re-search-forward "In \\[\\([0-9]+\\)\\]" (point-at-eol) t)
+             (replace-match "" nil nil nil 1)
+             (jupyter-repl-insert :inherit-properties t "*")))
+          ("idle"
+           (when (re-search-forward "In \\[\\(\\*\\)\\]" (point-at-eol) t)
+             (replace-match "" nil nil nil 1)
+             (jupyter-repl-insert
+              :inherit-properties t
+              (number-to-string (nth 2 (field-at-pos (point))))))))))))
+
 (cl-defmethod jupyter-request-execute ((client jupyter-repl-client)
                                        &key code
                                        (silent nil)
                                        (store-history t)
-                                       (user-expressions '(:home "eval(JULIA_HOME)"))
+                                       (user-expressions nil)
                                        (allow-stdin t)
                                        (stop-on-error nil))
   (setq jupyter-repl-request-time (current-time))
-  (if code (cl-call-next-method)
-    (with-jupyter-repl-buffer client
-      (let ((code (jupyter-repl-cell-code)))
-        ;; Don't store empty code
-        (when (= (length code) 0)
-          (setq silent t))
-        (jupyter-repl-finalize-cell)
-        (jupyter-repl-insert-prompt 'busy)
-        (jupyter-repl-truncate-buffer)
-        (cl-call-next-method
-         client :code code :silent silent :store-history store-history
-         :user-expressions user-expressions :allow-stdin allow-stdin
-         :stop-on-error stop-on-error)))))
+  (with-jupyter-repl-buffer client
+    (when code
+      (jupyter-repl-replace-cell-code code))
+    (let ((code (jupyter-repl-cell-code))
+          (beg (jupyter-repl-cell-beginning-position))
+          (req nil))
+      ;; Handle empty code cells as just an update of the prompt number
+      (if (= (length code) 0) (setq silent t)
+        (jupyter-repl-finalize-cell))
+      (jupyter-repl-truncate-buffer)
+      (setq req (cl-call-next-method
+                 client :code code :silent silent :store-history store-history
+                 :user-expressions user-expressions :allow-stdin allow-stdin
+                 :stop-on-error stop-on-error))
+      (add-text-properties beg (1+ beg) (list 'jupyter-request req))
+      (oset client execution-count (1+ (oref client execution-count)))
+      (goto-char (point-max))
+      (jupyter-repl-insert-prompt 'in)
+      ;; FIXME: This shouldn't be needed
+      (goto-char (jupyter-repl-cell-code-beginning-position))
+      req)))
 
 (cl-defmethod jupyter-handle-execute ((client jupyter-repl-client)
                                       req
                                       execution-count
                                       user-expressions
                                       payload)
-  (oset client execution-count (1+ execution-count))
-  (with-jupyter-repl-buffer client
-    (jupyter-repl-insert-prompt 'in)))
+  (oset client execution-count (1+ execution-count)))
 
 (cl-defmethod jupyter-handle-execute-input ((client jupyter-repl-client)
                                             req
@@ -399,61 +447,63 @@ Returns the count of cells left to move."
                                              metadata)
   (oset client execution-count execution-count)
   (with-jupyter-repl-buffer client
-    (let ((mimetypes (seq-filter #'keywordp data)))
-      (catch 'done
-        (when (memq :text/html mimetypes)
-          (let ((html (plist-get data :text/html)))
-            (when (string-match
-                   "<img src=\"data:image/png;base64,\\(.+\\)\"" html)
-              (jupyter-repl-insert-prompt 'out)
-              (let ((img (create-image
-                          (base64-decode-string (match-string 1 html))
-                          nil 'data)))
-                (insert-image img (propertize " " 'read-only t)))
+    (jupyter-repl-do-request-output req
+      (let ((mimetypes (seq-filter #'keywordp data)))
+        (catch 'done
+          (when (memq :text/html mimetypes)
+            (jupyter-repl-insert-prompt 'out)
+            (let ((html (plist-get data :text/html))
+                  (start (point)))
+              (shr-insert-document
+               (with-temp-buffer
+                 (insert html)
+                 (libxml-parse-html-region (point-min) (point-max))))
+              (add-text-properties start (point) '(read-only t))
               (jupyter-repl-insert "\n")
-              (throw 'done t))))
-        (when (memq :text/latex mimetypes)
-          (require 'org)
-          (jupyter-repl-insert-prompt 'out)
-          (let (beg end)
-            (setq beg (point))
-            (jupyter-repl-insert (plist-get data :text/latex))
-            (setq end (point))
-            (org-format-latex
-             "jupyter-repl" beg end "jupyter-repl"
-             'overlays "Creating LaTeX image...%s"
-             'forbuffer
-             ;; Use the default method for creating image files
-             org-preview-latex-default-process))
-          (throw 'done t))
-        (when (memq :text/markdown mimetypes)
-          (jupyter-repl-insert-prompt 'out)
-          (let ((inhibit-read-only t))
-            (jupyter-repl-insert
-             "\n" (jupyter-repl-fontify
-                   #'markdown-mode (plist-get data :text/markdown))))
-          (throw 'done t))
-        (when (memq :text/plain mimetypes)
-          (jupyter-repl-insert-prompt 'out)
-          (let ((multiline (string-match "\n" (plist-get data :text/plain))))
-            (jupyter-repl-insert
-             (concat
-              (when multiline "\n")
-              (xterm-color-filter (plist-get data :text/plain)) "\n"))))))))
+              (throw 'done t)))
+          (when (memq :text/latex mimetypes)
+            (require 'org)
+            (jupyter-repl-insert-prompt 'out)
+            (let (beg end)
+              (setq beg (point))
+              (jupyter-repl-insert (plist-get data :text/latex))
+              (setq end (point))
+              (org-format-latex
+               "jupyter-repl" beg end "jupyter-repl"
+               'overlays "Creating LaTeX image...%s"
+               'forbuffer
+               ;; Use the default method for creating image files
+               org-preview-latex-default-process))
+            (throw 'done t))
+          (when (memq :text/markdown mimetypes)
+            (jupyter-repl-insert-prompt 'out)
+            (let ((inhibit-read-only t))
+              (jupyter-repl-insert
+               "\n" (jupyter-repl-fontify
+                     #'markdown-mode (plist-get data :text/markdown))))
+            (throw 'done t))
+          (when (memq :text/plain mimetypes)
+            (jupyter-repl-insert-prompt 'out)
+            (let ((multiline (string-match "\n" (plist-get data :text/plain))))
+              (jupyter-repl-insert
+               (concat
+                (when multiline "\n")
+                (xterm-color-filter (plist-get data :text/plain)) "\n")))))))))
 
 (cl-defmethod jupyter-handle-stream ((client jupyter-repl-client) req name text)
   (with-jupyter-repl-buffer client
-    (goto-char (point-max))
-    (jupyter-repl-insert (xterm-color-filter text))))
+    (jupyter-repl-do-request-output req
+      (jupyter-repl-insert (xterm-color-filter text)))))
 
 (cl-defmethod jupyter-handle-error ((client jupyter-repl-client)
                                     req ename evalue traceback)
   (with-jupyter-repl-buffer client
-    (dolist (s traceback)
-      (add-text-properties 0 (length s) '(font-lock-face default fontified t font-lock-fontified t) s)
-      (jupyter-repl-insert "\n" (xterm-color-filter s)))
-    (jupyter-repl-insert "\n")
-    (jupyter-repl-insert-prompt 'in)))
+    (jupyter-repl-do-request-output req
+      (dolist (s traceback)
+        (add-text-properties
+         0 (length s) '(font-lock-face default fontified t font-lock-fontified t) s)
+        (jupyter-repl-insert "\n" (xterm-color-filter s)))
+      (jupyter-repl-insert "\n"))))
 
 (cl-defmethod jupyter-handle-input ((client jupyter-repl-client) req prompt password)
   (with-jupyter-repl-buffer client
