@@ -403,7 +403,7 @@ Returns the count of cells left to move."
   (let ((inhibit-modification-hooks t))
     (save-excursion
       (when (= (forward-line (- jupyter-repl-maximum-size)) 0)
-        (jupyter-repl-next-prompt)
+        (jupyter-repl-next-cell)
         (beginning-of-line)
         (delete-region (point-min) (point))))))
 
