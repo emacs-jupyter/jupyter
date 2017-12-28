@@ -654,6 +654,8 @@ FIXME: If `point' is within a prompt return nil."
     ;; Populate connection info
     (jupyter-start-kernel km)
     (setq client (jupyter-repl-client :kernel-manager km))
+    (oset client buffer (generate-new-buffer
+                         (format "*jupyter-repl[%s]*" (oref km name))))
     (jupyter-start-channels client)
     (sleep-for 1)
     ;; TODO: Move this over to starting a kernel
@@ -673,9 +675,6 @@ FIXME: If `point' is within a prompt return nil."
             (when info (plist-get info :content))))
     (unless (oref km kernel-info)
       (error "Kernel did not respond to kernel-info request."))
-
-    (oset client buffer (generate-new-buffer
-                         (format "*jupyter-repl[%s]*" (oref km name))))
     (with-jupyter-repl-buffer client
       (erase-buffer)
       (jupyter-repl-mode)
@@ -696,18 +695,19 @@ FIXME: If `point' is within a prompt return nil."
             (setq buffer-file-name (concat "jupyter-repl-lang" ext))
             (set-auto-mode)
             (setq buffer-file-name nil)
-            (setq fld font-lock-defaults)))
-        ;; Set the `font-lock-defaults' to those of the REPL language
-        (setq font-lock-defaults fld)
-        (font-lock-mode)
+            (setq fld font-lock-defaults))
+          ;; Set the `font-lock-defaults' to those of the REPL language
+          (setq font-lock-defaults fld)
+          (font-lock-mode))
         ;; Insert the REPL banner
         (jupyter-repl-insert banner "\n")
-        (add-text-properties
-         (point-min) (point) '(font-lock-face shadow fontified t))
-        (jupyter-repl-update-prompt))))
-  (jupyter-wait-until-idle
-   client (jupyter-request-execute client :code "" :silent t) 2)
-  (pop-to-buffer (oref client buffer)))
+        (let ((inhibit-modification-hooks t))
+          (add-text-properties
+           (point-min) (point) '(font-lock-face shadow fontified t)))
+        (jupyter-wait-until-idle
+         client (jupyter-request-execute
+                 client :code "" :silent t))))
+    (pop-to-buffer (oref client buffer))))
 
 ;; Local Variables:
 ;; byte-compile-warnings: (not free-vars)
