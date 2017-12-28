@@ -727,6 +727,7 @@ Returns the count of cells left to move."
   "Jupyter-REPL"
   "A major mode for interacting with a Jupyter kernel."
   (setq-local indent-line-function #'jupyter-repl-indent-line)
+  (setq-local company-backends (cons 'company-jupyter-repl company-backends))
   (add-hook 'after-change-functions 'jupyter-repl-after-buffer-change nil t)
   (add-hook 'before-change-functions 'jupyter-repl-before-buffer-change nil t))
 
