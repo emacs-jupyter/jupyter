@@ -202,7 +202,7 @@ can contain the following keywords along with their values:
   (let ((props (list 'fontified t
                      'font-lock-face 'jupyter-repl-input-prompt
                      'field (list 'jupyter-cell 'in count))))
-    (jupyter-repl-insert "\n")
+    (jupyter-repl-newline)
     (jupyter-repl-insert
      :properties (append '(front-sticky t) props)
      (let ((str (format "In [%d]:" count)))
@@ -517,13 +517,15 @@ Returns the count of cells left to move."
       (dolist (s traceback)
         (add-text-properties
          0 (length s) '(font-lock-face default fontified t font-lock-fontified t) s)
-        (jupyter-repl-insert "\n" (xterm-color-filter s)))
-      (jupyter-repl-insert "\n"))))
+        (jupyter-repl-newline)
+        (jupyter-repl-insert (xterm-color-filter s)))
+      (jupyter-repl-newline))))
 
 (cl-defmethod jupyter-handle-input ((client jupyter-repl-client) req prompt password)
   (with-jupyter-repl-buffer client
     (let ((value (cl-call-next-method)))
-      (jupyter-repl-insert (concat "\n" prompt value)))))
+      (jupyter-repl-newline)
+      (jupyter-repl-insert (concat prompt value)))))
 
 (defvar-local jupyter-repl-history nil
   "The history of the current Jupyter REPL.")
@@ -570,9 +572,9 @@ Returns the count of cells left to move."
        ;; cell which would cause some of the prompt predicate functions to
        ;; fail.
        (let ((inhibit-modification-hooks t))
-         (jupyter-repl-insert "\n")))
+         (jupyter-repl-newline)))
       ("incomplete"
-       (jupyter-repl-insert "\n")
+       (jupyter-repl-newline)
        (jupyter-repl-insert :read-only nil indent))
       ("invalid"
        ;; Force an execute to produce a traceback
@@ -806,7 +808,8 @@ Returns the count of cells left to move."
           (setq font-lock-defaults fld)
           (font-lock-mode))
         ;; Insert the REPL banner
-        (jupyter-repl-insert banner "\n")
+        (jupyter-repl-insert banner)
+        (jupyter-repl-newline)
         (let ((inhibit-modification-hooks t))
           (add-text-properties
            (point-min) (point) '(font-lock-face shadow fontified t)))
