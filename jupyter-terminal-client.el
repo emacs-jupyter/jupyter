@@ -95,6 +95,33 @@
 
 ;;; Inserting text into the REPL buffer
 
+;; TODO: Do like how org-mode does it and cache buffers which have the
+;; major mode enabled already
+(defun jupyter-repl-fontify-according-to-mode (mode str)
+  "Fontify STR according to MODE and return the fontified string."
+  ;; Adapted from `org-src-font-lock-fontify-block'
+  (with-temp-buffer
+    (let ((inhibit-modification-hooks nil))
+      (funcall mode)
+      (insert str)
+      (font-lock-ensure)
+      (let ((pos (point-min)) next)
+        (while (setq next (next-property-change pos))
+          ;; Handle additional properties from font-lock, so as to
+          ;; preserve, e.g., composition.
+          (dolist (prop (cons 'face font-lock-extra-managed-props))
+            (let ((new-prop (get-text-property pos prop)))
+              (put-text-property
+               (+ 1 (1- pos)) (1- (+ 1 next))
+               (if (eq prop 'face) 'font-lock-face
+                 prop)
+               (if (eq prop 'face) (or new-prop 'default)
+                 new-prop))))
+          (setq pos next))))
+    (add-text-properties
+     (point-min) (point-max) '(font-lock-multiline t fontified t))
+    (buffer-string)))
+
 (defun jupyter-repl-insert (&rest args)
   "Insert text into the `current-buffer', possibly with text properties.
 
@@ -135,6 +162,30 @@ can contain the following keywords along with their values:
                                (add-text-properties
                                 0 (length s) properties s))))
                          args))))
+
+(defun jupyter-repl-newline ()
+  (jupyter-repl-insert "\n"))
+
+(defun jupyter-repl-insert-html (html)
+  (let ((start (point)))
+    (shr-insert-document
+     (with-temp-buffer
+       (insert html)
+       (libxml-parse-html-region (point-min) (point-max))))
+    (add-text-properties start (point) '(read-only t))))
+
+(defun jupyter-repl-insert-latex (tex)
+  (require 'org)
+  (let (beg end)
+    (setq beg (point))
+    (jupyter-repl-insert (plist-get data :text/latex))
+    (setq end (point))
+    (org-format-latex
+     "jupyter-repl" beg end "jupyter-repl"
+     'overlays "Creating LaTeX image...%s"
+     'forbuffer
+     ;; Use the default method for creating image files
+     org-preview-latex-default-process)))
 
 ;;; Prompt
 
@@ -267,6 +318,9 @@ Returns the count of cells left to move."
   (jupyter-repl-next-cell (- N)))
 
 ;;; Predicates to determine what kind of line point is in
+
+(defun jupyter-repl-multiline-p (text)
+  (string-match "\n" text))
 
 (defun jupyter-repl-prompt-input-line-p ()
   (let ((inhibit-field-text-motion t))
@@ -419,33 +473,6 @@ Returns the count of cells left to move."
                                             execution-count)
   (oset client execution-count (1+ execution-count)))
 
-;; TODO: Do like how org-mode does it and cache buffers which have the
-;; major mode enabled already
-(defun jupyter-repl-fontify (mode str)
-  "Fontify STR according to MODE and return the fontified string."
-  ;; Adapted from `org-src-font-lock-fontify-block'
-  (with-temp-buffer
-    (let ((inhibit-modification-hooks nil))
-      (funcall mode)
-      (insert str)
-      (font-lock-ensure)
-      (let ((pos (point-min)) next)
-        (while (setq next (next-property-change pos))
-          ;; Handle additional properties from font-lock, so as to
-          ;; preserve, e.g., composition.
-          (dolist (prop (cons 'face font-lock-extra-managed-props))
-            (let ((new-prop (get-text-property pos prop)))
-              (put-text-property
-               (+ 1 (1- pos)) (1- (+ 1 next))
-               (if (eq prop 'face) 'font-lock-face
-                 prop)
-               (if (eq prop 'face) (or new-prop 'default)
-                 new-prop))))
-          (setq pos next))))
-    (add-text-properties
-     (point-min) (point-max) '(font-lock-multiline t fontified t))
-    (buffer-string)))
-
 (cl-defmethod jupyter-handle-execute-result ((client jupyter-repl-client)
                                              req
                                              execution-count
@@ -455,46 +482,28 @@ Returns the count of cells left to move."
   (with-jupyter-repl-buffer client
     (jupyter-repl-do-request-output req
       (let ((mimetypes (seq-filter #'keywordp data)))
-        (catch 'done
-          (when (memq :text/html mimetypes)
-            (jupyter-repl-insert-prompt 'out)
-            (let ((html (plist-get data :text/html))
-                  (start (point)))
-              (shr-insert-document
-               (with-temp-buffer
-                 (insert html)
-                 (libxml-parse-html-region (point-min) (point-max))))
-              (add-text-properties start (point) '(read-only t))
-              (jupyter-repl-insert "\n")
-              (throw 'done t)))
-          (when (memq :text/latex mimetypes)
-            (require 'org)
-            (jupyter-repl-insert-prompt 'out)
-            (let (beg end)
-              (setq beg (point))
-              (jupyter-repl-insert (plist-get data :text/latex))
-              (setq end (point))
-              (org-format-latex
-               "jupyter-repl" beg end "jupyter-repl"
-               'overlays "Creating LaTeX image...%s"
-               'forbuffer
-               ;; Use the default method for creating image files
-               org-preview-latex-default-process))
-            (throw 'done t))
-          (when (memq :text/markdown mimetypes)
-            (jupyter-repl-insert-prompt 'out)
-            (let ((inhibit-read-only t))
-              (jupyter-repl-insert
-               "\n" (jupyter-repl-fontify
-                     #'markdown-mode (plist-get data :text/markdown))))
-            (throw 'done t))
-          (when (memq :text/plain mimetypes)
-            (jupyter-repl-insert-prompt 'out)
-            (let ((multiline (string-match "\n" (plist-get data :text/plain))))
-              (jupyter-repl-insert
-               (concat
-                (when multiline "\n")
-                (xterm-color-filter (plist-get data :text/plain)) "\n")))))))))
+        (cond
+         ((memq :text/html mimetypes)
+          (jupyter-repl-insert-prompt 'out)
+          ;; TODO: If this can fail handle the execute request again but with
+          ;; the html key removed from the data plist
+          (jupyter-repl-insert-html (plist-get data :text/html))
+          (jupyter-repl-newline))
+         ((memq :text/latex mimetypes)
+          (jupyter-repl-insert-prompt 'out)
+          (jupyter-repl-insert-latex (plist-get data :text/latex)))
+         ((memq :text/markdown mimetypes)
+          (jupyter-repl-insert-prompt 'out)
+          (jupyter-repl-newline)
+          (jupyter-repl-insert
+           (jupyter-repl-fontify-according-to-mode
+            'markdown-mode (plist-get data :text/markdown))))
+         ((memq :text/plain mimetypes)
+          (jupyter-repl-insert-prompt 'out)
+          (let ((text (plist-get data :text/plain)))
+            (when (jupyter-repl-multiline-p text)
+              (jupyter-repl-newline))
+            (jupyter-repl-insert (xterm-color-filter text)))))))))
 
 (cl-defmethod jupyter-handle-stream ((client jupyter-repl-client) req name text)
   (with-jupyter-repl-buffer client
