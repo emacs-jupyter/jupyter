@@ -437,7 +437,6 @@ FIXME: If `point' is within a prompt return nil."
     (let ((lines (split-string (nth 2 (car (last history))) "\n")))
       (jupyter-repl-insert (car lines))
       (dolist (s (cdr lines))
-        (jupyter-repl-insert-prompt 'continuation)
         (jupyter-repl-insert s)))))
 
 (cl-defmethod jupyter-handle-is-complete ((client jupyter-repl-client) req status indent)
@@ -446,11 +445,15 @@ FIXME: If `point' is within a prompt return nil."
       ("complete"
        (jupyter-request-execute client)
        (goto-char (point-max))
-       (jupyter-repl-insert "\n"))
+       ;; This newline preceedes output, we would like to prevent calling the
+       ;; modification hooks since `point' will be at the end of a finalized
+       ;; cell which would cause some of the prompt predicate functions to
+       ;; fail.
+       (let ((inhibit-modification-hooks t))
+         (jupyter-repl-insert "\n")))
       ("incomplete"
-       (jupyter-repl-insert-prompt 'continuation)
-       ;; Indentation is editable
-       (insert indent))
+       (jupyter-repl-insert "\n")
+       (jupyter-repl-insert :read-only nil indent))
       ("invalid"
        ;; Force an execute to produce a traceback
        (jupyter-request-execute client))
