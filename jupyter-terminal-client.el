@@ -248,8 +248,8 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
 (defun jupyter-repl-cell-prompt-width ()
   "Return the width of the prompt at the start of the line where
 `point' is at."
-  (let ((pos (jupyter-repl-cell-beginning-position)))
-    (- (field-end pos 'esc) pos)))
+  (- (jupyter-repl-cell-code-beginning-position)
+     (jupyter-repl-cell-beginning-position)))
 
 ;;; Cell motions
 
@@ -278,7 +278,9 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
       pos)))
 
 (defun jupyter-repl-cell-code-beginning-position ()
-  (field-end (jupyter-repl-cell-beginning-position) 'esc))
+  (or (next-single-property-change
+       (jupyter-repl-cell-beginning-position) 'field)
+      (point-max)))
 
 (defalias 'jupyter-repl-cell-code-end-position #'jupyter-repl-cell-end-position)
 
