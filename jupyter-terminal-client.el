@@ -321,11 +321,12 @@ Returns the count of cells left to move."
   (jupyter-repl-insert :read-only nil new-code))
 
 (defun jupyter-repl-truncate-buffer ()
-  (save-excursion
-    (when (= (forward-line (- jupyter-repl-maximum-size)) 0)
-      (jupyter-repl-next-prompt)
-      (beginning-of-line)
-      (delete-region (point-min) (point)))))
+  (let ((inhibit-modification-hooks t))
+    (save-excursion
+      (when (= (forward-line (- jupyter-repl-maximum-size)) 0)
+        (jupyter-repl-next-prompt)
+        (beginning-of-line)
+        (delete-region (point-min) (point))))))
 
 (cl-defmethod jupyter-request-execute ((client jupyter-repl-client)
                                        &key code
