@@ -81,51 +81,85 @@
        ,@body)))
 
 (defun jupyter-repl-insert (&rest args)
-  "Insert text into the `current-buffer' as read-only.
-As a special case if the first element of ARGS is a symbol,
-insert the rest of ARGS as editable text by removing any
-`read-only' text properties."
+  "Insert text into the `current-buffer', possibly with text properties.
+
+This acts like `insert' except that the leading elements of ARGS
+can contain the following keywords along with their values:
+
+- `:read-only' :: A non-nil value makes the text to be inserted,
+  read only. This is t by default, so to make text editable you
+  will have to do something like:
+    (jupyter-repl-insert :read-only nil \"<editable text>\")
+
+- `:properties' :: A list of text properties and their values to
+  be added to the inserted text. This defaults to an empty list.
+
+- `:inherit-properties' :: A non-nil value will use
+  `insert-and-inherit' instead of `insert' for the function used
+  to insert the text. This is nil by default."
   (let ((arg nil)
         (read-only t)
-        (properties nil))
+        (properties nil)
+        (insert-fun #'insert))
     (while (keywordp (setq arg (car args)))
-      (cond
-       ((eq arg :read-only)
-        (setq read-only (cadr args)))
-       ((eq arg :properties)
-        (setq properties (cadr args))))
+      (cl-case arg
+        (:read-only (setq read-only (cadr args)))
+        (:properties (setq properties (cadr args)))
+        (:inherit-properties
+         (setq insert-fun (if (cadr args) #'insert-and-inherit #'insert)))
+        (otherwise
+         (error "Keyword not one of `:read-only', `:properties', `:inherit-properties' (`%s')." arg)))
       (setq args (cddr args)))
     (when read-only
-      (if properties (plist-put properties 'read-only t)
+      (if properties
+          (setq properties (append '(read-only t) properties))
         (setq properties '(read-only t))))
-    (apply #'insert (mapcar (lambda (s)
-                         (prog1 s
-                           (when properties
-                             (add-text-properties
-                              0 (length s) properties s))))
-                       args))))
+    (apply insert-fun (mapcar (lambda (s)
+                           (prog1 s
+                             (when properties
+                               (add-text-properties
+                                0 (length s) properties s))))
+                         args))))
 
-(defun jupyter-repl-inherit-text-properties (str offset properties)
-  (add-text-properties
-   0 (length str)
-   (cl-loop with pos = (+ (point) offset)
-            for prop in properties
-            collect prop and collect (get-text-property pos prop))
-   str)
-  str)
+;;; Prompt
 
-(defun jupyter-repl--insert-prompt (str face)
-  (let ((count (oref jupyter-repl-current-client execution-count)))
+(defun jupyter-repl-insert-output-prompt (count)
+  (let ((props (list 'fontified t
+                     'font-lock-face 'jupyter-repl-output-prompt
+                     'field (list 'jupyter-cell 'out count))))
+    ;; Handled by `jupyter-repl-do-request-output'
+    ;; (jupyter-repl-insert "\n")
+    (jupyter-repl-insert :properties props (format "Out[%d]:" count))
+    (jupyter-repl-insert :read-only nil :properties props " ")))
+
+(defun jupyter-repl-insert-input-prompt (count)
+  (let ((props (list 'fontified t
+                     'font-lock-face 'jupyter-repl-input-prompt
+                     'field (list 'jupyter-cell 'in count))))
     (jupyter-repl-insert "\n")
     (jupyter-repl-insert
-     :properties (list 'jupyter-prompt count
-                       'font-lock-face face
-                       'fontified t)
-     str)
+     :properties (append '(front-sticky t) props)
+     (let ((str (format "In [%d]:" count)))
+       (add-text-properties 0 1 '(jupyter-cell beginning) str)
+       str))
     (jupyter-repl-insert
-     :properties (list 'rear-nonsticky t
-                       'jupyter-prompt count)
-     " ")))
+     :properties props (propertize " " 'rear-nonsticky t))))
+
+(defun jupyter-repl-insert-continuation-prompt (field)
+  (let ((props (list 'fontified t
+                     'font-lock-face 'jupyter-repl-input-prompt
+                     'field field
+                     'cursor-intangible t)))
+    ;; (jupyter-repl-insert :read-only nil "\n")
+    (jupyter-repl-insert
+     :properties (append '(front-sticky t) props)
+     (let ((len (- (jupyter-repl-cell-prompt-width) 2)))
+       (concat (make-string len ? ) ":")))
+    (jupyter-repl-insert
+     ;; Deleting this space, deletes the whole continuation prompt. See
+     ;; `jupyter-repl-before-buffer-change'
+     :read-only nil
+     :properties props (propertize  " " 'rear-nonsticky t))))
 
 (defun jupyter-repl-insert-prompt (&optional type)
   "Insert a REPL promp in CLIENT's buffer according to type.
@@ -134,42 +168,16 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
   (setq type (or type 'in))
   (unless (memq type '(in out busy continuation))
     (error "Prompt type can only be (`in', `out', `busy', or `continuation')"))
-  (let ((count (oref jupyter-repl-current-client execution-count)))
+  (let ((count (oref jupyter-repl-current-client execution-count))
+        (inhibit-modification-hooks (memq type '(in out))))
     (cond
-     ((eq type 'busy)
-      (save-excursion
-        (when (re-search-backward "In \\[\\([0-9]+\\)\\]" nil t)
-          (replace-match
-           (jupyter-repl-inherit-text-properties
-            "*" 1 '(font-lock-face jupyter-prompt read-only))
-           nil nil nil 1))))
      ((eq type 'in)
-      (save-excursion
-        (when (re-search-backward "In \\[\\(\\*\\)\\]" nil t)
-          (let ((pnum (number-to-string (get-text-property
-                                         (point) 'jupyter-prompt))))
-            (replace-match
-             (jupyter-repl-inherit-text-properties
-              pnum 1 '(font-lock-face jupyter-prompt read-only))
-             nil nil nil 1))))
-      (jupyter-repl--insert-prompt
-       (format "In [%d]:" count) 'jupyter-repl-input-prompt)
-      (add-text-properties (point-at-bol) (1+ (point-at-bol))
-                           '(jupyter-cell begin)))
+      (jupyter-repl-insert-input-prompt count))
      ((eq type 'out)
-      (jupyter-repl--insert-prompt
-       (format "Out[%d]:" count) 'jupyter-repl-output-prompt))
-     (t ; continuation
-      (let ((padding (save-excursion
-                       (goto-char (oref jupyter-repl-current-client
-                                        input-start-marker))
-                       (make-string (- (point) (point-at-bol) 2) ? ))))
-        (jupyter-repl--insert-prompt
-         (concat padding ":") 'jupyter-repl-input-prompt))))
-    (when (eq type 'in)
-      (set-marker (oref jupyter-repl-current-client
-                        input-start-marker)
-                  (point)))))
+      (jupyter-repl-insert-output-prompt count))
+     ((eq type 'continuation)
+      (jupyter-repl-insert-continuation-prompt
+       (field-at-pos (1+ (jupyter-repl-cell-beginning-position))))))))
 
 (defun jupyter-repl-finalize-cell ()
   "Make the current cell un-editable."
