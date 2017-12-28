@@ -636,7 +636,7 @@ Returns the count of cells left to move."
                    :code (jupyter-repl-cell-code)
                    ;; https://www.gnu.org/software/emacs/manual/html_node/elisp/Text-Representations.html
                    ;; Buffer positions are measured in character units
-                   :pos (jupyter-repl-cell-position))
+                   :pos (jupyter-repl-cell-code-position))
                 (apply-partially
                  (lambda (cb msg)
                    (if (equal (plist-get
