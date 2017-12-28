@@ -376,7 +376,7 @@ Returns the count of cells left to move."
     (goto-char pos)
     (- pos offset)))
 
-(defun jupyter-repl-finalize-cell ()
+(defun jupyter-repl-finalize-cell (req)
   "Make the current cell read only."
   (let ((beg (jupyter-repl-cell-beginning-position))
         (end (point-max))
@@ -384,7 +384,15 @@ Returns the count of cells left to move."
     ;; font-lock-multiline to avoid improper syntactic elements from
     ;; spilling over to the rest of the buffer.
     (add-text-properties beg end '(read-only t font-lock-multiline t))
-    (add-text-properties (1- end) end '(jupyter-cell end))))
+    (add-text-properties beg (1+ beg) (list 'jupyter-request req))
+    (add-text-properties (1- end) end '(jupyter-cell end))
+    (save-excursion
+      ;; Mark the cell as busy. Note that this is removed in the execute reply
+      ;; handler
+      (goto-char beg)
+      (when (re-search-forward "In \\[\\([0-9]+\\)\\]" (point-at-eol) t)
+        (replace-match "" nil nil nil 1)
+        (jupyter-repl-insert :inherit-properties t "*")))))
 
 (defun jupyter-repl-replace-cell-code (new-code)
   (delete-region (jupyter-repl-cell-code-beginning-position)
@@ -410,28 +418,6 @@ Returns the count of cells left to move."
   (while (not (eq (get-text-property (point) 'jupyter-request) req))
     (jupyter-repl-previous-cell)))
 
-(cl-defmethod jupyter-handle-status ((client jupyter-repl-client)
-                                     req
-                                     execution-state)
-  (with-jupyter-repl-buffer client
-    (save-excursion
-      ;; FIXME: Only do it for execute requests. Either store the request
-      ;; type/the actual request in the `jupyter-request' object or have a
-      ;; queue of execution requests on the client.
-      (unless (jupyter-request-callbacks req)
-        (jupyter-repl-goto-request req)
-        (pcase execution-state
-          ("busy"
-           (when (re-search-forward "In \\[\\([0-9]+\\)\\]" (point-at-eol) t)
-             (replace-match "" nil nil nil 1)
-             (jupyter-repl-insert :inherit-properties t "*")))
-          ("idle"
-           (when (re-search-forward "In \\[\\(\\*\\)\\]" (point-at-eol) t)
-             (replace-match "" nil nil nil 1)
-             (jupyter-repl-insert
-              :inherit-properties t
-              (number-to-string (nth 2 (field-at-pos (point))))))))))))
-
 (cl-defmethod jupyter-request-execute ((client jupyter-repl-client)
                                        &key code
                                        (silent nil)
@@ -439,27 +425,24 @@ Returns the count of cells left to move."
                                        (user-expressions nil)
                                        (allow-stdin t)
                                        (stop-on-error nil))
-  (setq jupyter-repl-request-time (current-time))
   (with-jupyter-repl-buffer client
-    (when code
-      (jupyter-repl-replace-cell-code code))
-    (let ((code (jupyter-repl-cell-code))
-          (beg (jupyter-repl-cell-beginning-position))
-          (req nil))
-      ;; Handle empty code cells as just an update of the prompt number
-      (if (= (length code) 0) (setq silent t)
-        (jupyter-repl-finalize-cell))
-      (jupyter-repl-truncate-buffer)
-      (setq req (cl-call-next-method
-                 client :code code :silent silent :store-history store-history
-                 :user-expressions user-expressions :allow-stdin allow-stdin
-                 :stop-on-error stop-on-error))
-      (add-text-properties beg (1+ beg) (list 'jupyter-request req))
-      (oset client execution-count (1+ (oref client execution-count)))
+    (jupyter-repl-truncate-buffer)
+    ;; TODO: Should this be done?
+    (when code (jupyter-repl-replace-cell-code code))
+    (setq code (jupyter-repl-cell-code))
+    ;; Handle empty code cells as just an update of the prompt number
+    (if (= (length code) 0)
+        (setq silent t)
+      ;; Needed by the prompt insetion below
+      (oset client execution-count (1+ (oref client execution-count))))
+    (let ((req (cl-call-next-method
+                client :code code :silent silent :store-history store-history
+                :user-expressions user-expressions :allow-stdin allow-stdin
+                :stop-on-error stop-on-error)))
       (goto-char (point-max))
+      (jupyter-repl-finalize-cell req)
+      (jupyter-repl-newline)
       (jupyter-repl-insert-prompt 'in)
-      ;; FIXME: This shouldn't be needed
-      (goto-char (jupyter-repl-cell-code-beginning-position))
       req)))
 
 (cl-defmethod jupyter-handle-execute ((client jupyter-repl-client)
@@ -467,7 +450,16 @@ Returns the count of cells left to move."
                                       execution-count
                                       user-expressions
                                       payload)
-  (oset client execution-count (1+ execution-count)))
+  (oset client execution-count (1+ execution-count))
+  (with-jupyter-repl-buffer client
+    (save-excursion
+      (jupyter-repl-goto-request req)
+      ;; Unmark the busy status of the prompt
+      (when (re-search-forward "In \\[\\(\\*\\)\\]" (point-at-eol) t)
+        (replace-match "" nil nil nil 1)
+        (jupyter-repl-insert
+         :inherit-properties t
+         (number-to-string (nth 2 (field-at-pos (point)))))))))
 
 (cl-defmethod jupyter-handle-execute-input ((client jupyter-repl-client)
                                             req
@@ -567,14 +559,7 @@ Returns the count of cells left to move."
   (with-jupyter-repl-buffer client
     (pcase status
       ("complete"
-       (jupyter-request-execute client)
-       (goto-char (point-max))
-       ;; This newline preceedes output, we would like to prevent calling the
-       ;; modification hooks since `point' will be at the end of a finalized
-       ;; cell which would cause some of the prompt predicate functions to
-       ;; fail.
-       (let ((inhibit-modification-hooks t))
-         (jupyter-repl-newline)))
+       (jupyter-request-execute client))
       ("incomplete"
        (jupyter-repl-newline)
        (jupyter-repl-insert :read-only nil indent))
