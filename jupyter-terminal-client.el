@@ -480,33 +480,25 @@ FIXME: If `point' is within a prompt return nil."
             )
           )))))
 
-(defun jupyter-repl-tab (arg)
-  (interactive "P")
-  (with-jupyter-repl-buffer jupyter-repl-current-client
-    (let ((prompt-width nil))
-      (narrow-to-region
-       (save-excursion
-         (goto-char (oref jupyter-repl-current-client input-start-marker))
-         (setq prompt-width (- (point) (point-at-bol)))
-         (point-at-bol))
-       (point-max))
-      (let* ((spoint (point))
-             (offset (- (point) (point-min)
-                        (* (line-number-at-pos)
-                           prompt-width)))
-             (code (jupyter-repl-cell-code)))
-        (jupyter-repl-replace-cell-code
-         (with-jupyter-repl-lang-buffer
-           (insert code)
-           (goto-char (1+ offset))
-           (indent-according-to-mode)
-           (setq offset (- (point) (point-at-bol)))
-           (buffer-string)))
-        (goto-char (+ spoint offset))
-        (widen)))))
-
 ;; TODO: Before change function to delete prompt when attempting to delete
 ;; past the code/prompt boundary.
+(defun jupyter-repl-indent-line ()
+  "Indent the line according to the language of the REPL."
+  (let* ((spoint (point))
+         (prompt-width (jupyter-repl-cell-prompt-width))
+         (offset (with-jupyter-repl-cell
+                   (- (point) (jupyter-repl-cell-code-beginning-position)
+                      (* (1- (line-number-at-pos)) prompt-width))))
+         (code (jupyter-repl-cell-code))
+         (inhibit-read-only t))
+    (jupyter-repl-replace-cell-code
+     (with-jupyter-repl-lang-buffer
+       (insert code)
+       (goto-char (1+ offset))
+       (indent-according-to-mode)
+       (setq offset (- (point) (point-at-bol)))
+       (buffer-string)))
+    (goto-char (+ spoint offset))))
 
 (defun jupyter-repl-after-buffer-change (beg end len)
   (when (eq major-mode 'jupyter-repl-mode)
@@ -538,7 +530,6 @@ FIXME: If `point' is within a prompt return nil."
 
 (defvar jupyter-repl-mode-map (let ((map (make-sparse-keymap)))
                                 (define-key map (kbd "RET") #'jupyter-repl-ret)
-                                (define-key map (kbd "TAB") #'jupyter-repl-tab)
                                 (define-key map (kbd "C-n") #'jupyter-reply-history-next)
                                 (define-key map (kbd "C-p") #'jupyter-reply-history-previous)
                                 map))
@@ -620,6 +611,7 @@ FIXME: If `point' is within a prompt return nil."
 (define-derived-mode jupyter-repl-mode fundamental-mode
   "Jupyter-REPL"
   "A major mode for interacting with a Jupyter kernel."
+  (setq-local indent-line-function #'jupyter-repl-indent-line)
   (add-hook 'after-change-functions 'jupyter-repl-after-buffer-change nil t)
   (add-hook 'before-change-functions 'jupyter-repl-before-buffer-change nil t))
 
