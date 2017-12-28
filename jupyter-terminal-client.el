@@ -74,10 +74,10 @@
 (defmacro with-jupyter-repl-cell (&rest body)
   "Narrow the buffer to the current code cell and widen afterwards."
   (declare (indent 0) (debug (&rest form)))
-  `(cl-destructuring-bind (beg . end)
-       (jupyter-repl-cell-bounds)
+  `(save-excursion
      (save-restriction
-       (narrow-to-region beg end)
+       (narrow-to-region (jupyter-repl-cell-beginning-position)
+                         (jupyter-repl-cell-end-position))
        ,@body)))
 
 (defun jupyter-repl-insert (&rest args)
@@ -179,26 +179,104 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
       (jupyter-repl-insert-continuation-prompt
        (field-at-pos (1+ (jupyter-repl-cell-beginning-position))))))))
 
-(defun jupyter-repl-finalize-cell ()
-  "Make the current cell un-editable."
-  (add-text-properties
-   (oref jupyter-repl-current-client input-start-marker)
-   (point-max)
-   ;; font-lock-multiline to avoid improper syntactic elements from
-   ;; spilling over to the rest of the buffer.
-   '(read-only t font-lock-multiline t)))
+(defun jupyter-repl-cell-prompt-width ()
+  "Return the width of the prompt at the start of the line where
+`point' is at."
+  (let ((pos (jupyter-repl-cell-beginning-position)))
+    (- (field-end pos 'esc) pos)))
 
-;; Stolen from `gnus-remove-text-with-property'
-(defun jupyter-remove-text-with-property (prop)
-  (let ((start (point-min))
-        end)
-    (unless (get-text-property start prop)
-      (setq start (next-single-property-change start prop)))
-    (while start
-      (setq end (text-property-any start (point-max) prop nil))
-      (delete-region start (or end (point-max)))
-      (setq start (when end
-                    (next-single-property-change start prop))))))
+;;; Cell motions
+
+(defun jupyter-repl-cell-beginning-position ()
+  (let ((pos (point)))
+    (while (not (eq (get-text-property pos 'jupyter-cell) 'beginning))
+      (setq pos (or (previous-single-property-change pos 'jupyter-cell)
+                    ;; Edge case when `point-min' is the beginning of a cell
+                    (and (eq (get-text-property (point-min) 'jupyter-cell) 'beginning)
+                         (point-min))))
+      (if pos (when (eq (get-text-property pos 'jupyter-cell) 'end)
+                (error "Found end of previous cell."))
+        ;; No cell, assume the beginning of the line is the beginning of the
+        ;; cell
+        (signal 'beginning-of-buffer nil)))
+    pos))
+
+(defun jupyter-repl-cell-end-position ()
+  (let ((pos (point)))
+    (catch 'unfinalized
+      (while (not (eq (get-text-property pos 'jupyter-cell) 'end))
+        (setq pos (next-single-property-change pos 'jupyter-cell))
+        (if pos (when (eq (get-text-property pos 'jupyter-cell) 'beginning)
+                  (error "Found beginning of next cell."))
+          (throw 'unfinalized (point-max))))
+      pos)))
+
+(defun jupyter-repl-cell-code-beginning-position ()
+  (field-end (jupyter-repl-cell-beginning-position) 'esc))
+
+(defalias 'jupyter-repl-cell-code-end-position #'jupyter-repl-cell-end-position)
+
+(defun jupyter-repl-next-cell (&optional N)
+  "Go to the start of the next cell.
+Returns the count of cells left to move."
+  (interactive "N")
+  (setq N (or N 1))
+  (let ((dir (if (> N 0) 'forward 'backward)))
+    (if (> N 0) (setq fun #'next-single-property-change)
+      (setq N (abs N)
+            fun #'previous-single-property-change))
+    (catch 'done
+      ;; Handle the case when `point-at-eol' is the end of the jupyter cell. Go
+      ;; to the closest jupyter cell beginning
+      (goto-char (previous-single-property-change (1- (point-at-eol))
+                                                  'jupyter-cell))
+      (backward-char)
+      (while (> N 0)
+        (let ((pos (funcall fun (point) 'jupyter-cell)))
+          (while (and pos (not (eq (get-text-property pos 'jupyter-cell)
+                                   'beginning)))
+            (setq pos (funcall fun pos 'jupyter-cell)))
+          (if pos (progn
+                    (goto-char pos)
+                    (setq N (1- N)))
+            (goto-char (if (eq dir 'forward) (point-max)
+                         (point-min)))
+            (throw 'done t)))))
+    N))
+
+(defun jupyter-repl-previous-cell (&optional N)
+  "Go to the start of the previous cell.
+Returns the count of cells left to move."
+  (interactive "N")
+  (setq N (or N 1))
+  (jupyter-repl-next-cell (- N)))
+
+;;; Predicates to determine what kind of line point is in
+
+(defun jupyter-repl-prompt-input-line-p ()
+  (let ((inhibit-field-text-motion t))
+    ;; TODO: Rename this property `jupyter-cell-beginning' to distingusih it
+    ;; from the `jupyter-cell' field property
+    (eq (get-text-property (point-at-bol) 'jupyter-cell)
+        'beginning)))
+
+(defun jupyter-repl-prompt-end-p ()
+  (and (jupyter-repl-point-in-prompt-p)
+       (eq (char-after) ? )))
+
+(defun jupyter-repl-code-line-p ()
+  (save-excursion
+    (let ((inhibit-field-text-motion t))
+      (beginning-of-line)
+      (jupyter-repl-point-in-prompt-p))))
+
+(defun jupyter-repl-point-in-cell-code-p ()
+  (and (jupyter-repl-code-line-p)
+       (null (field-at-pos (point)))))
+
+(defun jupyter-repl-point-in-prompt-p ()
+  (eq (car (field-at-pos (point))) 'jupyter-cell))
+
 
 (defun jupyter-repl-cell-code ()
   "Get the code of the cell without prompts."
@@ -211,23 +289,6 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
         (insert code)
         (jupyter-remove-text-with-property 'jupyter-prompt)
         (buffer-string)))))
-
-(defun jupyter-repl-prompt-width ()
-  "Return the width of the prompt at the start of the line where `point' is at."
-  (- (or (next-single-property-change (point-at-bol) 'jupyter-prompt)
-         ;; Handle edge case when
-         (point-at-eol))
-     (point-at-bol)))
-
-(defun jupyter-repl-cell-bounds ()
-  "Get the bounds of the current input cell."
-  (let ((pos (point)) beg end)
-    (goto-char (point-at-bol))
-    (unless (get-text-property (point) 'jupyter-prompt)
-      (error "Not in a code cell."))
-    (while (get-text-property (point) 'jupyter-prompt)
-      (forward-line -1))
-    (setq beg (1+ (point-at-eol)))
     (goto-char pos)
     (while (and (not (= (point-at-eol) (point-max)))
                 (get-text-property (1+ (point-at-eol)) 'jupyter-prompt))
@@ -236,13 +297,15 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
     (goto-char pos)
     (cons beg end)))
 
-(defun jupyter-repl-cell-position ()
-  "Get the position that `point' is at relative to the contents of the cell.
-FIXME: If `point' is within a prompt return nil."
-  (unless (get-text-property (point) 'jupyter-prompt)
-    (with-jupyter-repl-cell
-      (- (point) (point-min) (* (line-number-at-pos (point))
-                                (jupyter-repl-prompt-width))))))
+(defun jupyter-repl-finalize-cell ()
+  "Make the current cell read only."
+  (let ((beg (jupyter-repl-cell-beginning-position))
+        (end (point-max))
+        (inhibit-modification-hooks t))
+    ;; font-lock-multiline to avoid improper syntactic elements from
+    ;; spilling over to the rest of the buffer.
+    (add-text-properties beg end '(read-only t font-lock-multiline t))
+    (add-text-properties (1- end) end '(jupyter-cell end))))
 
 (defun jupyter-repl-replace-cell-code (new-code)
   (let ((mark (oref jupyter-repl-current-client input-start-marker)))
