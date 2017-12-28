@@ -57,6 +57,8 @@
 (defvar-local jupyter-repl-lang-mode nil
   "The major mode corresponding to the kernel's language.")
 
+;;; Convenience macros
+
 (defmacro with-jupyter-repl-buffer (client &rest body)
   (declare (indent 1) (debug (symbolp &rest form)))
   `(with-current-buffer (oref ,client buffer)
@@ -90,6 +92,8 @@
        (narrow-to-region (jupyter-repl-cell-beginning-position)
                          (jupyter-repl-cell-end-position))
        ,@body)))
+
+;;; Inserting text into the REPL buffer
 
 (defun jupyter-repl-insert (&rest args)
   "Insert text into the `current-buffer', possibly with text properties.
@@ -338,6 +342,8 @@ Returns the count of cells left to move."
         (jupyter-repl-next-prompt)
         (beginning-of-line)
         (delete-region (point-min) (point))))))
+
+;;; Handlers
 
 (defun jupyter-repl-goto-request (req)
   (goto-char (point-max))
@@ -614,6 +620,8 @@ Returns the count of cells left to move."
        (setq offset (- (point) (point-at-bol)))
        (buffer-string)))
     (goto-char (+ spoint offset))))
+
+;;; Buffer change functions
 
 (defun jupyter-repl-after-buffer-change (beg end len)
   (when (eq major-mode 'jupyter-repl-mode)
