@@ -277,25 +277,33 @@ Returns the count of cells left to move."
 (defun jupyter-repl-point-in-prompt-p ()
   (eq (car (field-at-pos (point))) 'jupyter-cell))
 
+;;; Getting/manipulating the code of a cell
 
 (defun jupyter-repl-cell-code ()
   "Get the code of the cell without prompts."
   (if (= (point-min) (point-max)) ""
-    (let ((code (buffer-substring
-                 (oref jupyter-repl-current-client
-                       input-start-marker)
-                 (point-max))))
-      (with-temp-buffer
-        (insert code)
-        (jupyter-remove-text-with-property 'jupyter-prompt)
-        (buffer-string)))))
+    (let (lines)
+      (save-excursion
+        (goto-char (jupyter-repl-cell-code-beginning-position))
+        (push (field-string-no-properties) lines)
+        (while (and (line-move-1 1 'noerror)
+                    (jupyter-repl-code-line-p))
+          (push (field-string-no-properties) lines))
+        (mapconcat #'identity (nreverse lines) "")))))
+
+(defun jupyter-repl-cell-code-position ()
+  "Get the position that `point' is at relative to the contents of the cell."
+  (unless (jupyter-repl-point-in-cell-code-p)
+    (error "Not in code of cell."))
+  (let ((pos (point))
+        (offset (jupyter-repl-cell-beginning-position))
+        (prompt-width (jupyter-repl-cell-prompt-width)))
+    (goto-char offset)
+    (while (< (point) pos)
+      (forward-line)
+      (setq offset (+ offset prompt-width)))
     (goto-char pos)
-    (while (and (not (= (point-at-eol) (point-max)))
-                (get-text-property (1+ (point-at-eol)) 'jupyter-prompt))
-      (forward-line 1))
-    (setq end (point-at-eol))
-    (goto-char pos)
-    (cons beg end)))
+    (- pos offset)))
 
 (defun jupyter-repl-finalize-cell ()
   "Make the current cell read only."
@@ -308,26 +316,9 @@ Returns the count of cells left to move."
     (add-text-properties (1- end) end '(jupyter-cell end))))
 
 (defun jupyter-repl-replace-cell-code (new-code)
-  (let ((mark (oref jupyter-repl-current-client input-start-marker)))
-    (delete-region mark (point-max))
-    (jupyter-repl-insert :read-only nil new-code)))
-
-(defvar-local jupyter-repl-request-time nil)
-
-;; TODO: Clean this up what about edge cases?
-(defun jupyter-repl-next-prompt ()
-  (beginning-of-line)
-  ;; Go to the line that does not start with a prompt
-  (while (and (get-text-property (point) 'jupyter-prompt)
-              (= (forward-line) 0)))
-  ;; Find the start of the next prompt
-  (while (and (not (get-text-property (point) 'jupyter-prompt))
-              (= (forward-line) 0)))
-  ;; Move to the start of the input when a prompt was found
-  (when (get-text-property (point) 'jupyter-prompt)
-    (let ((pos (next-single-property-change (point) 'jupyter-prompt)))
-      ;; Return non-nil when we made it
-      (and pos (goto-char pos)))))
+  (delete-region (jupyter-repl-cell-code-beginning-position)
+                 (jupyter-repl-cell-code-end-position))
+  (jupyter-repl-insert :read-only nil new-code))
 
 (defun jupyter-repl-truncate-buffer ()
   (save-excursion
