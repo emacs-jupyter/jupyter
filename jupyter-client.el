@@ -1179,7 +1179,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                     traceback)
   "Default error handler.")
 
-(cl-defmethod jupyter-handle-status ((client jupyter-kernel-client) req execution_state)
+(cl-defmethod jupyter-handle-status ((client jupyter-kernel-client) req execution-state)
   "Default status handler.")
 
 (cl-defmethod jupyter-handle-clear-output ((client jupyter-kernel-client) req wait)
