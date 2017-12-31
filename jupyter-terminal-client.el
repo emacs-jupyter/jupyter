@@ -63,6 +63,7 @@
 ;;; Convenience macros
 
 (defmacro with-jupyter-repl-buffer (client &rest body)
+  "Run BODY with the the REPL buffer of CLIENT as the `current-buffer'."
   (declare (indent 1) (debug (symbolp &rest form)))
   `(with-current-buffer (oref ,client buffer)
      (let ((inhibit-read-only t))
@@ -86,6 +87,7 @@ appended to the current output for REQ."
          ,@body))))
 
 (defmacro with-jupyter-repl-lang-buffer (&rest body)
+  "Run BODY in the `jupyter-repl-lang-buffer' of the `current-buffer'."
   (declare (indent 0) (debug (&rest form)))
   `(with-current-buffer jupyter-repl-lang-buffer
      (let ((inhibit-read-only t))
@@ -608,7 +610,6 @@ The first character of the cell code corresponds to position 1."
             (goto-char (point-max))
             (condition-case nil
                 (jupyter-repl-cell-beginning-position)
-              ;; No way to find end of previous cell if we go to `point-max'
               (beginning-of-buffer nil))))
     (if current-cell-pos
         (if (< (point) current-cell-pos)
@@ -628,11 +629,8 @@ The first character of the cell code corresponds to position 1."
             (unless res
               ;; TODO: Indent or send (on prefix arg)?
               )))
-      (let ((inhibit-read-only t))
-        (jupyter-repl-insert-prompt 'in)))))
+      (jupyter-repl-insert-prompt 'in))))
 
-;; TODO: Before change function to delete prompt when attempting to delete
-;; past the code/prompt boundary.
 (defun jupyter-repl-indent-line ()
   "Indent the line according to the language of the REPL."
   (let* ((spos (jupyter-repl-cell-code-beginning-position))
