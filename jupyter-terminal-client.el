@@ -726,13 +726,13 @@ The first character of the cell code corresponds to position 1."
            (when found
              ;; TODO: Generalize this
              (setq doc (or (and (plist-get data :text/markdown)
-                                (jupyter-repl-fontify-string
-                                 (plist-get data :text/markdown)
-                                 #'markdown-mode))
+                                (jupyter-repl-fontify-according-to-mode
+                                 'markdown-mode
+                                 (plist-get data :text/markdown)))
                            (plist-get data :text/plain)))
              (with-current-buffer (company-doc-buffer doc)
                (unless (plist-get data :text/markdown)
-                 (ansi-color-apply-on-region (point-min) (point-max)))
+                 (xterm-color-colorize-buffer))
                (current-buffer)))))))))
 
 ;;; The mode
