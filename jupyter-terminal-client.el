@@ -479,7 +479,8 @@ The first character of the cell code corresponds to position 1."
       (if (= (length code) 0)
           (setq silent t)
         ;; Needed by the prompt insertion below
-        (oset client execution-count (1+ (oref client execution-count))))
+        (oset client execution-count (1+ (oref client execution-count)))
+        (jupyter-repl-history-add-input code))
       (let ((req (cl-call-next-method
                   client :code code :silent silent :store-history store-history
                   :user-expressions user-expressions :allow-stdin allow-stdin
