@@ -439,12 +439,10 @@ The first character of the cell code corresponds to position 1."
   (jupyter-repl-insert :read-only nil new-code))
 
 (defun jupyter-repl-truncate-buffer ()
-  (let ((inhibit-modification-hooks t))
-    (save-excursion
-      (when (= (forward-line (- jupyter-repl-maximum-size)) 0)
-        (jupyter-repl-next-cell)
-        (beginning-of-line)
-        (delete-region (point-min) (point))))))
+  (save-excursion
+    (when (= (forward-line (- jupyter-repl-maximum-size)) 0)
+      (jupyter-repl-next-cell)
+      (delete-region (point-min) (point)))))
 
 ;;; Handlers
 
