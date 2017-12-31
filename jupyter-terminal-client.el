@@ -662,12 +662,6 @@ The first character of the cell code corresponds to position 1."
           (jupyter-repl-insert-prompt 'continuation)))
       (goto-char end)))))
 
-(defvar jupyter-repl-mode-map (let ((map (make-sparse-keymap)))
-                                (define-key map (kbd "RET") #'jupyter-repl-ret)
-                                (define-key map (kbd "C-n") #'jupyter-reply-history-next)
-                                (define-key map (kbd "C-p") #'jupyter-reply-history-previous)
-                                map))
-
 (defun jupyter-repl-kill-buffer-query-function ()
   (or (not (eq major-mode 'jupyter-repl-mode))
       (not (or (jupyter-kernel-alive-p jupyter-repl-kernel-manager)
@@ -742,13 +736,51 @@ The first character of the cell code corresponds to position 1."
 
 ;;; The mode
 
+(defvar jupyter-repl-mode-map (let ((map (make-sparse-keymap)))
+                                (define-key map (kbd "RET") #'jupyter-repl-ret)
+                                (define-key map (kbd "C-n") #'jupyter-repl-history-next)
+                                (define-key map (kbd "C-p") #'jupyter-repl-history-previous)
+                                map))
+
 (define-derived-mode jupyter-repl-mode fundamental-mode
   "Jupyter-REPL"
   "A major mode for interacting with a Jupyter kernel."
   (setq-local indent-line-function #'jupyter-repl-indent-line)
   (setq-local company-backends (cons 'company-jupyter-repl company-backends))
-  (add-hook 'after-change-functions 'jupyter-repl-after-buffer-change nil t)
-  (add-hook 'before-change-functions 'jupyter-repl-before-buffer-change nil t))
+  (add-hook 'after-change-functions 'jupyter-repl-after-buffer-change nil t))
+
+(defun jupyter-repl-initialize-fontification (ext)
+  (let (fld)
+    (with-jupyter-repl-lang-buffer
+      (setq buffer-file-name (concat "jupyter-repl-lang" ext))
+      (set-auto-mode)
+      (setq buffer-file-name nil)
+      (setq fld font-lock-defaults))
+    ;; Set the `font-lock-defaults' to those of the REPL language
+    (setq font-lock-defaults fld)
+    (font-lock-mode)))
+
+(defun jupyter-repl-insert-banner (banner)
+  (let ((start (point))
+        (inhibit-modification-hooks t))
+    (jupyter-repl-insert banner)
+    (jupyter-repl-newline)
+    (add-text-properties start (point) '(font-lock-face shadow fontified t))))
+
+(defun jupyter-repl-update-execution-counter ()
+  (jupyter-add-receive-callback jupyter-repl-current-client
+      'execute-reply
+      (jupyter-request-execute
+       jupyter-repl-current-client :code "" :silent t)
+    (apply-partially
+     (lambda (client msg)
+       (oset client execution-count
+             (plist-get (jupyter-message-content msg) :execution_count))
+       (with-jupyter-repl-buffer client
+         (jupyter-repl-insert-prompt 'in))
+       ;; Don't pass to handlers
+       nil)
+     jupyter-repl-current-client)))
 
 (defun run-jupyter-repl (kernel-name)
   (interactive
@@ -766,56 +798,40 @@ The first character of the cell code corresponds to position 1."
                          (format "*jupyter-repl[%s]*" (oref km name))))
     (jupyter-start-channels client)
     (sleep-for 1)
-    ;; TODO: Move this over to starting a kernel
-    ;; TODO: Separate channel implementation to a blocking and event based channel.
+    ;; hb channel starts in a paused state
+    ;; (jupyter-hb-unpause (oref client hb-channel))
     ;;
-    ;; TODO: Put the kernel manager as a process item with process-put and when
-    ;; the process dies, do cleanup in the process sentinel. Similarly for the
-    ;; client.
+    ;; TODO: Move this over to starting a kernel
     (oset km kernel-info
           (let ((info (cl-loop
                        ;; try sending the request multiple times to account for
                        ;; kernel startup
                        repeat 2
-                       for info = (jupyter-wait-until-received client 'kernel-info-reply
+                       for info = (jupyter-wait-until-received
+                                      client 'kernel-info-reply
                                     (jupyter-request-kernel-info client) 10)
                        when info return info)))
             (when info (plist-get info :content))))
     (unless (oref km kernel-info)
       (error "Kernel did not respond to kernel-info request."))
     (with-jupyter-repl-buffer client
-      (erase-buffer)
-      (jupyter-repl-mode)
-      (setq jupyter-repl-current-client client)
-      (setq jupyter-repl-kernel-manager km)
-      ;; (setq-local jupyter-repl-history (make-ring 100))
-      ;; (jupyter-request-history client :n 100)
       (cl-destructuring-bind (&key language_info banner &allow-other-keys)
           (oref km kernel-info)
-        (let ((name (plist-get language_info :name))
-              (ext (plist-get language_info :file_extension))
-              (fld nil))
-          ;; Set up the REPL language buffer and extract `font-lock-defaults'
+        (cl-destructuring-bind (&key name file_extension &allow-other-keys)
+            language_info
+          (erase-buffer)
+          (jupyter-repl-mode)
+          (setq jupyter-repl-current-client client)
+          (setq jupyter-repl-kernel-manager km)
+          (setq jupyter-repl-history (make-ring 100))
+          (setq left-margin-width jupyter-repl-prompt-margin-width)
+          ;; TODO: Cleanup of buffers created by jupyter-repl
           (setq jupyter-repl-lang-buffer (get-buffer-create
-                                          (format " *jupyter-repl-lang-%s*"
-                                                  name)))
-          (with-jupyter-repl-lang-buffer
-            (setq buffer-file-name (concat "jupyter-repl-lang" ext))
-            (set-auto-mode)
-            (setq buffer-file-name nil)
-            (setq fld font-lock-defaults))
-          ;; Set the `font-lock-defaults' to those of the REPL language
-          (setq font-lock-defaults fld)
-          (font-lock-mode))
-        ;; Insert the REPL banner
-        (jupyter-repl-insert banner)
-        (jupyter-repl-newline)
-        (let ((inhibit-modification-hooks t))
-          (add-text-properties
-           (point-min) (point) '(font-lock-face shadow fontified t)))
-        (jupyter-wait-until-idle
-         client (jupyter-request-execute
-                 client :code "" :silent t))))
+                                          (format " *jupyter-repl-lang-%s*" name)))
+          (jupyter-request-history client :n 100 :raw nil :unique t)
+          (jupyter-repl-initialize-fontification file_extension)
+          (jupyter-repl-insert-banner banner)
+          (jupyter-repl-update-execution-counter))))
     (pop-to-buffer (oref client buffer))))
 
 ;; Local Variables:
