@@ -225,67 +225,74 @@ can contain the following keywords along with their values:
 
 ;;; Prompt
 
-(defun jupyter-repl-insert-output-prompt (count)
-  (let ((props (list 'fontified t
-                     'font-lock-face 'jupyter-repl-output-prompt
-                     'field (list 'jupyter-cell 'out count))))
-    ;; Handled by `jupyter-repl-do-request-output'
-    ;; (jupyter-repl-insert "\n")
-    (jupyter-repl-insert :properties props (format "Out[%d]:" count))
-    (jupyter-repl-insert :read-only nil :properties props " ")))
+(defun jupyter-repl--prompt-display-value (str face)
+  (list '(margin left-margin)
+        (propertize
+         (concat (make-string
+                  (- jupyter-repl-prompt-margin-width
+                     (length str))
+                  ? )
+                 str)
+         'fontified t
+         'font-lock-face face)))
 
-(defun jupyter-repl-insert-input-prompt (count)
-  (let ((props (list 'fontified t
-                     'font-lock-face 'jupyter-repl-input-prompt
-                     'field (list 'jupyter-cell 'in count))))
-    (jupyter-repl-newline)
-    (jupyter-repl-insert
-     :properties (append '(front-sticky t) props)
-     (let ((str (format "In [%d]:" count)))
-       (add-text-properties 0 1 '(jupyter-cell beginning) str)
-       str))
-    (jupyter-repl-insert
-     :properties props (propertize " " 'rear-nonsticky t))))
-
-(defun jupyter-repl-insert-continuation-prompt (field)
-  (let ((props (list 'fontified t
-                     'font-lock-face 'jupyter-repl-input-prompt
-                     'field field
-                     'cursor-intangible t)))
-    ;; (jupyter-repl-insert :read-only nil "\n")
-    (jupyter-repl-insert
-     :properties (append '(front-sticky t) props)
-     (let ((len (- (jupyter-repl-cell-prompt-width) 2)))
-       (concat (make-string len ? ) ":")))
-    (jupyter-repl-insert
-     ;; Deleting this space, deletes the whole continuation prompt. See
-     ;; `jupyter-repl-before-buffer-change'
-     :read-only nil
-     :properties props (propertize  " " 'rear-nonsticky t))))
+(defun jupyter-repl--insert-prompt (str face)
+  (jupyter-repl-newline)
+  (let ((ov (make-overlay (1- (point)) (point) nil t))
+        (md (jupyter-repl--prompt-display-value str face)))
+    (overlay-put ov 'after-string (propertize " " 'display md))
+    (overlay-put ov 'evaporate t)
+    ov))
 
 (defun jupyter-repl-insert-prompt (&optional type)
   "Insert a REPL promp in CLIENT's buffer according to type.
 If TYPE is nil or `in' insert a new input prompt. If TYPE is
 `out' insert a new output prompt."
   (setq type (or type 'in))
-  (unless (memq type '(in out busy continuation))
-    (error "Prompt type can only be (`in', `out', `busy', or `continuation')"))
-  (let ((count (oref jupyter-repl-current-client execution-count))
-        (inhibit-modification-hooks (memq type '(in out))))
+  (unless (memq type '(in out continuation))
+    (error "Prompt type can only be (`in', `out', or `continuation')"))
+  (let ((inhibit-read-only t)
+        (inhibit-modification-hooks t)
+        ov props)
     (cond
      ((eq type 'in)
-      (jupyter-repl-insert-input-prompt count))
+      (let ((count (oref jupyter-repl-current-client execution-count)))
+        (setq ov (jupyter-repl--insert-prompt
+                  (format "In [%d]:" count) 'jupyter-repl-input-prompt)
+              props (list 'jupyter-cell (list 'beginning count)
+                          'rear-nonsticky t))))
      ((eq type 'out)
-      (jupyter-repl-insert-output-prompt count))
+      (let ((count (jupyter-repl-cell-count)))
+        (setq ov (jupyter-repl--insert-prompt
+                  (format "Out [%d]:" count) 'jupyter-repl-output-prompt)
+              props (list 'jupyter-cell (list 'out count)))))
      ((eq type 'continuation)
-      (jupyter-repl-insert-continuation-prompt
-       (field-at-pos (1+ (jupyter-repl-cell-beginning-position))))))))
+      (setq ov (jupyter-repl--insert-prompt
+                ":" 'jupyter-repl-input-prompt)
+            props (list 'read-only nil 'rear-nonsticky t))))
+    (add-text-properties (overlay-start ov) (overlay-end ov) props)))
 
-(defun jupyter-repl-cell-prompt-width ()
-  "Return the width of the prompt at the start of the line where
-`point' is at."
-  (- (jupyter-repl-cell-code-beginning-position)
-     (jupyter-repl-cell-beginning-position)))
+(defun jupyter-repl-update-cell-prompt (str)
+  (let ((ov (car (overlays-at (jupyter-repl-cell-beginning-position)))))
+    (when ov
+      (overlay-put ov 'after-string
+                   (propertize
+                    " " 'display (jupyter-repl--prompt-display-value
+                                  str 'jupyter-repl-input-prompt))))))
+
+(defun jupyter-repl-mark-cell-busy ()
+  (jupyter-repl-update-cell-prompt "In [*]:"))
+
+(defun jupyter-repl-unmark-cell-busy ()
+  (jupyter-repl-update-cell-prompt
+   (format "In [%d]:" (jupyter-repl-cell-count))))
+
+(defun jupyter-repl-cell-count (&optional cross-boundary)
+  (let ((pos (if (jupyter-repl-cell-beginning-p) (point)
+               (save-excursion
+                 (jupyter-repl-previous-cell)
+                 (point)))))
+    (nth 1 (get-text-property pos 'jupyter-cell))))
 
 ;;; Cell motions
 
@@ -314,11 +321,14 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
       pos)))
 
 (defun jupyter-repl-cell-code-beginning-position ()
-  (or (next-single-property-change
-       (jupyter-repl-cell-beginning-position) 'field)
-      (point-max)))
+  (let ((pos (jupyter-repl-cell-beginning-position)))
+    (if pos (1+ pos)
+      (point-min))))
 
-(defalias 'jupyter-repl-cell-code-end-position #'jupyter-repl-cell-end-position)
+(defun jupyter-repl-cell-code-end-position ()
+  (let ((pos (jupyter-repl-cell-end-position)))
+    (if (= pos (point-max)) (point-max)
+      (1- pos))))
 
 (defun jupyter-repl-next-cell (&optional N)
   "Go to the start of the next cell.
@@ -330,15 +340,9 @@ Returns the count of cells left to move."
       (setq N (abs N)
             fun #'previous-single-property-change))
     (catch 'done
-      ;; Handle the case when `point-at-eol' is the end of the jupyter cell. Go
-      ;; to the closest jupyter cell beginning
-      (goto-char (previous-single-property-change (1- (point-at-eol))
-                                                  'jupyter-cell))
-      (backward-char)
       (while (> N 0)
         (let ((pos (funcall fun (point) 'jupyter-cell)))
-          (while (and pos (not (eq (get-text-property pos 'jupyter-cell)
-                                   'beginning)))
+          (while (and pos (not (jupyter-repl-cell-beginning-p pos)))
             (setq pos (funcall fun pos 'jupyter-cell)))
           (if pos (progn
                     (goto-char pos)
@@ -357,32 +361,25 @@ Returns the count of cells left to move."
 
 ;;; Predicates to determine what kind of line point is in
 
+(defun jupyter-repl-cell-beginning-p (&optional pos)
+  (setq pos (or pos (point)))
+  (eq (nth 0 (get-text-property pos 'jupyter-cell)) 'beginning))
+
+(defun jupyter-repl-cell-end-p (&optional pos)
+  (setq pos (or pos (point)))
+  (eq (nth 0 (get-text-property pos 'jupyter-cell)) 'end))
+
 (defun jupyter-repl-multiline-p (text)
   (string-match "\n" text))
 
-(defun jupyter-repl-prompt-input-line-p ()
-  (let ((inhibit-field-text-motion t))
-    ;; TODO: Rename this property `jupyter-cell-beginning' to distingusih it
-    ;; from the `jupyter-cell' field property
-    (eq (get-text-property (point-at-bol) 'jupyter-cell)
-        'beginning)))
-
-(defun jupyter-repl-prompt-end-p ()
-  (and (jupyter-repl-point-in-prompt-p)
-       (eq (char-after) ? )))
-
-(defun jupyter-repl-code-line-p ()
-  (save-excursion
-    (let ((inhibit-field-text-motion t))
-      (beginning-of-line)
-      (jupyter-repl-point-in-prompt-p))))
-
-(defun jupyter-repl-point-in-cell-code-p ()
-  (and (jupyter-repl-code-line-p)
-       (null (field-at-pos (point)))))
-
-(defun jupyter-repl-point-in-prompt-p ()
-  (eq (car (field-at-pos (point))) 'jupyter-cell))
+(defun jupyter-repl-cell-line-p ()
+  "Is the current line an input cell line?"
+  (or (overlays-at (point-at-eol))
+      (when (>= (1- (point-at-bol)) (point-min))
+        (and (overlays-at (1- (point-at-bol)))
+             (not (eq (car (get-text-property (1- (point-at-bol))
+                                              'jupyter-cell))
+                      'out))))))
 
 ;;; Getting/manipulating the code of a cell
 
@@ -392,43 +389,34 @@ Returns the count of cells left to move."
     (let (lines)
       (save-excursion
         (goto-char (jupyter-repl-cell-code-beginning-position))
-        (push (field-string-no-properties) lines)
+        (push (buffer-substring-no-properties (point-at-bol) (point-at-eol))
+              lines)
         (while (and (line-move-1 1 'noerror)
-                    (jupyter-repl-code-line-p))
-          (push (field-string-no-properties) lines))
-        (mapconcat #'identity (nreverse lines) "")))))
+                    (jupyter-repl-cell-line-p))
+          (push (buffer-substring-no-properties (point-at-bol) (point-at-eol))
+                lines))
+        (mapconcat #'identity (nreverse lines) "\n")))))
 
 (defun jupyter-repl-cell-code-position ()
-  "Get the position that `point' is at relative to the contents of the cell."
-  (unless (jupyter-repl-point-in-cell-code-p)
+  "Get the position that `point' is at relative to the contents of the cell.
+The first character of the cell code corresponds to position 1."
+  (unless (jupyter-repl-cell-line-p)
     (error "Not in code of cell."))
-  (let ((pos (point))
-        (offset (jupyter-repl-cell-beginning-position))
-        (prompt-width (jupyter-repl-cell-prompt-width)))
-    (goto-char offset)
-    (while (< (point) pos)
-      (forward-line)
-      (setq offset (+ offset prompt-width)))
-    (goto-char pos)
-    (- pos offset)))
+  (- (point) (jupyter-repl-cell-beginning-position)))
 
 (defun jupyter-repl-finalize-cell (req)
   "Make the current cell read only."
-  (let ((beg (jupyter-repl-cell-beginning-position))
-        (end (point-max))
-        (inhibit-modification-hooks t))
+  (let* ((beg (jupyter-repl-cell-beginning-position))
+         (count (jupyter-repl-cell-count)))
+    (jupyter-repl-mark-cell-busy)
+    (goto-char (point-max))
+    (jupyter-repl-newline)
+    (add-text-properties
+     (1- (point)) (point) (list 'jupyter-cell (list 'end count)))
+    (add-text-properties beg (1+ beg) (list 'jupyter-request req))
     ;; font-lock-multiline to avoid improper syntactic elements from
     ;; spilling over to the rest of the buffer.
-    (add-text-properties beg end '(read-only t font-lock-multiline t))
-    (add-text-properties beg (1+ beg) (list 'jupyter-request req))
-    (add-text-properties (1- end) end '(jupyter-cell end))
-    (save-excursion
-      ;; Mark the cell as busy. Note that this is removed in the execute reply
-      ;; handler
-      (goto-char beg)
-      (when (re-search-forward "In \\[\\([0-9]+\\)\\]" (point-at-eol) t)
-        (replace-match "" nil nil nil 1)
-        (jupyter-repl-insert :inherit-properties t "*")))))
+    (add-text-properties beg (point) '(read-only t font-lock-multiline t))))
 
 (defun jupyter-repl-replace-cell-code (new-code)
   (delete-region (jupyter-repl-cell-code-beginning-position)
@@ -469,23 +457,23 @@ Returns the count of cells left to move."
                                        (stop-on-error nil))
   (with-jupyter-repl-buffer client
     (jupyter-repl-truncate-buffer)
-    ;; TODO: Should this be done?
-    (when code (jupyter-repl-replace-cell-code code))
-    (setq code (jupyter-repl-cell-code))
-    ;; Handle empty code cells as just an update of the prompt number
-    (if (= (length code) 0)
-        (setq silent t)
-      ;; Needed by the prompt insetion below
-      (oset client execution-count (1+ (oref client execution-count))))
-    (let ((req (cl-call-next-method
-                client :code code :silent silent :store-history store-history
-                :user-expressions user-expressions :allow-stdin allow-stdin
-                :stop-on-error stop-on-error)))
-      (goto-char (point-max))
-      (jupyter-repl-finalize-cell req)
-      (jupyter-repl-newline)
-      (jupyter-repl-insert-prompt 'in)
-      req)))
+    (if code (cl-call-next-method)
+      (setq code (jupyter-repl-cell-code))
+      ;; Handle empty code cells as just an update of the prompt number
+      (if (= (length code) 0)
+          (setq silent t)
+        ;; Needed by the prompt insertion below
+        (oset client execution-count (1+ (oref client execution-count))))
+      (let ((req (cl-call-next-method
+                  client :code code :silent silent :store-history store-history
+                  :user-expressions user-expressions :allow-stdin allow-stdin
+                  :stop-on-error stop-on-error))
+            ;; Don't insert a continuation prompt when inserting a new input
+            ;; prompt
+            (inhibit-modification-hooks t))
+        (jupyter-repl-finalize-cell req)
+        (jupyter-repl-insert-prompt 'in)
+        req))))
 
 (cl-defmethod jupyter-handle-execute ((client jupyter-repl-client)
                                       req
@@ -494,14 +482,23 @@ Returns the count of cells left to move."
                                       payload)
   (oset client execution-count (1+ execution-count))
   (with-jupyter-repl-buffer client
-    (save-excursion
-      (jupyter-repl-goto-request req)
-      ;; Unmark the busy status of the prompt
-      (when (re-search-forward "In \\[\\(\\*\\)\\]" (point-at-eol) t)
-        (replace-match "" nil nil nil 1)
-        (jupyter-repl-insert
-         :inherit-properties t
-         (number-to-string (nth 2 (field-at-pos (point)))))))))
+    (let ((pos (point)))
+      ;; KLUDGE: Clean this up. It seems the semantics of
+      ;; `jupyter-repl-goto-request' depends on a lot of assumptions. This
+      ;; condition case is necessary because of the initial state of the
+      ;; buffer.
+      (when (condition-case nil
+                (progn
+                  (jupyter-repl-goto-request req)
+                  t)
+              ;; Handle the initial state of the buffer when starting and
+              ;; possibly other cases
+              (beginning-of-buffer
+               (goto-char (point-max))
+               (jupyter-repl-insert-prompt 'in)
+               nil))
+        (jupyter-repl-unmark-cell-busy)
+        (goto-char pos)))))
 
 (cl-defmethod jupyter-handle-execute-input ((client jupyter-repl-client)
                                             req
@@ -630,51 +627,32 @@ Returns the count of cells left to move."
 ;; past the code/prompt boundary.
 (defun jupyter-repl-indent-line ()
   "Indent the line according to the language of the REPL."
-  (let* ((spoint (point))
-         (prompt-width (jupyter-repl-cell-prompt-width))
-         (offset (with-jupyter-repl-cell
-                   (- (point) (jupyter-repl-cell-code-beginning-position)
-                      (* (1- (line-number-at-pos)) prompt-width))))
+  (let* ((spos (jupyter-repl-cell-code-beginning-position))
+         (pos (jupyter-repl-cell-code-position))
          (code (jupyter-repl-cell-code))
          (inhibit-read-only t))
     (jupyter-repl-replace-cell-code
      (with-jupyter-repl-lang-buffer
        (insert code)
-       (goto-char (1+ offset))
+       (goto-char pos)
        (indent-according-to-mode)
-       (setq offset (- (point) (point-at-bol)))
+       (setq pos (point))
        (buffer-string)))
-    (goto-char (+ spoint offset))))
+    (goto-char (+ pos spos))))
 
 ;;; Buffer change functions
 
 (defun jupyter-repl-after-buffer-change (beg end len)
   (when (eq major-mode 'jupyter-repl-mode)
     (cond
-     ;; Don't do anything when just typing normally
-     ((and
-       ;; Only for insertions
-       (= len 0))
+     ;; Insertions only
+     ((= len 0)
       (goto-char beg)
-      (when (jupyter-repl-point-in-cell-code-p)
-        (let ((inhibit-read-only t)
-              (prompt-width (jupyter-repl-cell-prompt-width)))
-          (while (search-forward "\n" end 'noerror)
-            (jupyter-repl-insert-prompt 'continuation)
-            (setq end (+ end prompt-width)))))
+      (when (jupyter-repl-cell-line-p)
+        (while (search-forward "\n" end 'noerror)
+          (delete-char -1)
+          (jupyter-repl-insert-prompt 'continuation)))
       (goto-char end)))))
-
-(defun jupyter-repl-before-buffer-change (beg end)
-  (when (eq major-mode 'jupyter-repl-mode)
-    (cond
-     ;; Only for deletions
-     ((/= beg end)
-      (let ((start beg))
-        (goto-char beg)
-        (when (jupyter-repl-prompt-end-p)
-          (let ((inhibit-read-only t))
-            (delete-field)
-            (backward-char))))))))
 
 (defvar jupyter-repl-mode-map (let ((map (make-sparse-keymap)))
                                 (define-key map (kbd "RET") #'jupyter-repl-ret)
