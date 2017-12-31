@@ -39,8 +39,8 @@
 (defclass jupyter-repl-client (jupyter-kernel-client)
   ((kernel-info)
    (buffer :initarg :buffer)
-   (execution-count :initform 1)
-   (input-start-marker :initform (make-marker))))
+   (execution-count :initform 1)))
+
 ;; TODO: Make this dynamics by updarting the width of the margin whenever the
 ;; prompt string gets too long. This probably wont happen very often
 (defvar jupyter-repl-prompt-margin-width 12)
