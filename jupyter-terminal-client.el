@@ -451,8 +451,14 @@ Returns the count of cells left to move."
       (goto-char (jupyter-repl-cell-beginning-position))
     ;; Handle error when seeing the end of the previous cell
     (error (jupyter-repl-previous-cell)))
-  (while (not (eq (get-text-property (point) 'jupyter-request) req))
-    (jupyter-repl-previous-cell)))
+  (let (cell-req)
+    (while (and (not (eq (setq cell-req (jupyter-repl-cell-request)) req))
+                (not (= (point) (point-min))))
+      (jupyter-repl-previous-cell))
+    ;; Unless the request was found, assume it is for the current un-finalized
+    ;; cell
+    (unless (eq cell-req req)
+      (goto-char (point-max)))))
 
 (cl-defmethod jupyter-request-execute ((client jupyter-repl-client)
                                        &key code
