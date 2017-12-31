@@ -125,12 +125,10 @@ http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
 
 (defun jupyter--kernel-sentinel (manager kernel event)
   (cond
-   ((or (string-prefix-p "exited" event)
-        (string-prefix-p "failed" event)
-        (equal event "finished\n")
-        (equal event "killed\n")
-        (equal event "deleted\n"))
+   ((cl-loop for type in '("exited" "failed" "finished" "killed" "deleted")
+             thereis (string-prefix-p type event))
     (jupyter-stop-channels manager)
+    ;; TODO: Only delete file when it hasn't been modified since it was created?
     (delete-file (oref manager conn-file))
     (oset manager kernel nil)
     (oset manager conn-file nil)
@@ -577,11 +575,8 @@ underlying `zmq-send-multipart' call using the CHANNEL's socket."
 
 (defun jupyter--ioloop-sentinel (client ioloop event)
   (cond
-   ((or (string-prefix-p "exited" event)
-        (string-prefix-p "failed" event)
-        (equal event "finished\n")
-        (equal event "killed\n")
-        (equal event "deleted\n"))
+   ((cl-loop for type in '("exited" "failed" "finished" "killed" "deleted")
+             thereis (string-prefix-p type event))
     (kill-buffer (process-buffer ioloop))
     (when (jupyter-channel-alive-p (oref client hb-channel))
       (jupyter-stop-channel (oref client hb-channel)))
