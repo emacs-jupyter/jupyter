@@ -286,22 +286,15 @@ shutdown/interrupt requests"
     (jupyter-request-shutdown manager)
     (with-timeout (5 (delete-process (oref manager kernel)))
       (while (jupyter-kernel-alive-p manager)
-        (sleep-for 1)))))
+        (sleep-for 0 100)))))
 
 (cl-defmethod jupyter-kernel-alive-p ((manager jupyter-kernel-manager))
   (process-live-p (oref manager kernel)))
 
-(cl-defmethod jupyter-new-kernel-client ((manager jupyter-kernel-manager)
-                                         class)
-  (unless (oref manager kernel)
-    (error "Kernel not started."))
-  (let ((client (jupyter-kernel-client-from-conn-info
-                 class (oref manager conn-info))))
-    client))
-
 (cl-defmethod jupyter-request-shutdown ((manager jupyter-kernel-manager))
   "Request a shutdown of MANAGER's kernel.
 If RESTART is non-nil, request a restart instead of a complete shutdown."
+  ;; FIXME: This shutdown request doesn't seem to work
   (let ((msg (jupyter-shutdown-request)))
     (jupyter--send-encoded manager "shutdown_request" msg)))
 
@@ -378,7 +371,6 @@ http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
                  (not (functionp (intern signature_scheme))))
         (error "Unsupported signature scheme: %s" signature_scheme))
       ;; Stop the channels if connected to some other kernel
-      ;; TODO: Does this flush the channel queues?
       (jupyter-stop-channels client)
       (let ((addr (concat transport "://" ip)))
         (oset client session (jupyter-session :key key))
@@ -692,24 +684,44 @@ for the heartbeat channel."
   (jupyter-request--id req))
 
 (defun jupyter--run-callbacks-for-message (req msg)
+  "Run the MSG callbacks of REQ.
+
+The return value is non-nil if any handler methods for MSG should
+be run. If this function returns nil, then it indicates that no
+handler methods should be run for MSG. If there are multiple
+callbacks for a MSG then if at least one of them returns non-nil,
+this function will also return non-nil."
   (when req
     (let* ((callbacks (jupyter-request-callbacks req))
            (cbt (cdr (assoc t callbacks)))
            (cb (cdr (assoc (jupyter-message-type msg) callbacks))))
-      (cl-loop
-       for cb in (list cb cbt)
-       when cb do
-       (funcall (jupyter-callback-cb cb) msg)
-       (setf (jupyter-callback-ran-p cb) t)))))
+      (if (or cb cbt) (cl-find-if
+                       (lambda (a) (not (null a)))
+                       (cl-loop
+                        for cb in (list cb cbt)
+                        when cb collect
+                        (funcall (jupyter-callback-cb cb) msg)
+                        and do (setf (jupyter-callback-ran-p cb) t)))
+        t))))
 
 (defun jupyter-add-receive-callback (client msg-type req function)
-  "Add FUNCTION to run when receiving a message reply.
+  "Add callback FUNCTION for a message REQUEST.
 
-The function will be run when CLIENT receives a reply message
-that has a type of MSG-TYPE and is a reply due to a request that
-has an ID of MSG-ID. As an example, suppose you want to register
-a callback when you recieve an `execute-reply' after sending an
-execute request. This can be done like so:
+FUNCTION will be run for all received messages that are
+associated with REQ and have a message type of MSG-TYPE. The
+CLIENT handler method for MSG-TYPE is prevented from running if
+FUNCTION returns nil. Otherwise if FUNCTION returns a non-nil
+value, the handler method for MSG-TYPE is run. This allows for a
+mechanism to silently consume messages without passing them to
+the handler methods which are usually run for updating
+user-interface elements of the CLIENT.
+
+As a special case if MSG-TYPE is t, the callback function is run
+for all received messages associated with REQ.
+
+As an example, suppose you want to register a callback when you
+recieve an `execute-reply' after sending an execute request. This
+can be done like so:
 
     (jupyter-add-receive-callback client 'execute-reply
         (jupyter-request-execute client :code \"y = 1 + 2\")
@@ -769,7 +781,7 @@ TIMEOUT is non-nil, it defaults to 1 second."
     #'jupyter-message-status-idle-p))
 
 (defun jupyter-wait-until-received (client msg-type req &optional timeout)
-  "Wait for a message with MSG-TYPE to be received on CLIENT.
+  "Wait for a message with MSG-TYPE to be received by CLIENT.
 This function waits until CLIENT receives a message from the
 kernel that satisfies the following conditions:
 
@@ -805,9 +817,12 @@ To process a message the following steps are taken:
 
 1. A message is removed from the recv-queue
 2. A handler function is found base on CHANNEL's type
-3. The handler function is called with the CLIENT and the message
-   as arguments
-4. Any callbacks previously registered for the message are run
+3. Any callbacks previously registered for the message are run
+4. The handler method for the message is called. Note that if any
+   of the callbacks return a value of nil, the handler method for
+   the message is not run. This allows for consuming messages
+   without passing them to the handler methods which are usually
+   run to update user interface elements.
 5. This function is scheduled to process another message of
    CHANNEL in the future"
   (let ((ring (oref channel recv-queue)))
@@ -878,7 +893,7 @@ the user. Otherwise `read-from-minibuffer' is used."
   (cl-destructuring-bind (&key msg_type content &allow-other-keys) msg
     (let ((status (plist-get content :status)))
       (if (equal status "ok")
-          ;; fIXME: An interrupt reply is only sent when interrupt_mode is set
+          ;; FIXME: An interrupt reply is only sent when interrupt_mode is set
           ;; to message in a kernel's kernelspec.
           (pcase msg_type
             ("interrupt_reply"
@@ -906,8 +921,8 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
 ;;   (let ((channel (oref client control-channel)))
 ;;     (jupyter--send-encoded client channel "interrupt_request" ())))
 
-;; (cl-defmethod jupyter-handle-interrupt ((client jupyter-kernel-client) req)
-;;   "Default interrupt reply handler.")
+(cl-defmethod jupyter-handle-interrupt ((client jupyter-kernel-client) req)
+  "Default interrupt reply handler.")
 
 ;;; shell messages
 
@@ -969,10 +984,13 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                 client req protocol_version implementation implementation_version
                 language_info banner help_links)))
             (_ (error "Message type not handled yet.")))
-        (if (equal status "error")
-            (error "Error (%s): %s"
-                   (plist-get content :ename) (plist-get content :evalue))
-          (error "Error: aborted"))))))
+        ;; FIXME: Do something about errrors here?
+        ;; (if (equal status "error")
+        ;;     (error "Error (%s): %s"
+        ;;            (plist-get content :ename) (plist-get content :evalue))
+        ;;   (error "Error: aborted"))
+
+        ))))
 
 (cl-defmethod jupyter-request-execute ((client jupyter-kernel-client)
                                        &key code
