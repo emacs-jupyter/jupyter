@@ -547,7 +547,6 @@ The first character of the cell code corresponds to position 1."
                                              execution-count
                                              data
                                              metadata)
-  (oset client execution-count execution-count)
   (jupyter-repl-do-at-request client req
     (jupyter-repl-insert-prompt 'out)
     (jupyter-repl-insert-data data)))
