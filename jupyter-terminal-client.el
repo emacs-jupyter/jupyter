@@ -665,9 +665,9 @@ The first character of the cell code corresponds to position 1."
       (not (or (jupyter-kernel-alive-p jupyter-repl-kernel-manager)
                (jupyter-channels-running-p jupyter-repl-current-client)))
       (not (and (y-or-n-p
-                 (format "Jupyter REPL (%S) still connected. Kill it? "
+                 (format "Jupyter REPL (%s) still connected. Kill it? "
                          (buffer-name (current-buffer))))
-                (prog1 t
+                (prog1 nil
                   (jupyter-stop-channels jupyter-repl-current-client)
                   (jupyter-stop-kernel jupyter-repl-kernel-manager))))))
 
