@@ -593,7 +593,8 @@ The first character of the cell code corresponds to position 1."
        (jupyter-request-execute client))
       ("incomplete"
        (jupyter-repl-newline)
-       (jupyter-repl-insert :read-only nil indent))
+       (if (= (length indent) 0) (jupyter-repl-indent-line)
+         (jupyter-repl-insert :read-only nil indent)))
       ("invalid"
        ;; Force an execute to produce a traceback
        (jupyter-request-execute client))
