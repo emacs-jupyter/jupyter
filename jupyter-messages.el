@@ -218,27 +218,27 @@ in this plist, an error is thrown.")
 
 ;;; Control messages
 
-(cl-defun jupyter-interrupt-request ()
+(cl-defun jupyter-message-interrupt-request ()
   (list))
 
 ;;; stdin messages
 
-(cl-defun jupyter-input-reply (&key value)
+(cl-defun jupyter-message-input-reply (&key value)
   (cl-check-type value string)
   (list :value value))
 
 ;;; shell messages
 
-(cl-defun jupyter-kernel-info-request ()
+(cl-defun jupyter-message-kernel-info-request ()
   (list))
 
-(cl-defun jupyter-execute-request (&key
-                                   code
-                                   (silent nil)
-                                   (store-history t)
-                                   (user-expressions nil)
-                                   (allow-stdin t)
-                                   (stop-on-error nil))
+(cl-defun jupyter-message-execute-request (&key
+                                           code
+                                           (silent nil)
+                                           (store-history t)
+                                           (user-expressions nil)
+                                           (allow-stdin t)
+                                           (stop-on-error nil))
   (cl-check-type code string)
   (cl-check-type user-expressions json-plist)
   (list :code code :silent (if silent t jupyter--false)
@@ -247,7 +247,7 @@ in this plist, an error is thrown.")
         :allow_stdin (if allow-stdin t jupyter--false)
         :stop_on_error (if stop-on-error t jupyter--false)))
 
-(cl-defun jupyter-inspect-request (&key code pos detail)
+(cl-defun jupyter-message-inspect-request (&key code pos detail)
   (setq detail (or detail 0))
   (unless (member detail '(0 1))
     (error "Detail can only be 0 or 1 (%s)" detail))
@@ -257,23 +257,23 @@ in this plist, an error is thrown.")
   (cl-check-type pos integer)
   (list :code code :cursor_pos pos :detail_level detail))
 
-(cl-defun jupyter-complete-request (&key code pos)
+(cl-defun jupyter-message-complete-request (&key code pos)
   (when (markerp pos)
     (setq pos (marker-position pos)))
   (cl-check-type code string)
   (cl-check-type pos integer)
   (list :code code :cursor_pos pos))
 
-(cl-defun jupyter-history-request (&key
-                                   output
-                                   raw
-                                   hist-access-type
-                                   session
-                                   start
-                                   stop
-                                   n
-                                   pattern
-                                   unique)
+(cl-defun jupyter-message-history-request (&key
+                                           output
+                                           raw
+                                           hist-access-type
+                                           session
+                                           start
+                                           stop
+                                           n
+                                           pattern
+                                           unique)
   (unless (member hist-access-type '("range" "tail" "search"))
     (error "History access type can only be one of (range, tail, search)"))
   (append
@@ -293,16 +293,16 @@ in this plist, an error is thrown.")
      (cl-check-type n integer)
      (list :pattern pattern :unique (if unique t jupyter--false) :n n)))))
 
-(cl-defun jupyter-is-complete-request (&key code)
+(cl-defun jupyter-message-is-complete-request (&key code)
   (cl-check-type code string)
   (list :code code))
 
-(cl-defun jupyter-comm-info-request (&key target-name)
+(cl-defun jupyter-message-comm-info-request (&key target-name)
   (when target-name
     (cl-check-type target-name string)
     (list :target_name target-name)))
 
-(cl-defun jupyter-shutdown-request (&key restart)
+(cl-defun jupyter-message-shutdown-request (&key restart)
   (list :restart (if restart t jupyter--false)))
 
 ;;; Convenience functions

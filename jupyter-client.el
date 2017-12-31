@@ -283,7 +283,7 @@ shutdown/interrupt requests"
 
 (cl-defmethod jupyter-stop-kernel ((manager jupyter-kernel-manager))
   (when (jupyter-kernel-alive-p manager)
-    (jupyter-request-shutdown manager)
+    (jupyter-shutdown-request manager)
     (with-timeout (5 (delete-process (oref manager kernel)))
       (while (jupyter-kernel-alive-p manager)
         (sleep-for 0 100)))))
@@ -291,16 +291,16 @@ shutdown/interrupt requests"
 (cl-defmethod jupyter-kernel-alive-p ((manager jupyter-kernel-manager))
   (process-live-p (oref manager kernel)))
 
-(cl-defmethod jupyter-request-shutdown ((manager jupyter-kernel-manager))
+(cl-defmethod jupyter-shutdown-request ((manager jupyter-kernel-manager))
   "Request a shutdown of MANAGER's kernel.
 If RESTART is non-nil, request a restart instead of a complete shutdown."
   ;; FIXME: This shutdown request doesn't seem to work
-  (let ((msg (jupyter-shutdown-request)))
+  (let ((msg (jupyter-message-shutdown-request)))
     (jupyter--send-encoded manager "shutdown_request" msg)))
 
-(cl-defmethod jupyter-request-interrupt ((manager jupyter-kernel-manager))
+(cl-defmethod jupyter-interrupt-request ((manager jupyter-kernel-manager))
   (if (equal (plist-get (oref manager kernel-spec) :interrupt_mode) "message")
-      (let ((msg (jupyter-interrupt-request)))
+      (let ((msg (jupyter-message-interrupt-request)))
         (jupyter--send-encoded manager "interrupt_request" msg))
     (interrupt-process (oref manager kernel) t)))
 
@@ -878,7 +878,7 @@ PROMPT is the prompt the kernel would like to show the user. If
 PASSWORD is non-nil, then `read-passwd' is used to get input from
 the user. Otherwise `read-from-minibuffer' is used."
   (let ((channel (oref client stdin-channel))
-        (msg (jupyter-input-reply
+        (msg (jupyter-message-input-reply
               :value (funcall (if password #'read-passwd
                                 #'read-from-minibuffer)
                               prompt))))
@@ -902,11 +902,11 @@ the user. Otherwise `read-from-minibuffer' is used."
                    (plist-get content :ename) (plist-get content :evalue))
           (error "Error: aborted"))))))
 
-(cl-defmethod jupyter-request-shutdown ((client jupyter-kernel-client) &optional restart)
+(cl-defmethod jupyter-shutdown-request ((client jupyter-kernel-client) &optional restart)
   "Request a shutdown of CLIENT's kernel.
 If RESTART is non-nil, request a restart instead of a complete shutdown."
   (let ((channel (oref client shell-channel))
-        (msg (jupyter-shutdown-request :restart restart)))
+        (msg (jupyter-message-shutdown-request :restart restart)))
     (jupyter--send-encoded client channel "shutdown_request" msg)))
 
 (cl-defmethod jupyter-handle-shutdown ((client jupyter-kernel-client) req restart)
@@ -991,7 +991,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
 
         ))))
 
-(cl-defmethod jupyter-request-execute ((client jupyter-kernel-client)
+(cl-defmethod jupyter-execute-request ((client jupyter-kernel-client)
                                        &key code
                                        (silent nil)
                                        (store-history t)
@@ -1001,7 +1001,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
   "Send an execute request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
-        (msg (jupyter-execute-request
+        (msg (jupyter-message-execute-request
               :code code
               :silent silent
               :store-history store-history
@@ -1017,14 +1017,14 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                       payload)
   "Default execute reply handler.")
 
-(cl-defmethod jupyter-request-inspect ((client jupyter-kernel-client)
+(cl-defmethod jupyter-inspect-request ((client jupyter-kernel-client)
                                        &key code
                                        (pos 0)
                                        (detail 0))
   "Send an inspect request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
-        (msg (jupyter-inspect-request
+        (msg (jupyter-message-inspect-request
               :code code :pos pos :detail detail)))
     (jupyter--send-encoded client channel "inspect_request" msg)))
 
@@ -1035,13 +1035,13 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                       metadata)
   "Default inspect reply handler.")
 
-(cl-defmethod jupyter-request-complete ((client jupyter-kernel-client)
+(cl-defmethod jupyter-complete-request ((client jupyter-kernel-client)
                                         &key code
                                         (pos 0))
   "Send a complete request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
-        (msg (jupyter-complete-request
+        (msg (jupyter-message-complete-request
               :code code :pos pos)))
     (jupyter--send-encoded client channel "complete_request" msg)))
 
@@ -1053,7 +1053,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                        metadata)
   "Default complete reply handler.")
 
-(cl-defmethod jupyter-request-history ((client jupyter-kernel-client)
+(cl-defmethod jupyter-history-request ((client jupyter-kernel-client)
                                        &key
                                        output
                                        raw
@@ -1067,7 +1067,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
   "Send a history request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
-        (msg (jupyter-history-request
+        (msg (jupyter-message-history-request
               :output output
               :raw raw
               :hist-access-type hist-access-type
@@ -1082,12 +1082,12 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
 (cl-defmethod jupyter-handle-history ((client jupyter-kernel-client) req history)
   "Default history reply handler.")
 
-(cl-defmethod jupyter-request-is-complete ((client jupyter-kernel-client)
+(cl-defmethod jupyter-is-complete-request ((client jupyter-kernel-client)
                                            &key code)
   "Send an is-complete request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
-        (msg (jupyter-is-complete-request
+        (msg (jupyter-message-is-complete-request
               :code code)))
     (jupyter--send-encoded client channel "is_complete_request" msg)))
 
@@ -1095,22 +1095,23 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
     ((client jupyter-kernel-client) req status indent)
   "Default is complete reply handler.")
 
-(cl-defmethod jupyter-request-comm-info ((client jupyter-kernel-client)
+(cl-defmethod jupyter-comm-info-request ((client jupyter-kernel-client)
                                          &key target-name)
   "Send a comm-info request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
-        (msg (jupyter-comm-info-request
+        (msg (jupyter-message-comm-info-request
               :target-name target-name)))
     (jupyter--send-encoded client channel "comm_info_request" msg)))
 
 (cl-defmethod jupyter-handle-comm-info ((client jupyter-kernel-client) req comms)
   "Default comm info. reply handler.")
 
-(cl-defmethod jupyter-request-kernel-info ((client jupyter-kernel-client))
+(cl-defmethod jupyter-kernel-info-request ((client jupyter-kernel-client))
   "Send a kernel-info request."
-  (let* ((channel (oref client shell-channel)))
-    (jupyter--send-encoded client channel "kernel_info_request" ())))
+  (let* ((channel (oref client shell-channel))
+         (msg (jupyter-message-kernel-info-request)))
+    (jupyter-send client channel "kernel_info_request" msg)))
 
 (cl-defmethod jupyter-handle-kernel-info ((client jupyter-kernel-client)
                                           req

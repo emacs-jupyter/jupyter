@@ -464,7 +464,7 @@ The first character of the cell code corresponds to position 1."
 (defun jupyter-repl-history-add-input (code)
   (ring-insert jupyter-repl-history code))
 
-(cl-defmethod jupyter-request-execute ((client jupyter-repl-client)
+(cl-defmethod jupyter-execute-request ((client jupyter-repl-client)
                                        &key code
                                        (silent nil)
                                        (store-history t)
@@ -612,14 +612,14 @@ The first character of the cell code corresponds to position 1."
   (with-jupyter-repl-buffer client
     (pcase status
       ("complete"
-       (jupyter-request-execute client))
+       (jupyter-execute-request client))
       ("incomplete"
        (jupyter-repl-newline)
        (if (= (length indent) 0) (jupyter-repl-indent-line)
          (jupyter-repl-insert :read-only nil indent)))
       ("invalid"
        ;; Force an execute to produce a traceback
-       (jupyter-request-execute client))
+       (jupyter-execute-request client))
       ("unknown"))))
 
 (defun jupyter-repl-ret (arg)
@@ -638,9 +638,8 @@ The first character of the cell code corresponds to position 1."
           ;; jupyter console will switch to its own internal handler when the
           ;; request times out.
           (let* ((code (jupyter-repl-cell-code))
-                 (res (jupyter-wait-until-received
-                          'is-complete-reply
-                        (jupyter-request-is-complete
+                 (res (jupyter-wait-until-received 'is-complete-reply
+                        (jupyter-is-complete-request
                          jupyter-repl-current-client
                          :code code))))
             ;; If the kernel responds to an is-complete request then the
@@ -714,7 +713,7 @@ The first character of the cell code corresponds to position 1."
           (let ((client jupyter-repl-current-client))
             (with-jupyter-repl-buffer client
               (jupyter-add-callback 'complete-reply
-                  (jupyter-request-complete
+                  (jupyter-complete-request
                    client
                    :code (jupyter-repl-cell-code)
                    ;; Consider the case when completing
@@ -738,8 +737,9 @@ The first character of the cell code corresponds to position 1."
     (doc-buffer
      (let* ((client jupyter-repl-current-client)
             (msg (jupyter-wait-until-received 'inspect-reply
-                   (jupyter-request-inspect
-                    client :code arg :pos (length arg))))
+                   (jupyter-inspect-request
+                    client
+                    :code arg :pos (length arg))))
             (doc nil))
        (when (and msg (equal (plist-get
                               (jupyter-message-content msg) :status)
@@ -793,7 +793,7 @@ The first character of the cell code corresponds to position 1."
 
 (defun jupyter-repl-update-execution-counter ()
   (jupyter-add-callback 'execute-reply
-      (jupyter-request-execute
+      (jupyter-execute-request
        jupyter-repl-current-client :code "" :silent t)
     (apply-partially
      (lambda (client msg)
@@ -831,7 +831,7 @@ The first character of the cell code corresponds to position 1."
                        ;; kernel startup
                        repeat 2
                        for info = (jupyter-wait-until-received 'kernel-info-reply
-                                    (jupyter-request-kernel-info client) 10)
+                                    (jupyter-kernel-info-request client) 10)
                        when info return info)))
             (when info (plist-get info :content))))
     (unless (oref km kernel-info)
@@ -850,7 +850,7 @@ The first character of the cell code corresponds to position 1."
           ;; TODO: Cleanup of buffers created by jupyter-repl
           (setq jupyter-repl-lang-buffer (get-buffer-create
                                           (format " *jupyter-repl-lang-%s*" name)))
-          (jupyter-request-history client :n 100 :raw nil :unique t)
+          (jupyter-history-request client :n 100 :raw nil :unique t)
           (jupyter-repl-initialize-fontification file_extension)
           (jupyter-repl-insert-banner banner)
           (jupyter-repl-update-execution-counter))))
