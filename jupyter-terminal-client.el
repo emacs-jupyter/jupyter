@@ -519,36 +519,41 @@ The first character of the cell code corresponds to position 1."
                                              data
                                              metadata)
   (oset client execution-count execution-count)
-  (with-jupyter-repl-buffer client
-    (jupyter-repl-do-request-output req
-      (jupyter-repl-insert-prompt 'out)
-      (jupyter-repl-insert-data data))))
+  (jupyter-repl-do-at-request client req
+    (jupyter-repl-insert-prompt 'out)
+    (jupyter-repl-insert-data data)))
 
 (cl-defmethod jupyter-handle-display-data ((client jupyter-repl-client)
                                            req data metadata transient)
-  (with-jupyter-repl-buffer client
-    (jupyter-repl-do-request-output req
-      (jupyter-repl-insert-data data))))
+  (jupyter-repl-do-at-request client req
+    (jupyter-repl-insert-data data)))
 
 (cl-defmethod jupyter-handle-stream ((client jupyter-repl-client) req name text)
-  (with-jupyter-repl-buffer client
-    (jupyter-repl-do-request-output req
-      (jupyter-repl-insert (xterm-color-filter text)))))
+  (jupyter-repl-do-at-request client req
+    (jupyter-repl-insert (xterm-color-filter text))))
 
 (cl-defmethod jupyter-handle-error ((client jupyter-repl-client)
                                     req ename evalue traceback)
-  (with-jupyter-repl-buffer client
-    (jupyter-repl-do-request-output req
-      (dolist (s traceback)
-        (add-text-properties
-         0 (length s) '(font-lock-face default fontified t font-lock-fontified t) s)
-        (jupyter-repl-newline)
-        (jupyter-repl-insert (xterm-color-filter s)))
-      (jupyter-repl-newline))))
+  (jupyter-repl-do-at-request client req
+    (save-excursion
+      ;; `point' is at the cell beginning of the next cell after REQ,
+      ;; `jupyter-repl-previous-cell' will take us back to the start of the
+      ;; cell corresponding to REQ.
+      (jupyter-repl-previous-cell)
+      (jupyter-repl-unmark-cell-busy))
+    (let ((s (mapconcat #'xterm-color-filter traceback "\n")))
+      (add-text-properties
+       0 (length s) '(fontified t font-lock-fontified t font-lock-multiline t) s)
+      (font-lock-fillin-text-property
+       0 (length s) 'font-lock-face 'default s)
+      (jupyter-repl-insert s))
+    (jupyter-repl-newline)))
 
 (cl-defmethod jupyter-handle-input ((client jupyter-repl-client) req prompt password)
-  (with-jupyter-repl-buffer client
+  (jupyter-repl-do-at-request client req
     (let ((value (cl-call-next-method)))
+      (jupyter-repl-previous-cell)
+      (goto-char (1+ (jupyter-repl-cell-end-position)))
       (jupyter-repl-newline)
       (jupyter-repl-insert (concat prompt value)))))
 
