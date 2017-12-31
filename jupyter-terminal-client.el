@@ -493,6 +493,17 @@ The first character of the cell code corresponds to position 1."
         (jupyter-repl-insert-prompt 'in)
         req))))
 
+(defun jupyter-repl-pager-payload (text)
+  (let ((buf (get-buffer-create " *jupyter-repl-pager*")))
+    (with-current-buffer buf
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert text)
+        (goto-char (point-min))
+        (special-mode)))
+    (split-window-below)
+    (set-window-buffer (next-window) buf)))
+
 (cl-defmethod jupyter-handle-execute ((client jupyter-repl-client)
                                       req
                                       execution-count
@@ -516,7 +527,15 @@ The first character of the cell code corresponds to position 1."
                (jupyter-repl-insert-prompt 'in)
                nil))
         (jupyter-repl-unmark-cell-busy)
-        (goto-char pos)))))
+        (goto-char pos)))
+
+    (when payload
+      (cl-loop
+       for pl in payload
+       do (pcase (plist-get pl :source)
+            ("page"
+             (jupyter-repl-pager-payload
+              (plist-get (plist-get pl :data) :text/plain))))))))
 
 (cl-defmethod jupyter-handle-execute-input ((client jupyter-repl-client)
                                             req
