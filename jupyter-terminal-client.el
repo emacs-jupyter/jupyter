@@ -67,15 +67,20 @@
          (let ((win (get-buffer-window)))
            (when win (set-window-point win (point))))))))
 
-(defmacro jupyter-repl-do-request-output (req &rest body)
-  (declare (indent 1) (debug (symbolp &rest form)))
-  `(save-excursion
-     (jupyter-repl-goto-request req)
-     (jupyter-repl-next-cell)
-     (jupyter-repl-insert "\n")
-     (unless (eq (point) (point-max))
-       (forward-line -1))
-     ,@body))
+(defmacro jupyter-repl-do-at-request (client req &rest body)
+  "Set `point' to the end of the output for REQ and run BODY.
+
+BODY is executed with `point' at the proper location to insert
+any output for REQ. If REQ already has output, `point' will be at
+the end of the output so that any text inserted by BODY will be
+appended to the current output for REQ."
+  (declare (indent 2) (debug (symbolp &rest form)))
+  `(with-jupyter-repl-buffer ,client
+     (save-excursion
+       (let ((inhibit-modification-hooks t))
+         (jupyter-repl-goto-request req)
+         (jupyter-repl-next-cell)
+         ,@body))))
 
 (defmacro with-jupyter-repl-lang-buffer (&rest body)
   (declare (indent 0) (debug (&rest form)))
@@ -293,6 +298,9 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
                  (jupyter-repl-previous-cell)
                  (point)))))
     (nth 1 (get-text-property pos 'jupyter-cell))))
+
+(defun jupyter-repl-cell-request ()
+  (get-text-property (jupyter-repl-cell-beginning-position) 'jupyter-request))
 
 ;;; Cell motions
 
