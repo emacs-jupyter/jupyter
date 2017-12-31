@@ -57,6 +57,9 @@
 (defvar-local jupyter-repl-lang-mode nil
   "The major mode corresponding to the kernel's language.")
 
+(defvar-local jupyter-repl-history nil
+  "The history of the current Jupyter REPL.")
+
 ;;; Convenience macros
 
 (defmacro with-jupyter-repl-buffer (client &rest body)
@@ -455,6 +458,9 @@ The first character of the cell code corresponds to position 1."
     (unless (eq cell-req req)
       (goto-char (point-max)))))
 
+(defun jupyter-repl-history-add-input (code)
+  (ring-insert jupyter-repl-history code))
+
 (cl-defmethod jupyter-request-execute ((client jupyter-repl-client)
                                        &key code
                                        (silent nil)
@@ -557,39 +563,28 @@ The first character of the cell code corresponds to position 1."
       (jupyter-repl-newline)
       (jupyter-repl-insert (concat prompt value)))))
 
-(defvar-local jupyter-repl-history nil
-  "The history of the current Jupyter REPL.")
+(defun jupyter-repl-history-next (n)
+  (interactive "p")
+  (setq n (or n 1))
+  (cl-loop repeat n
+           do (ring-insert
+               jupyter-repl-history (ring-remove jupyter-repl-history -1)))
+  (jupyter-repl-replace-cell-code
+   (ring-ref jupyter-repl-history -1)))
 
-;; (defun jupyter-repl-history-next (n)
-;;   (interactive "N")
-;;   (setq n (or n 1))
-;;   (let ((pos (ring-member jupyter-repl-history
-;;                           (jupyter-repl-current-cell-code
-;;                            jupyter-repl-current-client
-;;                            'with-prompts))))
-;;     (when pos
-;;       (jupyter-repl-replace-current-cell
-;;        (ring-ref jupyter-repl-history (+ pos n))))))
-
-;; (defun jupyter-repl-history-previous (n)
-;;   (interactive "N")
-;;   (setq n (or n 1))
-;;   ;; TODO: Fix this, have a current history index or something
-;;   (let ((pos (ring-member jupyter-repl-history
-;;                           (jupyter-repl-current-cell-code
-;;                            jupyter-repl-current-client
-;;                            'with-prompts))))
-;;     (when pos
-;;       (jupyter-repl-replace-current-cell
-;;        (ring-ref jupyter-repl-history (- pos n))))))
+(defun jupyter-repl-history-previous (n)
+  (interactive "p")
+  (setq n (or n 1))
+  (cl-loop repeat n
+           do (ring-insert-at-beginning
+               jupyter-repl-history (ring-remove jupyter-repl-history 0)))
+  (jupyter-repl-replace-cell-code
+   (ring-ref jupyter-repl-history -1)))
 
 (cl-defmethod jupyter-handle-history ((client jupyter-repl-client) req history)
   (with-jupyter-repl-buffer client
-    (delete-region (oref client input-start-marker) (point-max))
-    (let ((lines (split-string (nth 2 (car (last history))) "\n")))
-      (jupyter-repl-insert (car lines))
-      (dolist (s (cdr lines))
-        (jupyter-repl-insert s)))))
+    (cl-loop for (session line-number input-output) in history
+             do (ring-insert jupyter-repl-history input-output))))
 
 (cl-defmethod jupyter-handle-is-complete ((client jupyter-repl-client) req status indent)
   (with-jupyter-repl-buffer client
