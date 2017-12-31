@@ -685,7 +685,11 @@ The first character of the cell code corresponds to position 1."
     (prefix (and (eq major-mode 'jupyter-repl-mode)
                  (not (get-text-property (point) 'read-only))
                  ;; Just grab a symbol, we will just send the whole code cell
-                 (company-grab-symbol)))
+                 (buffer-substring (or (save-excursion
+                                         (when (re-search-backward "[ \t]" (point-at-bol) 'noerror)
+                                           (1+ (point))))
+                                       (point-at-bol))
+                                   (point))))
     (candidates
      (cons
       :async
@@ -698,13 +702,17 @@ The first character of the cell code corresponds to position 1."
                   (jupyter-request-complete
                    client
                    :code (jupyter-repl-cell-code)
-                   ;; https://www.gnu.org/software/emacs/manual/html_node/elisp/Text-Representations.html
-                   ;; Buffer positions are measured in character units
-                   :pos (jupyter-repl-cell-code-position))
+                   ;; Consider the case when completing
+                   ;;
+                   ;;     In [1]: foo|
+                   ;;
+                   ;; The cell code position will be at position 4, i.e. where
+                   ;; the cursor is at, but the cell code will only be 3
+                   ;; characters long.
+                   :pos (1- (jupyter-repl-cell-code-position)))
                 (apply-partially
                  (lambda (cb msg)
-                   (if (equal (plist-get
-                               (jupyter-message-content msg) :status)
+                   (if (equal (plist-get (jupyter-message-content msg) :status)
                               "ok")
                        (cl-destructuring-bind (&key matches &allow-other-keys)
                            (jupyter-message-content msg)
