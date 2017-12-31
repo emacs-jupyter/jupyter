@@ -187,6 +187,42 @@ can contain the following keywords along with their values:
      ;; Use the default method for creating image files
      org-preview-latex-default-process)))
 
+(defun jupyter-repl-insert-data (data)
+  (let ((mimetypes (seq-filter #'keywordp data)))
+    (cond
+     ((memq :image/png mimetypes)
+      (jupyter-repl-newline)
+      (insert-image
+       (create-image
+        (base64-decode-string
+         (plist-get data :image/png))
+        nil 'data)
+       (propertize " " 'read-only t)))
+     ((memq :text/html mimetypes)
+      ;; TODO: If this can fail handle the execute request again but with
+      ;; the html key removed from the data plist
+      (jupyter-repl-insert-html (plist-get data :text/html))
+      (jupyter-repl-newline))
+     ((memq :text/latex mimetypes)
+      (jupyter-repl-insert-latex (plist-get data :text/latex)))
+     ((memq :text/markdown mimetypes)
+      (jupyter-repl-newline)
+      (jupyter-repl-insert
+       (jupyter-repl-fontify-according-to-mode
+        'markdown-mode (plist-get data :text/markdown))))
+     ((memq :text/plain mimetypes)
+      (let ((text (xterm-color-filter (plist-get data :text/plain))))
+        (add-text-properties
+         0 (length text) '(fontified t font-lock-fontified t
+                                     font-lock-multiline t)
+         text)
+        (font-lock-fillin-text-property
+         0 (length text) 'font-lock-face 'default text)
+        (when (jupyter-repl-multiline-p text)
+          (jupyter-repl-newline))
+        (jupyter-repl-insert text)))
+     (t (error "No supported mimetype found %s" mimetypes)))))
+
 ;;; Prompt
 
 (defun jupyter-repl-insert-output-prompt (count)
@@ -475,29 +511,14 @@ Returns the count of cells left to move."
   (oset client execution-count execution-count)
   (with-jupyter-repl-buffer client
     (jupyter-repl-do-request-output req
-      (let ((mimetypes (seq-filter #'keywordp data)))
-        (cond
-         ((memq :text/html mimetypes)
-          (jupyter-repl-insert-prompt 'out)
-          ;; TODO: If this can fail handle the execute request again but with
-          ;; the html key removed from the data plist
-          (jupyter-repl-insert-html (plist-get data :text/html))
-          (jupyter-repl-newline))
-         ((memq :text/latex mimetypes)
-          (jupyter-repl-insert-prompt 'out)
-          (jupyter-repl-insert-latex (plist-get data :text/latex)))
-         ((memq :text/markdown mimetypes)
-          (jupyter-repl-insert-prompt 'out)
-          (jupyter-repl-newline)
-          (jupyter-repl-insert
-           (jupyter-repl-fontify-according-to-mode
-            'markdown-mode (plist-get data :text/markdown))))
-         ((memq :text/plain mimetypes)
-          (jupyter-repl-insert-prompt 'out)
-          (let ((text (plist-get data :text/plain)))
-            (when (jupyter-repl-multiline-p text)
-              (jupyter-repl-newline))
-            (jupyter-repl-insert (xterm-color-filter text)))))))))
+      (jupyter-repl-insert-prompt 'out)
+      (jupyter-repl-insert-data data))))
+
+(cl-defmethod jupyter-handle-display-data ((client jupyter-repl-client)
+                                           req data metadata transient)
+  (with-jupyter-repl-buffer client
+    (jupyter-repl-do-request-output req
+      (jupyter-repl-insert-data data))))
 
 (cl-defmethod jupyter-handle-stream ((client jupyter-repl-client) req name text)
   (with-jupyter-repl-buffer client
