@@ -306,25 +306,24 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
 
 (defun jupyter-repl-cell-beginning-position ()
   (let ((pos (point)))
-    (while (not (eq (get-text-property pos 'jupyter-cell) 'beginning))
+    (while (not (jupyter-repl-cell-beginning-p pos))
       (setq pos (or (previous-single-property-change pos 'jupyter-cell)
                     ;; Edge case when `point-min' is the beginning of a cell
-                    (and (eq (get-text-property (point-min) 'jupyter-cell) 'beginning)
+                    (and (jupyter-repl-cell-beginning-p (point-min))
                          (point-min))))
-      (if pos (when (eq (get-text-property pos 'jupyter-cell) 'end)
+      (if pos (when (jupyter-repl-cell-end-p pos)
                 (error "Found end of previous cell."))
-        ;; No cell, assume the beginning of the line is the beginning of the
-        ;; cell
         (signal 'beginning-of-buffer nil)))
     pos))
 
 (defun jupyter-repl-cell-end-position ()
   (let ((pos (point)))
     (catch 'unfinalized
-      (while (not (eq (get-text-property pos 'jupyter-cell) 'end))
+      (while (not (jupyter-repl-cell-end-p pos))
         (setq pos (next-single-property-change pos 'jupyter-cell))
-        (if pos (when (eq (get-text-property pos 'jupyter-cell) 'beginning)
+        (if pos (when (jupyter-repl-cell-beginning-p pos)
                   (error "Found beginning of next cell."))
+          ;; Any unfinalized cell must be at the end of the buffer.
           (throw 'unfinalized (point-max))))
       pos)))
 
