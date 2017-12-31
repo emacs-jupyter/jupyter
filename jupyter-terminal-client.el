@@ -639,7 +639,6 @@ The first character of the cell code corresponds to position 1."
           ;; request times out.
           (let* ((code (jupyter-repl-cell-code))
                  (res (jupyter-wait-until-received
-                          jupyter-repl-current-client
                           'is-complete-reply
                         (jupyter-request-is-complete
                          jupyter-repl-current-client
@@ -714,8 +713,7 @@ The first character of the cell code corresponds to position 1."
         (lambda (cb)
           (let ((client jupyter-repl-current-client))
             (with-jupyter-repl-buffer client
-              (jupyter-add-receive-callback
-                  client 'complete-reply
+              (jupyter-add-callback 'complete-reply
                   (jupyter-request-complete
                    client
                    :code (jupyter-repl-cell-code)
@@ -739,7 +737,7 @@ The first character of the cell code corresponds to position 1."
     (sorted t)
     (doc-buffer
      (let* ((client jupyter-repl-current-client)
-            (msg (jupyter-wait-until-received client 'inspect-reply
+            (msg (jupyter-wait-until-received 'inspect-reply
                    (jupyter-request-inspect
                     client :code arg :pos (length arg))))
             (doc nil))
@@ -794,8 +792,7 @@ The first character of the cell code corresponds to position 1."
     (add-text-properties start (point) '(font-lock-face shadow fontified t))))
 
 (defun jupyter-repl-update-execution-counter ()
-  (jupyter-add-receive-callback jupyter-repl-current-client
-      'execute-reply
+  (jupyter-add-callback 'execute-reply
       (jupyter-request-execute
        jupyter-repl-current-client :code "" :silent t)
     (apply-partially
@@ -833,8 +830,7 @@ The first character of the cell code corresponds to position 1."
                        ;; try sending the request multiple times to account for
                        ;; kernel startup
                        repeat 2
-                       for info = (jupyter-wait-until-received
-                                      client 'kernel-info-reply
+                       for info = (jupyter-wait-until-received 'kernel-info-reply
                                     (jupyter-request-kernel-info client) 10)
                        when info return info)))
             (when info (plist-get info :content))))

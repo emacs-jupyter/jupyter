@@ -168,28 +168,28 @@
                       client (jupyter-request-kernel-info client)))))
             ;; (ert-info ("Callbacks are removed when an idle message is received")
             ;;   (let ((id (jupyter-request-kernel-info client)))
-            ;;     (jupyter-add-receive-callback client 'kernel-info-reply id
+            ;;     (jupyter-add-callback 'kernel-info-reply id
             ;;       (lambda (msg) 'foo))
             ;;     (should-not (null (gethash id (oref client message-callbacks))))
-            ;;     (jupyter-wait-until-idle client id 2)
+            ;;     (jupyter-wait-until-idle id 2)
             ;;     (should (null (gethash id (oref client message-callbacks))))))
             (ert-info ("Message callbacks receive the right messages")
               (ert-info ("Callbacks fire on the right message ID")
                 (let ((id (jupyter-request-kernel-info client))
                       (recv-id nil))
-                  (jupyter-add-receive-callback client 'kernel-info-reply id
+                  (jupyter-add-callback 'kernel-info-reply id
                     (lambda (msg) (setq recv-id (jupyter-message-parent-id msg))))
-                  (jupyter-wait-until-idle client id)
+                  (jupyter-wait-until-idle id)
                   (should (equal recv-id id))))
               (ert-info ("Different message type, same message ID")
                 (let ((id (jupyter-request-execute client :code "y = 1+2\ny"))
                       (msg-res nil)
                       (msg-rep nil))
-                  (jupyter-add-receive-callback client 'execute-result id
+                  (jupyter-add-callback 'execute-result id
                     (lambda (msg) (setq msg-res msg)))
-                  (jupyter-add-receive-callback client 'execute-reply id
+                  (jupyter-add-callback 'execute-reply id
                     (lambda (msg) (setq msg-rep msg)))
-                  (should-not (null (jupyter-wait-until-idle client id)))
+                  (should-not (null (jupyter-wait-until-idle id)))
                   (should (json-plist-p msg-res))
                   (should (json-plist-p msg-rep))
                   (ert-info ("Verify received contents")
@@ -212,19 +212,19 @@
     (unwind-protect
         (progn
           (ert-info ("Kernel info")
-            (let ((res (jupyter-wait-until-received client 'kernel-info-reply
+            (let ((res (jupyter-wait-until-received 'kernel-info-reply
                          (jupyter-request-kernel-info client))))
               (should-not (null res))
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "kernel_info_reply"))))
           (ert-info ("Comm info")
-            (let ((res (jupyter-wait-until-received client 'comm-info-reply
+            (let ((res (jupyter-wait-until-received 'comm-info-reply
                          (jupyter-request-comm-info client))))
               (should-not (null res))
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "comm_info_reply"))))
           (ert-info ("Execute")
-            (let ((res (jupyter-wait-until-received client 'execute-reply
+            (let ((res (jupyter-wait-until-received 'execute-reply
                          (jupyter-request-execute client :code "y = 1 + 2"))))
               (should-not (null res))
               (should (json-plist-p res))
@@ -232,7 +232,7 @@
           (ert-info ("Input")
             (cl-letf (((symbol-function 'read-from-minibuffer)
                        (lambda (prompt &rest args) "foo")))
-              (let ((res (jupyter-wait-until-received client 'execute-result
+              (let ((res (jupyter-wait-until-received 'execute-result
                            (jupyter-request-execute client :code "input('')"))))
                 (should-not (null res))
                 (should (json-plist-p res))
@@ -241,7 +241,7 @@
                     (plist-get res :content)
                   (should (equal (plist-get data :text/plain) "'foo'"))))))
           (ert-info ("Inspect")
-            (let ((res (jupyter-wait-until-received client 'inspect-reply
+            (let ((res (jupyter-wait-until-received 'inspect-reply
                          (jupyter-request-inspect
                           client
                           :code "list((1, 2, 3))"
@@ -251,7 +251,7 @@
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "inspect_reply"))))
           (ert-info ("Complete")
-            (let ((res (jupyter-wait-until-received client 'complete-reply
+            (let ((res (jupyter-wait-until-received 'complete-reply
                          (jupyter-request-complete
                           client
                           :code "foo = lis"
@@ -260,7 +260,7 @@
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "complete_reply"))))
           (ert-info ("History")
-            (let ((res (jupyter-wait-until-received client 'history-reply
+            (let ((res (jupyter-wait-until-received 'history-reply
                          ;; TODO: "tail" -> 'tail
                          (jupyter-request-history
                           client :hist-access-type "tail" :n 2))))
@@ -268,7 +268,7 @@
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "history_reply"))))
           (ert-info ("Is Complete")
-            (let ((res (jupyter-wait-until-received client 'is-complete-reply
+            (let ((res (jupyter-wait-until-received 'is-complete-reply
                          (jupyter-request-is-complete
                           client :code "for i in range(5):"))))
               (should-not (null res))
@@ -277,14 +277,14 @@
           (ert-info ("Interrupt")
             (lexical-let ((time (current-time))
                           (interrupt-time nil))
-              (jupyter-add-receive-callback
-                  client 'status (jupyter-request-execute
-                                  client :code "import time\ntime.sleep(2)")
+              (jupyter-add-callback 'status
+                  (jupyter-request-execute
+                   client :code "import time\ntime.sleep(2)")
                 (lambda (msg)
                   (when (jupyter-message-status-idle-p msg)
                     (setq interrupt-time (current-time)))))
               (sleep-for 0.2)
-              (let ((res (jupyter-wait-until-received client 'interrupt-reply
+              (let ((res (jupyter-wait-until-received 'interrupt-reply
                            (jupyter-request-interrupt client))))
                 (should-not (null res))
                 (should (json-plist-p res))
@@ -293,7 +293,7 @@
                 (should (< (float-time (time-subtract interrupt-time time))
                            2)))))
           (ert-info ("Shutdown")
-            (let ((res (jupyter-wait-until-received client 'shutdown-reply
+            (let ((res (jupyter-wait-until-received 'shutdown-reply
                          (jupyter-request-shutdown client))))
               (should-not (null res))
               (should (json-plist-p res))

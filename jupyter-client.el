@@ -665,7 +665,7 @@ for the heartbeat channel."
 ;; and holds all the information required to process the messages associated
 ;; with the request. Whenever a message arrives that is associated with a
 ;; request's `jupyter-request-id', any callbacks associated with the message
-;; type are run (see `jupyter-add-receive-callback'). When a request's
+;; type are run (see `jupyter-add-callback'). When a request's
 ;; `jupyter-idle-received-p' property is non-nil, then it signifies that the
 ;; request has been handled by the kernel.
 (cl-defstruct jupyter-request
@@ -704,7 +704,7 @@ this function will also return non-nil."
                         and do (setf (jupyter-callback-ran-p cb) t)))
         t))))
 
-(defun jupyter-add-receive-callback (client msg-type req function)
+(defun jupyter-add-callback (msg-type req function)
   "Add callback FUNCTION for a message REQUEST.
 
 FUNCTION will be run for all received messages that are
@@ -723,15 +723,14 @@ As an example, suppose you want to register a callback when you
 recieve an `execute-reply' after sending an execute request. This
 can be done like so:
 
-    (jupyter-add-receive-callback client 'execute-reply
+    (jupyter-add-callback 'execute-reply
         (jupyter-request-execute client :code \"y = 1 + 2\")
       (lambda (msg)
         (cl-assert (equal (jupyter-message-type msg) \"execute_reply\"))))
 
 Note that the callback is given the raw decoded message received
 from the kernel without any processing done to it."
-  (declare (indent 3))
-  (cl-check-type client jupyter-kernel-client)
+  (declare (indent 2))
   (let ((mt (plist-get jupyter--received-message-types msg-type)))
     (if mt (setq msg-type mt)
       ;; msg-type = t means to run for every message type associated with
@@ -748,7 +747,7 @@ from the kernel without any processing done to it."
           (if cb-for-type (setcdr cb-for-type cb)
             (nconc callbacks (list (cons msg-type cb)))))))))
 
-(defun jupyter-wait-until (client msg-type req timeout cond)
+(defun jupyter-wait-until (msg-type req timeout cond)
   "Wait until COND returns non-nil for a received message.
 COND is run for every received message that has a type of
 MSG-TYPE and whose parent header has a message ID of PMSG-ID. If
@@ -756,31 +755,32 @@ no messages are received that pass these two conditions before
 TIMEOUT (in seconds), this function returns nil. Otherwise it
 returns the received message. Note that if TIMEOUT is nil, it
 defaults to 1 second."
-  (declare (indent 4))
+  (declare (indent 3))
   (setq timeout (or timeout 1))
   (cl-check-type timeout number)
   (lexical-let ((msg nil)
                 (cond cond))
-    (jupyter-add-receive-callback client msg-type req
-      (lambda (m) (setq msg (if (funcall cond m) m nil))))
+    (jupyter-add-callback msg-type req
+      (lambda (m) (setq msg (if (funcall cond m) m nil))
+        t))
     (let ((time 0))
       (catch 'timeout
         (while (null msg)
           (when (>= time timeout)
             (throw 'timeout nil))
-          (accept-process-output (oref client ioloop) 0.01)
+          (sleep-for 0.01)
           (setq time (+ time 0.01)))
         msg))))
 
-(defun jupyter-wait-until-idle (client req &optional timeout)
+(defun jupyter-wait-until-idle (req &optional timeout)
   "Wait until a status: idle message is received for PMSG-ID.
 This function waits until TIMEOUT for CLIENT to receive an idle
 status message for the request associated with PMSG-ID. If
 TIMEOUT is non-nil, it defaults to 1 second."
-  (jupyter-wait-until client 'status req timeout
+  (jupyter-wait-until 'status req timeout
     #'jupyter-message-status-idle-p))
 
-(defun jupyter-wait-until-received (client msg-type req &optional timeout)
+(defun jupyter-wait-until-received (msg-type req &optional timeout)
   "Wait for a message with MSG-TYPE to be received by CLIENT.
 This function waits until CLIENT receives a message from the
 kernel that satisfies the following conditions:
@@ -803,9 +803,8 @@ sending one. For example you would not be expecting an
 `kernel-info-reply'. See the jupyter messaging specification for
 more info
 http://jupyter-client.readthedocs.io/en/latest/messaging.html"
-  (declare (indent 2))
-  (jupyter-wait-until client msg-type req timeout
-    #'identity))
+  (declare (indent 1))
+  (jupyter-wait-until msg-type req timeout #'identity))
 
 (defun jupyter--handle-message (client channel)
   "Process a message on CLIENT's CHANNEL.
