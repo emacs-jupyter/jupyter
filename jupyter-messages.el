@@ -197,11 +197,11 @@ in this plist, an error is thrown.")
 
 ;;; Sending/receiving
 
-(cl-defmethod jupyter--send-encoded ((session jupyter-session)
-                                     socket
-                                     type
-                                     message
-                                     &optional flags)
+(cl-defmethod jupyter-send ((session jupyter-session)
+                            socket
+                            type
+                            message
+                            &optional flags)
   (declare (indent 1))
   (cl-destructuring-bind (msg-id . msg)
       (jupyter--encode-message session type :content message)
@@ -209,7 +209,7 @@ in this plist, an error is thrown.")
     (zmq-send-multipart socket msg flags)
     msg-id))
 
-(cl-defmethod jupyter--recv-decoded ((session jupyter-session) socket &optional flags)
+(cl-defmethod jupyter-recv ((session jupyter-session) socket &optional flags)
   (let ((msg (zmq-recv-multipart socket flags)))
     (when msg
       (cl-destructuring-bind (idents . parts)

@@ -272,14 +272,13 @@ shutdown/interrupt requests"
       (jupyter-stop-channel control-channel)
       (oset manager control-channel nil))))
 
-(cl-defmethod jupyter--send-encoded ((manager jupyter-kernel-manager) type message)
+(cl-defmethod jupyter-send ((manager jupyter-kernel-manager) type message)
   (unless (member type '("shutdown_request" "interrupt_request"))
     (error "Only shutdown or interrupt requests on control channel (%s)."
            type))
   (let ((session (oref manager session))
         (sock (oref (oref manager control-channel) socket)))
-    ;; TODO: Rename to just `jupyter--send'
-    (jupyter--send-encoded session sock type message)))
+    (jupyter-send session sock type message)))
 
 (cl-defmethod jupyter-stop-kernel ((manager jupyter-kernel-manager))
   (when (jupyter-kernel-alive-p manager)
@@ -296,12 +295,12 @@ shutdown/interrupt requests"
 If RESTART is non-nil, request a restart instead of a complete shutdown."
   ;; FIXME: This shutdown request doesn't seem to work
   (let ((msg (jupyter-message-shutdown-request)))
-    (jupyter--send-encoded manager "shutdown_request" msg)))
+    (jupyter-send manager "shutdown_request" msg)))
 
 (cl-defmethod jupyter-interrupt-request ((manager jupyter-kernel-manager))
   (if (equal (plist-get (oref manager kernel-spec) :interrupt_mode) "message")
       (let ((msg (jupyter-message-interrupt-request)))
-        (jupyter--send-encoded manager "interrupt_request" msg))
+        (jupyter-send manager "interrupt_request" msg))
     (interrupt-process (oref manager kernel) t)))
 
 ;;; Kernel client class
@@ -399,15 +398,16 @@ http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
 
 ;;; Lower level sending/receiving
 
-(cl-defmethod jupyter--send-encoded ((client jupyter-kernel-client)
-                                     channel
-                                     type
-                                     message
-                                     &optional flags)
+(cl-defmethod jupyter-send ((client jupyter-kernel-client)
+                            channel
+                            type
+                            message
+                            &optional flags)
   "Encode MESSAGE and send it on CLIENT's CHANNEL.
-The message should have a TYPE as found in the jupyter messaging
-protocol. Optional variable FLAGS are the flags sent to the
-underlying `zmq-send-multipart' call using the CHANNEL's socket."
+The message should have a TYPE corresponding to one of those
+found in the jupyter messaging protocol. Optional variable FLAGS
+are the flags sent to the underlying `zmq-send-multipart' call
+using the CHANNEL's socket."
   (declare (indent 1))
   (let* ((ioloop (oref client ioloop))
          (ring (or (process-get ioloop :jupyter-pending-requests)
@@ -489,13 +489,12 @@ underlying `zmq-send-multipart' call using the CHANNEL's socket."
                     (sock ctype)
                     (when (= (ring-length queue) (ring-size queue))
                       (send-recvd))
-                    (ring-insert queue (cons ctype (jupyter--recv-decoded session sock))))
+                    (ring-insert queue (cons ctype (jupyter-recv session sock))))
                    (send-message
                     (sock ctype rest)
                     (zmq-prin1
                      (cons 'sent
-                           (cons ctype (apply #'jupyter--send-encoded session
-                                              sock rest)))))
+                           (cons ctype (apply #'jupyter-send session sock rest)))))
                    (start-channel
                     (sock)
                     (zmq-connect
@@ -610,6 +609,7 @@ underlying `zmq-send-multipart' call using the CHANNEL's socket."
            (ring-insert ring data)
            (run-with-timer
             0.01 nil #'jupyter--handle-message client channel)))))))
+
 (cl-defmethod jupyter-start-channels ((client jupyter-kernel-client)
                                       &key (shell t)
                                       (iopub t)
@@ -884,7 +884,7 @@ the user. Otherwise `read-from-minibuffer' is used."
                               prompt))))
     ;; TODO: Check for 'allow_stdin'
     ;; http://jupyter-client.readthedocs.io/en/latest/messaging.html#stdin-messages
-    (jupyter--send-encoded client channel "input_reply" msg)))
+    (jupyter-send client channel "input_reply" msg)))
 
 ;;; control messages
 
@@ -907,7 +907,7 @@ the user. Otherwise `read-from-minibuffer' is used."
 If RESTART is non-nil, request a restart instead of a complete shutdown."
   (let ((channel (oref client shell-channel))
         (msg (jupyter-message-shutdown-request :restart restart)))
-    (jupyter--send-encoded client channel "shutdown_request" msg)))
+    (jupyter-send client channel "shutdown_request" msg)))
 
 (cl-defmethod jupyter-handle-shutdown ((client jupyter-kernel-client) req restart)
   "Default shutdown reply handler.")
@@ -918,7 +918,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
 ;;   ;; TODO: Check for interrupt_mode of the kernel's kernelspec
 ;;   ;; http://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-interrupt
 ;;   (let ((channel (oref client control-channel)))
-;;     (jupyter--send-encoded client channel "interrupt_request" ())))
+;;     (jupyter-send client channel "interrupt_request" ())))
 
 (cl-defmethod jupyter-handle-interrupt ((client jupyter-kernel-client) req)
   "Default interrupt reply handler.")
@@ -1008,7 +1008,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
               :user-expressions user-expressions
               :allow-stdin allow-stdin
               :stop-on-error stop-on-error)))
-    (jupyter--send-encoded client channel "execute_request" msg)))
+    (jupyter-send client channel "execute_request" msg)))
 
 (cl-defmethod jupyter-handle-execute ((client jupyter-kernel-client)
                                       req
@@ -1026,7 +1026,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
   (let ((channel (oref client shell-channel))
         (msg (jupyter-message-inspect-request
               :code code :pos pos :detail detail)))
-    (jupyter--send-encoded client channel "inspect_request" msg)))
+    (jupyter-send client channel "inspect_request" msg)))
 
 (cl-defmethod jupyter-handle-inspect ((client jupyter-kernel-client)
                                       req
@@ -1043,7 +1043,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
   (let ((channel (oref client shell-channel))
         (msg (jupyter-message-complete-request
               :code code :pos pos)))
-    (jupyter--send-encoded client channel "complete_request" msg)))
+    (jupyter-send client channel "complete_request" msg)))
 
 (cl-defmethod jupyter-handle-complete ((client jupyter-kernel-client)
                                        req
@@ -1077,7 +1077,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
               :n n
               :pattern pattern
               :unique unique)))
-    (jupyter--send-encoded client channel "history_request" msg)))
+    (jupyter-send client channel "history_request" msg)))
 
 (cl-defmethod jupyter-handle-history ((client jupyter-kernel-client) req history)
   "Default history reply handler.")
@@ -1089,7 +1089,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
   (let ((channel (oref client shell-channel))
         (msg (jupyter-message-is-complete-request
               :code code)))
-    (jupyter--send-encoded client channel "is_complete_request" msg)))
+    (jupyter-send client channel "is_complete_request" msg)))
 
 (cl-defmethod jupyter-handle-is-complete
     ((client jupyter-kernel-client) req status indent)
@@ -1102,7 +1102,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
   (let ((channel (oref client shell-channel))
         (msg (jupyter-message-comm-info-request
               :target-name target-name)))
-    (jupyter--send-encoded client channel "comm_info_request" msg)))
+    (jupyter-send client channel "comm_info_request" msg)))
 
 (cl-defmethod jupyter-handle-comm-info ((client jupyter-kernel-client) req comms)
   "Default comm info. reply handler.")
