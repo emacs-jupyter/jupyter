@@ -757,16 +757,11 @@ defaults to 1 second."
   (lexical-let ((msg nil)
                 (cond cond))
     (jupyter-add-callback msg-type req
-      (lambda (m) (setq msg (if (funcall cond m) m nil))
-        t))
-    (let ((time 0))
-      (catch 'timeout
-        (while (null msg)
-          (when (>= time timeout)
-            (throw 'timeout nil))
-          (sleep-for 0.01)
-          (setq time (+ time 0.01)))
-        msg))))
+      (lambda (m) (setq msg (when (funcall cond m) m))))
+    (with-timeout (timeout nil)
+      (while (null msg)
+        (sleep-for 0.01))
+      msg)))
 
 (defun jupyter-wait-until-idle (req &optional timeout)
   "Wait until a status: idle message is received for PMSG-ID.
