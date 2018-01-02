@@ -503,11 +503,11 @@ The first character of the cell code corresponds to position 1."
     (split-window-below)
     (set-window-buffer (next-window) buf)))
 
-(cl-defmethod jupyter-handle-execute ((client jupyter-repl-client)
-                                      req
-                                      execution-count
-                                      user-expressions
-                                      payload)
+(cl-defmethod jupyter-handle-execute-reply ((client jupyter-repl-client)
+                                            req
+                                            execution-count
+                                            user-expressions
+                                            payload)
   (oset client execution-count (1+ execution-count))
   (with-jupyter-repl-buffer client
     (let ((pos (point)))
@@ -577,7 +577,7 @@ The first character of the cell code corresponds to position 1."
       (jupyter-repl-insert s))
     (jupyter-repl-newline)))
 
-(cl-defmethod jupyter-handle-input ((client jupyter-repl-client) req prompt password)
+(cl-defmethod jupyter-handle-input-reply ((client jupyter-repl-client) req prompt password)
   (jupyter-repl-do-at-request client req
     (let ((value (cl-call-next-method)))
       (jupyter-repl-previous-cell)
@@ -603,12 +603,12 @@ The first character of the cell code corresponds to position 1."
   (jupyter-repl-replace-cell-code
    (ring-ref jupyter-repl-history -1)))
 
-(cl-defmethod jupyter-handle-history ((client jupyter-repl-client) req history)
+(cl-defmethod jupyter-handle-history-reply ((client jupyter-repl-client) req history)
   (with-jupyter-repl-buffer client
     (cl-loop for (session line-number input-output) in history
              do (ring-insert jupyter-repl-history input-output))))
 
-(cl-defmethod jupyter-handle-is-complete ((client jupyter-repl-client) req status indent)
+(cl-defmethod jupyter-handle-is-complete-reply ((client jupyter-repl-client) req status indent)
   (with-jupyter-repl-buffer client
     (pcase status
       ("complete"

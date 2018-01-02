@@ -872,7 +872,7 @@ To process a message the following steps are taken:
       (plist-get msg :content)
     (jupyter-handle-input client req prompt password)))
 
-(cl-defmethod jupyter-handle-input ((client jupyter-kernel-client) req prompt password)
+(cl-defmethod jupyter-handle-input-reply ((client jupyter-kernel-client) req prompt password)
   "Handle an input request from CLIENT's kernel.
 PROMPT is the prompt the kernel would like to show the user. If
 PASSWORD is non-nil, then `read-passwd' is used to get input from
@@ -909,7 +909,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
         (msg (jupyter-message-shutdown-request :restart restart)))
     (jupyter-send client channel "shutdown_request" msg)))
 
-(cl-defmethod jupyter-handle-shutdown ((client jupyter-kernel-client) req restart)
+(cl-defmethod jupyter-handle-shutdown-reply ((client jupyter-kernel-client) req restart)
   "Default shutdown reply handler.")
 
 ;; FIXME: This breaks the convention that all jupyter-request-* functions
@@ -920,7 +920,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
 ;;   (let ((channel (oref client control-channel)))
 ;;     (jupyter-send client channel "interrupt_request" ())))
 
-(cl-defmethod jupyter-handle-interrupt ((client jupyter-kernel-client) req)
+(cl-defmethod jupyter-handle-interrupt-reply ((client jupyter-kernel-client) req)
   "Default interrupt reply handler.")
 
 ;;; shell messages
@@ -939,7 +939,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                           payload
                                           &allow-other-keys)
                  content
-               (jupyter-handle-execute
+               (jupyter-handle-execute-reply
                 client req execution_count user_expressions payload)))
             ("inspect_reply"
              (cl-destructuring-bind (&key found
@@ -947,7 +947,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                           metadata
                                           &allow-other-keys)
                  content
-               (jupyter-handle-inspect
+               (jupyter-handle-inspect-reply
                 client req found data metadata)))
             ("complete_reply"
              (cl-destructuring-bind (&key matches
@@ -956,20 +956,20 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                           metadata
                                           &allow-other-keys)
                  content
-               (jupyter-handle-complete
+               (jupyter-handle-complete-reply
                 client req matches cursor_start cursor_end metadata)))
             ("history_reply"
              (cl-destructuring-bind (&key history &allow-other-keys)
                  content
-               (jupyter-handle-history client req history)))
+               (jupyter-handle-history-reply client req history)))
             ("is_complete_reply"
              (cl-destructuring-bind (&key status indent &allow-other-keys)
                  content
-               (jupyter-handle-is-complete client req status indent)))
+               (jupyter-handle-is-complete-reply client req status indent)))
             ("comm_info_reply"
              (cl-destructuring-bind (&key comms &allow-other-keys)
                  content
-               (jupyter-handle-comm-info client req comms)))
+               (jupyter-handle-comm-info-reply client req comms)))
             ("kernel_info_reply"
              (cl-destructuring-bind (&key protocol_version
                                           implementation
@@ -979,7 +979,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                           help_links
                                           &allow-other-keys)
                  content
-               (jupyter-handle-kernel-info
+               (jupyter-handle-kernel-info-reply
                 client req protocol_version implementation implementation_version
                 language_info banner help_links)))
             (_ (error "Message type not handled yet.")))
@@ -1010,11 +1010,11 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
               :stop-on-error stop-on-error)))
     (jupyter-send client channel "execute_request" msg)))
 
-(cl-defmethod jupyter-handle-execute ((client jupyter-kernel-client)
-                                      req
-                                      execution-count
-                                      user-expressions
-                                      payload)
+(cl-defmethod jupyter-handle-execute-reply ((client jupyter-kernel-client)
+                                            req
+                                            execution-count
+                                            user-expressions
+                                            payload)
   "Default execute reply handler.")
 
 (cl-defmethod jupyter-inspect-request ((client jupyter-kernel-client)
@@ -1028,11 +1028,11 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
               :code code :pos pos :detail detail)))
     (jupyter-send client channel "inspect_request" msg)))
 
-(cl-defmethod jupyter-handle-inspect ((client jupyter-kernel-client)
-                                      req
-                                      found
-                                      data
-                                      metadata)
+(cl-defmethod jupyter-handle-inspect-reply ((client jupyter-kernel-client)
+                                            req
+                                            found
+                                            data
+                                            metadata)
   "Default inspect reply handler.")
 
 (cl-defmethod jupyter-complete-request ((client jupyter-kernel-client)
@@ -1045,12 +1045,12 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
               :code code :pos pos)))
     (jupyter-send client channel "complete_request" msg)))
 
-(cl-defmethod jupyter-handle-complete ((client jupyter-kernel-client)
-                                       req
-                                       matches
-                                       cursor-start
-                                       cursor-end
-                                       metadata)
+(cl-defmethod jupyter-handle-complete-reply ((client jupyter-kernel-client)
+                                             req
+                                             matches
+                                             cursor-start
+                                             cursor-end
+                                             metadata)
   "Default complete reply handler.")
 
 (cl-defmethod jupyter-history-request ((client jupyter-kernel-client)
@@ -1079,7 +1079,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
               :unique unique)))
     (jupyter-send client channel "history_request" msg)))
 
-(cl-defmethod jupyter-handle-history ((client jupyter-kernel-client) req history)
+(cl-defmethod jupyter-handle-history-reply ((client jupyter-kernel-client) req history)
   "Default history reply handler.")
 
 (cl-defmethod jupyter-is-complete-request ((client jupyter-kernel-client)
@@ -1091,7 +1091,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
               :code code)))
     (jupyter-send client channel "is_complete_request" msg)))
 
-(cl-defmethod jupyter-handle-is-complete
+(cl-defmethod jupyter-handle-is-complete-reply
     ((client jupyter-kernel-client) req status indent)
   "Default is complete reply handler.")
 
@@ -1104,7 +1104,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
               :target-name target-name)))
     (jupyter-send client channel "comm_info_request" msg)))
 
-(cl-defmethod jupyter-handle-comm-info ((client jupyter-kernel-client) req comms)
+(cl-defmethod jupyter-handle-comm-info-reply ((client jupyter-kernel-client) req comms)
   "Default comm info. reply handler.")
 
 (cl-defmethod jupyter-kernel-info-request ((client jupyter-kernel-client))
@@ -1113,25 +1113,25 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
          (msg (jupyter-message-kernel-info-request)))
     (jupyter-send client channel "kernel_info_request" msg)))
 
-(cl-defmethod jupyter-handle-kernel-info ((client jupyter-kernel-client)
-                                          req
-                                          protocol-version
-                                          implementation
-                                          implementation-version
-                                          language-info
-                                          banner
-                                          help-links)
+(cl-defmethod jupyter-handle-kernel-info-reply ((client jupyter-kernel-client)
+                                                req
+                                                protocol-version
+                                                implementation
+                                                implementation-version
+                                                language-info
+                                                banner
+                                                help-links)
   "Default kernel-info reply handler.")
 
-;;; iopub messages
+;;; IOPUB message handlers
 
 (defun jupyter--handle-iopub-message (client req msg)
-  (cl-destructuring-bind (&key msg_type content &allow-other-keys) msg
-    (pcase msg_type
+  (let ((content (jupyter-message-content msg)))
+    (pcase (jupyter-message-type msg)
       ("shutdown_reply"
        (cl-destructuring-bind (&key restart &allow-other-keys)
            content
-         (jupyter-handle-shutdown client req restart)))
+         (jupyter-handle-shutdown-reply client req restart)))
       ("stream"
        (cl-destructuring-bind (&key name text &allow-other-keys)
            content
