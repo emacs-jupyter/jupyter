@@ -759,21 +759,20 @@ can be done like so:
               (nconc callbacks
                      (list (cons msg-type function))))))))))
 
-(defun jupyter-wait-until (msg-type req timeout cond)
-  "Wait until COND returns non-nil for a received message.
-COND is run for every received message that has a type of
-MSG-TYPE and whose parent header has a message ID of PMSG-ID. If
-no messages are received that pass these two conditions before
-TIMEOUT (in seconds), this function returns nil. Otherwise it
-returns the received message. Note that if TIMEOUT is nil, it
+(defun jupyter-wait-until (msg-type req timeout fun)
+  "Wait until FUN returns non-nil for a received message.
+FUN is run on every received message for request, REQ, that has
+type, MSG-TYPE. If FUN does not return a non-nil value before
+TIMEOUT, return nil. Otherwise return the message which caused
+FUN to return a non-nil value. Note that if TIMEOUT is nil, it
 defaults to 1 second."
   (declare (indent 3))
   (setq timeout (or timeout 1))
   (cl-check-type timeout number)
   (lexical-let ((msg nil)
-                (cond cond))
+                (fun fun))
     (jupyter-add-callback msg-type req
-      (lambda (m) (setq msg (when (funcall cond m) m))))
+      (lambda (m) (setq msg (when (funcall fun m) m))))
     (with-timeout (timeout nil)
       (while (null msg)
         (sleep-for 0.01))
