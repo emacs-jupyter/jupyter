@@ -307,28 +307,42 @@ in this plist, an error is thrown.")
 
 ;;; Convenience functions
 
-(defun jupyter-message-id (msg)
+(defsubst jupyter-message-id (msg)
+  "Get the ID of MSG."
   (plist-get msg :msg_id))
 
-(defun jupyter-message-parent-id (msg)
-  (jupyter-message-id
-   (plist-get msg :parent_header)))
+(defsubst jupyter-message-parent-id (msg)
+  "Get the parent ID of MSG."
+  (jupyter-message-id (plist-get msg :parent_header)))
 
-(defun jupyter-message-status-idle-p (msg)
-  (and (equal (plist-get msg :msg_type) "status")
-       (equal (plist-get (plist-get msg :content) :execution_state)
-              "idle")))
+(defsubst jupyter-message-type (msg)
+  "Get the MSG type."
+  (plist-get msg :msg_type))
 
-(defun jupyter-message-content (msg)
+(defsubst jupyter-message-content (msg)
+  "Get the MSG contents."
   (plist-get msg :content))
 
-(defun jupyter-message-time (msg)
-  "Convert the `:date' field of the message into a time object.
-See `current-time'."
+(defsubst jupyter-message-time (msg)
+  "Get the MSG time.
+The returned time has the same form as returned by
+`current-time'."
   (plist-get (plist-get msg :header) :date))
 
-(defun jupyter-message-type (msg)
-  (plist-get msg :msg_type))
+(defsubst jupyter-message-get (msg key)
+  "Get the value of KEY in the `jupyter-message-content' of MSG."
+  (plist-get (jupyter-message-content msg) key))
+
+(defsubst jupyter-message-data (msg mimetype)
+  "Get one of the MIMETYPE's in MSG's data.
+If MSG does not have a data key in its contents or the MIMETYPE
+does not exist in MSG's data, return nil. Otherwise return the
+value of the MIMETYPE in MSG's data."
+  (plist-get (jupyter-message-get msg :data) mimetype))
+
+(defun jupyter-message-status-idle-p (msg)
+  (and (equal (jupyter-message-type msg) "status")
+       (equal (jupyter-message-get msg :execution_state) "idle")))
 
 (provide 'jupyter-messages)
 
