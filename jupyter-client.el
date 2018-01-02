@@ -312,9 +312,9 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
     :documentation "A hash table with message ID's as keys. This
  is used to register callback functions to run once a reply from
  a previously sent request is received. See
- `jupyter-add-receive-callback'. Note that this is also used to
- filter received messages that originated from a previous request
- by this client. Whenever the client sends a message in which a
+ `jupyter-add-callback'. Note that this is also used to filter
+ received messages that originated from a previous request by
+ this client. Whenever the client sends a message in which a
  reply is expected, it sets an entry in this table to represent
  the fact that the message has been sent. So if there is a
  non-nil value for a message ID it means that a message has been
@@ -505,8 +505,8 @@ using the CHANNEL's socket."
                       (error (signal (car err) (cdr err))))))
            (condition-case nil
                (with-zmq-poller
-                ;; Also poll for standard-in events to be able to read commands from
-                ;; the parent emacs process without blocking
+                ;; Also poll for standard-in events to be able to read commands
+                ;; from the parent emacs process without blocking
                 (zmq-poller-register (current-zmq-poller) 0 zmq-POLLIN)
                 (mapc (lambda (x) (zmq-poller-register (current-zmq-poller)
                                                (car x)
@@ -514,18 +514,15 @@ using the CHANNEL's socket."
                    channels)
                 (unwind-protect
                     (while t
-                      ;; TODO: Dynamic polling period, if the rate of received
-                      ;; events is high, reduce the period. If the rate of
-                      ;; received events is low increase it. Sample the rate in
-                      ;; a time window that spans multiple polling periods.
-                      ;; Polling at 10 ms periods was causing a pretty sizable
-                      ;; portion of CPU time to be eaten up.
                       (when (and (= idle-count 2)
                                  (> (ring-length queue) 0))
                         (send-recvd))
                       (let ((events (condition-case err
                                         (zmq-poller-wait-all (current-zmq-poller) 5 20)
                                       (zmq-EINTR nil)
+                                      ;; TODO: For any other kind of error,
+                                      ;; just reset the polling loop by exiting
+                                      ;; `with-zmq-poller'.
                                       (error (signal (car err) (cdr err))))))
                         (if (null events) (setq idle-count (1+ idle-count))
                           (setq idle-count 0)
@@ -867,6 +864,7 @@ To process a message the following steps are taken:
 ;;; stdin messages
 
 (defun jupyter--handle-stdin-message (client req msg)
+;;; STDIN message requests/handlers
   (cl-destructuring-bind (&key prompt password &allow-other-keys)
       (plist-get msg :content)
     (jupyter-handle-input client req prompt password)))
@@ -876,6 +874,8 @@ To process a message the following steps are taken:
 PROMPT is the prompt the kernel would like to show the user. If
 PASSWORD is non-nil, then `read-passwd' is used to get input from
 the user. Otherwise `read-from-minibuffer' is used."
+  ;; TODO: Allow for quiting the input request. In this case, I suppose send an
+  ;; interrupt request to the kernel
   (let ((channel (oref client stdin-channel))
         (msg (jupyter-message-input-reply
               :value (funcall (if password #'read-passwd
@@ -900,6 +900,7 @@ the user. Otherwise `read-from-minibuffer' is used."
             (error "Error (%s): %s"
                    (plist-get content :ename) (plist-get content :evalue))
           (error "Error: aborted"))))))
+;;; CONTROL message requests/handlers
 
 (cl-defmethod jupyter-shutdown-request ((client jupyter-kernel-client) &optional restart)
   "Request a shutdown of CLIENT's kernel.
@@ -922,7 +923,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
 (cl-defmethod jupyter-handle-interrupt-reply ((client jupyter-kernel-client) req)
   "Default interrupt reply handler.")
 
-;;; shell messages
+;;; SHELL message requests/handlers
 
 ;; http://jupyter-client.readthedocs.io/en/latest/messaging.html#messages-on-the-shell-router-dealer-channel
 (defun jupyter--handle-shell-message (client req msg)
@@ -1168,7 +1169,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
          (jupyter-handle-update-display-data client req data metadata transient)))
       (_ (error "Message type not handled yet.")))))
 
-(cl-defmethod jupyter-handle-stream ((client jupyter-kernel-client) pmsg-id name text)
+(cl-defmethod jupyter-handle-stream ((client jupyter-kernel-client) req name text)
   "Default stream handler.")
 
 (cl-defmethod jupyter-handle-execute-input ((client jupyter-kernel-client)
