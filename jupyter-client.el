@@ -764,12 +764,10 @@ defaults to 1 second."
       msg)))
 
 (defun jupyter-wait-until-idle (req &optional timeout)
-  "Wait until a status: idle message is received for PMSG-ID.
-This function waits until TIMEOUT for CLIENT to receive an idle
-status message for the request associated with PMSG-ID. If
-TIMEOUT is non-nil, it defaults to 1 second."
-  (jupyter-wait-until 'status req timeout
-    #'jupyter-message-status-idle-p))
+  "Wait until TIMEOUT for REQ to receive an idle message.
+
+If TIMEOUT is non-nil, it defaults to 1 second."
+  (jupyter-wait-until 'status req timeout #'jupyter-message-status-idle-p))
 
 (defun jupyter-wait-until-received (msg-type req &optional timeout)
   "Wait for a message with MSG-TYPE to be received by CLIENT.
