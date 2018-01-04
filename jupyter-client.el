@@ -662,6 +662,7 @@ for the heartbeat channel."
 ;; `jupyter-idle-received-p' property is non-nil, then it signifies that the
 ;; request has been handled by the kernel.
 (cl-defstruct jupyter-request
+  ;; NOTE Use `jupyter-request-id' instead of `jupyter-request--id'
   (-id)
   (time (current-time))
   (idle-received-p nil)
@@ -669,6 +670,7 @@ for the heartbeat channel."
   (callbacks))
 
 (defun jupyter-request-id (req)
+  "Get the message ID for REQ."
   (with-timeout (0.5 (error "Request not processed."))
     (while (null (jupyter-request--id req))
       (sleep-for 0 10)))
@@ -676,7 +678,7 @@ for the heartbeat channel."
 
 (defun jupyter-request-inhibit-handlers (req)
   "Inhibit the execution of a `jupyter-kernel-client's handlers for REQ.
-Set `jupyter-request-run-handlers-p' to nil for REQ and return
+Sets `jupyter-request-run-handlers-p' to nil for REQ and returns
 REQ. This function is intended to be a convenience function so
 that you can do:
 
@@ -704,14 +706,14 @@ FUNCTION on when messages of that type are received for REQ. The
 symbol should be the same as one of the message types which are
 expected to be received from a kernel where underscore characters
 are replaced with hyphens, see
-http://jupyter-client.readthedocs.io/en/latest/messaging.html. So
-to add a callback which fires for and \"execute_reply\", MSG-TYPE
-should be the symbol `execute-reply'. As a special case if
-MSG-TYPE is t, FUNCTION is run for all received messages of REQ.
+http://jupyter-client.readthedocs.io/en/latest/messaging.html.
 
-If MSG-TYPE is a list, then it should be a list of symbols as
-described above. FUNCTION will then run for every type of message
-in the list.
+So to add a callback which fires for an \"execute_reply\",
+MSG-TYPE should be the symbol `execute-reply'. As a special case
+if MSG-TYPE is t, FUNCTION is run for all received messages of
+REQ. If MSG-TYPE is a list, then it should be a list of symbols
+as described above. FUNCTION will then run for every type of
+message in the list.
 
 REQ is a `jupyter-request' object as returned by the kernel
 request methods of a `jupyter-kernel-client'.
@@ -777,7 +779,6 @@ defaults to 1 second."
 
 (defun jupyter-wait-until-idle (req &optional timeout)
   "Wait until TIMEOUT for REQ to receive an idle message.
-
 If TIMEOUT is non-nil, it defaults to 1 second."
   (jupyter-wait-until 'status req timeout #'jupyter-message-status-idle-p))
 
@@ -828,7 +829,6 @@ are taken:
          `jupyter-handle-execute-result',
          `jupyter-handle-kernel-info-reply', ...
    - Cleanup request when kernel is done processing it"
-
   (when (jupyter-channel-messages-available-p channel)
     (let* ((msg (jupyter-channel-get-message channel))
            (pmsg-id (jupyter-message-parent-id msg))
@@ -850,8 +850,6 @@ are taken:
               (setf (jupyter-request-idle-received-p req) t)
               (remhash pmsg-id requests))))))
     (run-with-timer 0.005 nil #'jupyter-handle-message client channel)))
-
-;;; Received message handlers
 
 ;;; STDIN message requests/handlers
 

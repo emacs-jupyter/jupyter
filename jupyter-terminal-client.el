@@ -177,9 +177,11 @@ can contain the following keywords along with their values:
                          args))))
 
 (defun jupyter-repl-newline ()
+  "Insert a read-only newline into the `current-buffer'."
   (jupyter-repl-insert "\n"))
 
 (defun jupyter-repl-insert-html (html)
+  "Parse and insert the HTML string using `shr-insert-document'."
   (let ((start (point)))
     (shr-insert-document
      (with-temp-buffer
@@ -188,6 +190,10 @@ can contain the following keywords along with their values:
     (add-text-properties start (point) '(read-only t))))
 
 (defun jupyter-repl-insert-latex (tex)
+  "Generate and insert a LaTeX image based on TEX.
+
+Note that this uses `org-format-latex' to generate the LaTeX
+image."
   (require 'org)
   (let (beg end)
     (setq beg (point))
@@ -774,17 +780,23 @@ The first character of the cell code corresponds to position 1."
   (add-hook 'after-change-functions 'jupyter-repl-after-buffer-change nil t))
 
 (defun jupyter-repl-initialize-fontification (ext)
+  "Enable `font-lock-mode' based on the mode corresponding to EXT.
+EXT should be a file extension, including the '.', and the mode
+enabled will be the one of those registered in
+`auto-mode-alist'."
   (let (fld)
     (with-jupyter-repl-lang-buffer
       (setq buffer-file-name (concat "jupyter-repl-lang" ext))
       (set-auto-mode)
       (setq buffer-file-name nil)
       (setq fld font-lock-defaults))
-    ;; Set the `font-lock-defaults' to those of the REPL language
     (setq font-lock-defaults fld)
     (font-lock-mode)))
 
 (defun jupyter-repl-insert-banner (banner)
+  "Insert BANNER into the `current-buffer'.
+Make the text of BANNER read only and apply the `shadow' face to
+it."
   (let ((start (point))
         (inhibit-modification-hooks t))
     (jupyter-repl-insert banner)
