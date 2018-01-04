@@ -634,26 +634,21 @@ The first character of the cell code corresponds to position 1."
     (setq current-cell-pos
           (save-excursion
             (goto-char (point-max))
-            (condition-case nil
-                (jupyter-repl-cell-beginning-position)
-              (beginning-of-buffer nil))))
-    (if current-cell-pos
-        (if (< (point) current-cell-pos)
-            (goto-char (point-max))
-          ;; TODO: Not all kernels will respond to an is_complete_request. The
-          ;; jupyter console will switch to its own internal handler when the
-          ;; request times out.
-          (let* ((code (jupyter-repl-cell-code))
-                 (res (jupyter-wait-until-received 'is-complete-reply
-                        (jupyter-is-complete-request
-                         jupyter-repl-current-client
-                         :code code))))
-            ;; If the kernel responds to an is-complete request then the
-            ;; is-complete handler takes care of executing the code.
-            (unless res
-              ;; TODO: Indent or send (on prefix arg)?
-              )))
-      (jupyter-repl-insert-prompt 'in))))
+            (jupyter-repl-cell-beginning-position)))
+    (if (< (point) current-cell-pos)
+        (goto-char (point-max))
+      ;; TODO: Not all kernels will respond to an is_complete_request. The
+      ;; jupyter console will switch to its own internal handler when the
+      ;; request times out.
+      (let ((res (jupyter-wait-until-received 'is-complete-reply
+                   (jupyter-is-complete-request
+                    jupyter-repl-current-client
+                    :code (jupyter-repl-cell-code)))))
+        ;; If the kernel responds to an is-complete request then the
+        ;; is-complete handler takes care of executing the code.
+        (unless res
+          ;; TODO: Indent or send (on prefix arg)?
+          )))))
 
 (defun jupyter-repl-indent-line ()
   "Indent the line according to the language of the REPL."
