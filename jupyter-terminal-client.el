@@ -732,12 +732,10 @@ The first character of the cell code corresponds to position 1."
                    :pos (1- (jupyter-repl-cell-code-position)))
                 (apply-partially
                  (lambda (cb msg)
-                   (if (equal (plist-get (jupyter-message-content msg) :status)
-                              "ok")
-                       (cl-destructuring-bind (&key matches &allow-other-keys)
-                           (jupyter-message-content msg)
-                         (funcall cb matches))
-                     (funcall cb '())))
+                   (cl-destructuring-bind (&key status matches &allow-other-keys)
+                       (jupyter-message-content msg)
+                     (if (equal status "ok") (funcall cb matches)
+                       (funcall cb '()))))
                  cb))))))))
     (sorted t)
     (doc-buffer
@@ -747,21 +745,14 @@ The first character of the cell code corresponds to position 1."
                     client
                     :code arg :pos (length arg))))
             (doc nil))
-       (when (and msg (equal (plist-get
-                              (jupyter-message-content msg) :status)
-                             "ok"))
-         (cl-destructuring-bind (&key found data &allow-other-keys)
+       (when msg
+         (cl-destructuring-bind (&key status found data &allow-other-keys)
              (jupyter-message-content msg)
-           (when found
-             ;; TODO: Generalize this
-             (setq doc (or (and (plist-get data :text/markdown)
-                                (jupyter-repl-fontify-according-to-mode
-                                 'markdown-mode
-                                 (plist-get data :text/markdown)))
-                           (plist-get data :text/plain)))
-             (with-current-buffer (company-doc-buffer doc)
-               (unless (plist-get data :text/markdown)
-                 (xterm-color-colorize-buffer))
+           (when (and (equal status "ok") found)
+             (with-current-buffer (company-doc-buffer)
+               ;; TODO: This uses `font-lock-face', should font lcok mode be
+               ;; enabled or should I add an option to just use `face'
+               (jupyter-repl-insert-data data)
                (current-buffer)))))))))
 
 ;;; The mode
