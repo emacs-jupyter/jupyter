@@ -354,11 +354,10 @@ connection plist containing the keys required for a connection
 plist. See
 http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
   (cl-check-type file-or-plist (or json-plist file-exists))
-
-  (let ((conn-info (let ((json-array-type 'list)
-                         (json-object-type 'plist)
-                         (json-false nil))
-                     (if (json-plist-p file-or-plist) file-or-plist
+  (let ((conn-info (if (json-plist-p file-or-plist) file-or-plist
+                     (let ((json-array-type 'list)
+                           (json-object-type 'plist)
+                           (json-false nil))
                        (json-read-file file-or-plist)))))
     (oset client conn-info conn-info)
     (cl-destructuring-bind
