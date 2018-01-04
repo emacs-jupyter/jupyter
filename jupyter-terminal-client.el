@@ -804,18 +804,19 @@ it."
     (add-text-properties start (point) '(font-lock-face shadow fontified t))))
 
 (defun jupyter-repl-update-execution-counter ()
-  (jupyter-add-callback 'execute-reply
-      (jupyter-execute-request
-       jupyter-repl-current-client :code "" :silent t)
-    (apply-partially
-     (lambda (client msg)
-       (oset client execution-count
-             (plist-get (jupyter-message-content msg) :execution_count))
-       (with-jupyter-repl-buffer client
-         (jupyter-repl-insert-prompt 'in))
-       ;; Don't pass to handlers
-       nil)
-     jupyter-repl-current-client)))
+  (let ((req (jupyter-execute-request jupyter-repl-current-client
+                                      :code "" :silent t)))
+    (jupyter-request-inhibit-handlers req)
+    (jupyter-add-callback 'execute-reply req
+      (apply-partially
+       (lambda (client msg)
+         (message "foo")
+         (oset client execution-count
+               (1+ (jupyter-message-get msg :execution_count)))
+         (with-jupyter-repl-buffer client
+           (jupyter-repl-insert-prompt 'in)))
+       jupyter-repl-current-client))
+    (jupyter-wait-until-idle req)))
 
 (defun run-jupyter-repl (kernel-name)
   (interactive
