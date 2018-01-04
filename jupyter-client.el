@@ -850,8 +850,7 @@ are taken:
               (when (jupyter-request-run-handlers-p req)
                 (jupyter-handle-message channel client req msg))
             (when (jupyter-message-status-idle-p msg)
-              (setf (jupyter-request-idle-received-p req) t))
-            (when (jupyter-request-idle-received-p req)
+              (setf (jupyter-request-idle-received-p req) t)
               (remhash pmsg-id requests))))))
     (run-with-timer 0.005 nil #'jupyter-handle-message client channel)))
 
