@@ -837,7 +837,7 @@ it."
                        for info = (jupyter-wait-until-received 'kernel-info-reply
                                     (jupyter-kernel-info-request client) 10)
                        when info return info)))
-            (when info (plist-get info :content))))
+            (when info (jupyter-message-content info))))
     (unless (oref km kernel-info)
       (error "Kernel did not respond to kernel-info request."))
     (with-jupyter-repl-buffer client
