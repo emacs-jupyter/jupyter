@@ -291,7 +291,7 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
             props (list 'read-only nil 'rear-nonsticky t))))
     (add-text-properties (overlay-start ov) (overlay-end ov) props)))
 
-(defun jupyter-repl-update-cell-prompt (str)
+(defun jupyter-repl-cell-update-prompt (str)
   (let ((ov (car (overlays-at (jupyter-repl-cell-beginning-position)))))
     (when ov
       (overlay-put ov 'after-string
@@ -299,14 +299,14 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
                     " " 'display (jupyter-repl--prompt-display-value
                                   str 'jupyter-repl-input-prompt))))))
 
-(defun jupyter-repl-mark-cell-busy ()
-  (jupyter-repl-update-cell-prompt "In [*]:"))
+(defun jupyter-repl-cell-mark-busy ()
+  (jupyter-repl-cell-update-prompt "In [*]:"))
 
-(defun jupyter-repl-unmark-cell-busy ()
-  (jupyter-repl-update-cell-prompt
+(defun jupyter-repl-cell-unmark-busy ()
+  (jupyter-repl-cell-update-prompt
    (format "In [%d]:" (jupyter-repl-cell-count))))
 
-(defun jupyter-repl-cell-count (&optional cross-boundary)
+(defun jupyter-repl-cell-count ()
   (let ((pos (if (jupyter-repl-cell-beginning-p) (point)
                (save-excursion
                  (jupyter-repl-previous-cell)
@@ -429,7 +429,7 @@ The first character of the cell code corresponds to position 1."
   "Make the current cell read only."
   (let* ((beg (jupyter-repl-cell-beginning-position))
          (count (jupyter-repl-cell-count)))
-    (jupyter-repl-mark-cell-busy)
+    (jupyter-repl-cell-mark-busy)
     (goto-char (point-max))
     (jupyter-repl-newline)
     (add-text-properties
@@ -531,7 +531,7 @@ The first character of the cell code corresponds to position 1."
                (goto-char (point-max))
                (jupyter-repl-insert-prompt 'in)
                nil))
-        (jupyter-repl-unmark-cell-busy)
+        (jupyter-repl-cell-unmark-busy)
         (goto-char pos)))
 
     (when payload
@@ -574,7 +574,7 @@ The first character of the cell code corresponds to position 1."
       ;; `jupyter-repl-previous-cell' will take us back to the start of the
       ;; cell corresponding to REQ.
       (jupyter-repl-previous-cell)
-      (jupyter-repl-unmark-cell-busy))
+      (jupyter-repl-cell-unmark-busy))
     (let ((s (mapconcat #'xterm-color-filter traceback "\n")))
       (add-text-properties
        0 (length s) '(fontified t font-lock-fontified t font-lock-multiline t) s)
