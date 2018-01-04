@@ -443,9 +443,9 @@ using the CHANNEL's socket."
               (channels (list (cons stdin :stdin)
                               (cons shell :shell)
                               (cons iopub :iopub)))
-              (priorities (list (cons :iopub 4)
-                                (cons :stdin 4)
-                                (cons :shell 2)))
+              (priorities (list (cons :shell 4)
+                                (cons :iopub 2)
+                                (cons :stdin 2)))
               (idle-count 0)
               (queue (make-ring 10)))
          (cl-flet ((send-recvd
