@@ -572,8 +572,7 @@ using the CHANNEL's socket."
    ((cl-loop for type in '("exited" "failed" "finished" "killed" "deleted")
              thereis (string-prefix-p type event))
     (kill-buffer (process-buffer ioloop))
-    (when (jupyter-channel-alive-p (oref client hb-channel))
-      (jupyter-stop-channel (oref client hb-channel)))
+    (jupyter-stop-channel (oref client hb-channel))
     (oset client ioloop nil))))
 
 (defun jupyter--ioloop-filter (client event)

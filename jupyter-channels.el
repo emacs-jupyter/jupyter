@@ -186,11 +186,12 @@ connected."
 
 (cl-defmethod jupyter-stop-channel ((channel jupyter-hb-channel))
   "Stop the heartbeat CHANNEL."
-  (cancel-timer (oref channel timer))
-  (zmq-socket-set (oref channel socket) zmq-LINGER 0)
-  (zmq-close (oref channel socket))
-  (oset channel socket nil)
-  (oset channel timer nil))
+  (when (jupyter-channel-alive-p channel)
+    (cancel-timer (oref channel timer))
+    (zmq-socket-set (oref channel socket) zmq-LINGER 0)
+    (zmq-close (oref channel socket))
+    (oset channel socket nil)
+    (oset channel timer nil)))
 
 (cl-defmethod jupyter-start-channel ((channel jupyter-hb-channel) &key identity)
   (unless (jupyter-channel-alive-p channel)
