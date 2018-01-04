@@ -1,5 +1,5 @@
 (require 'zmq)
-(eval-when-compile (require 'cl))
+(require 'cl-lib)
 (require 'ring)
 (require 'eieio)
 
@@ -117,7 +117,9 @@ A channel is alive if its socket property is bound to a
 
 (cl-defmethod jupyter-channel-get-message ((channel jupyter-channel))
   (unless (ring-empty-p (oref channel recv-queue))
-    (ring-remove (oref channel recv-queue))))
+    (cl-destructuring-bind (idents . msg)
+        (ring-remove (oref channel recv-queue))
+      msg)))
 
 (cl-defmethod jupyter-channel-messages-available-p ((channel jupyter-channel))
   (not (ring-empty-p (oref channel recv-queue))))
