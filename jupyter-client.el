@@ -303,7 +303,7 @@ using the CHANNEL's socket."
                                      '(stdin-channel
                                        shell-channel
                                        iopub-channel)))))
-         (jupyter-channel-push-message channel data)
+         (jupyter-push-message channel data)
          (run-with-timer 0.001 nil #'jupyter-handle-message client channel))))))
 
 (cl-defmethod jupyter-start-channels ((client jupyter-kernel-client)
@@ -496,8 +496,8 @@ are taken:
          `jupyter-handle-execute-result',
          `jupyter-handle-kernel-info-reply', ...
    - Cleanup request when kernel is done processing it"
-  (when (jupyter-channel-messages-available-p channel)
-    (let* ((msg (jupyter-channel-get-message channel))
+  (when (jupyter-messages-available-p channel)
+    (let* ((msg (jupyter-get-message channel))
            (pmsg-id (jupyter-message-parent-id msg))
            (requests (oref client requests))
            (req (gethash pmsg-id requests)))
