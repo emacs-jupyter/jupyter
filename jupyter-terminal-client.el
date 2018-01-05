@@ -42,9 +42,8 @@
    (buffer :initarg :buffer)
    (execution-count :initform 1)))
 
-;; TODO: Make this dynamics by updarting the width of the margin whenever the
-;; prompt string gets too long. This probably wont happen very often
-(defvar jupyter-repl-prompt-margin-width 12)
+(defvar jupyter-repl-prompt-margin-width 12
+  "The width of the margin which displays prompt strings.")
 
 (defvar-local jupyter-repl-lang-buffer nil
   "A buffer with the current major mode set to the language of
