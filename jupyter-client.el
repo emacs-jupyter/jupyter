@@ -349,14 +349,19 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
     :initarg :stdin-channel
     :documentation "The stdin channel.")))
 
-(cl-defmethod jupyter-client-initialize-connection
+(cl-defmethod jupyter-initialize-connection
     ((client jupyter-kernel-client)
      file-or-plist)
-  "Read a connection FILE-OR-PLIST and return a `jupyter-kernel-client'.
-If FILE-OR-PLIST is a file name, the connection info is read from
-the file. If FILE-OR-PLIST is a plist, it is assumed to be a
-connection plist containing the keys required for a connection
-plist. See
+  "Initialize CLIENT with a connection FILE-OR-PLIST.
+If FILE-OR-PLIST is a file name, then it is assumed to be a file
+containing a JSON dictionary with the necessary keys for
+connecting to a Jupyter kernel. This file will be read using
+`json-read-file' and the CLIENT's channels initialized using the
+connection info read from the plist created from the files
+contents. If FILE-OR-PLIST is a plist, then the CLIENT's channels
+is initialized from the plist in the same way as described above.
+Again, under the assumption that the plist has the necessay keys
+for connecting to a Jupyter kernel, see
 http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
   (cl-check-type file-or-plist (or json-plist file-exists))
   (let ((conn-info (if (json-plist-p file-or-plist) file-or-plist
@@ -397,7 +402,7 @@ http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
   (let ((km (car (alist-get :kernel-manager slots))))
     (if (not km) (cl-call-next-method)
       (cl-check-type km jupyter-kernel-manager)
-      (jupyter-client-initialize-connection client (oref km conn-info))
+      (jupyter-initialize-connection client (oref km conn-info))
       client)))
 
 ;;; Lower level sending/receiving
