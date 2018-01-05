@@ -91,7 +91,8 @@ http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
                'jupyter-shell-channel
                :endpoint (format "%s:%d" addr shell_port)))
         (oset client hb-channel
-              (jupyter-hb-channel
+              (make-instance
+               'jupyter-hb-channel
                :endpoint (format "%s:%d" addr hb_port)))
         (oset client iopub-channel
               (make-instance
