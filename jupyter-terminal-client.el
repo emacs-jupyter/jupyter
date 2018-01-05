@@ -218,6 +218,12 @@ image."
          (plist-get data :image/png))
         nil 'data)
        (propertize " " 'read-only t)))
+     ((and (memq :image/svg+xml mimetypes) (image-type-available-p 'svg))
+      (jupyter-repl-newline)
+      (insert-image
+       (create-image
+        (plist-get data :image/svg+xml) 'svg)
+       (propertize " " 'read-only t)))
      ((memq :text/html mimetypes)
       ;; TODO: If this can fail handle the execute request again but with
       ;; the html key removed from the data plist
