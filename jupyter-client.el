@@ -5,7 +5,12 @@
 (require 'jupyter-messages)
 
 (declare-function string-trim-right "subr-x" (str))
-(defvar jupyter--debug nil)
+
+(defvar jupyter--debug nil
+  "Set to non-nil to emit sent and received messages to *Messages*.")
+
+(defvar jupyter-default-timeout 1
+  "The default timeout in seconds for `jupyter-wait-until'.")
 
 ;;; Kernel client class
 
@@ -763,9 +768,9 @@ FUN is run on every received message for request, REQ, that has
 type, MSG-TYPE. If FUN does not return a non-nil value before
 TIMEOUT, return nil. Otherwise return the message which caused
 FUN to return a non-nil value. Note that if TIMEOUT is nil, it
-defaults to 1 second."
+defaults to `jupyter-default-timeout'."
   (declare (indent 3))
-  (setq timeout (or timeout 1))
+  (setq timeout (or timeout jupyter-default-timeout))
   (cl-check-type timeout number)
   (lexical-let ((msg nil)
                 (fun fun))
@@ -778,7 +783,7 @@ defaults to 1 second."
 
 (defun jupyter-wait-until-idle (req &optional timeout)
   "Wait until TIMEOUT for REQ to receive an idle message.
-If TIMEOUT is non-nil, it defaults to 1 second."
+If TIMEOUT is non-nil, it defaults to `jupyter-default-timeout'."
   (jupyter-wait-until 'status req timeout #'jupyter-message-status-idle-p))
 
 (defun jupyter-wait-until-received (msg-type req &optional timeout)
