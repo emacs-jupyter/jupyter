@@ -1,4 +1,5 @@
 (require 'jupyter-client)
+(require 'jupyter-kernel-manager)
 (require 'xterm-color)
 (require 'shr)
 
@@ -815,7 +816,7 @@ it."
     (message "Starting %s kernel..." kernel-name)
     ;; Populate connection info
     (jupyter-start-kernel km)
-    (setq client (jupyter-repl-client :kernel-manager km))
+    (setq client (jupyter-make-client km 'jupyter-repl-client))
     (oset client buffer (generate-new-buffer
                          (format "*jupyter-repl[%s]*" (oref km name))))
     (jupyter-start-channels client)

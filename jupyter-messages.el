@@ -1,60 +1,14 @@
-(require 'hmac-def)
-(require 'cl-lib)
-(require 'json)
+(require 'jupyter-base)
 (require 'jupyter-channels)
-
-(defconst jupyter-protocol-version "5.3"
-  "The jupyter protocol version that is implemented.")
 
 (defconst jupyter-message-delimiter "<IDS|MSG>"
   "The message delimiter required in the jupyter messaging
 protocol.")
 
-(defconst jupyter--false :json-false
-  "The symbol used to disambiguate nil from a true boolean
-false.")
-
-(defconst jupyter--received-message-types
-  (list 'execute-result "execute_result"
-        'execute-reply "execute_reply"
-        'inspect-reply "inspect_reply"
-        'complete-reply "complete_reply"
-        'history-reply "history_reply"
-        'is-complete-reply "is_complete_reply"
-        'comm-info-reply "comm_info_reply"
-        'kernel-info-reply "kernel_info_reply"
-        'shutdown-reply "shutdown_reply"
-        'interrupt-reply "interrupt_reply"
-        'stream "stream"
-        'display-data "display_data"
-        'update-display-data "update_display_data"
-        'execute-input "execute_input"
-        'error "error"
-        'status "status"
-        'clear-output "clear_output"
-        'input-reply "input_reply")
-  "A plist mapping symbols to received message types.
-This is used to give some protection against invalid message
-types in `jupyter-add-receive-callback'. If the MSG-TYPE argument
-of `jupyter-add-receive-callback' does not match one of the keys
-in this plist, an error is thrown.")
-
-;;; Session object
-
-(cl-defstruct (jupyter-session
-               (:constructor nil)
-               (:constructor
-                jupyter-session
-                (&key (key nil) &aux (id (jupyter--new-uuid)))))
-  (id nil :read-only t)
-  (key nil :read-only t))
+(defconst jupyter-false :json-false
+  "The symbol used to disambiguate nil from boolean false.")
 
 ;;; Signing messages
-
-;; https://tools.ietf.org/html/rfc4868
-(defun sha256 (object)
-  (secure-hash 'sha256 object nil nil t))
-(define-hmac-function hmac-sha256 sha256 64 32)
 
 (defun jupyter--sign-message (session parts)
   (if (> (length (jupyter-session-key session)) 0)
@@ -63,28 +17,6 @@ in this plist, an error is thrown.")
                                  (jupyter-session-key session))
        concat (format "%02x" b))
     ""))
-
-;; TODO: Better UUID randomness, `cl-random' seeds the random state with the
-;; current time but only to second resolution.
-(defun jupyter--new-uuid ()
-  "Make a version 4 UUID."
-  (format "%04x%04x-%04x-%04x-%04x-%06x%06x"
-          (cl-random 65536)
-          (cl-random 65536)
-          (cl-random 65536)
-          ;; https://tools.ietf.org/html/rfc4122
-          (let ((r (cl-random 65536)))
-            (if (= (byteorder) ?l)
-                ;; ?l = little-endian
-                (logior (logand r 4095) 16384)
-              ;; big-endian
-              (logior (logand r 65295) 64)))
-          (let ((r (cl-random 65536)))
-            (if (= (byteorder) ?l)
-                (logior (logand r 49151) 32768)
-              (logior (logand r 65471) 128)))
-          (cl-random 16777216)
-          (cl-random 16777216)))
 
 (defun jupyter--split-identities (parts)
   "Extract the identities from a list of message PARTS."
@@ -102,7 +34,7 @@ in this plist, an error is thrown.")
 
 (defun jupyter--message-header (session msg-type)
   (list
-   :msg_id (jupyter--new-uuid)
+   :msg_id (jupyter-new-uuid)
    :msg_type msg-type
    :version jupyter-protocol-version
    :username user-login-name

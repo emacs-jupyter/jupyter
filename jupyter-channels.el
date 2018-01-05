@@ -1,15 +1,6 @@
-(require 'zmq)
-(require 'cl-lib)
+(require 'jupyter-connection)
 (require 'ring)
-(require 'eieio)
-
-(defconst jupyter-channel-socket-types
-  (list :hb zmq-REQ
-        :shell zmq-DEALER
-        :iopub zmq-SUB
-        :stdin zmq-DEALER
-        :control zmq-DEALER)
-  "The socket types for the various channels used by `jupyter'.")
+(eval-when-compile (require 'cl))
 
 (defclass jupyter-channel ()
   ((type
@@ -53,23 +44,6 @@
 (defclass jupyter-control-channel (jupyter-channel)
   ((type :initform :control))
   :documentation "A base class for control channels.")
-
-(defun jupyter-connect-endpoint (type endpoint &optional identity)
-  "Create socket with type TYPE and connect it to ENDPOINT.
-If IDENTITY is non-nil, it will be set as the ROUTING_ID of the
-socket."
-  (let ((sock (zmq-socket (current-zmq-context) type)))
-    (zmq-socket-set sock zmq-LINGER 1000)
-    (when identity
-      (zmq-socket-set sock zmq-ROUTING_ID identity))
-    (zmq-connect sock endpoint)
-    sock))
-
-(defun jupyter-connect-channel (ctype endpoint &optional identity)
-  (let ((sock-type (plist-get jupyter-channel-socket-types ctype)))
-    (unless sock-type
-      (error "Invalid channel type (%s)" ctype))
-    (jupyter-connect-endpoint sock-type endpoint identity)))
 
 (cl-defmethod jupyter-start-channel ((channel jupyter-channel) &key identity)
   "Start a CHANNEL.
