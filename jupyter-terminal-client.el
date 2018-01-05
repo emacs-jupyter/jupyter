@@ -631,12 +631,10 @@ The first character of the cell code corresponds to position 1."
 
 (defun jupyter-repl-ret (arg)
   (interactive "P")
-  (let (current-cell-pos)
-    (setq current-cell-pos
-          (save-excursion
-            (goto-char (point-max))
-            (jupyter-repl-cell-beginning-position)))
-    (if (< (point) current-cell-pos)
+  (let ((last-cell-pos (save-excursion
+                         (goto-char (point-max))
+                         (jupyter-repl-cell-beginning-position))))
+    (if (< (point) last-cell-pos)
         (goto-char (point-max))
       ;; TODO: Not all kernels will respond to an is_complete_request. The
       ;; jupyter console will switch to its own internal handler when the
