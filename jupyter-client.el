@@ -596,7 +596,7 @@ using the CHANNEL's socket."
                   (jupyter-message-parent-id (cdr data))
                   (jupyter-message-content (cdr data))))
        (let ((channel (cl-find-if (lambda (c) (eq (oref c type) ctype))
-                                  (mapcar (lambda (x) (eieio-oref client x))
+                                  (mapcar (lambda (x) (slot-value client x))
                                      '(stdin-channel
                                        shell-channel
                                        iopub-channel)))))
@@ -649,8 +649,7 @@ for the heartbeat channel."
                         'iopub-channel
                         'hb-channel
                         'stdin-channel)
-   if (jupyter-channel-alive-p (eieio-oref client channel))
-   return t))
+   thereis (jupyter-channel-alive-p (slot-value client channel))))
 
 ;;; Message callbacks
 
