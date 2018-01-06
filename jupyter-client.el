@@ -49,27 +49,31 @@
     :initarg :stdin-channel
     :documentation "The stdin channel.")))
 
-(cl-defmethod jupyter-initialize-connection
-    ((client jupyter-kernel-client)
-     file-or-plist)
+(cl-defmethod jupyter-initialize-connection ((client jupyter-kernel-client)
+                                             &optional file-or-plist)
   "Initialize CLIENT with a connection FILE-OR-PLIST.
-If FILE-OR-PLIST is a file name, then it is assumed to be a file
-containing a JSON dictionary with the necessary keys for
-connecting to a Jupyter kernel. This file will be read using
-`json-read-file' and the CLIENT's channels initialized using the
-connection info read from the plist created from the files
-contents. If FILE-OR-PLIST is a plist, then the CLIENT's channels
-is initialized from the plist in the same way as described above.
-Again, under the assumption that the plist has the necessay keys
-for connecting to a Jupyter kernel, see
-http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
-  (cl-check-type file-or-plist (or json-plist file-exists))
-  (let ((conn-info (if (json-plist-p file-or-plist) file-or-plist
-                     (let ((json-array-type 'list)
-                           (json-object-type 'plist)
-                           (json-false nil))
-                       (json-read-file file-or-plist)))))
-    (oset client conn-info conn-info)
+When FILE-OR-PLIST is a file name, read the JSON connection
+information from the file and initialize CLIENT's connection and
+channels from the file's contents. When FILE-OR-PLIST is a plist,
+initialize CLIENT's connection and channels from the plist. When
+FILE-OR-PLIST is nil, then the `conn-info' slot of CLIENT is used
+to initialize the connection. The necessary keys to initialize a
+connection can be found at
+http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files.
+
+As a side effect, if CLIENT is already connected to a kernel its
+connection is terminated before initializing."
+  (let ((conn-info (if file-or-plist
+                       (oset client conn-info
+                             (if (json-plist-p file-or-plist) file-or-plist
+                               (let ((json-array-type 'list)
+                                     (json-object-type 'plist)
+                                     (json-false nil))
+                                 (json-read-file file-or-plist))))
+                     (oref client conn-info))))
+    (unless conn-info
+      (error "Can't initialize connection without connection info."))
+
     (cl-destructuring-bind
         (&key shell_port iopub_port stdin_port hb_port control_port ip
               key transport signature_scheme kernel_name
@@ -368,7 +372,11 @@ See `jupyter-add-callback'."
       (and cb-for-type (funcall cb-for-type msg)))))
 
 (defun jupyter--add-callback (req msg-type cb)
-  "Add REQ MSG-TYPE callback, CB."
+  "Helper function for `jupyter-add-callback'.
+REQ is a `jupyter-request' object, MSG-TYPE should be one of the
+keywords corresponding to a received message type in
+`jupyter-message-types', and CB will be the callback that will be
+run when MSG-TYPE is received for REQ."
   (setq msg-type (or (plist-get jupyter-message-types msg-type)
                      ;; A msg-type of t means that FUNCTION is run for all
                      ;; messages associated with a request.
@@ -398,13 +406,14 @@ to one of the keys in `jupyter-message-types'. MSG-TYPE can also
 be a list, in which case run CB for every MSG-TYPE in the list.
 If MSG-TYPE is t, then run CB for every message received for REQ.
 CB is the callback function which will run with a single
-argument, a message whose `jupyter-message-parent-id' is the same
-as the `jupyter-request-id' of REQ and whose
+argument, a message whose `jupyter-message-parent-id' is `equal'
+to the `jupyter-request-id' of REQ and whose
 `jupyter-message-type' corresponds to the value of MSG-TYPE in
-the `jupyter-message-types' plist. Any additional arguments to
-`jupyter-add-callback' are interpreted as additional CALLBACKS to
-add to REQ. So to add multiple callbacks to a request you would
-do
+`jupyter-message-types'.
+
+Any additional arguments to `jupyter-add-callback' are
+interpreted as additional CALLBACKS to add to REQ. So to add
+multiple callbacks to a request you would do
 
     (jupyter-add-callback
         (jupyter-execute-request client :code \"1 + 2\")
@@ -420,53 +429,42 @@ do
              do (mapc (lambda (mt) (jupyter--add-callback req mt cb)) msg-type)
              else do (jupyter--add-callback req msg-type cb))))
 
-(defun jupyter-wait-until (req msg-type fun &optional timeout)
-  "Wait until FUN returns non-nil for a received message.
-FUN is run on every received message for request, REQ, that has
-type, MSG-TYPE. If FUN does not return a non-nil value before
-TIMEOUT, return nil. Otherwise return the message which caused
-FUN to return a non-nil value. Note that if TIMEOUT is nil, it
-defaults to `jupyter-default-timeout'."
+(defun jupyter-wait-until (req msg-type cb &optional timeout)
+  "Wait until conditions for a request are satisfied.
+REQ, MSG-TYPE, and CB have the same meaning as in
+`jupyter-add-callback'. If CB returns a non-nil within TIMEOUT
+seconds, return the message that caused CB to return non-nil. If
+CB never returns a non-nil value within TIMEOUT, return nil. Note
+that if no TIMEOUT is given, `jupyter-default-timeout' is used."
   (declare (indent 1))
   (setq timeout (or timeout jupyter-default-timeout))
   (cl-check-type timeout number)
   (lexical-let ((msg nil)
-                (fun fun))
+                (cb cb))
     (jupyter-add-callback req
-      msg-type (lambda (m) (setq msg (when (funcall fun m) m))))
+      msg-type (lambda (m) (setq msg (when (funcall cb m) m))))
     (with-timeout (timeout nil)
       (while (null msg)
         (sleep-for 0.01))
       msg)))
 
 (defun jupyter-wait-until-idle (req &optional timeout)
-  "Wait until TIMEOUT for REQ to receive an idle message.
-If TIMEOUT is non-nil, it defaults to `jupyter-default-timeout'."
+  "Wait until a status: idle message is received for a request.
+REQ has the same meaning as in `jupyter-add-callback'. If an idle
+message for REQ is received within TIMEOUT seconds, return the
+message. Otherwise return nil if the message was not received
+within TIMEOUT. Note that if no TIMEOUT is given, it defaults to
+`jupyter-default-timeout'."
   (jupyter-wait-until req :status #'jupyter-message-status-idle-p timeout))
 
 (defun jupyter-wait-until-received (msg-type req &optional timeout)
-  "Wait for a message with MSG-TYPE to be received by CLIENT.
-This function waits until CLIENT receives a message from the
-kernel that satisfies the following conditions:
-
-1. The message has a type of MSG-TYPE
-2. The parent header of the message has a message ID of PMSG-ID
-
-Note that MSG-TYPE should be one of the keys found in
-`jupyter--recieved-message-types'. If it is not, an error is
-raised.
-
-All of the `jupyter-request-*' functions return a message ID that
-can be passed to this function as the PMSG-ID. If the message
-associated with PMSG-ID is not expecting to receive a message
-with MSG-TYPE, this function will wait forever so be sure that
-you are expecting to receive a message of a certain type after
-sending one. For example you would not be expecting an
-`execute-reply' when you send a kernel info request with
-`jupyter-request-kernel-info', but you would be expecting a
-`kernel-info-reply'. See the jupyter messaging specification for
-more info
-http://jupyter-client.readthedocs.io/en/latest/messaging.html"
+  "Wait until a message of a certain type is received for a request.
+MSG-TYPE and REQ has the same meaning as their corresponding
+argument in `jupyter-add-callback'. If no message that matches
+MSG-TYPE is received for REQ within TIMEOUT seconds, return nil.
+Otherwise return the first message that matched MSG-TYPE. Note
+that if no TIMEOUT is given, it defaults to
+`jupyter-default-timeout'."
   (declare (indent 1))
   (jupyter-wait-until req msg-type #'identity timeout))
 
@@ -510,8 +508,9 @@ are taken:
                 (jupyter-handle-message channel client req msg))
             (when (jupyter-message-status-idle-p msg)
               (setf (jupyter-request-idle-received-p req) t)
-              (remhash pmsg-id requests))))))
-    (run-with-timer 0.005 nil #'jupyter-handle-message client channel)))
+              ;; TODO: Messages associated with the request might still be
+              ;; received when the request is removed from the requests table.
+              (remhash pmsg-id requests))))))))
 
 ;;; STDIN message requests/handlers
 
