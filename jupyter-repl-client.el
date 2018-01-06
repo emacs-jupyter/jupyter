@@ -644,7 +644,7 @@ The first character of the cell code corresponds to position 1."
       ;; TODO: Not all kernels will respond to an is_complete_request. The
       ;; jupyter console will switch to its own internal handler when the
       ;; request times out.
-      (let ((res (jupyter-wait-until-received 'is-complete-reply
+      (let ((res (jupyter-wait-until-received :is-complete-reply
                    (jupyter-is-complete-request
                     jupyter-repl-current-client
                     :code (jupyter-repl-cell-code)))))
@@ -717,7 +717,7 @@ The first character of the cell code corresponds to position 1."
         (lambda (cb)
           (let ((client jupyter-repl-current-client))
             (with-jupyter-repl-buffer client
-              (jupyter-add-callback 'complete-reply
+              (jupyter-add-callback
                   (jupyter-complete-request
                    client
                    :code (jupyter-repl-cell-code)
@@ -729,21 +729,22 @@ The first character of the cell code corresponds to position 1."
                    ;; the cursor is at, but the cell code will only be 3
                    ;; characters long.
                    :pos (1- (jupyter-repl-cell-code-position)))
+                :complete-reply
                 (apply-partially
                  (lambda (cb msg)
-                   (cl-destructuring-bind (&key status matches &allow-other-keys)
+                   (cl-destructuring-bind (&key status matches
+                                                &allow-other-keys)
                        (jupyter-message-content msg)
                      (if (equal status "ok") (funcall cb matches)
                        (funcall cb '()))))
                  cb))))))))
     (sorted t)
     (doc-buffer
-     (let* ((client jupyter-repl-current-client)
-            (msg (jupyter-wait-until-received 'inspect-reply
+     (let ((msg (jupyter-wait-until-received :inspect-reply
+                  (jupyter-request-inhibit-handlers
                    (jupyter-inspect-request
-                    client
-                    :code arg :pos (length arg))))
-            (doc nil))
+                    jupyter-repl-current-client
+                    :code arg :pos (length arg))))))
        (when msg
          (cl-destructuring-bind (&key status found data &allow-other-keys)
              (jupyter-message-content msg)
@@ -797,15 +798,14 @@ it."
   (let ((req (jupyter-execute-request jupyter-repl-current-client
                                       :code "" :silent t)))
     (jupyter-request-inhibit-handlers req)
-    (jupyter-add-callback 'execute-reply req
-      (apply-partially
-       (lambda (client msg)
-         (message "foo")
-         (oset client execution-count
-               (1+ (jupyter-message-get msg :execution_count)))
-         (with-jupyter-repl-buffer client
-           (jupyter-repl-insert-prompt 'in)))
-       jupyter-repl-current-client))
+    (jupyter-add-callback req
+      :execute-reply (apply-partially
+                      (lambda (client msg)
+                        (oset client execution-count
+                              (1+ (jupyter-message-get msg :execution_count)))
+                        (with-jupyter-repl-buffer client
+                          (jupyter-repl-insert-prompt 'in)))
+                      jupyter-repl-current-client))
     (jupyter-wait-until-idle req)))
 
 (defun run-jupyter-repl (kernel-name)

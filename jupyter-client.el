@@ -357,8 +357,9 @@ for the heartbeat channel."
 
 ;;; Message callbacks
 
-(defun jupyter-request-run-callbacks (req msg)
-  "Run the MSG callbacks of REQ."
+(defun jupyter--run-callbacks (req msg)
+  "Run REQ's MSG callbacks.
+See `jupyter-add-callback'."
   (when req
     (let* ((callbacks (jupyter-request-callbacks req))
            (cb-all-types (cdr (assoc t callbacks)))
@@ -366,80 +367,73 @@ for the heartbeat channel."
       (and cb-all-types (funcall cb-all-types msg))
       (and cb-for-type (funcall cb-for-type msg)))))
 
-(defun jupyter-add-callback (msg-type req function)
-  "Add a callback FUNCTION to a kernel REQuest.
+(defun jupyter--add-callback (req msg-type cb)
+  "Add REQ MSG-TYPE callback, CB."
+  (setq msg-type (or (plist-get jupyter-message-types msg-type)
+                     ;; A msg-type of t means that FUNCTION is run for all
+                     ;; messages associated with a request.
+                     (eq msg-type t)))
+  (unless msg-type
+    (error "Not a valid message type (`%s')" msg-type))
+  (let ((callbacks (jupyter-request-callbacks req)))
+    (if (null callbacks)
+        (setf (jupyter-request-callbacks req)
+              (list (cons msg-type cb)))
+      (let ((cb-for-type (assoc msg-type callbacks)))
+        (if (not cb-for-type)
+            (nconc callbacks (list (cons msg-type cb)))
+          (setq cb (apply-partially
+                    (lambda (cb1 cb2 msg)
+                      (funcall cb1 msg)
+                      (funcall cb2 msg))
+                    (cdr cb-for-type)
+                    cb))
+          (setcdr cb-for-type cb))))))
 
-MSG-TYPE is a symbol representing which message type to run
-FUNCTION on when messages of that type are received for REQ. The
-symbol should be the same as one of the message types which are
-expected to be received from a kernel where underscore characters
-are replaced with hyphens, see
-http://jupyter-client.readthedocs.io/en/latest/messaging.html.
+(defun jupyter-add-callback (req msg-type cb &rest callbacks)
+  "Add a callback to run when a message is received for a request.
+REQ is a `jupyter-request' returned by one of the request methods
+of a `jupyter-kernel-client'. MSG-TYPE is a keyword corresponding
+to one of the keys in `jupyter-message-types'. MSG-TYPE can also
+be a list, in which case run CB for every MSG-TYPE in the list.
+If MSG-TYPE is t, then run CB for every message received for REQ.
+CB is the callback function which will run with a single
+argument, a message whose `jupyter-message-parent-id' is the same
+as the `jupyter-request-id' of REQ and whose
+`jupyter-message-type' corresponds to the value of MSG-TYPE in
+the `jupyter-message-types' plist. Any additional arguments to
+`jupyter-add-callback' are interpreted as additional CALLBACKS to
+add to REQ. So to add multiple callbacks to a request you would
+do
 
-So to add a callback which fires for an \"execute_reply\",
-MSG-TYPE should be the symbol `execute-reply'. As a special case
-if MSG-TYPE is t, FUNCTION is run for all received messages of
-REQ. If MSG-TYPE is a list, then it should be a list of symbols
-as described above. FUNCTION will then run for every type of
-message in the list.
+    (jupyter-add-callback
+        (jupyter-execute-request client :code \"1 + 2\")
+      :status (lambda (msg) ...)
+      :execute-reply (lambda (msg) ...)
+      :execute-result (lambda (msg) ...))"
+  (declare (indent 1))
+  (if (jupyter-request-idle-received-p req)
+      (error "Request already received idle message")
+    (setq callbacks (append (list msg-type cb) callbacks))
+    (cl-loop for (msg-type cb) on callbacks by 'cddr
+             if (listp msg-type)
+             do (mapc (lambda (mt) (jupyter--add-callback req mt cb)) msg-type)
+             else do (jupyter--add-callback req msg-type cb))))
 
-REQ is a `jupyter-request' object as returned by the kernel
-request methods of a `jupyter-kernel-client'.
-
-FUNCTION is the callback function to be run when a message with
-MSG-TYPE is received for REQ. It should accept one argument which
-will be the message that has type, MSG-TYPE, and is a message
-associated with the request, REQ. Note that if multiple callbacks
-are added for the same MSG-TYPE, they will be called in the order
-in which they were added.
-
-As an example, suppose you want to register a callback when you
-recieve an `execute-reply' after sending an execute request. This
-can be done like so:
-
-    (jupyter-add-callback 'execute-reply
-        (jupyter-request-execute client :code \"y = 1 + 2\")
-      (lambda (msg) ...))"
-  (declare (indent 2))
-  (if (listp msg-type)
-      (mapc (lambda (mt) (jupyter-add-callback mt req function)) msg-type)
-    (setq msg-type (or (plist-get jupyter--received-message-types msg-type)
-                       ;; A msg-type of t means that FUNCTION is run for all
-                       ;; messages associated with a request.
-                       (eq msg-type t)))
-    (unless msg-type
-      (error "Not a valid received message type (`%s')" msg-type))
-    (if (jupyter-request-idle-received-p req)
-        (error "Request already received idle message.")
-      (let ((callbacks (jupyter-request-callbacks req)))
-        (if (null callbacks)
-            (setf (jupyter-request-callbacks req)
-                  (list (cons msg-type function)))
-          (let ((cb-for-type (assoc msg-type callbacks)))
-            (if cb-for-type
-                (setcdr cb-for-type (apply-partially
-                                     (lambda (cb1 cb2 msg)
-                                       (funcall cb1 msg)
-                                       (funcall cb2 msg))
-                                     (cdr cb-for-type)
-                                     function))
-              (nconc callbacks
-                     (list (cons msg-type function))))))))))
-
-(defun jupyter-wait-until (msg-type req timeout fun)
+(defun jupyter-wait-until (req msg-type fun &optional timeout)
   "Wait until FUN returns non-nil for a received message.
 FUN is run on every received message for request, REQ, that has
 type, MSG-TYPE. If FUN does not return a non-nil value before
 TIMEOUT, return nil. Otherwise return the message which caused
 FUN to return a non-nil value. Note that if TIMEOUT is nil, it
 defaults to `jupyter-default-timeout'."
-  (declare (indent 3))
+  (declare (indent 1))
   (setq timeout (or timeout jupyter-default-timeout))
   (cl-check-type timeout number)
   (lexical-let ((msg nil)
                 (fun fun))
-    (jupyter-add-callback msg-type req
-      (lambda (m) (setq msg (when (funcall fun m) m))))
+    (jupyter-add-callback req
+      msg-type (lambda (m) (setq msg (when (funcall fun m) m))))
     (with-timeout (timeout nil)
       (while (null msg)
         (sleep-for 0.01))
@@ -448,7 +442,7 @@ defaults to `jupyter-default-timeout'."
 (defun jupyter-wait-until-idle (req &optional timeout)
   "Wait until TIMEOUT for REQ to receive an idle message.
 If TIMEOUT is non-nil, it defaults to `jupyter-default-timeout'."
-  (jupyter-wait-until 'status req timeout #'jupyter-message-status-idle-p))
+  (jupyter-wait-until req :status #'jupyter-message-status-idle-p timeout))
 
 (defun jupyter-wait-until-received (msg-type req &optional timeout)
   "Wait for a message with MSG-TYPE to be received by CLIENT.
@@ -474,7 +468,7 @@ sending one. For example you would not be expecting an
 more info
 http://jupyter-client.readthedocs.io/en/latest/messaging.html"
   (declare (indent 1))
-  (jupyter-wait-until msg-type req timeout #'identity))
+  (jupyter-wait-until req msg-type #'identity timeout))
 
 (cl-defmethod jupyter-handle-message ((client jupyter-kernel-client) channel)
   "Process a message on CLIENT's CHANNEL.
@@ -510,7 +504,7 @@ are taken:
           (when (eq (oref channel type) :iopub)
             (jupyter-handle-message channel client nil msg))
         (unwind-protect
-            (jupyter-request-run-callbacks req msg)
+            (jupyter--run-callbacks req msg)
           (unwind-protect
               (when (jupyter-request-run-handlers-p req)
                 (jupyter-handle-message channel client req msg))

@@ -115,36 +115,36 @@ testing the callback functionality of a
           (should (jupyter-wait-until-idle req))
           (should (jupyter-request-idle-received-p req))
           ;; Can't add callbacks after an idle message has been received
-          (should-error (jupyter-add-callback 'status req #'identity))))
+          (should-error (jupyter-add-callback req :status #'identity))))
       (ert-info ("Callback runs for the right message")
         (lexical-let ((ran-callbacks nil)
                       (req1 (jupyter-execute-request client :code "foo"))
                       (req2 (jupyter-kernel-info-request client)))
           ;; callback for all message types received from a request
-          (jupyter-add-callback t req1
-            (lambda (msg)
-              (push 1 ran-callbacks)
-              (should (member (jupyter-message-type msg)
-                              '("execute_reply" "status")))
-              (should (equal (jupyter-message-parent-id msg)
-                             (jupyter-request-id req1)))))
-          (jupyter-add-callback t req2
-            (lambda (msg)
-              (push 2 ran-callbacks)
-              (should (member (jupyter-message-type msg)
-                              '("kernel_info_reply" "status")))
-              (should (equal (jupyter-message-parent-id msg)
-                             (jupyter-request-id req2)))))
+          (jupyter-add-callback req1
+            t (lambda (msg)
+                (push 1 ran-callbacks)
+                (should (member (jupyter-message-type msg)
+                                '("execute_reply" "status")))
+                (should (equal (jupyter-message-parent-id msg)
+                               (jupyter-request-id req1)))))
+          (jupyter-add-callback req2
+            t (lambda (msg)
+                (push 2 ran-callbacks)
+                (should (member (jupyter-message-type msg)
+                                '("kernel_info_reply" "status")))
+                (should (equal (jupyter-message-parent-id msg)
+                               (jupyter-request-id req2)))))
           (should (jupyter-wait-until-idle req2))
           (setq ran-callbacks (nreverse ran-callbacks))
           (should (equal ran-callbacks '(1 1 1 2 2 2)))))
       (ert-info ("Multiple callbacks for a single message type")
         (lexical-let* ((ran-callbacks nil)
                        (req (jupyter-execute-request client :code "foo")))
-          (jupyter-add-callback 'execute-reply req
-            (lambda (msg) (push 1 ran-callbacks)))
-          (jupyter-add-callback 'execute-reply req
-            (lambda (msg) (push 2 ran-callbacks)))
+          (jupyter-add-callback req
+            :execute-reply (lambda (msg) (push 1 ran-callbacks)))
+          (jupyter-add-callback req
+            :execute-reply (lambda (msg) (push 2 ran-callbacks)))
           (jupyter-wait-until-idle req)
           (setq ran-callbacks (nreverse ran-callbacks))
           (should (equal ran-callbacks '(1 2))))))))
@@ -301,19 +301,19 @@ testing the callback functionality of a
     (unwind-protect
         (progn
           (ert-info ("Kernel info")
-            (let ((res (jupyter-wait-until-received 'kernel-info-reply
+            (let ((res (jupyter-wait-until-received :kernel-info-reply
                          (jupyter-kernel-info-request client))))
               (should-not (null res))
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "kernel_info_reply"))))
           (ert-info ("Comm info")
-            (let ((res (jupyter-wait-until-received 'comm-info-reply
+            (let ((res (jupyter-wait-until-received :comm-info-reply
                          (jupyter-comm-info-request client))))
               (should-not (null res))
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "comm_info_reply"))))
           (ert-info ("Execute")
-            (let ((res (jupyter-wait-until-received 'execute-reply
+            (let ((res (jupyter-wait-until-received :execute-reply
                          (jupyter-execute-request client :code "y = 1 + 2"))))
               (should-not (null res))
               (should (json-plist-p res))
@@ -321,7 +321,7 @@ testing the callback functionality of a
           (ert-info ("Input")
             (cl-letf (((symbol-function 'read-from-minibuffer)
                        (lambda (prompt &rest args) "foo")))
-              (let ((res (jupyter-wait-until-received 'execute-result
+              (let ((res (jupyter-wait-until-received :execute-result
                            (jupyter-execute-request client :code "input('')"))))
                 (should-not (null res))
                 (should (json-plist-p res))
@@ -330,7 +330,7 @@ testing the callback functionality of a
                     (plist-get res :content)
                   (should (equal (plist-get data :text/plain) "'foo'"))))))
           (ert-info ("Inspect")
-            (let ((res (jupyter-wait-until-received 'inspect-reply
+            (let ((res (jupyter-wait-until-received :inspect-reply
                          (jupyter-inspect-request
                           client
                           :code "list((1, 2, 3))"
@@ -340,7 +340,7 @@ testing the callback functionality of a
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "inspect_reply"))))
           (ert-info ("Complete")
-            (let ((res (jupyter-wait-until-received 'complete-reply
+            (let ((res (jupyter-wait-until-received :complete-reply
                          (jupyter-complete-request
                           client
                           :code "foo = lis"
@@ -349,14 +349,14 @@ testing the callback functionality of a
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "complete_reply"))))
           (ert-info ("History")
-            (let ((res (jupyter-wait-until-received 'history-reply
+            (let ((res (jupyter-wait-until-received :history-reply
                          (jupyter-history-request
                           client :hist-access-type "tail" :n 2))))
               (should-not (null res))
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "history_reply"))))
           (ert-info ("Is Complete")
-            (let ((res (jupyter-wait-until-received 'is-complete-reply
+            (let ((res (jupyter-wait-until-received :is-complete-reply
                          (jupyter-is-complete-request
                           client :code "for i in range(5):"))))
               (should-not (null res))
@@ -365,14 +365,14 @@ testing the callback functionality of a
           (ert-info ("Interrupt")
             (lexical-let ((time (current-time))
                           (interrupt-time nil))
-              (jupyter-add-callback 'status
+              (jupyter-add-callback
                   (jupyter-execute-request
                    client :code "import time\ntime.sleep(2)")
-                (lambda (msg)
-                  (when (jupyter-message-status-idle-p msg)
-                    (setq interrupt-time (current-time)))))
+                :status (lambda (msg)
+                          (when (jupyter-message-status-idle-p msg)
+                            (setq interrupt-time (current-time)))))
               (sleep-for 0.2)
-              (let ((res (jupyter-wait-until-received 'interrupt-reply
+              (let ((res (jupyter-wait-until-received :interrupt-reply
                            (jupyter-interrupt-request client))))
                 (should-not (null res))
                 (should (json-plist-p res))
@@ -381,7 +381,7 @@ testing the callback functionality of a
                 (should (< (float-time (time-subtract interrupt-time time))
                            2)))))
           (ert-info ("Shutdown")
-            (let ((res (jupyter-wait-until-received 'shutdown-reply
+            (let ((res (jupyter-wait-until-received :shutdown-reply
                          (jupyter-shutdown-request client))))
               (should-not (null res))
               (should (json-plist-p res))
