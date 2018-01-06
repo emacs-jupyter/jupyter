@@ -42,11 +42,10 @@ CLASS should be a subclass of `jupyter-kernel-client', a new
 instance of CLASS initialized with SLOTS is returned configured
 to connect to MANAGER's kernel."
   (unless (child-of-class-p class 'jupyter-kernel-client)
-    (signal 'wrong-type-argument '(subclass jupyter-kernel-client)))
+    (signal 'wrong-type-argument (list '(subclass jupyter-kernel-client) class)))
   (let ((client (apply #'make-instance class slots)))
-    (jupyter-initialize-connection client (oref manager conn-info))
-    (oset client conn-info (copy-sequence (oref manager conn-info)))
-    (oset client session (copy-sequence (oref manager session)))
+    (jupyter-clone-connection manager client)
+    (jupyter-initialize-connection client)
     client))
 
 (defun jupyter--kernel-sentinel (manager kernel event)
@@ -60,29 +59,18 @@ to connect to MANAGER's kernel."
     (oset manager conn-file nil)
     (oset manager conn-info nil))))
 
-(defun jupyter--start-kernel (kernel-name conn-file env args)
+(defun jupyter--start-kernel (kernel-name env args)
   "Start a kernel.
-A kernel named KERNEL-NAME is started using the connection
-information in CONN-FILE. The name of the command used to start
-the kernel subprocess should be the first element of ARGS and the
-rest of the elements of ARGS are the command line parameters
-passed to the command. If ENV is non-nil, then it should be a
-plist containing environment variable names as keywords along
-with their corresponding values. These will be set before
-starting the kernel.
+A kernel named KERNEL-NAME is started using ARGS. The name of the
+command used to start the kernel subprocess should be the first
+element of ARGS and the rest of the elements of ARGS are the
+command line parameters passed to the command. If ENV is non-nil,
+then it should be a plist containing environment variable names
+as keywords along with their corresponding values. These will be
+set as the process environment before starting the kernel.
 
-After the kernel reads CONN-FILE, CONN-FILE is renamed to
-kernel-<pid>.json where <pid> is the process id of the kernel
-subprocess.
-
-The return value of this function is a cons cell
-
-    (NEW-CONN-FILE . PROC)
-
-Where NEW-CONN-FILE is the renamed connection file and PROC is
-the kernel subprocess."
-  (let* ((atime (nth 4 (file-attributes conn-file)))
-         (process-environment
+Return the newly created kernel process."
+  (let* ((process-environment
           (append
            ;; The first entry takes precedence when duplicated variables
            ;; are found in `process-environment'
@@ -91,21 +79,10 @@ the kernel subprocess."
             for k = (car e)
             for v = (cadr e)
             collect (format "%s=%s" (cl-subseq (symbol-name k) 1) v))
-           process-environment))
-         (proc (apply #'start-process
-                      (format "jupyter-kernel-%s" kernel-name)
-                      nil (car args) (cdr args))))
-    (with-timeout
-        (10 (delete-file conn-file)
-            (delete-process proc)
-            (error "Kernel did not read connection file within timeout."))
-      (while (equal atime (nth 4 (file-attributes conn-file)))
-        (sleep-for 0 100)))
-    (let ((new-conn-file (expand-file-name
-                          (format "kernel-%d.json" (process-id proc))
-                          (file-name-directory conn-file))))
-      (rename-file conn-file new-conn-file)
-      (cons new-conn-file proc))))
+           process-environment)))
+    (apply #'start-process
+           (format "jupyter-kernel-%s" kernel-name)
+           nil (car args) (cdr args))))
 
 ;; TODO: Allow passing arguments like a different kernel file name or different
 ;; ports and arguments to the kernel
@@ -147,30 +124,42 @@ shutdown/interrupt requests"
       ;; TODO: Require a valid kernel name when initializing the manager
       (oset manager name kernel-name)
       (oset manager kernel-spec spec)
-      (let* ((name (oref manager name))
-             (conn-info (jupyter-create-connection-info :kernel-name kernel-name))
-             (session-key (plist-get conn-info :key))
+      (oset manager session (jupyter-session :key (jupyter-new-uuid)))
+      (let* ((key (jupyter-session-key (oref manager session)))
+             (name (oref manager name))
+             (conn-info (jupyter-create-connection-info
+                         :kernel-name kernel-name
+                         :key key))
              (conn-file (expand-file-name
-                         (concat "kernel-" session-key ".json")
+                         (concat "kernel-" key ".json")
                          (string-trim-right (shell-command-to-string
                                              "jupyter --runtime-dir")))))
         (oset manager conn-info conn-info)
-        (oset manager session (jupyter-session :key session-key))
         ;; Write the connection file
         (with-temp-file conn-file
           (let ((json-encoding-pretty-print t))
-            (insert (json-encode-plist (oref manager conn-info)))))
-        (cl-destructuring-bind (new-conn-file . kernel)
-            (jupyter--start-kernel
-             kernel-name conn-file (plist-get spec :env)
-             (cl-loop
-              for arg in (plist-get spec :argv)
-              if (equal arg "{connection_file}") collect conn-file
-              else collect arg))
-          (oset manager conn-file new-conn-file)
-          (oset manager kernel kernel)
+            (insert (json-encode-plist conn-info))))
+        ;; Start the process
+        (let ((atime (nth 4 (file-attributes conn-file)))
+              (proc (jupyter--start-kernel
+                     kernel-name (plist-get spec :env)
+                     (cl-loop
+                      for arg in (plist-get spec :argv)
+                      if (equal arg "{connection_file}") collect conn-file
+                      else collect arg))))
+          ;; Block until the kernel reads the connection file
+          (with-timeout
+              (10 (delete-file conn-file)
+                  (delete-process proc)
+                  (error "Kernel did not read connection file within timeout."))
+            (while (equal atime (nth 4 (file-attributes conn-file)))
+              (sleep-for 0 100)))
+          (oset manager conn-file (expand-file-name
+                                   (format "kernel-%d.json" (process-id proc))
+                                   (file-name-directory conn-file)))
+          (rename-file conn-file (oref manager conn-file))
           (set-process-sentinel
-           kernel (apply-partially #'jupyter--kernel-sentinel manager))
+           proc (apply-partially #'jupyter--kernel-sentinel manager))
           (jupyter-start-channels manager)
           manager)))))
 
@@ -238,5 +227,26 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
       (let ((msg (jupyter-message-interrupt-request)))
         (jupyter-send manager "interrupt_request" msg))
     (interrupt-process (oref manager kernel) t)))
+
+;; TODO: kernel existence
+(defun jupyter-start-new-kernel (kernel-name &optional client-class)
+  (setq client-class (or client-class 'jupyter-kernel-client))
+  (unless (child-of-class-p client-class 'jupyter-kernel-client)
+    (signal 'wrong-type-argument
+            (list '(subclass jupyter-kernel-client) client-class)))
+  (let (km kc)
+    (setq km (jupyter-kernel-manager :name kernel-name))
+    (jupyter-start-kernel km)
+    (setq kc (jupyter-make-client km client-class))
+    (jupyter-start-channels kc)
+    ;; Let the channels start
+    (sleep-for 1)
+    (let ((info (jupyter-wait-until-received :kernel-info-reply
+                  (jupyter-request-inhibit-handlers
+                   (jupyter-kernel-info-request kc))
+                  10)))
+      (if info (oset km kernel-info (jupyter-message-content info))
+        (error "Kernel did not respond to kernel-info request.")))
+    (cons km kc)))
 
 (provide 'jupyter-kernel-manager)
