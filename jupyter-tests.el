@@ -1,6 +1,111 @@
 (require 'jupyter-client)
 (require 'cl-lib)
 (require 'ert)
+(defclass jupyter-echo-client (jupyter-kernel-client)
+  ((messages))
+  :documentation "A client that echo's any messages sent back to
+the channel the message was sent on. No communication is actually
+done with a kernel. Every sent message on a channel is just
+placed back into the channel's recv-queue. This is mainly for
+testing the callback functionality of a
+`jupyter-kernel-client'.")
+
+(defun jupyter-test-message (req type content)
+  (list :msg_id (jupyter-new-uuid)
+        :msg_type type
+        :parent_header (list :msg_id (jupyter-request-id req))
+        :content content))
+
+(cl-defmethod initialize-instance ((client jupyter-echo-client) &rest slots)
+  (cl-call-next-method)
+  (oset client messages (make-ring 10))
+  (cl-loop
+   for channel in (list 'shell-channel
+                        'iopub-channel
+                        'hb-channel
+                        'stdin-channel)
+   unless (slot-value client channel)
+   do (setf (slot-value client channel)
+            (make-instance
+             (intern (concat
+                      "jupyter-"
+                      (symbol-name channel)))
+             :endpoint "foo://bar"))))
+
+(cl-defmethod jupyter-send ((client jupyter-echo-client)
+                            channel
+                            type
+                            message
+                            &optional flags)
+  (let ((req (make-jupyter-request :-id (jupyter-new-uuid))))
+    (if (string-match "request" type)
+        (setq type (replace-match "reply" nil nil type))
+      (error "Not a request message type (%s)." type))
+    (jupyter-push-message (oref client iopub-channel)
+                          ;; `jupyter-push-message' expects a cons cell of the
+                          ;; form (idents . msg)
+                          (cons ""
+                                (jupyter-test-message
+                                 req "status"
+                                 (list :execution_state "busy"))))
+    (jupyter-push-message channel
+                          (cons "" (jupyter-test-message req type message)))
+    (jupyter-push-message (oref client iopub-channel)
+                          (cons "" (jupyter-test-message
+                                    req "status"
+                                    (list :execution_state "idle"))))
+    (run-at-time
+     0.01 nil
+     (lambda (client channel)
+       ;; TODO: `jupyter-handle-message' kicks off a chain of message handling
+       ;; if there is more than one message on the channel. so no need to call
+       ;; it twice for a channel. This seems fishy, should it really continue
+       ;; to handle messages or just handle every message when it is received.
+       (jupyter-handle-message client (oref client iopub-channel))
+       (jupyter-handle-message client channel)
+       (jupyter-handle-message client (oref client iopub-channel)))
+     client channel)
+    (puthash (jupyter-request-id req) req (oref client requests))
+    req))
+
+(cl-defmethod jupyter-handle-message ((client jupyter-echo-client) channel)
+  (ring-insert+extend (oref client messages)
+                      (cdr (ring-ref (oref channel recv-queue) -1))
+                      'grow)
+  (cl-call-next-method))
+
+(defmacro with-jupyter-echo-client (client &rest body)
+  (declare (indent 1))
+  `(let ((,client (jupyter-echo-client)))
+     ,@body))
+
+(ert-deftest jupyter-echo-client ()
+  (with-jupyter-echo-client client
+    (ert-info ("Mock echo client echo's messages back to channel.")
+      (let* ((msg (jupyter-message-execute-request :code "foo"))
+             (req (jupyter-send client (oref client shell-channel)
+                                "execute_request" msg)))
+        (sleep-for 0.5)
+        (setq msgs (nreverse (ring-elements (oref client messages))))
+        (should (= (length msgs) 3))
+        (should (equal (jupyter-message-type (first msgs))
+                       "status"))
+        (should (equal (jupyter-message-parent-id (first msgs))
+                       (jupyter-request-id req)))
+        (should (equal (jupyter-message-get (first msgs) :execution_state)
+                       "busy"))
+        (should (equal (jupyter-message-type (second msgs))
+                       "execute_reply"))
+        (should (equal (jupyter-message-parent-id (second msgs))
+                       (jupyter-request-id req)))
+        (should (equal (jupyter-message-content (second msgs))
+                       msg))
+        (should (equal (jupyter-message-type (third msgs))
+                       "status"))
+        (should (equal (jupyter-message-parent-id (third msgs))
+                       (jupyter-request-id req)))
+        (should (equal (jupyter-message-get (third msgs) :execution_state)
+                       "idle"))))))
 
 (ert-deftest jupyter-messages ()
   (ert-info ("Splitting identities from messages")
