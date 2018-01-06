@@ -813,51 +813,32 @@ it."
    (list
     (completing-read
      "kernel: " (mapcar #'car (jupyter-available-kernelspecs)) nil t)))
-  ;; TODO: kernel existence
-  (let ((km (jupyter-kernel-manager :name kernel-name))
-        (client nil))
-    (message "Starting %s kernel..." kernel-name)
-    ;; Populate connection info
-    (jupyter-start-kernel km)
-    (setq client (jupyter-make-client km 'jupyter-repl-client))
-    (oset client buffer (generate-new-buffer
-                         (format "*jupyter-repl[%s]*" (oref km name))))
-    (jupyter-start-channels client)
-    (sleep-for 1)
+  (message "Starting %s kernel..." kernel-name)
+  (cl-destructuring-bind (km . kc)
+      (jupyter-start-new-kernel kernel-name 'jupyter-repl-client)
+    (oset kc buffer (generate-new-buffer
+                     (format "*jupyter-repl[%s]*" (oref km name))))
     ;; hb channel starts in a paused state
-    ;; (jupyter-hb-unpause (oref client hb-channel))
-    ;;
-    ;; TODO: Move this over to starting a kernel
-    (oset km kernel-info
-          (let ((info (cl-loop
-                       ;; try sending the request multiple times to account for
-                       ;; kernel startup
-                       repeat 2
-                       for info = (jupyter-wait-until-received 'kernel-info-reply
-                                    (jupyter-kernel-info-request client) 10)
-                       when info return info)))
-            (when info (jupyter-message-content info))))
-    (unless (oref km kernel-info)
-      (error "Kernel did not respond to kernel-info request."))
-    (with-jupyter-repl-buffer client
+    (jupyter-hb-unpause (oref kc hb-channel))
+    (with-jupyter-repl-buffer kc
       (cl-destructuring-bind (&key language_info banner &allow-other-keys)
           (oref km kernel-info)
         (cl-destructuring-bind (&key name file_extension &allow-other-keys)
             language_info
           (erase-buffer)
           (jupyter-repl-mode)
-          (setq jupyter-repl-current-client client)
+          (setq jupyter-repl-current-client kc)
           (setq jupyter-repl-kernel-manager km)
           (setq jupyter-repl-history (make-ring 100))
           (setq left-margin-width jupyter-repl-prompt-margin-width)
           ;; TODO: Cleanup of buffers created by jupyter-repl
           (setq jupyter-repl-lang-buffer (get-buffer-create
                                           (format " *jupyter-repl-lang-%s*" name)))
-          (jupyter-history-request client :n 100 :raw nil :unique t)
+          (jupyter-history-request kc :n 100 :raw nil :unique t)
           (jupyter-repl-initialize-fontification file_extension)
           (jupyter-repl-insert-banner banner)
           (jupyter-repl-update-execution-counter))))
-    (pop-to-buffer (oref client buffer))))
+    (pop-to-buffer (oref kc buffer))))
 
 ;; Local Variables:
 ;; byte-compile-warnings: (not free-vars)
