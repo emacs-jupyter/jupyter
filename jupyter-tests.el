@@ -107,6 +107,48 @@ testing the callback functionality of a
         (should (equal (jupyter-message-get (third msgs) :execution_state)
                        "idle"))))))
 
+(ert-deftest jupyter-callbacks ()
+  (with-jupyter-echo-client client
+    (ert-info ("Request callbacks")
+      (ert-info ("Blocking callbacks")
+        (let ((req (jupyter-execute-request client :code "foo")))
+          (should (jupyter-wait-until-idle req))
+          (should (jupyter-request-idle-received-p req))
+          ;; Can't add callbacks after an idle message has been received
+          (should-error (jupyter-add-callback 'status req #'identity))))
+      (ert-info ("Callback runs for the right message")
+        (lexical-let ((ran-callbacks nil)
+                      (req1 (jupyter-execute-request client :code "foo"))
+                      (req2 (jupyter-kernel-info-request client)))
+          ;; callback for all message types received from a request
+          (jupyter-add-callback t req1
+            (lambda (msg)
+              (push 1 ran-callbacks)
+              (should (member (jupyter-message-type msg)
+                              '("execute_reply" "status")))
+              (should (equal (jupyter-message-parent-id msg)
+                             (jupyter-request-id req1)))))
+          (jupyter-add-callback t req2
+            (lambda (msg)
+              (push 2 ran-callbacks)
+              (should (member (jupyter-message-type msg)
+                              '("kernel_info_reply" "status")))
+              (should (equal (jupyter-message-parent-id msg)
+                             (jupyter-request-id req2)))))
+          (should (jupyter-wait-until-idle req2))
+          (setq ran-callbacks (nreverse ran-callbacks))
+          (should (equal ran-callbacks '(1 1 1 2 2 2)))))
+      (ert-info ("Multiple callbacks for a single message type")
+        (lexical-let* ((ran-callbacks nil)
+                       (req (jupyter-execute-request client :code "foo")))
+          (jupyter-add-callback 'execute-reply req
+            (lambda (msg) (push 1 ran-callbacks)))
+          (jupyter-add-callback 'execute-reply req
+            (lambda (msg) (push 2 ran-callbacks)))
+          (jupyter-wait-until-idle req)
+          (setq ran-callbacks (nreverse ran-callbacks))
+          (should (equal ran-callbacks '(1 2))))))))
+
 (ert-deftest jupyter-messages ()
   (ert-info ("Splitting identities from messages")
     (let ((msg (list "123" "323" jupyter-message-delimiter
@@ -250,64 +292,6 @@ testing the callback functionality of a
            (cl-check-type (oref channel socket) zmq-socket)
            and do (should (jupyter-channel-alive-p (eieio-oref client cname)))))
       (mapc (lambda (se) (zmq-close (car se))) sock-endpoint))))
-
-(ert-deftest jupyter-message-callbacks ()
-  (with-zmq-context
-    (let ((client (jupyter-kernel-client-using-kernel "python")))
-      ;; FIXME: Let the kernel startup before connecting, this is necessary
-      ;; since we just start a kernel using "jupyter console" at the moment
-      ;; which does some initial handshaking with the kernel.
-      ;;
-      ;; Actually the problem seems to be my use of multiple processes to poll
-      ;; for events. Because I have a subprocess per socket, the order of
-      ;; received messages is not gauranteed although the kernel sends the
-      ;; messages in a certain order. What I really should probably do is poll
-      ;; all sockets in a single subprocess.
-      (jupyter-start-channels client)
-      ;; Let the channels start
-      (unwind-protect
-          (progn
-            (ert-info ("Waiting for messages")
-              (should-not
-               (null (jupyter-wait-until-idle
-                      client (jupyter-kernel-info-request client)))))
-            ;; (ert-info ("Callbacks are removed when an idle message is received")
-            ;;   (let ((id (jupyter-kernel-info-request client)))
-            ;;     (jupyter-add-callback 'kernel-info-reply id
-            ;;       (lambda (msg) 'foo))
-            ;;     (should-not (null (gethash id (oref client message-callbacks))))
-            ;;     (jupyter-wait-until-idle id 2)
-            ;;     (should (null (gethash id (oref client message-callbacks))))))
-            (ert-info ("Message callbacks receive the right messages")
-              (ert-info ("Callbacks fire on the right message ID")
-                (let ((id (jupyter-kernel-info-request client))
-                      (recv-id nil))
-                  (jupyter-add-callback 'kernel-info-reply id
-                    (lambda (msg) (setq recv-id (jupyter-message-parent-id msg))))
-                  (jupyter-wait-until-idle id)
-                  (should (equal recv-id id))))
-              (ert-info ("Different message type, same message ID")
-                (let ((id (jupyter-execute-request client :code "y = 1+2\ny"))
-                      (msg-res nil)
-                      (msg-rep nil))
-                  (jupyter-add-callback 'execute-result id
-                    (lambda (msg) (setq msg-res msg)))
-                  (jupyter-add-callback 'execute-reply id
-                    (lambda (msg) (setq msg-rep msg)))
-                  (should-not (null (jupyter-wait-until-idle id)))
-                  (should (json-plist-p msg-res))
-                  (should (json-plist-p msg-rep))
-                  (ert-info ("Verify received contents")
-                    ;; execute_result
-                    (should (equal id (jupyter-message-parent-id msg-res)))
-                    (should (equal (plist-get msg-res :msg_type) "execute_result"))
-                    ;; execute_reply
-                    (should (equal id (jupyter-message-parent-id msg-rep)))
-                    (should (equal (plist-get msg-rep :msg_type) "execute_reply")))))))
-        (jupyter-stop-channels client)
-        (delete-process (oref client kernel))
-        (kill-buffer (process-buffer (oref client kernel)))))))
-
 
 (ert-deftest jupyter-message-types ()
   (let ((client (jupyter-kernel-client-using-kernel "python")))
