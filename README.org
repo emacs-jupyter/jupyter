@@ -1,0 +1,290 @@
+* Dependencies
+
+- zmq
+- ipython or jupyter
+
+* Overview of implementation
+
+This implementation follows closely the base Jupyter client implementation.
+Message sending and receiving messages is centered around the
+=jupyter-kernel-client= class. Every message type that is a request to the
+kernel has a method =jupyter-<msg-type>= where =<msg-type>= is the type of the
+message as defined in the Jupyter messaging protocol with underscores replaced
+by hyphens. So an =execute_request= message has the corresponding method
+=jupyter-execute-request=. All methods that send requests to the kernel return
+a =jupyter-request= object which encapsulates the current state of the request
+with the kernel and how the =jupyter-kernel-client= should handle messages
+received from the kernel in response to the request.
+
+When a message is received from the kernel it is passed to the client's
+=jupyter-handle-message= method which runs the callbacks for the message and
+does all of the bookkeeping for =jupyter-request= objects. Depending on the
+value of =jupyter-request-run-handlers-p=, the message is then passed to the
+=jupyter-handle-message= method of the =jupyter-channel= the message was
+received on. For channels, =jupyter-handle-message= just dispatches the message
+to one of the client's handler methods based on the message type. All of the
+handler methods of a =jupyter-kernel-client= are named
+=jupyter-handle-<msg-type>=. So an =execute_reply= message has the
+corresponding method =jupyter-handle-execute-reply=.
+
+When a =jupyter-kernel-client= is connected to a kernel, a subprocess is
+created that listens for messages from the kernel to send to the parent =emacs=
+process and does all of the message passing between the kernel and the client.
+The parent =emacs= process is responsible for making requests and handling the
+messages in response to each request.
+
+* =jupyter-kernel-client= class
+** Starting/stopping channels
+
+- jupyter-start-channels :: Starts the previously configured channels of the
+     client.
+- jupyter-stop-channels :: Stops all live channels of the client.
+- jupyter-channels-runngin :: Returns non-nil if at least one channel is live.
+
+
+* TODO Creating a kernel client
+:PROPERTIES:
+:Effort:   30
+:END:
+* Sending requests to the kernel
+:PROPERTIES:
+:Effort:   30
+:END:
+:LOGBOOK:
+CLOCK: [2018-01-01 Mon 12:40]--[2018-01-01 Mon 12:50] =>  0:10
+:END:
+
+All messages which can be sent to the kernel follow the naming convention
+=jupyer-<msg-type>= where =<msg-type>= is one of the message request types
+found in the [[http://jupyter-client.readthedocs.io/en/latest/messaging.html][Jupyter messaging protocol]] (with the =_= characters replaced by
+=-=). So an =execute_request= to the kernel can be made by calling the method
+=jupyter-execute-request=:
+
+#+BEGIN_SRC elisp
+(jupyter-execute-request client :code "1 + 2") ; Returns a `jupyter-request' object
+#+END_SRC
+
+All request messages sent to the kernel return a =jupyter-request= object. A
+=jupyter-request= object encapsulates the current status of the request and how
+the client handles the messages it receives from the kernel in response to the
+request.
+
+To add callbacks to a request you would call =jupyter-add-callback= like so:
+
+#+BEGIN_SRC elisp
+(jupyter-add-callback 'execute-result
+    (jupyter-execute-request client :code "1 + 2")
+  (lambda (msg)
+    (let ((res (jupyter-message-data msg :text/plain)))
+      (message "1 + 2 = %s" res))))
+#+END_SRC
+
+For more information on adding callbacks to a request, see [[id:A94C8391-C918-404D-82F9-C257CC2A1809][Request callbacks]].
+
+* Receiving messages from the kernel
+
+There are two ways of running code when a certain type of message is received
+from the kernel.
+
+1. Define a new subclass of =jupyter-kernel-client= and override the default
+   message handling methods.
+2. Register callbacks to run when receiving messages associated with a request.
+
+Both ways work in parallel. If a client subclass has a handler for a particular
+message type and a callback is registered for messages of the same type for a
+particular request, the callback will run first and the handler second.
+
+** TODO Client handlers
+:PROPERTIES:
+:Effort:   30
+:END:
+
+Sub-classing =jupyter-kernel-client= and overriding the message handling
+methods is intended to be used for updating user-interface elements for the
+particular client application. This is how =jupyter-repl-client= updates the
+REPL buffer.
+
+** Request callbacks
+:PROPERTIES:
+:ID:       A94C8391-C918-404D-82F9-C257CC2A1809
+:END:
+
+The main entry point to attach callbacks to a request is through
+=jupyter-add-callback= which takes a message type, a =jupyter-request= object,
+and a callback function as arguments. The callback is registered with the
+request object to run whenever a message is received that has the same message
+type as the one passed to =jupyter-add-callback=. For example, to do something
+with the client's kernel info you would do the following:
+
+#+BEGIN_SRC elisp
+(jupyter-add-callback 'kernel-info-reply
+    (jupyter-kernel-info-request client)
+  (lambda (msg)
+    (let ((info (jupyter-message-content msg)))
+      ...)))
+#+END_SRC
+
+To print out the results of an execute request:
+
+#+BEGIN_SRC elisp
+(jupyter-add-callback 'execute-result
+    (jupyter-execute-request client :code "1 + 2")
+  (lambda (msg)
+    (message (jupyter-message-data msg :text/plain))))
+#+END_SRC
+
+You can also run the same callback for different message types:
+
+#+BEGIN_SRC elisp
+(jupyter-add-callback '(status execute-result execute-reply)
+    (jupyter-execute-request client :code "1 + 2")
+  (lambda (msg)
+    (pcase (jupyter-message-type msg)
+      ("status" ...)
+      ("execute_reply" ...)
+      ("execute_result" ...))))
+#+END_SRC
+
+*** Blocking until certain messages are received
+
+All message sending and receiving happens asynchronously, therefore we need
+primitives which will block until certain conditions have been met on the
+received messages for a request.
+
+The following functions all wait for different conditions to be met on the
+received messages of a request and return the message that caused the function
+to stop waiting or =nil= if no message was received within a timeout period.
+Note that if the timeout argument is =nil=, the timeout will default to 1
+second.
+
+To wait until an idle message is received for a request:
+
+#+BEGIN_SRC elisp
+(let ((timeout 4))
+  (jupyter-wait-until-idle
+   (jupyter-execute-request
+    client :code "import time\ntime.sleep(3)")
+   timeout))
+#+END_SRC
+
+To wait until a message of a specific type is received for a request:
+
+#+BEGIN_SRC elisp
+(jupyter-wait-until-received 'execute-reply
+  (jupyter-execute-request client :code "[i*10 for i in range(100000)]"))
+#+END_SRC
+
+The most general form of the blocking functions is =jupyter-wait-until= which
+takes an arbitrary function as the last argument. The function must take a
+single argument, a message with the same message type supplied to
+=jupyter-wait-until= as its first argument, and the function should return
+non-nil if =jupyter-wait-until= should return from waiting:
+
+#+BEGIN_SRC elisp
+(defun stream-prints-50-p (msg)
+  (let ((text (jupyter-message-get msg :text)))
+    (cl-loop for line in (split-string text "\n")
+             thereis (equal line "50"))))
+
+(let ((timeout 2))
+  (jupyter-wait-until 'stream
+      (jupyter-execute-request client :code "[print(i) for i in range(100)]")
+      timeout
+    #'stream-prints-50-p))
+#+END_SRC
+
+The above code runs =stream-prints-50-p= for every =stream= message received
+from a kernel (here assumed to be a python kernel) for an execute request that
+prints the numbers 0 to 99 and waits until the kernel has printed the number 50
+before returning from the =jupyter-wait-until= call. If the number 50 is not
+printed before the two second timeout, =jupyter-wait-until= returns =nil=.
+Otherwise it returns the non-nil value which caused it to stop waiting. In this
+case, the =t= returned from =cl-loop= in =stream-callback=.
+
+*** Suspending client handlers for individual requests
+
+Since the client handlers are intended to be used for updating user-interface
+elements, you may run into situations where you would like to make a request to
+the kernel and only handle the received messages for the request using
+callbacks without using the client handlers.
+
+For example, you may want to synchronize the execution count of a
+=jupyter-kernel-client= subclass with the current execution count of the kernel
+without allowing the client's handlers to process any of the messages which
+result from the request. To do this you can either set the
+=jupyter-request-run-handlers-p= field of a =jupyter-request= object to =nil=
+or wrap your requests with the convenience function
+=jupyter-request=inhibit-handlers= which does this for you:
+
+#+BEGIN_SRC elisp
+(jupyter-add-callback 'execute-reply
+    (jupyter-request-inhibit-handlers
+     (jupyter-execute-request client :code "" :silent t))
+  (apply-partially
+   (lambda (client msg)
+     (oset client execution-count (jupyter-message-get msg :execution_count)))
+   client))
+#+END_SRC
+
+* Connecting to kernels
+
+- =jupyer-kernel-client-from-connection-file=
+- =jupyter-start-kernel=
+
+* Extending the =jupyter-kernel-client= class
+
+To hook into the entire message receiving machinery, subclass
+=jupyter-kernel-client= and override the default message handlers. For example
+to capture a =kernel_info_reply= on a client you can do the following:
+
+#+BEGIN_SRC elisp
+(defclass my-kernel-client (jupyter-kernel-client)
+  (kernel-info))
+
+(cl-defmethod jupyter-handle-kernel-info-reply ((client my-kernel-client)
+                                                protocol-version
+                                                implementation
+                                                implementation-version
+                                                language-info
+                                                banner
+                                                help-links)
+  (oset client kernel-info
+        (list :protocol-version protocol-version
+              :implementation implementation
+              :implementation-version implementation-version
+              :language-info language-info
+              :banner banner
+              :help-links help-links)))
+#+END_SRC
+
+Or you could have interactivity between =org-mode= and a =Jupyter= kernel
+
+#+BEGIN_SRC elisp
+(defclass jupyter-org-kernel-client (jupyer-kernel-client)
+  (src-block-marker))
+
+(cl-defmethod jupyter-handle-execute ((client jupyter-org-kernel-client)
+                                      execution-count
+                                      user-expressions
+                                      payload)
+  )
+
+(cl-defmethod jupyter-handle-execute-input ((client jupyter-org-kernel-client)
+                                            code
+                                            execution-count)
+  )
+
+(cl-defmethod jupyter-handle-execute-result ((client jupyter-org-kernel-client)
+                                             execution-count
+                                             data
+                                             metadata)
+  )
+
+#+END_SRC
+
+* TODO Wish list
+
+- Make a default client front-end, see how =jupyter console= does this
+  - How could I make =org-mode= the default front end?
+- =org-edit-src-buffer= connected to a kernel. multiple clients can connect to
+  the src code block and edit it.
