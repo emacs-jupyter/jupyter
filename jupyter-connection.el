@@ -46,7 +46,7 @@ http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
      (list :signature_scheme signature-scheme
            :key key))
    (cl-loop
-    with sock = (zmq-socket (current-zmq-context) zmq-REP)
+    with sock = (zmq-socket (zmq-current-context) zmq-REP)
     with addr = (concat transport "://" ip)
     for (channel . port) in (list (cons :hb_port hb-port)
                                   (cons :stdin_port stdin-port)
@@ -64,7 +64,7 @@ http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
   "Create socket with type TYPE and connect it to ENDPOINT.
 If IDENTITY is non-nil, it will be set as the ROUTING_ID of the
 socket. The return value is the socket created."
-  (let ((sock (zmq-socket (current-zmq-context) type)))
+  (let ((sock (zmq-socket (zmq-current-context) type)))
     (zmq-socket-set sock zmq-LINGER 1000)
     (when identity
       (zmq-socket-set sock zmq-ROUTING_ID identity))
