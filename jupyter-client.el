@@ -155,6 +155,7 @@ using the CHANNEL's socket."
                                 (cons :iopub 2)
                                 (cons :stdin 2)))
               (idle-count 0)
+              (timeout 20)
               (queue (make-ring 10)))
          (cl-flet ((send-recvd
                     ()
@@ -211,55 +212,58 @@ using the CHANNEL's socket."
                       (zmq-ENOENT nil)
                       (error (signal (car err) (cdr err))))))
            (condition-case nil
-               (with-zmq-poller
-                ;; Also poll for standard-in events to be able to read commands
-                ;; from the parent emacs process without blocking
-                (zmq-poller-register (current-zmq-poller) 0 zmq-POLLIN)
-                (mapc (lambda (x) (zmq-poller-register (current-zmq-poller)
-                                               (car x)
-                                               zmq-POLLIN))
-                   channels)
-                (unwind-protect
-                    (while t
-                      (when (and (= idle-count 2)
-                                 (> (ring-length queue) 0))
-                        (send-recvd))
-                      (let ((events (condition-case err
-                                        (zmq-poller-wait-all (current-zmq-poller) 5 20)
-                                      (zmq-EINTR nil)
-                                      ;; TODO: For any other kind of error,
-                                      ;; just reset the polling loop by exiting
-                                      ;; `with-zmq-poller'.
-                                      (error (signal (car err) (cdr err))))))
-                        (if (null events) (setq idle-count (1+ idle-count))
-                          (setq idle-count 0)
-                          (when (alist-get 0 events)
-                            (setf (alist-get 0 events nil 'remove) nil)
-                            (cl-destructuring-bind (cmd . data)
-                                (zmq-subprocess-read)
-                              (cl-case cmd
-                                (quit
-                                 (signal 'quit nil))
-                                (start-channel
-                                 (let* ((ctype data)
-                                        (sock (car (rassoc ctype channels))))
-                                   (start-channel sock)))
-                                (stop-channel
-                                 (let* ((ctype data)
-                                        (sock (car (rassoc ctype channels))))
-                                   (stop-channel sock)))
-                                (send
-                                 (let* ((ctype (car data))
-                                        (sock (car (rassoc ctype channels)))
-                                        (rest (cdr data)))
-                                   (send-message sock ctype rest))))))
-                          (cl-loop for (sock . event) in events
-                                   do (recv-message
-                                       sock (alist-get sock channels))))))
-                  (mapc (lambda (s)
-                       (zmq-socket-set s zmq-LINGER 0)
-                       (zmq-close s))
-                     (mapcar #'car channels))))
+               (with-zmq-poller poller
+                 ;; Also poll for standard-in events to be able to read commands
+                 ;; from the parent emacs process without blocking
+                 (zmq-poller-register poller 0 zmq-POLLIN)
+                 (mapc (lambda (x) (zmq-poller-register
+                            poller (car x) zmq-POLLIN))
+                    channels)
+                 (unwind-protect
+                     (while t
+                       (when (and (= idle-count 2)
+                                  (> (ring-length queue) 0))
+                         (send-recvd))
+                       (let ((events (condition-case err
+                                         (zmq-poller-wait-all poller 5 timeout)
+                                       (zmq-EINTR nil)
+                                       ;; TODO: For any other kind of error,
+                                       ;; just reset the polling loop by exiting
+                                       ;; `with-zmq-poller'.
+                                       (error (signal (car err) (cdr err))))))
+                         (if (null events)
+                             (progn (setq idle-count (1+ idle-count))
+                                    (when (= idle-count 50)
+                                      (setq timeout 100)))
+                           (setq idle-count 0
+                                 timeout 20)
+                           (when (alist-get 0 events)
+                             (setf (alist-get 0 events nil 'remove) nil)
+                             (cl-destructuring-bind (cmd . data)
+                                 (zmq-subprocess-read)
+                               (cl-case cmd
+                                 (quit
+                                  (signal 'quit nil))
+                                 (start-channel
+                                  (let* ((ctype data)
+                                         (sock (car (rassoc ctype channels))))
+                                    (start-channel sock)))
+                                 (stop-channel
+                                  (let* ((ctype data)
+                                         (sock (car (rassoc ctype channels))))
+                                    (stop-channel sock)))
+                                 (send
+                                  (let* ((ctype (car data))
+                                         (sock (car (rassoc ctype channels)))
+                                         (rest (cdr data)))
+                                    (send-message sock ctype rest))))))
+                           (cl-loop for (sock . event) in events
+                                    do (recv-message
+                                        sock (alist-get sock channels))))))
+                   (mapc (lambda (s)
+                        (zmq-socket-set s zmq-LINGER 0)
+                        (zmq-close s))
+                      (mapcar #'car channels))))
              (quit (zmq-prin1 (cons 'quit (cons nil nil))))))))))
 
 (defun jupyter--ioloop-pop-request (client)
