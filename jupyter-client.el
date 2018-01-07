@@ -72,8 +72,7 @@ connection is terminated before initializing."
                                  (json-read-file file-or-plist))))
                      (oref client conn-info))))
     (unless conn-info
-      (error "Can't initialize connection without connection info."))
-
+      (error "Can't initialize connection without connection info"))
     (cl-destructuring-bind
         (&key shell_port iopub_port stdin_port hb_port control_port ip
               key transport signature_scheme kernel_name
@@ -656,7 +655,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                (jupyter-handle-kernel-info-reply
                 client req protocol_version implementation
                 implementation_version language_info banner help_links)))
-            (_ (error "Message type not handled yet.")))
+            (_ (error "Message type not handled yet")))
         ;; FIXME: Do something about errrors here?
         ;; (if (equal status "error")
         ;;     (error "Error (%s): %s"
@@ -865,7 +864,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
            content
          (jupyter-handle-update-display-data
           client req data metadata transient)))
-      (_ (error "Message type not handled yet.")))))
+      (_ (error "Message type not handled yet")))))
 
 (cl-defgeneric jupyter-handle-stream ((client jupyter-kernel-client)
                                       req
