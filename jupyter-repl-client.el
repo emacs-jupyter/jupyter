@@ -165,10 +165,8 @@ can contain the following keywords along with their values:
         (otherwise
          (error "Keyword not one of `:read-only', `:properties', `:inherit-properties' (`%s')." arg)))
       (setq args (cddr args)))
-    (when read-only
-      (if properties
-          (setq properties (append '(read-only t) properties))
-        (setq properties '(read-only t))))
+    (setq properties (append (when read-only '(read-only t))
+                             properties))
     (apply insert-fun (mapcar (lambda (s)
                            (prog1 s
                              (when properties
