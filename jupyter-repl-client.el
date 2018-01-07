@@ -707,11 +707,13 @@ The first character of the cell code corresponds to position 1."
     (prefix (and (eq major-mode 'jupyter-repl-mode)
                  (not (get-text-property (point) 'read-only))
                  ;; Just grab a symbol, we will just send the whole code cell
-                 (buffer-substring (or (save-excursion
-                                         (when (re-search-backward "[ \t]" (point-at-bol) 'noerror)
-                                           (1+ (point))))
-                                       (point-at-bol))
-                                   (point))))
+                 (company-grab-symbol)
+                 ;; (buffer-substring (or (save-excursion
+                 ;;                         (when (re-search-backward "[ \t]" (point-at-bol) 'noerror)
+                 ;;                           (1+ (point))))
+                 ;;                       (point-at-bol))
+                 ;;                   (point))
+                 ))
     (candidates
      (cons
       :async
