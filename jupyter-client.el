@@ -529,10 +529,10 @@ are taken:
       (jupyter-message-content msg)
     (jupyter-handle-input-reply client req prompt password)))
 
-(cl-defmethod jupyter-handle-input-reply ((client jupyter-kernel-client)
-                                          req
-                                          prompt
-                                          password)
+(cl-defgeneric jupyter-handle-input-reply ((client jupyter-kernel-client)
+                                           req
+                                           prompt
+                                           password)
   "Handle an input request from CLIENT's kernel.
 PROMPT is the prompt the kernel would like to show the user. If
 PASSWORD is non-nil, then `read-passwd' is used to get input from
@@ -550,10 +550,10 @@ the user. Otherwise `read-from-minibuffer' is used."
 
 ;;; CONTROL message requests/handlers
 
-(cl-defmethod jupyter-handle-message ((channel jupyter-control-channel)
-                                      client
-                                      req
-                                      msg)
+(cl-defgeneric jupyter-handle-message ((channel jupyter-control-channel)
+                                       client
+                                       req
+                                       msg)
   (cl-destructuring-bind (&key status ename evalue &allow-other-keys)
       (jupyter-message-content msg)
     (if (equal status "ok")
@@ -567,18 +567,19 @@ the user. Otherwise `read-from-minibuffer' is used."
       (if (equal status "error") (error "Error (%s): %s" ename evalue)
         (error "Error: aborted")))))
 
-(cl-defmethod jupyter-shutdown-request ((client jupyter-kernel-client)
-                                        &optional restart)
+(cl-defgeneric jupyter-shutdown-request ((client jupyter-kernel-client)
+                                         &optional restart)
   "Request a shutdown of CLIENT's kernel.
 If RESTART is non-nil, request a restart instead of a complete shutdown."
   (let ((channel (oref client shell-channel))
         (msg (jupyter-message-shutdown-request :restart restart)))
     (jupyter-send client channel "shutdown_request" msg)))
 
-(cl-defmethod jupyter-handle-shutdown-reply ((client jupyter-kernel-client)
-                                             req
-                                             restart)
-  "Default shutdown reply handler.")
+(cl-defgeneric jupyter-handle-shutdown-reply ((client jupyter-kernel-client)
+                                              req
+                                              restart)
+  "Default shutdown reply handler."
+  nil)
 
 ;; FIXME: This breaks the convention that all jupyter-request-* functions
 ;; returns a message-id future object.
@@ -588,9 +589,10 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
 ;;   (let ((channel (oref client control-channel)))
 ;;     (jupyter-send client channel "interrupt_request" ())))
 
-(cl-defmethod jupyter-handle-interrupt-reply ((client jupyter-kernel-client)
-                                              req)
-  "Default interrupt reply handler.")
+(cl-defgeneric jupyter-handle-interrupt-reply ((client jupyter-kernel-client)
+                                               req)
+  "Default interrupt reply handler."
+  nil)
 
 ;;; SHELL message requests/handlers
 
@@ -662,13 +664,13 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
         ;;   (error "Error: aborted"))
         ))))
 
-(cl-defmethod jupyter-execute-request ((client jupyter-kernel-client)
-                                       &key code
-                                       (silent nil)
-                                       (store-history t)
-                                       (user-expressions nil)
-                                       (allow-stdin t)
-                                       (stop-on-error nil))
+(cl-defgeneric jupyter-execute-request ((client jupyter-kernel-client)
+                                        &key code
+                                        (silent nil)
+                                        (store-history t)
+                                        (user-expressions nil)
+                                        (allow-stdin t)
+                                        (stop-on-error nil))
   "Send an execute request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
@@ -681,17 +683,18 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
               :stop-on-error stop-on-error)))
     (jupyter-send client channel "execute_request" msg)))
 
-(cl-defmethod jupyter-handle-execute-reply ((client jupyter-kernel-client)
-                                            req
-                                            execution-count
-                                            user-expressions
-                                            payload)
-  "Default execute reply handler.")
+(cl-defgeneric jupyter-handle-execute-reply ((client jupyter-kernel-client)
+                                             req
+                                             execution-count
+                                             user-expressions
+                                             payload)
+  "Default execute reply handler."
+  nil)
 
-(cl-defmethod jupyter-inspect-request ((client jupyter-kernel-client)
-                                       &key code
-                                       (pos 0)
-                                       (detail 0))
+(cl-defgeneric jupyter-inspect-request ((client jupyter-kernel-client)
+                                        &key code
+                                        (pos 0)
+                                        (detail 0))
   "Send an inspect request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
@@ -699,16 +702,17 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
               :code code :pos pos :detail detail)))
     (jupyter-send client channel "inspect_request" msg)))
 
-(cl-defmethod jupyter-handle-inspect-reply ((client jupyter-kernel-client)
-                                            req
-                                            found
-                                            data
-                                            metadata)
-  "Default inspect reply handler.")
+(cl-defgeneric jupyter-handle-inspect-reply ((client jupyter-kernel-client)
+                                             req
+                                             found
+                                             data
+                                             metadata)
+  "Default inspect reply handler."
+  nil)
 
-(cl-defmethod jupyter-complete-request ((client jupyter-kernel-client)
-                                        &key code
-                                        (pos 0))
+(cl-defgeneric jupyter-complete-request ((client jupyter-kernel-client)
+                                         &key code
+                                         (pos 0))
   "Send a complete request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
@@ -716,25 +720,26 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
               :code code :pos pos)))
     (jupyter-send client channel "complete_request" msg)))
 
-(cl-defmethod jupyter-handle-complete-reply ((client jupyter-kernel-client)
-                                             req
-                                             matches
-                                             cursor-start
-                                             cursor-end
-                                             metadata)
-  "Default complete reply handler.")
+(cl-defgeneric jupyter-handle-complete-reply ((client jupyter-kernel-client)
+                                              req
+                                              matches
+                                              cursor-start
+                                              cursor-end
+                                              metadata)
+  "Default complete reply handler."
+  nil)
 
-(cl-defmethod jupyter-history-request ((client jupyter-kernel-client)
-                                       &key
-                                       output
-                                       raw
-                                       (hist-access-type "tail")
-                                       session
-                                       start
-                                       stop
-                                       (n 10)
-                                       pattern
-                                       unique)
+(cl-defgeneric jupyter-history-request ((client jupyter-kernel-client)
+                                        &key
+                                        output
+                                        raw
+                                        (hist-access-type "tail")
+                                        session
+                                        start
+                                        stop
+                                        (n 10)
+                                        pattern
+                                        unique)
   "Send a history request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
@@ -750,13 +755,14 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
               :unique unique)))
     (jupyter-send client channel "history_request" msg)))
 
-(cl-defmethod jupyter-handle-history-reply ((client jupyter-kernel-client)
+(cl-defgeneric jupyter-handle-history-reply ((client jupyter-kernel-client)
                                             req
                                             history)
-  "Default history reply handler.")
+  "Default history reply handler."
+  nil)
 
-(cl-defmethod jupyter-is-complete-request ((client jupyter-kernel-client)
-                                           &key code)
+(cl-defgeneric jupyter-is-complete-request ((client jupyter-kernel-client)
+                                            &key code)
   "Send an is-complete request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
@@ -764,14 +770,15 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
               :code code)))
     (jupyter-send client channel "is_complete_request" msg)))
 
-(cl-defmethod jupyter-handle-is-complete-reply ((client jupyter-kernel-client)
-                                                req
-                                                status
-                                                indent)
-  "Default is complete reply handler.")
+(cl-defgeneric jupyter-handle-is-complete-reply ((client jupyter-kernel-client)
+                                                 req
+                                                 status
+                                                 indent)
+  "Default is complete reply handler."
+  nil)
 
-(cl-defmethod jupyter-comm-info-request ((client jupyter-kernel-client)
-                                         &key target-name)
+(cl-defgeneric jupyter-comm-info-request ((client jupyter-kernel-client)
+                                          &key target-name)
   "Send a comm-info request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
@@ -779,26 +786,28 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
               :target-name target-name)))
     (jupyter-send client channel "comm_info_request" msg)))
 
-(cl-defmethod jupyter-handle-comm-info-reply ((client jupyter-kernel-client)
-                                              req
-                                              comms)
-  "Default comm info. reply handler.")
+(cl-defgeneric jupyter-handle-comm-info-reply ((client jupyter-kernel-client)
+                                               req
+                                               comms)
+  "Default comm info. reply handler."
+  nil)
 
-(cl-defmethod jupyter-kernel-info-request ((client jupyter-kernel-client))
+(cl-defgeneric jupyter-kernel-info-request ((client jupyter-kernel-client))
   "Send a kernel-info request."
   (let ((channel (oref client shell-channel))
         (msg (jupyter-message-kernel-info-request)))
     (jupyter-send client channel "kernel_info_request" msg)))
 
-(cl-defmethod jupyter-handle-kernel-info-reply ((client jupyter-kernel-client)
-                                                req
-                                                protocol-version
-                                                implementation
-                                                implementation-version
-                                                language-info
-                                                banner
-                                                help-links)
-  "Default kernel-info reply handler.")
+(cl-defgeneric jupyter-handle-kernel-info-reply ((client jupyter-kernel-client)
+                                                 req
+                                                 protocol-version
+                                                 implementation
+                                                 implementation-version
+                                                 language-info
+                                                 banner
+                                                 help-links)
+  "Default kernel-info reply handler."
+  nil)
 
 ;;; IOPUB message handlers
 
@@ -858,54 +867,70 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
           client req data metadata transient)))
       (_ (error "Message type not handled yet.")))))
 
-(cl-defmethod jupyter-handle-stream ((client jupyter-kernel-client)
-                                     req
-                                     name
-                                     text)
-  "Default stream handler.")
+(cl-defgeneric jupyter-handle-stream ((client jupyter-kernel-client)
+                                      req
+                                      name
+                                      text)
+  "Default stream handler."
+  nil)
 
-(cl-defmethod jupyter-handle-execute-input ((client jupyter-kernel-client)
-                                            req
-                                            code
-                                            execution-count)
-  "Default execute input handler.")
-
-(cl-defmethod jupyter-handle-execute-result ((client jupyter-kernel-client)
+(cl-defgeneric jupyter-handle-execute-input ((client jupyter-kernel-client)
                                              req
-                                             execution-count
-                                             data
-                                             metadata)
-  "Default execute result handler.")
+                                             code
+                                             execution-count)
+  "Default execute input handler."
+  nil)
 
-(cl-defmethod jupyter-handle-error ((client jupyter-kernel-client)
-                                    req
-                                    ename
-                                    evalue
-                                    traceback)
-  "Default error handler.")
+(cl-defgeneric jupyter-handle-execute-result ((client jupyter-kernel-client)
+                                              req
+                                              execution-count
+                                              data
+                                              metadata)
+  "Default execute result handler."
+  nil)
 
-(cl-defmethod jupyter-handle-status ((client jupyter-kernel-client)
+(cl-defgeneric jupyter-handle-error ((client jupyter-kernel-client)
                                      req
-                                     execution-state)
-  "Default status handler.")
+                                     ename
+                                     evalue
+                                     traceback)
+  "Default error handler."
+  nil)
 
-(cl-defmethod jupyter-handle-clear-output ((client jupyter-kernel-client)
-                                           req
-                                           wait)
-  "Default clear output handler.")
+(cl-defgeneric jupyter-handle-status ((client jupyter-kernel-client)
+                                      req
+                                      execution-state)
+  "Default status handler."
+  nil)
 
-(cl-defmethod jupyter-handle-display-data ((client jupyter-kernel-client)
-                                           req
-                                           data
-                                           metadata
-                                           transient)
-  "Default display data handler.")
+(cl-defgeneric jupyter-handle-clear-output ((client jupyter-kernel-client)
+                                            req
+                                            wait)
+  "Default clear output handler."
+  nil)
 
-(cl-defmethod jupyter-handle-update-display-data ((client jupyter-kernel-client)
-                                                  req
-                                                  data
-                                                  metadata
-                                                  transient)
-  "Default update display data handler.")
+(cl-defgeneric jupyter-handle-display-data ((client jupyter-kernel-client)
+                                            req
+                                            data
+                                            metadata
+                                            transient)
+  "Default display data handler."
+  nil)
+
+(cl-defgeneric jupyter-handle-display-data ((client jupyter-kernel-client)
+                                            req
+                                            data
+                                            metadata
+                                            transient)
+  "Default display data handler."
+  nil)
+
+(cl-defgeneric jupyter-handle-update-display-data ((client jupyter-kernel-client)
+                                                   req
+                                                   data
+                                                   metadata
+                                                   transient)
+  "Default update display handler"
+  nil)
 
 (provide 'jupyter-client)
