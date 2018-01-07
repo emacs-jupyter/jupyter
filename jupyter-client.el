@@ -278,7 +278,7 @@ using the CHANNEL's socket."
                      ring))))
     (ring-insert+extend ring req 'grow)))
 
-(defun jupyter--ioloop-sentinel (client ioloop event)
+(defun jupyter--ioloop-sentinel (client event)
   (cond
    ((cl-loop for type in '("exited" "failed" "finished" "killed" "deleted")
              thereis (string-prefix-p type event))
