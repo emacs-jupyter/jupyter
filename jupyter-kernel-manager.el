@@ -44,7 +44,7 @@ to connect to MANAGER's kernel."
   (unless (child-of-class-p class 'jupyter-kernel-client)
     (signal 'wrong-type-argument (list '(subclass jupyter-kernel-client) class)))
   (let ((client (apply #'make-instance class slots)))
-    (jupyter-clone-connection manager client)
+    (oset client parent-instance manager)
     (jupyter-initialize-connection client)
     client))
 

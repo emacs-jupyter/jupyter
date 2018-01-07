@@ -1,6 +1,7 @@
 (require 'jupyter-base)
+(require 'eieio-base)
 
-(defclass jupyter-connection ()
+(defclass jupyter-connection (eieio-instance-inheritor)
   ((session
     :type jupyter-session
     :initarg :session
@@ -14,11 +15,6 @@
  See
  http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files"))
   :abstract t)
-
-(cl-defmethod jupyter-clone-connection ((this jupyter-connection) other)
-  (cl-check-type other jupyter-connection)
-  (oset other session (copy-sequence (oref this session)))
-  (oset other conn-info (copy-sequence (oref this conn-info))))
 
 (cl-defun jupyter-create-connection-info (&key
                                           (kernel-name "python")

@@ -2,7 +2,7 @@
 (require 'ring)
 (eval-when-compile (require 'cl))
 
-(defclass jupyter-channel ()
+(defclass jupyter-channel (jupyter-connection)
   ((type
     :type keyword
     :initarg :type

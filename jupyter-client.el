@@ -84,23 +84,24 @@ connection is terminated before initializing."
       ;; Stop the channels if connected to some other kernel
       (jupyter-stop-channels client)
       (let ((addr (concat transport "://" ip)))
-        (oset client session (jupyter-session :key key))
-        (oset client stdin-channel
-              (make-instance
-               'jupyter-stdin-channel
-               :endpoint (format "%s:%d" addr stdin_port)))
-        (oset client shell-channel
-              (make-instance
-               'jupyter-shell-channel
-               :endpoint (format "%s:%d" addr shell_port)))
-        (oset client hb-channel
-              (make-instance
-               'jupyter-hb-channel
-               :endpoint (format "%s:%d" addr hb_port)))
-        (oset client iopub-channel
-              (make-instance
-               'jupyter-iopub-channel
-               :endpoint (format "%s:%d" addr iopub_port)))))))
+        ;; A kernel manager may have already initialized the session, see
+        ;; `jupyter-make-client'
+        (unless (and (slot-boundp client 'session)
+                     (oref client session)
+                     (equal (jupyter-session-key (oref client session)) key))
+          (oset client session (jupyter-session :key key)))
+        (cl-loop
+         for (channel . port) in (list (cons 'stdin-channel stdin_port)
+                                       (cons 'shell-channel shell_port)
+                                       (cons 'hb-channel hb_port)
+                                       (cons 'iopub-channel iopub_port))
+         for class = (intern (concat "jupyter-" (symbol-name channel)))
+         do (setf (slot-value client channel)
+                  (make-instance
+                   class
+                   ;; So channels have access to the client's session
+                   :parent-instance client
+                   :endpoint (format "%s:%d" addr port))))))))
 
 ;;; Lower level sending/receiving
 
