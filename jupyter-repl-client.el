@@ -287,7 +287,11 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
               props (list 'jupyter-cell (list 'beginning count)
                           'rear-nonsticky t))))
      ((eq type 'out)
-      (let ((count (jupyter-repl-cell-count)))
+      ;; Output is normally inserted by first going to the end of the output
+      ;; for the request. The end of the ouput for a request is at the
+      ;; beginning of the next cell after the request which is why `escape' is
+      ;; needed here.
+      (let ((count (jupyter-repl-cell-count 'escape)))
         (setq ov (jupyter-repl--insert-prompt
                   (format "Out [%d]:" count) 'jupyter-repl-output-prompt)
               props (list 'jupyter-cell (list 'out count)))))
@@ -312,8 +316,11 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
   (jupyter-repl-cell-update-prompt
    (format "In [%d]:" (jupyter-repl-cell-count))))
 
-(defun jupyter-repl-cell-count ()
-  (let ((pos (if (jupyter-repl-cell-beginning-p) (point)
+(defun jupyter-repl-cell-count (&optional escape)
+  "Get the cell count of the current cell at `point'.
+If ESCAPE is non-nil and `point' is already at the beginning of a
+cell, return the cell count of the cell before the current one."
+  (let ((pos (if (and (not escape) (jupyter-repl-cell-beginning-p)) (point)
                (save-excursion
                  (jupyter-repl-previous-cell)
                  (point)))))

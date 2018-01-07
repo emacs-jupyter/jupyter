@@ -266,11 +266,19 @@ using the CHANNEL's socket."
              (quit (zmq-prin1 (list 'quit)))))))))
 
 (defun jupyter--ioloop-pop-request (client)
+  "Remove a pending request from CLIENT's ioloop subprocess.
+Specifically remove the oldest element of the ring located in the
+`:jupyter-pending-requests' property of CLIENT's ioloop
+subprocess."
   (let* ((ring (process-get (oref client ioloop) :jupyter-pending-requests))
          (req (ring-remove ring)))
     req))
 
 (defun jupyter--ioloop-push-request (client req)
+  "Insert a request into CLIENT's pending requests.
+REQ is inserted as the newest element in CLIENT's pending
+requests. See `jupyter--ioloop-pop-request' for where pending
+requests are stored for CLIENT."
   (let* ((ioloop (oref client ioloop))
          (ring (or (process-get ioloop :jupyter-pending-requests)
                    (let ((ring (make-ring 10)))
@@ -279,6 +287,10 @@ using the CHANNEL's socket."
     (ring-insert+extend ring req 'grow)))
 
 (defun jupyter--ioloop-sentinel (client event)
+  "The process sentinel for CLIENT's IOLOOP subprocess.
+When EVENT is one of the events signifying that the process is
+dead, stop the heartbeat channel and set the IOLOOP slot to nil
+in CLIENT."
   (cond
    ((cl-loop for type in '("exited" "failed" "finished" "killed" "deleted")
              thereis (string-prefix-p type event))
