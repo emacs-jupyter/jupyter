@@ -1,6 +1,20 @@
+;;; -*- lexical-binding: t -*-
+
 (require 'jupyter-client)
+(require 'jupyter-kernel-manager)
 (require 'cl-lib)
 (require 'ert)
+(eval-when-compile (require 'cl))
+
+;; TODO: Required tests
+;; - `jupyter-channels'
+;; - `jupyter-messages'
+;; - `jupyter-request' semantics
+;;   - Ensure `jupyter-request-idle-received-p' gets set
+;;   - Ensure `jupyter-request-run-handlers-p' actually prevents a handler from running
+;; - IOLoop subprocess
+;;   - Make sure all commands that can be sent to the subprocess work
+
 (defclass jupyter-echo-client (jupyter-kernel-client)
   ((messages))
   :documentation "A client that echo's any messages sent back to
@@ -16,7 +30,7 @@ testing the callback functionality of a
         :parent_header (list :msg_id (jupyter-request-id req))
         :content content))
 
-(cl-defmethod initialize-instance ((client jupyter-echo-client) &rest slots)
+(cl-defmethod initialize-instance ((client jupyter-echo-client) &rest _slots)
   (cl-call-next-method)
   (oset client messages (make-ring 10))
   (cl-loop
@@ -36,7 +50,7 @@ testing the callback functionality of a
                             channel
                             type
                             message
-                            &optional flags)
+                            &optional _flags)
   (let ((req (make-jupyter-request :-id (jupyter-new-uuid))))
     (if (string-match "request" type)
         (setq type (replace-match "reply" nil nil type))
@@ -117,9 +131,9 @@ testing the callback functionality of a
           ;; Can't add callbacks after an idle message has been received
           (should-error (jupyter-add-callback req :status #'identity))))
       (ert-info ("Callback runs for the right message")
-        (lexical-let ((ran-callbacks nil)
-                      (req1 (jupyter-execute-request client :code "foo"))
-                      (req2 (jupyter-kernel-info-request client)))
+        (let ((req1 (jupyter-execute-request client :code "foo"))
+              (req2 (jupyter-kernel-info-request client))
+              ran-callbacks)
           ;; callback for all message types received from a request
           (jupyter-add-callback req1
             t (lambda (msg)
@@ -142,9 +156,9 @@ testing the callback functionality of a
         (lexical-let* ((ran-callbacks nil)
                        (req (jupyter-execute-request client :code "foo")))
           (jupyter-add-callback req
-            :execute-reply (lambda (msg) (push 1 ran-callbacks)))
+            :execute-reply (lambda (_msg) (push 1 ran-callbacks)))
           (jupyter-add-callback req
-            :execute-reply (lambda (msg) (push 2 ran-callbacks)))
+            :execute-reply (lambda (_msg) (push 2 ran-callbacks)))
           (jupyter-wait-until-idle req)
           (setq ran-callbacks (nreverse ran-callbacks))
           (should (equal ran-callbacks '(1 2))))))))
@@ -153,13 +167,13 @@ testing the callback functionality of a
   (ert-info ("Splitting identities from messages")
     (let ((msg (list "123" "323" jupyter-message-delimiter
                      "msg1" "msg2" "\0\0")))
-      (should (equal (jupyter-split-identities msg)
+      (should (equal (jupyter--split-identities msg)
                      (cons (list "123" "323")
                            (list "msg1" "msg2" "\0\0"))))
       (setq msg (list "123" "No" "delim" "in" "message"))
-      (should-error (jupyter-split-identities msg))))
+      (should-error (jupyter--split-identities msg))))
   (ert-info ("Creating message headers")
-    (let ((header (jupyter-message-header "stdin_reply" "session-id")))
+    (let ((header (jupyter--message-header "stdin_reply" "session-id")))
       ;; TODO: Check fields
       (should (plist-get header :msg_id))
       (should (plist-get header :date))
@@ -171,13 +185,13 @@ testing the callback functionality of a
     (ert-info ("Encoding/decoding objects")
       (let ((json-object-type 'plist)
             (obj nil))
-        (should-not (multibyte-string-p (jupyter-encode-object "foîji")))
+        (should-not (multibyte-string-p (jupyter--encode-object "foîji")))
         ;; TODO: Only decodes json plists, what to do instead?
-        (should-error (jupyter-decode-string (jupyter-encode-object "foîji")))
+        (should-error (jupyter--decode-string (jupyter--encode-object "foîji")))
         (setq obj '(:msg_id 12342 :msg_type "stdin_reply" :session "foîji"))
         (should (json-plist-p obj))
-        (should-not (multibyte-string-p (jupyter-encode-object obj)))
-        (should (equal (jupyter-decode-string (jupyter-encode-object obj))
+        (should-not (multibyte-string-p (jupyter--encode-object obj)))
+        (should (equal (jupyter--decode-string (jupyter--encode-object obj))
                        obj))))))
 
 (ert-deftest jupyter-channels ()
@@ -208,7 +222,7 @@ testing the callback functionality of a
         (should-not (jupyter-channel-alive-p channel))))
     (ert-info ("Heartbeat channel")
       (cl-flet ((start-hb () (zmq-start-process
-                              (lambda (ctx)
+                              (lambda (_ctx)
                                 (with-zmq-socket sock zmq-REP
                                   (zmq-bind sock "tcp://127.0.0.1:5556")
                                   (while t
@@ -255,7 +269,7 @@ testing the callback functionality of a
 
 (ert-deftest jupyter-client ()
   (let* ((socks (cl-loop repeat 4
-                         collect (zmq-socket (current-zmq-context) zmq-REQ)))
+                         collect (zmq-socket (zmq-current-context) zmq-REQ)))
          (sock-endpoint
           (cl-loop
            with addr = "tcp://127.0.0.1"
@@ -297,7 +311,8 @@ testing the callback functionality of a
       (mapc (lambda (se) (zmq-close (car se))) sock-endpoint))))
 
 (ert-deftest jupyter-message-types ()
-  (let ((client (jupyter-kernel-client-using-kernel "python")))
+  (let* ((manager (jupyter-kernel-manager "python"))
+         (client (jupyter-make-client manager 'jupyter-kernel-client)))
     (jupyter-start-channels client)
     ;; Let the channels start
     (sleep-for 1)
@@ -323,7 +338,7 @@ testing the callback functionality of a
               (should (equal (jupyter-message-type res) "execute_reply"))))
           (ert-info ("Input")
             (cl-letf (((symbol-function 'read-from-minibuffer)
-                       (lambda (prompt &rest args) "foo")))
+                       (lambda (_prompt &rest _args) "foo")))
               (let ((res (jupyter-wait-until-received :execute-result
                            (jupyter-execute-request client :code "input('')"))))
                 (should-not (null res))
@@ -365,24 +380,23 @@ testing the callback functionality of a
               (should-not (null res))
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "is_complete_reply"))))
-          (ert-info ("Interrupt")
-            (lexical-let ((time (current-time))
-                          (interrupt-time nil))
-              (jupyter-add-callback
-                  (jupyter-execute-request
-                   client :code "import time\ntime.sleep(2)")
-                :status (lambda (msg)
-                          (when (jupyter-message-status-idle-p msg)
-                            (setq interrupt-time (current-time)))))
-              (sleep-for 0.2)
-              (let ((res (jupyter-wait-until-received :interrupt-reply
-                           (jupyter-interrupt-request client))))
-                (should-not (null res))
-                (should (json-plist-p res))
-                (message "%s " res)
-                (should (equal (jupyter-message-type res) "interrupt_reply"))
-                (should (< (float-time (time-subtract interrupt-time time))
-                           2)))))
+          ;; (ert-info ("Interrupt")
+          ;;   (let ((time (current-time))
+          ;;         (interrupt-time nil))
+          ;;     (jupyter-add-callback
+          ;;         (jupyter-execute-request
+          ;;          client :code "import time\ntime.sleep(2)")
+          ;;       :status (lambda (msg)
+          ;;                 (when (jupyter-message-status-idle-p msg)
+          ;;                   (setq interrupt-time (current-time)))))
+          ;;     (sleep-for 0.2)
+          ;;     (let ((res (jupyter-wait-until-received :interrupt-reply
+          ;;                  (jupyter-interrupt-request client))))
+          ;;       (should-not (null res))
+          ;;       (should (json-plist-p res))
+          ;;       (should (equal (jupyter-message-type res) "interrupt_reply"))
+          ;;       (should (< (float-time (time-subtract interrupt-time time))
+          ;;                  2)))))
           (ert-info ("Shutdown")
             (let ((res (jupyter-wait-until-received :shutdown-reply
                          (jupyter-shutdown-request client))))
