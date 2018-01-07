@@ -446,9 +446,10 @@ The first character of the cell code corresponds to position 1."
     (add-text-properties beg (point) '(read-only t font-lock-multiline t))))
 
 (defun jupyter-repl-replace-cell-code (new-code)
-  (delete-region (jupyter-repl-cell-code-beginning-position)
-                 (jupyter-repl-cell-code-end-position))
-  (jupyter-repl-insert :read-only nil new-code))
+  (let ((inhibit-read-only t))
+    (delete-region (jupyter-repl-cell-code-beginning-position)
+                   (jupyter-repl-cell-code-end-position))
+    (jupyter-repl-insert :read-only nil new-code)))
 
 (defun jupyter-repl-truncate-buffer ()
   (save-excursion
@@ -656,10 +657,9 @@ The first character of the cell code corresponds to position 1."
 
 (defun jupyter-repl-indent-line ()
   "Indent the line according to the language of the REPL."
-  (let* ((spos (jupyter-repl-cell-code-beginning-position))
-         (pos (jupyter-repl-cell-code-position))
-         (code (jupyter-repl-cell-code))
-         (inhibit-read-only t))
+  (let ((spos (jupyter-repl-cell-code-beginning-position))
+        (pos (jupyter-repl-cell-code-position))
+        (code (jupyter-repl-cell-code)))
     (jupyter-repl-replace-cell-code
      (with-jupyter-repl-lang-buffer
        (insert code)
