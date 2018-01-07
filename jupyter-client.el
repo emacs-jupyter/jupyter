@@ -666,12 +666,10 @@ for the heartbeat channel."
 ;; request has been handled by the kernel.
 (cl-defstruct jupyter-request
   (-id)
-  (idle-received-p)
+  (time (current-time))
+  (idle-received-p nil)
+  (run-handlers-p t)
   (callbacks))
-
-(cl-defstruct jupyter-callback
-  (ran-p nil)
-  (cb nil))
 
 (defun jupyter-request-id (req)
   (with-timeout (0.5 (error "Request not processed."))
@@ -679,41 +677,41 @@ for the heartbeat channel."
       (sleep-for 0 10)))
   (jupyter-request--id req))
 
-(defun jupyter--run-callbacks-for-message (req msg)
-  "Run the MSG callbacks of REQ.
-
-The return value is non-nil if any handler methods for MSG should
-be run. If this function returns nil, then it indicates that no
-handler methods should be run for MSG. If there are multiple
-callbacks for a MSG then if at least one of them returns non-nil,
-this function will also return non-nil."
+(defun jupyter-request-run-callbacks (req msg)
+  "Run the MSG callbacks of REQ."
   (when req
     (let* ((callbacks (jupyter-request-callbacks req))
-           (cbt (cdr (assoc t callbacks)))
-           (cb (cdr (assoc (jupyter-message-type msg) callbacks))))
-      (if (or cb cbt) (cl-find-if
-                       (lambda (a) (not (null a)))
-                       (cl-loop
-                        for cb in (list cb cbt)
-                        when cb collect
-                        (funcall (jupyter-callback-cb cb) msg)
-                        and do (setf (jupyter-callback-ran-p cb) t)))
-        t))))
+           (cb-all-types (cdr (assoc t callbacks)))
+           (cb-for-type (cdr (assoc (jupyter-message-type msg) callbacks))))
+      (and cb-all-types (funcall cb-all-types msg))
+      (and cb-for-type (funcall cb-for-type msg)))))
 
 (defun jupyter-add-callback (msg-type req function)
-  "Add callback FUNCTION for a message REQUEST.
+  "Add a callback FUNCTION to a kernel REQuest.
 
-FUNCTION will be run for all received messages that are
-associated with REQ and have a message type of MSG-TYPE. The
-CLIENT handler method for MSG-TYPE is prevented from running if
-FUNCTION returns nil. Otherwise if FUNCTION returns a non-nil
-value, the handler method for MSG-TYPE is run. This allows for a
-mechanism to silently consume messages without passing them to
-the handler methods which are usually run for updating
-user-interface elements of the CLIENT.
+MSG-TYPE is a symbol representing which message type to run
+FUNCTION on when messages of that type are received for REQ. The
+symbol should be the same as one of the message types which are
+expected to be received from a kernel where underscore characters
+are replaced with hyphens, see
+http://jupyter-client.readthedocs.io/en/latest/messaging.html. So
+to add a callback which fires for and \"execute_reply\", MSG-TYPE
+should be the symbol `execute-reply'. As a special case if
+MSG-TYPE is t, FUNCTION is run for all received messages of REQ.
 
-As a special case if MSG-TYPE is t, the callback function is run
-for all received messages associated with REQ.
+If MSG-TYPE is a list, then it should be a list of symbols as
+described above. FUNCTION will then run for every type of message
+in the list.
+
+REQ is a `jupyter-request' object as returned by the kernel
+request methods of a `jupyter-kernel-client'.
+
+FUNCTION is the callback function to be run when a message with
+MSG-TYPE is received for REQ. It should accept one argument which
+will be the message that has type, MSG-TYPE, and is a message
+associated with the request, REQ. Note that if multiple callbacks
+are added for the same MSG-TYPE, they will be called in the order
+in which they were added.
 
 As an example, suppose you want to register a callback when you
 recieve an `execute-reply' after sending an execute request. This
@@ -721,27 +719,32 @@ can be done like so:
 
     (jupyter-add-callback 'execute-reply
         (jupyter-request-execute client :code \"y = 1 + 2\")
-      (lambda (msg)
-        (cl-assert (equal (jupyter-message-type msg) \"execute_reply\"))))
-
-Note that the callback is given the raw decoded message received
-from the kernel without any processing done to it."
+      (lambda (msg) ...))"
   (declare (indent 2))
-  (let ((mt (plist-get jupyter--received-message-types msg-type)))
-    (if mt (setq msg-type mt)
-      ;; msg-type = t means to run for every message type associated with
-      ;; msg-id
-      (unless (eq msg-type t)
-        (error "Not a valid received message type (`%s')" msg-type))))
-  (if (jupyter-request-idle-received-p req)
-      (error "Request already received idle message.")
-    (let ((callbacks (jupyter-request-callbacks req))
-          (cb (make-jupyter-callback :cb function)))
-      (if (null callbacks)
-          (setf (jupyter-request-callbacks req) (list (cons msg-type cb)))
-        (let* ((cb-for-type (assoc msg-type callbacks)))
-          (if cb-for-type (setcdr cb-for-type cb)
-            (nconc callbacks (list (cons msg-type cb)))))))))
+  (if (listp msg-type)
+      (mapc (lambda (mt) (jupyter-add-callback mt req function)) msg-type)
+    (setq msg-type (or (plist-get jupyter--received-message-types msg-type)
+                       ;; A msg-type of t means that FUNCTION is run for all
+                       ;; messages associated with a request.
+                       (eq msg-type t)))
+    (unless msg-type
+      (error "Not a valid received message type (`%s')" msg-type))
+    (if (jupyter-request-idle-received-p req)
+        (error "Request already received idle message.")
+      (let ((callbacks (jupyter-request-callbacks req)))
+        (if (null callbacks)
+            (setf (jupyter-request-callbacks req)
+                  (list (cons msg-type function)))
+          (let ((cb-for-type (assoc msg-type callbacks)))
+            (if cb-for-type
+                (setcdr cb-for-type (apply-partially
+                                     (lambda (cb1 cb2 msg)
+                                       (funcall cb1 msg)
+                                       (funcall cb2 msg))
+                                     (cdr cb-for-type)
+                                     function))
+              (nconc callbacks
+                     (list (cons msg-type function))))))))))
 
 (defun jupyter-wait-until (msg-type req timeout cond)
   "Wait until COND returns non-nil for a received message.
@@ -830,9 +833,10 @@ are taken:
           (when (eq (oref channel type) :iopub)
             (jupyter-handle-message channel client nil msg))
         (unwind-protect
-            (jupyter-handle-message channel client req msg)
+            (jupyter-request-run-callbacks req msg)
           (unwind-protect
-              (jupyter--run-callbacks-for-message req msg)
+              (when (jupyter-request-run-handlers-p req)
+                (jupyter-handle-message channel client req msg))
             (when (jupyter-message-status-idle-p msg)
               (setf (jupyter-request-idle-received-p req) t))
             (when (jupyter-request-idle-received-p req)
