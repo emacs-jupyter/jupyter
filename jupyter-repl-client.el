@@ -208,7 +208,6 @@ image."
   (let ((mimetypes (seq-filter #'keywordp data)))
     (cond
      ((memq :image/png mimetypes)
-      (jupyter-repl-newline)
       (insert-image
        (create-image
         (base64-decode-string
@@ -216,7 +215,6 @@ image."
         nil 'data)
        (propertize " " 'read-only t)))
      ((and (memq :image/svg+xml mimetypes) (image-type-available-p 'svg))
-      (jupyter-repl-newline)
       (insert-image
        (create-image
         (plist-get data :image/svg+xml) 'svg)
@@ -224,12 +222,12 @@ image."
      ((memq :text/html mimetypes)
       ;; TODO: If this can fail handle the execute request again but with
       ;; the html key removed from the data plist
+      (jupyter-repl-newline)
       (jupyter-repl-insert-html (plist-get data :text/html))
       (jupyter-repl-newline))
      ((memq :text/latex mimetypes)
       (jupyter-repl-insert-latex (plist-get data :text/latex)))
      ((memq :text/markdown mimetypes)
-      (jupyter-repl-newline)
       (jupyter-repl-insert
        (jupyter-repl-fontify-according-to-mode
         'markdown-mode (plist-get data :text/markdown))))
@@ -241,9 +239,8 @@ image."
          text)
         (font-lock-fillin-text-property
          0 (length text) 'font-lock-face 'default text)
-        (when (jupyter-repl-multiline-p text)
-          (jupyter-repl-newline))
-        (jupyter-repl-insert text)))
+        (jupyter-repl-insert text)
+        (jupyter-repl-newline)))
      (t (error "No supported mimetype found %s" mimetypes)))))
 
 ;;; Prompt
