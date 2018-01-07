@@ -795,72 +795,58 @@ http://jupyter-client.readthedocs.io/en/latest/messaging.html"
   (declare (indent 1))
   (jupyter-wait-until msg-type req timeout #'identity))
 
-(defun jupyter--handle-message (client channel)
+(cl-defmethod jupyter-handle-message ((client jupyter-kernel-client) channel)
   "Process a message on CLIENT's CHANNEL.
-When a message is received on CLIENT's channel it is decoded and
-added to the CHANNEL's recv-queue and this function is scheduled
-to be run at a later time to process the messages in the queue.
+When a message is received from the kernel, the
+`jupyter-handle-message' method is called on the client. The
+client method runs any callbacks for the message and possibly
+runs the client handler for the channel the message was received
+on. The channel's `jupyter-handle-message' method will then pass
+the message to the appropriate message handler based on message
+type which terminates the execution path.
 
-To process a message the following steps are taken:
+So when a message is received from the kernel the following steps
+are taken:
 
-1. A message is removed from the recv-queue
-2. A handler function is found base on CHANNEL's type
-3. Any callbacks previously registered for the message are run
-4. The handler method for the message is called. Note that if any
-   of the callbacks return a value of nil, the handler method for
-   the message is not run. This allows for consuming messages
-   without passing them to the handler methods which are usually
-   run to update user interface elements.
-5. This function is scheduled to process another message of
-   CHANNEL in the future"
-  (let ((ring (oref channel recv-queue)))
-    (unless (ring-empty-p ring)
-      ;; Messages are stored like (idents . msg) in the ring
-      (let* ((ctype (oref channel type))
-             (handler (cl-case ctype
-                        (:stdin #'jupyter--handle-stdin-message)
-                        (:iopub #'jupyter--handle-iopub-message)
-                        (:shell #'jupyter--handle-shell-message)
-                        (:control #'jupyter--handle-control-message)
-                        (otherwise (error "Wrong channel type (%s)." ctype))))
-             (msg (cdr (ring-remove ring)))
-             (pmsg-id (jupyter-message-parent-id msg))
-             (requests (oref client requests))
-             (req (gethash pmsg-id requests)))
-        ;; Drop messages not sent by us.
-        ;; TODO: Some messages might be useful.
-        (when req
-          (when (jupyter-message-status-idle-p msg)
-            (setf (jupyter-request-idle-received-p req) t))
+- `jupyter-handle-message' (client)
+   - Run callbacks for message
+   - Possibly run channel handlers
+     - `jupyter-handle-message' (channel)
+       - Based on message type, dispatch to
+         `jupyter-handle-execute-result',
+         `jupyter-handle-kernel-info-reply', ...
+   - Cleanup request when kernel is done processing it"
+
+  (when (jupyter-channel-messages-available-p channel)
+    (let* ((msg (jupyter-channel-get-message channel))
+           (pmsg-id (jupyter-message-parent-id msg))
+           (requests (oref client requests))
+           (req (gethash pmsg-id requests)))
+      (if (not req)
+          ;; Always run handlers of IOPub messages, even when they are not
+          ;; associated with any request that was sent by us.
+          ;;
+          ;; TODO: Would we always want this?
+          (when (eq (oref channel type) :iopub)
+            (jupyter-handle-message channel client nil msg))
+        (unwind-protect
+            (jupyter-handle-message channel client req msg)
           (unwind-protect
-              (funcall handler client req msg)
-            (unwind-protect
-                (jupyter--run-callbacks-for-message req msg)
-              ;; Remove the request once an idle message has been received and
-              ;; all callbacks have run atleast once. This is done because it
-              ;; is not gauranteed that the idle message is received after all
-              ;; other messages for a request.
-              ;;
-              ;; NOTE: this probably doesn't handle all cases.
-              (when (and (jupyter-request-idle-received-p req)
-                         ;; Check if all callbacks for req have run at least
-                         ;; once
-                         (if (not (jupyter-request-callbacks req)) t
-                           (cl-loop
-                            for (reply-type . cb) in (jupyter-request-callbacks req)
-                            unless (jupyter-callback-ran-p cb) return nil
-                            finally return t)))
-                (remhash pmsg-id requests)))))))))
+              (jupyter--run-callbacks-for-message req msg)
+            (when (jupyter-message-status-idle-p msg)
+              (setf (jupyter-request-idle-received-p req) t))
+            (when (jupyter-request-idle-received-p req)
+              (remhash pmsg-id requests))))))
+    (run-with-timer 0.005 nil #'jupyter-handle-message client channel)))
 
 ;;; Received message handlers
 
-;;; stdin messages
-
-(defun jupyter--handle-stdin-message (client req msg)
 ;;; STDIN message requests/handlers
+
+(cl-defmethod jupyter-handle-message ((channel jupyter-stdin-channel) client req msg)
   (cl-destructuring-bind (&key prompt password &allow-other-keys)
-      (plist-get msg :content)
-    (jupyter-handle-input client req prompt password)))
+      (jupyter-message-content msg)
+    (jupyter-handle-input-reply client req prompt password)))
 
 (cl-defmethod jupyter-handle-input-reply ((client jupyter-kernel-client) req prompt password)
   "Handle an input request from CLIENT's kernel.
@@ -878,22 +864,21 @@ the user. Otherwise `read-from-minibuffer' is used."
     ;; http://jupyter-client.readthedocs.io/en/latest/messaging.html#stdin-messages
     (jupyter-send client channel "input_reply" msg)))
 
-;;; control messages
-
-(defun jupyter--handle-control-message (client req msg)
-  (cl-destructuring-bind (&key msg_type content &allow-other-keys) msg
-    (let ((status (plist-get content :status)))
-      (if (equal status "ok")
-          ;; FIXME: An interrupt reply is only sent when interrupt_mode is set
-          ;; to message in a kernel's kernelspec.
-          (pcase msg_type
-            ("interrupt_reply"
-             (jupyter-handle-interrupt client req)))
-        (if (equal status "error")
-            (error "Error (%s): %s"
-                   (plist-get content :ename) (plist-get content :evalue))
-          (error "Error: aborted"))))))
 ;;; CONTROL message requests/handlers
+
+(cl-defmethod jupyter-handle-message ((channel jupyter-control-channel) client req msg)
+  (cl-destructuring-bind (&key status ename evalue &allow-other-keys)
+      (jupyter-message-content msg)
+    (if (equal status "ok")
+        ;; FIXME: An interrupt reply is only sent when interrupt_mode is set
+        ;; to message in a kernel's kernelspec.
+        (pcase (jupyter-message-type msg)
+          ("interrupt_reply"
+           (jupyter-handle-interrupt-reply client req)))
+      ;; FIXME: How to handle errors more generally? Just let the IOPub message
+      ;; handle it?
+      (if (equal status "error") (error "Error (%s): %s" ename evalue)
+        (error "Error: aborted")))))
 
 (cl-defmethod jupyter-shutdown-request ((client jupyter-kernel-client) &optional restart)
   "Request a shutdown of CLIENT's kernel.
@@ -919,13 +904,13 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
 ;;; SHELL message requests/handlers
 
 ;; http://jupyter-client.readthedocs.io/en/latest/messaging.html#messages-on-the-shell-router-dealer-channel
-(defun jupyter--handle-shell-message (client req msg)
-  (cl-destructuring-bind (&key msg_type content &allow-other-keys) msg
-    (let ((status (plist-get content :status)))
-      ;; We check for error or abort since "is_complete_reply" also contains a
-      ;; status field
+(cl-defmethod jupyter-handle-message ((channel jupyter-shell-channel) client req msg)
+  (let ((content (jupyter-message-content msg)))
+    (cl-destructuring-bind (&key status ename evalue &allow-other-keys) content
+      ;; is_complete_reply messages have a status other than "ok" so just
+      ;; ensure that the status does not correspond to an error.
       (if (not (member status '("error" "abort")))
-          (pcase msg_type
+          (pcase (jupyter-message-type msg)
             ("execute_reply"
              (cl-destructuring-bind (&key execution_count
                                           user_expressions
@@ -1118,7 +1103,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
 
 ;;; IOPUB message handlers
 
-(defun jupyter--handle-iopub-message (client req msg)
+(cl-defmethod jupyter-handle-message ((channel jupyter-iopub-channel) client req msg)
   (let ((content (jupyter-message-content msg)))
     (pcase (jupyter-message-type msg)
       ("shutdown_reply"
