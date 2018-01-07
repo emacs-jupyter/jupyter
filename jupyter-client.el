@@ -186,7 +186,8 @@ using the CHANNEL's socket."
                                             (alist-get (car b) priorities)))))))))
                     (cl-loop
                      while (not (ring-empty-p queue))
-                     do (zmq-prin1 (cons 'recvd (ring-remove queue)))))
+                     for (ctype . msg) = (ring-remove queue)
+                     do (zmq-prin1 (list 'recvd ctype msg))))
                    (recv-message
                     (sock ctype)
                     (when (= (ring-length queue) (ring-size queue))
@@ -195,8 +196,7 @@ using the CHANNEL's socket."
                    (send-message
                     (sock ctype rest)
                     (zmq-prin1
-                     (cons 'sent
-                           (cons ctype (apply #'jupyter-send session sock rest)))))
+                     (list 'sent ctype (apply #'jupyter-send session sock rest))))
                    (start-channel
                     (sock)
                     (zmq-connect
@@ -264,7 +264,7 @@ using the CHANNEL's socket."
                         (zmq-socket-set s zmq-LINGER 0)
                         (zmq-close s))
                       (mapcar #'car channels))))
-             (quit (zmq-prin1 (cons 'quit (cons nil nil))))))))))
+             (quit (zmq-prin1 (list 'quit)))))))))
 
 (defun jupyter--ioloop-pop-request (client)
   (let* ((ring (process-get (oref client ioloop) :jupyter-pending-requests))
@@ -287,33 +287,36 @@ using the CHANNEL's socket."
     (oset client ioloop nil))))
 
 (defun jupyter--ioloop-filter (client event)
-  (cl-destructuring-bind (ctype . data) (cdr event)
-    (cl-case (car event)
-      ;; Cleanup handled in sentinel
-      (quit)
-      (sent
-       (when jupyter--debug
-         (message "SEND: %s" data))
-       (unless (eq ctype :stdin)
-         ;; Anything sent on stdin is a reply and therefore never added to
-         ;; `:jupyter-pending-requests'
-         (let ((id data)
-               (req (jupyter--ioloop-pop-request client)))
-           (setf (jupyter-request--id req) id)
-           (puthash id req (oref client requests)))))
-      (recvd
-       (when jupyter--debug
-         (message "RECV: %s %s %s"
-                  (jupyter-message-type (cdr data))
-                  (jupyter-message-parent-id (cdr data))
-                  (jupyter-message-content (cdr data))))
-       (let ((channel (cl-find-if (lambda (c) (eq (oref c type) ctype))
-                                  (mapcar (lambda (x) (slot-value client x))
-                                     '(stdin-channel
-                                       shell-channel
-                                       iopub-channel)))))
-         (jupyter-push-message channel data)
-         (run-with-timer 0.001 nil #'jupyter-handle-message client channel))))))
+  "The process filter for CLIENT's ioloop subprocess.
+EVENT will be an s-expression emitted from the function returned
+by `jupyter--ioloop'."
+  (pcase event
+    (`(sent ,ctype ,msg-id)
+     (when jupyter--debug
+       (message "SEND: %s" msg-id))
+     (unless (eq ctype :stdin)
+       ;; Anything sent on stdin is a reply and therefore never added to
+       ;; `:jupyter-pending-requests'
+       (let ((req (jupyter--ioloop-pop-request client)))
+         (setf (jupyter-request--id req) msg-id)
+         (puthash msg-id req (oref client requests)))))
+    (`(recvd ,ctype ,msg)
+     (when jupyter--debug
+       (message "RECV: %s %s %s"
+                (jupyter-message-type (cdr msg))
+                (jupyter-message-parent-id (cdr msg))
+                (jupyter-message-content (cdr msg))))
+     (let ((channel (cl-find-if (lambda (c) (eq (oref c type) ctype))
+                                (mapcar (lambda (x) (slot-value client x))
+                                   '(stdin-channel
+                                     shell-channel
+                                     iopub-channel)))))
+       (jupyter-push-message channel msg)
+       (run-with-timer 0.001 nil #'jupyter-handle-message client channel)))
+    ('(quit)
+     ;; Cleanup handled in sentinel
+     (when jupyter--debug
+       (message "KERNEL KILLED")))))
 
 (cl-defmethod jupyter-start-channels ((client jupyter-kernel-client)
                                       &key (shell t)
