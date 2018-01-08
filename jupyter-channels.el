@@ -85,7 +85,7 @@ A channel is alive if its socket property is bound to a
   (and (slot-boundp channel 'socket)
        (not (null (oref channel socket)))))
 
-(cl-defmethod jupyter-push-message ((channel jupyter-channel) msg)
+(cl-defmethod jupyter-queue-message ((channel jupyter-channel) msg)
   (let ((ring (oref channel recv-queue)))
     (ring-insert+extend ring msg 'grow)))
 

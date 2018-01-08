@@ -349,7 +349,7 @@ by `jupyter--ioloop'."
                                    '(stdin-channel
                                      shell-channel
                                      iopub-channel)))))
-       (jupyter-push-message channel msg)
+       (jupyter-queue-message channel (cons idents msg))
        (run-with-timer 0.001 nil #'jupyter-handle-message client channel)))
     ('(quit)
      ;; Cleanup handled in sentinel

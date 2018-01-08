@@ -54,20 +54,20 @@ testing the callback functionality of a
   (let ((req (make-jupyter-request :-id (jupyter-new-uuid))))
     (if (string-match "request" type)
         (setq type (replace-match "reply" nil nil type))
-      (error "Not a request message type (%s)." type))
-    (jupyter-push-message (oref client iopub-channel)
-                          ;; `jupyter-push-message' expects a cons cell of the
-                          ;; form (idents . msg)
-                          (cons ""
-                                (jupyter-test-message
-                                 req "status"
-                                 (list :execution_state "busy"))))
-    (jupyter-push-message channel
-                          (cons "" (jupyter-test-message req type message)))
-    (jupyter-push-message (oref client iopub-channel)
-                          (cons "" (jupyter-test-message
-                                    req "status"
-                                    (list :execution_state "idle"))))
+      (error "Not a request message type (%s)" type))
+    (jupyter-queue-message (oref client iopub-channel)
+                           ;; `jupyter-push-message' expects a cons cell of the
+                           ;; form (idents . msg)
+                           (cons ""
+                                 (jupyter-test-message
+                                  req "status"
+                                  (list :execution_state "busy"))))
+    (jupyter-queue-message channel
+                           (cons "" (jupyter-test-message req type message)))
+    (jupyter-queue-message (oref client iopub-channel)
+                           (cons "" (jupyter-test-message
+                                     req "status"
+                                     (list :execution_state "idle"))))
     (run-at-time
      0.01 nil
      (lambda (client channel)
