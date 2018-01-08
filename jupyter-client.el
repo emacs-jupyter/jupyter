@@ -313,7 +313,7 @@ requests are stored for CLIENT."
                      ring))))
     (ring-insert+extend ring req 'grow)))
 
-(defun jupyter--ioloop-sentinel (client event)
+(defun jupyter--ioloop-sentinel (client _ioloop event)
   "The process sentinel for CLIENT's IOLOOP subprocess.
 When EVENT is one of the events signifying that the process is
 dead, stop the heartbeat channel and set the IOLOOP slot to nil
