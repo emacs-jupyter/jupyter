@@ -243,7 +243,6 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
         (jupyter-send manager "interrupt_request" msg))
     (interrupt-process (oref manager kernel) t)))
 
-;; TODO: kernel existence
 (defun jupyter-start-new-kernel (kernel-name &optional client-class)
   (setq client-class (or client-class 'jupyter-kernel-client))
   (unless (child-of-class-p client-class 'jupyter-kernel-client)
@@ -251,17 +250,26 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
             (list '(subclass jupyter-kernel-client) client-class)))
   (let (km kc)
     (setq km (jupyter-kernel-manager :name kernel-name))
-    (jupyter-start-kernel km)
     (setq kc (jupyter-make-client km client-class))
     (jupyter-start-channels kc)
-    ;; Let the channels start
-    (sleep-for 1)
-    (let ((info (jupyter-wait-until-received :kernel-info-reply
-                  (jupyter-request-inhibit-handlers
-                   (jupyter-kernel-info-request kc))
-                  10)))
-      (if info (oset km kernel-info (jupyter-message-content info))
-        (error "Kernel did not respond to kernel-info request.")))
+    (jupyter-hb-unpause (oref kc hb-channel))
+    (jupyter-start-kernel km)
+    (condition-case nil
+        (progn
+          ;; Wait for the startup message
+          (jupyter-wait-until-received :status (jupyter-missing-request kc) 10)
+          ;; Remove the callback since the `jupyter-missing-request' does not go
+          ;; through the normal request code path in `jupyter-kernel-client'
+          (setf (jupyter-request-callbacks (jupyter-missing-request kc)) nil)
+          (let ((info (jupyter-wait-until-received :kernel-info-reply
+                        (jupyter-request-inhibit-handlers
+                         (jupyter-kernel-info-request kc))
+                        30)))
+            (if info (oset km kernel-info (jupyter-message-content info))
+              (error "Kernel did not respond to kernel-info request"))))
+      ((error quit)
+       (jupyter-stop-channels kc)
+       (jupyter-stop-kernel km 0)))
     (cons km kc)))
 
 (provide 'jupyter-kernel-manager)
