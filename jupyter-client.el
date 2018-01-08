@@ -49,6 +49,17 @@
     :initarg :stdin-channel
     :documentation "The stdin channel.")))
 
+(cl-defmethod initialize-instance ((client jupyter-kernel-client) &rest _slots)
+  (cl-call-next-method)
+  ;; Add a catch all request for headless messages received from the kernel.
+  ;; Set -id to a non-nil value so that `jupyter-request-id' works.
+  (puthash nil (make-jupyter-request :-id "" :run-handlers-p nil)
+           (oref client requests)))
+
+(defun jupyter-missing-request (client)
+  (cl-check-type client jupyter-kernel-client)
+  (gethash nil (oref client requests)))
+
 (cl-defmethod jupyter-initialize-connection ((client jupyter-kernel-client)
                                              &optional file-or-plist)
   "Initialize CLIENT with a connection FILE-OR-PLIST.
@@ -551,7 +562,9 @@ are taken:
           (unwind-protect
               (when (jupyter-request-run-handlers-p req)
                 (jupyter-handle-message channel client req msg))
-            (when (jupyter-message-status-idle-p msg)
+            ;; Checking for pmsg-id prevents the removal of
+            ;; `jupyter-missing-request' for the client
+            (when (and pmsg-id (jupyter-message-status-idle-p msg))
               (setf (jupyter-request-idle-received-p req) t)
               ;; TODO: Messages associated with the request might still be
               ;; received when the request is removed from the requests table.
