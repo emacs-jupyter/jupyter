@@ -448,10 +448,10 @@ The first character of the cell code corresponds to position 1."
     (add-text-properties beg (point) '(read-only t font-lock-multiline t))))
 
 (defun jupyter-repl-replace-cell-code (new-code)
-  (let ((inhibit-read-only t))
-    (delete-region (jupyter-repl-cell-code-beginning-position)
-                   (jupyter-repl-cell-code-end-position))
-    (jupyter-repl-insert :read-only nil new-code)))
+  "Replace the current cell code with NEW-CODE."
+  (delete-region (jupyter-repl-cell-code-beginning-position)
+                 (jupyter-repl-cell-code-end-position))
+  (jupyter-repl-insert :read-only nil new-code))
 
 (defun jupyter-repl-truncate-buffer ()
   (save-excursion
