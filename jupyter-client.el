@@ -123,146 +123,174 @@ using the CHANNEL's socket."
       (jupyter--ioloop-push-request client req)
       req)))
 
+;;; IOLoop subprocess communication
+
+(defmacro jupyter--ioloop-do-command (session poller channels)
+  "Read and execute a command from stdin.
+SESSION is a variable bound to a `jupyter-session' object, POLLER
+is a variable bound to a `zmq-poller' object. and CHANNELS is a
+variable bound to an alist of (SOCK . CTYPE) pairs where SOCK is
+a `zmq-socket' representing a `jupyter-channel' that has a
+channel type of CTYPE.
+
+The parent Emacs process should send the ioloop subprocess cons
+cells of the form:
+
+    (CMD . DATA)
+
+where CMD is a symbol representing the command to perform and
+DATA is any information needed to run the command. The available
+commands that an ioloop subprocess can perform are:
+
+- '(quit) :: Terminate the ioloop.
+
+- '(start-channel . CTYPE) :: Re-connect the socket in CHANNELS
+  that represents a `jupyter-channel' whose type is CTYPE.
+
+- '(stop-channel . CTYPE) :: Disconnect the socket that
+  corresponds to a channel with type CTYPE in CHANNELS.
+
+- '(send CTYPE . ARGS) :: Call `jupyter-send' with arguments
+  SESSION, the socket corresponding to CTYPE, and ARGS. Where
+  ARGS is a list of the remaining arguments necessary for the
+  `jupyter-send' call.
+
+Any other command sent to the subprocess will be ignored."
+  ;; TODO: Would like to convert this to `pcase' but there seems to be issues
+  ;; with `pcase', it never matches the pattern correctly in the subprocess
+  ;; even though it matches perfectly well in the parent emacs
+  `(cl-destructuring-bind (cmd . args)
+       (zmq-subprocess-read)
+     (cl-case cmd
+       (send
+        (cl-destructuring-bind (ctype . args) args
+          (let ((sock (car (rassoc ctype ,channels))))
+            (zmq-prin1
+             (list 'sent ctype (apply #'jupyter-send ,session sock args))))))
+       (start-channel
+        (let ((sock (car (rassoc args ,channels))))
+          (zmq-connect sock (zmq-socket-get sock zmq-LAST_ENDPOINT))
+          (zmq-poller-register ,poller sock zmq-POLLIN)))
+       (stop-channel
+        (let ((sock (car (rassoc args ,channels))))
+          (zmq-poller-unregister ,poller sock)
+          (condition-case err
+              (zmq-disconnect
+               sock (zmq-socket-get sock zmq-LAST_ENDPOINT))
+            (zmq-ENOENT nil))))
+       (quit
+        (signal 'quit nil))
+       (otherwise (error "Unhandled command (%s)" cmd)))))
+
+(defmacro jupyter--ioloop-queue-message (messages priorities elem)
+  "Add a single message to MESSAGES.
+MESSAGES should be a variable name which is bound to a list or
+nil, PRIORITIES should be a variable name which is bound to an
+alist of (CTYPE . PRIORITY) pairs where CTYPE is a
+`jupyter-channel' type and PRIORITY is a number representing the
+priority of the channel. ELEM should be a cons cell
+
+    (CTYPE . IDENTS-MSG)
+
+where CTYPE is the `jupyter-channel' type that IDENTS-MSG was
+received on. Note that IDENTS-MSG should be the cons cell
+returned by `jupyter-recv'.
+
+Multiple calls to the expansion of
+`jupyter--ioloop-queue-message' with the same MESSAGES list will
+place ELEM on the list at a position that depends on the
+`jupyter-message-time' of MSG and the priority of CTYPE. MESSAGES
+will sorted by increasing `jupyter-message-time' of its messages
+and in case two messages have `equal' message times, the message
+whose channel type has a higher priority will come before the
+message that has a channel type with the lower priority."
+  (declare (indent 2))
+  `(let ((elem ,elem))
+     (if (null ,messages) (push elem ,messages)
+       ;; Put elem in its sorted position
+       (let ((ctype (caar elem))
+             (mt (jupyter-message-time (cddr elem)))
+             (head ,messages)
+             (tail ,messages))
+         (while (and
+                 tail
+                 ;; Non-nil if msg should come after tail
+                 (let ((tctype (caar tail))
+                       (tmt (jupyter-message-time (cddar tail))))
+                   (or (time-less-p tmt mt)
+                       (when (equal mt tmt)
+                         (< (alist-get ctype ,priorities)
+                            (alist-get tctype ,priorities))))))
+           (setq
+            head tail
+            tail (cdr tail)))
+         (if (eq head tail) (setq ,messages (cons elem head))
+           (setcdr head (cons elem tail)))))))
+
 (defun jupyter--ioloop (client)
-  (let ((iopub-channel (oref client iopub-channel))
-        (shell-channel (oref client shell-channel))
-        (stdin-channel (oref client stdin-channel)))
+  "Return the function used for communicating with CLIENT's kernel."
+  (let ((session (oref client session))
+        (iopub-ep (oref (oref client iopub-channel) endpoint))
+        (shell-ep (oref (oref client shell-channel) endpoint))
+        (stdin-ep (oref (oref client stdin-channel) endpoint)))
     `(lambda (ctx)
-       (require 'jupyter-channels ,(locate-library "jupyter-channels"))
-       (require 'jupyter-messages ,(locate-library "jupyter-messages"))
+       (push ,(file-name-directory (locate-library "jupyter-base")) load-path)
+       (require 'jupyter-channels)
+       (require 'jupyter-messages)
        ;; We can splice the session object because it contains primitive types
-       (let* ((session ,(oref client session))
-              (iopub
-               (let ((sock (jupyter-connect-channel
-                            :iopub ,(oref (oref client iopub-channel) endpoint)
-                            (jupyter-session-id session))))
-                 (zmq-socket-set sock zmq-SUBSCRIBE "")
-                 sock))
-              (shell
-               (jupyter-connect-channel
-                :shell ,(oref (oref client shell-channel) endpoint)
-                (jupyter-session-id session)))
-              (stdin
-               (jupyter-connect-channel
-                :stdin ,(oref (oref client stdin-channel) endpoint)
-                (jupyter-session-id session)))
-              (channels (list (cons stdin :stdin)
-                              (cons shell :shell)
-                              (cons iopub :iopub)))
+       (let* ((session ,session)
+              (session-id (jupyter-session-id session))
+              (iopub (jupyter-connect-channel :iopub ,iopub-ep session-id))
+              (shell (jupyter-connect-channel :shell ,shell-ep session-id))
+              (stdin (jupyter-connect-channel :stdin ,stdin-ep session-id))
               (priorities (list (cons :shell 4)
                                 (cons :iopub 2)
                                 (cons :stdin 2)))
+              (channels (list (cons stdin :stdin)
+                              (cons shell :shell)
+                              (cons iopub :iopub)))
               (idle-count 0)
               (timeout 20)
-              (queue (make-ring 10)))
-         (cl-flet ((send-recvd
-                    ()
-                    ;; Try and have a consistent order with which messages are
-                    ;; received in the parent process. We queue messages
-                    ;; received from the kernel and send them up to the parent
-                    ;; process only when (1) no messages have been received in
-                    ;; two polling periods or (2) when the queue is filled.
-                    ;; When sending, the messages are sorted by their send time
-                    ;; using the `:date' field of the message `:header'. In the
-                    ;; case that two messages have the same send time from the
-                    ;; kernel (i.e. when they don't have fractional resolution)
-                    ;; the messages are sorted by channel priority.
-                    (cl-sort (cddr queue)
-                             ;; [<sorted non-nil elements> nil nil ...]
-                             (lambda (a b)
-                               (cond
-                                ((and (eq a nil) (eq a b)) t)
-                                ((eq a nil) nil)
-                                ((eq b nil) t)
-                                (t
-                                 ;; elements are (ctype idents . msg)
-                                 (let ((ta (jupyter-message-time (cddr a)))
-                                       (tb (jupyter-message-time (cddr b))))
-                                   (or (time-less-p ta tb)
-                                       (when (equal ta tb)
-                                         (> (alist-get (car a) priorities)
-                                            (alist-get (car b) priorities)))))))))
-                    (cl-loop
-                     while (not (ring-empty-p queue))
-                     for (ctype . msg) = (ring-remove queue)
-                     do (zmq-prin1 (list 'recvd ctype msg))))
-                   (recv-message
-                    (sock ctype)
-                    (when (= (ring-length queue) (ring-size queue))
-                      (send-recvd))
-                    (ring-insert queue (cons ctype (jupyter-recv session sock))))
-                   (send-message
-                    (sock ctype rest)
-                    (zmq-prin1
-                     (list 'sent ctype (apply #'jupyter-send session sock rest))))
-                   (start-channel
-                    (sock)
-                    (zmq-connect
-                     sock (zmq-socket-get sock zmq-LAST_ENDPOINT))
-                    (zmq-poller-register
-                     (current-zmq-poller) sock zmq-POLLIN))
-                   (stop-channel
-                    (sock)
-                    (zmq-poller-unregister (current-zmq-poller) sock)
-                    (condition-case err
-                        (zmq-disconnect
-                         sock (zmq-socket-get sock zmq-LAST_ENDPOINT))
-                      (zmq-ENOENT nil)
-                      (error (signal (car err) (cdr err))))))
-           (condition-case nil
-               (with-zmq-poller poller
-                 ;; Also poll for standard-in events to be able to read commands
-                 ;; from the parent emacs process without blocking
-                 (zmq-poller-register poller 0 zmq-POLLIN)
-                 (mapc (lambda (x) (zmq-poller-register
-                            poller (car x) zmq-POLLIN))
-                    channels)
-                 (unwind-protect
-                     (while t
-                       (when (and (= idle-count 2)
-                                  (> (ring-length queue) 0))
-                         (send-recvd))
-                       (let ((events (condition-case err
-                                         (zmq-poller-wait-all poller 5 timeout)
-                                       (zmq-EINTR nil)
-                                       ;; TODO: For any other kind of error,
-                                       ;; just reset the polling loop by exiting
-                                       ;; `with-zmq-poller'.
-                                       (error (signal (car err) (cdr err))))))
-                         (if (null events)
-                             (progn (setq idle-count (1+ idle-count))
-                                    (when (= idle-count 50)
-                                      (setq timeout 100)))
-                           (setq idle-count 0
-                                 timeout 20)
-                           (when (alist-get 0 events)
-                             (setf (alist-get 0 events nil 'remove) nil)
-                             (cl-destructuring-bind (cmd . data)
-                                 (zmq-subprocess-read)
-                               (cl-case cmd
-                                 (quit
-                                  (signal 'quit nil))
-                                 (start-channel
-                                  (let* ((ctype data)
-                                         (sock (car (rassoc ctype channels))))
-                                    (start-channel sock)))
-                                 (stop-channel
-                                  (let* ((ctype data)
-                                         (sock (car (rassoc ctype channels))))
-                                    (stop-channel sock)))
-                                 (send
-                                  (let* ((ctype (car data))
-                                         (sock (car (rassoc ctype channels)))
-                                         (rest (cdr data)))
-                                    (send-message sock ctype rest))))))
-                           (cl-loop for (sock . event) in events
-                                    do (recv-message
-                                        sock (alist-get sock channels))))))
-                   (mapc (lambda (s)
-                        (zmq-socket-set s zmq-LINGER 0)
-                        (zmq-close s))
-                      (mapcar #'car channels))))
-             (quit (zmq-prin1 (list 'quit)))))))))
+              (messages nil))
+         (zmq-socket-set iopub zmq-SUBSCRIBE "")
+         (condition-case err
+             (with-zmq-poller poller
+               ;; Poll for stdin messages
+               (zmq-poller-register poller 0 zmq-POLLIN)
+               (mapc (lambda (x) (zmq-poller-register poller (car x) zmq-POLLIN))
+                  channels)
+               (while t
+                 (let ((messages-received-p
+                        (let ((events (zmq-poller-wait-all poller 4 timeout)))
+                          (when (alist-get 0 events)
+                            ;; Got input from stdin, do the command it
+                            ;; specifies
+                            (setf (alist-get 0 events nil 'remove) nil)
+                            (jupyter--ioloop-do-command session poller channels))
+                          (dolist (sock (mapcar #'car events))
+                            (jupyter--ioloop-queue-message messages priorities
+                              (cons (alist-get sock channels)
+                                    (jupyter-recv session sock))))
+                          events)))
+                   (if messages-received-p
+                       (setq idle-count 0 timeout 20)
+                     (setq idle-count (1+ idle-count))
+                     ;; Lengthen timeout so as to not waste CPU cycles
+                     (when (= idle-count 100)
+                       (setq timeout 1000))
+                     (when (or (= idle-count 50)
+                               ;; Clamp the number of messages that can be
+                               ;; queued before sending to the parent process
+                               (> (length messages 10)))
+                       (while messages
+                         (zmq-prin1 (cons 'recvd (pop messages)))))))))
+           (error (signal (car err) (cdr err)))
+           (quit
+            (mapc (lambda (x)
+                 (zmq-socket-set (car x) zmq-LINGER 0)
+                 (zmq-close (car x)))
+               channels)
+            (zmq-prin1 (list 'quit))))))))
 
 (defun jupyter--ioloop-pop-request (client)
   "Remove a pending request from CLIENT's ioloop subprocess.
@@ -310,12 +338,12 @@ by `jupyter--ioloop'."
        (let ((req (jupyter--ioloop-pop-request client)))
          (setf (jupyter-request--id req) msg-id)
          (puthash msg-id req (oref client requests)))))
-    (`(recvd ,ctype ,msg)
+    (`(recvd ,ctype ,idents . ,msg)
      (when jupyter--debug
        (message "RECV: %s %s %s"
-                (jupyter-message-type (cdr msg))
-                (jupyter-message-parent-id (cdr msg))
-                (jupyter-message-content (cdr msg))))
+                (jupyter-message-type msg)
+                (jupyter-message-parent-id msg)
+                (jupyter-message-content msg)))
      (let ((channel (cl-find-if (lambda (c) (eq (oref c type) ctype))
                                 (mapcar (lambda (x) (slot-value client x))
                                    '(stdin-channel
