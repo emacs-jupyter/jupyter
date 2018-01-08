@@ -694,8 +694,9 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                (jupyter-handle-kernel-info-reply
                 client req protocol_version implementation
                 implementation_version language_info banner help_links)))
-            (_ (error "Message type not handled yet")))
-        ;; FIXME: Do something about errrors here?
+            (_
+             (warn "Message type not handled (%s)" (jupyter-message-type msg))))
+        ;; FIXME: Do something about errors here?
         ;; (if (equal status "error")
         ;;     (error "Error (%s): %s"
         ;;            (plist-get content :ename) (plist-get content :evalue))
@@ -903,7 +904,8 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
            content
          (jupyter-handle-update-display-data
           client req data metadata transient)))
-      (_ (error "Message type not handled yet")))))
+      (_
+       (warn "Message type not handled (%s)" (jupyter-message-type msg))))))
 
 (cl-defgeneric jupyter-handle-stream ((client jupyter-kernel-client)
                                       req
