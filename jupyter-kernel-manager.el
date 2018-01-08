@@ -36,6 +36,24 @@ default kernel is a python kernel."
   (unless (slot-boundp manager 'name)
     (oset manager name "python")))
 
+(cl-defmethod slot-unbound ((manager jupyter-kernel-manager) _class slot-name _fn)
+  "Set default values for the SESSION and CONN-INFO slots of MANAGER.
+When a MANAGER's `jupyter-connection' slots are missing set them
+to their default values. For the `session' slot, set it to a new
+`jupyter-session' with `:key' set to a new UUID. For the
+`conn-info' slot, set it to the plist returned by a call to
+`jupyter-create-connection-info' with `:kernel-name' being the
+MANAGER's name slot and `:key' being the key of MANAGER's
+session."
+  (cond
+   ((eq slot-name 'session)
+    (oset manager session (jupyter-session :key (jupyter-new-uuid))))
+   ((eq slot-name 'conn-info)
+    (oset manager conn-info (jupyter-create-connection-info
+                             :kernel-name (oref manager name)
+                             :key (jupyter-session-key (oref manager session)))))
+   (t (cl-call-next-method))))
+
 (cl-defmethod jupyter-make-client ((manager jupyter-kernel-manager) class &rest slots)
   "Make a new client from CLASS connected to MANAGER's kernel.
 CLASS should be a subclass of `jupyter-kernel-client', a new
@@ -124,21 +142,18 @@ shutdown/interrupt requests"
       ;; TODO: Require a valid kernel name when initializing the manager
       (oset manager name kernel-name)
       (oset manager kernel-spec spec)
-      (oset manager session (jupyter-session :key (jupyter-new-uuid)))
+      ;; SESSION and CONN-INFO slots are automatically set to default values if
+      ;; missing, see `slot-unbound' of `jupyter-kernel-manager'.
       (let* ((key (jupyter-session-key (oref manager session)))
              (name (oref manager name))
-             (conn-info (jupyter-create-connection-info
-                         :kernel-name kernel-name
-                         :key key))
              (conn-file (expand-file-name
                          (concat "kernel-" key ".json")
                          (string-trim-right (shell-command-to-string
                                              "jupyter --runtime-dir")))))
-        (oset manager conn-info conn-info)
         ;; Write the connection file
         (with-temp-file conn-file
           (let ((json-encoding-pretty-print t))
-            (insert (json-encode-plist conn-info))))
+            (insert (json-encode-plist (oref manager conn-info)))))
         ;; Start the process
         (let ((atime (nth 4 (file-attributes conn-file)))
               (proc (jupyter--start-kernel
