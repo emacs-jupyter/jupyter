@@ -71,11 +71,9 @@ connection is terminated before initializing."
                                      (json-false nil))
                                  (json-read-file file-or-plist))))
                      (oref client conn-info))))
-    (unless conn-info
-      (error "Can't initialize connection without connection info"))
     (cl-destructuring-bind
-        (&key shell_port iopub_port stdin_port hb_port control_port ip
-              key transport signature_scheme kernel_name
+        (&key shell_port iopub_port stdin_port hb_port ip
+              key transport signature_scheme
               &allow-other-keys)
         conn-info
       (when (and (> (length key) 0)
