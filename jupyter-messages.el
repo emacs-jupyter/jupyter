@@ -1,11 +1,45 @@
+;;; jupyter-messages.el --- Jupyter messages -*- lexical-binding: t -*-
+
+;; Copyright (C) 2018 Nathaniel Nicandro
+
+;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
+;; Created: 08 Jan 2018
+;; Version: 0.0.1
+;; X-URL: https://github.com/nathan/jupyter-messages
+
+;; This program is free software; you can redistribute it and/or
+;; modify it under the terms of the GNU General Public License as
+;; published by the Free Software Foundation; either version 2, or (at
+;; your option) any later version.
+
+;; This program is distributed in the hope that it will be useful, but
+;; WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+;; General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with GNU Emacs; see the file COPYING.  If not, write to the
+;; Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+;; Boston, MA 02111-1307, USA.
+
+;;; Commentary:
+
+;;
+
+;;; Code:
+
 (require 'jupyter-base)
 (require 'jupyter-channels)
+
+(defgroup jupyter-messages nil
+  "Jupyter messages"
+  :group 'communication)
 
 (defconst jupyter-message-delimiter "<IDS|MSG>"
   "The message delimiter required in the jupyter messaging
 protocol.")
 
-(defconst jupyter-false :json-false
+(defconst jupyter--false :json-false
   "The symbol used to disambiguate nil from boolean false.")
 
 ;;; Signing messages
@@ -277,6 +311,8 @@ value of the MIMETYPE in MSG's data."
        (equal (jupyter-message-get msg :execution_state) "idle")))
 
 (provide 'jupyter-messages)
+
+;;; jupyter-messages.el ends here
 
 ;; Local Variables:
 ;; byte-compile-warnings: (not free-vars)

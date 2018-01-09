@@ -1,6 +1,70 @@
+;;; jupyter-channels.el --- Jupyter channels -*- lexical-binding: t -*-
+
+;; Copyright (C) 2018 Nathaniel Nicandro
+
+;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
+;; Created: 08 Jan 2018
+;; Version: 0.0.1
+;; X-URL: https://github.com/nathan/jupyter-channels
+
+;; This program is free software; you can redistribute it and/or
+;; modify it under the terms of the GNU General Public License as
+;; published by the Free Software Foundation; either version 2, or (at
+;; your option) any later version.
+
+;; This program is distributed in the hope that it will be useful, but
+;; WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+;; General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with GNU Emacs; see the file COPYING.  If not, write to the
+;; Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+;; Boston, MA 02111-1307, USA.
+
+;;; Commentary:
+
+;; TODO: The `jupyter-channel' methods need work. `jupyter-kernel-client'
+;; actually only uses a `jupyter-channel' to store received messages in the
+;; recv-queue slot, to get the endpoint information for sockets created in a
+;; client's ioloop subprocess, and to dispatch to message handlers using
+;; `jupyter-handle-message'.
+;;
+;; The start and stop channel methods actually start and stop a channel's
+;; socket in the current Emacs instance. What they should do is start and stop
+;; a channel in a client's ioloop subprocess. A client's ioloop is available to
+;; a channel since any channels initialized through
+;; `jupyter-initialize-connection' have their parent-instance slot (from
+;; `jupyter-connection') set to the client. So what can be done in the start
+;; and stop methods is to check to see if the parent-instance slot is a
+;; `jupyter-kernel-client' and if so, send its ioloop a command using
+;; `zmq-subprocess-send'.
+;;
+;; TODO: `jupyter-channel' classes might not even need to be implemented in
+;; reality. You could just as easily implement functions called on a client to
+;; implement channels. Then the client can hold the recv-queue for each channel
+;; and any channel information. This would even be better because then
+;; internally to the client you can distinguish between a blocking client and
+;; on that uses the ioloop subprocess. If the ioloop subprocess is nil, then
+;; the client is blocking.
+;;
+;; You can do something like
+;;
+;;    (jupyter-get-message client :iopub)
+;;
+;; To get a message from the IOPub recv-queue or directly from a `jupyter-recv'
+;; call based on if the client is blocking or not.
+
+;;; Code:
+
 (require 'jupyter-connection)
 (require 'ring)
-(eval-when-compile (require 'cl))
+
+(defgroup jupyter-channels nil
+  "Jupyter channels"
+  :group 'communication)
+
+;;; Basic channel types
 
 (defclass jupyter-channel (jupyter-connection)
   ((type
@@ -101,7 +165,9 @@ call `jupyter-get-message'."
 (cl-defmethod jupyter-messages-available-p ((channel jupyter-channel))
   (not (ring-empty-p (oref channel recv-queue))))
 
-(defclass jupyter-hb-channel ()
+;;; Heartbeat channel
+
+(defclass jupyter-hb-channel (jupyter-connection)
   ((type
     :type keyword
     :initform :hb
@@ -201,3 +267,5 @@ connected."
            channel))))
 
 (provide 'jupyter-channels)
+
+;;; jupyter-channels.el ends here

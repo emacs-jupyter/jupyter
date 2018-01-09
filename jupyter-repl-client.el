@@ -1,7 +1,43 @@
+;;; jupyter-repl-client.el --- A Jupyter REPL client -*- lexical-binding: t -*-
+
+;; Copyright (C) 2018 Nathaniel Nicandro
+
+;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
+;; Created: 08 Jan 2018
+;; Version: 0.0.1
+;; Keywords:
+;; X-URL: https://github.com/nathan/jupyter-repl-client
+
+;; This program is free software; you can redistribute it and/or
+;; modify it under the terms of the GNU General Public License as
+;; published by the Free Software Foundation; either version 2, or (at
+;; your option) any later version.
+
+;; This program is distributed in the hope that it will be useful, but
+;; WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+;; General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with GNU Emacs; see the file COPYING.  If not, write to the
+;; Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+;; Boston, MA 02111-1307, USA.
+
+;;; Commentary:
+
+;;
+
+;;; Code:
+
+(defgroup jupyter-repl-client nil
+  "A Jupyter REPL client"
+  :group 'communication)
+
 (require 'jupyter-client)
 (require 'jupyter-kernel-manager)
 (require 'xterm-color)
 (require 'shr)
+(eval-when-compile (require 'cl))
 
 ;; TODO: Read up on how method tags can be used, see
 ;; https://ericabrahamsen.net/tech/2016/feb/bbdb-eieio-object-oriented-elisp.html
@@ -939,6 +975,10 @@ kernel."
           (jupyter-repl-insert-banner banner)
           (jupyter-repl-update-execution-counter))))
     (pop-to-buffer (oref kc buffer))))
+
+(provide 'jupyter-repl-client)
+
+;;; jupyter-repl-client.el ends here
 
 ;; Local Variables:
 ;; byte-compile-warnings: (not free-vars)
