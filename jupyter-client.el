@@ -58,6 +58,12 @@
     :initform nil
     :documentation "The process which polls for events on all
  live channels of the client.")
+   ;; NOTE: With the current implementation all channels except the heartbeat
+   ;;       channel actually communicate with the kernel through the ioloop
+   ;;       subprocess. This means that the socket field of the channels are
+   ;;       not actually used. They are mainly used to dispatch received
+   ;;       messages from the IOLoop subprocess and to hold the endpoint
+   ;;       information of the connection.
    (shell-channel
     :type (or null jupyter-shell-channel)
     :initform nil
