@@ -814,6 +814,7 @@ kernel that the REPL buffer is connected to."
                  (format "Jupyter REPL (%s) still connected. Kill it? "
                          (buffer-name (current-buffer))))
                 (prog1 nil
+                  (kill-buffer jupyter-repl-lang-buffer)
                   (jupyter-stop-channels jupyter-repl-current-client)
                   (when jupyter-repl-kernel-manager
                     (jupyter-shutdown-kernel jupyter-repl-kernel-manager)))
@@ -972,7 +973,6 @@ kernel."
           (setq jupyter-repl-kernel-manager km)
           (setq jupyter-repl-history (make-ring 100))
           (setq left-margin-width jupyter-repl-prompt-margin-width)
-          ;; TODO: Cleanup of buffers created by jupyter-repl
           (setq jupyter-repl-lang-buffer (get-buffer-create
                                           (format " *jupyter-repl-lang-%s*" name)))
           (jupyter-history-request kc :n 100 :raw nil :unique t)
