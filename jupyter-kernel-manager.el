@@ -182,10 +182,12 @@ shutdown/interrupt requests"
       ;; missing, see `slot-unbound' of `jupyter-kernel-manager'.
       (let* ((key (jupyter-session-key (oref manager session)))
              (name (oref manager name))
+             (resource-dir (string-trim-right
+                            (shell-command-to-string
+                             "jupyter --runtime-dir")))
              (conn-file (expand-file-name
                          (concat "kernel-" key ".json")
-                         (string-trim-right (shell-command-to-string
-                                             "jupyter --runtime-dir")))))
+                         resource-dir)))
         ;; Write the connection file
         (with-temp-file conn-file
           (let ((json-encoding-pretty-print t))
@@ -197,6 +199,7 @@ shutdown/interrupt requests"
                      (cl-loop
                       for arg in (plist-get spec :argv)
                       if (equal arg "{connection_file}") collect conn-file
+                      else if (equal arg "{resource_dir}") collect resource-dir
                       else collect arg))))
           ;; Block until the kernel reads the connection file
           (with-timeout
