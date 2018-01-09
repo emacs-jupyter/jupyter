@@ -896,10 +896,20 @@ kernel that the REPL buffer is connected to."
   (add-hook 'after-change-functions 'jupyter-repl-after-buffer-change nil t))
 
 (defun jupyter-repl-initialize-fontification (ext)
-  "Enable `font-lock-mode' based on the mode corresponding to EXT.
-EXT should be a file extension, including the '.', and the mode
-enabled will be the one of those registered in
-`auto-mode-alist'."
+  "In the `current-buffer', `turn-on-font-lock-mode' based on EXT.
+EXT should be a file extension (including the '.'). The major
+mode to initialize fontification with is found by using the
+`auto-mode-alist'. Initialization of fontification does the
+following:
+
+- Sets the major mode of the `jupyter-repl-lang-buffer' based on
+  `auto-mode-alist' and EXT
+
+- Captures the `font-lock-defaults' that are set by the major
+  mode and sets them as the `font-lock-defaults' of the
+  `current-buffer'.
+
+- `turn-on-font-lock-mode' in the `current-buffer'"
   (let (fld)
     (with-jupyter-repl-lang-buffer
       (setq buffer-file-name (concat "jupyter-repl-lang" ext))
@@ -907,7 +917,7 @@ enabled will be the one of those registered in
       (setq buffer-file-name nil)
       (setq fld font-lock-defaults))
     (setq font-lock-defaults fld)
-    (font-lock-mode)))
+    (turn-on-font-lock-mode)))
 
 (defun jupyter-repl-insert-banner (banner)
   "Insert BANNER into the `current-buffer'.
