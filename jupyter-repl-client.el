@@ -250,7 +250,7 @@ image."
   (require 'org)
   (let (beg end)
     (setq beg (point))
-    (jupyter-repl-insert (plist-get data :text/latex))
+    (jupyter-repl-insert tex)
     (setq end (point))
     (org-format-latex
      "jupyter-repl" beg end "jupyter-repl"
