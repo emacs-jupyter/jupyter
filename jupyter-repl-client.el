@@ -218,7 +218,7 @@ can contain the following keywords along with their values:
         (:inherit-properties
          (setq insert-fun (if (cadr args) #'insert-and-inherit #'insert)))
         (otherwise
-         (error "Keyword not one of `:read-only', `:properties', `:inherit-properties' (`%s')." arg)))
+         (error "Keyword not one of `:read-only', `:properties', `:inherit-properties' (`%s')" arg)))
       (setq args (cddr args)))
     (setq properties (append (when read-only '(read-only t))
                              properties))
@@ -405,7 +405,7 @@ buffer is found before the beginning of a cell, raise a
                     (and (jupyter-repl-cell-beginning-p (point-min))
                          (point-min))))
       (if pos (when (jupyter-repl-cell-end-p pos)
-                (error "Found end of previous cell."))
+                (error "Found end of previous cell"))
         (signal 'beginning-of-buffer nil)))
     pos))
 
@@ -421,7 +421,7 @@ buffer, `point-max' is considered the end of the cell."
       (while (not (jupyter-repl-cell-end-p pos))
         (setq pos (next-single-property-change pos 'jupyter-cell))
         (if pos (when (jupyter-repl-cell-beginning-p pos)
-                  (error "Found beginning of next cell."))
+                  (error "Found beginning of next cell"))
           ;; Any unfinalized cell must be at the end of the buffer.
           (throw 'unfinalized (point-max))))
       pos)))
@@ -523,7 +523,7 @@ POS defaults to `point'."
   "Get the position that `point' is at relative to the contents of the cell.
 The first character of the cell code corresponds to position 1."
   (unless (jupyter-repl-cell-line-p)
-    (error "Not in code of cell."))
+    (error "Not in code of cell"))
   (- (point) (jupyter-repl-cell-beginning-position)))
 
 (defun jupyter-repl-finalize-cell (req)

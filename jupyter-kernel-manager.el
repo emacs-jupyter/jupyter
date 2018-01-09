@@ -63,7 +63,7 @@
     :type (or null json-plist)
     :initform nil)))
 
-(cl-defmethod initialize-instance ((manager jupyter-kernel-manager) &rest slots)
+(cl-defmethod initialize-instance ((manager jupyter-kernel-manager) &rest _slots)
   "Initialize MANAGER based on SLOTS.
 If the `:name' slot is not found in SLOTS, it defaults to
 \"python\". This means that without providing a kernel name, the
@@ -205,7 +205,7 @@ shutdown/interrupt requests"
           (with-timeout
               (10 (delete-file conn-file)
                   (delete-process proc)
-                  (error "Kernel did not read connection file within timeout."))
+                  (error "Kernel did not read connection file within timeout"))
             (while (equal atime (nth 4 (file-attributes conn-file)))
               (sleep-for 0 100)))
           (oset manager kernel proc)

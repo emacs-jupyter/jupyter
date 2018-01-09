@@ -117,7 +117,7 @@ underlying channel's socket."
                  (oref channel type) (oref channel endpoint) identity)))
       (oset channel socket sock))))
 
-(cl-defmethod jupyter-start-channel ((channel jupyter-iopub-channel) &key identity)
+(cl-defmethod jupyter-start-channel ((channel jupyter-iopub-channel) &key _identity)
   "Start an iopub CHANNEL subscribed to all messages.
 If IDENTITY is non-nil, it is used as the ROUTING_ID of the
 underlying channel's socket."
@@ -157,8 +157,8 @@ call `jupyter-get-message'."
     (ring-insert+extend ring msg 'grow)))
 
 (cl-defmethod jupyter-get-message ((channel jupyter-channel))
-  (unless (ring-empty-p (oref channel recv-queue))
-    (cl-destructuring-bind (idents . msg)
+  (when (jupyter-messages-available-p channel)
+    (cl-destructuring-bind (_idents . msg)
         (ring-remove (oref channel recv-queue))
       msg)))
 
