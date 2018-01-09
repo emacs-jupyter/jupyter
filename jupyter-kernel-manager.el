@@ -244,6 +244,20 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
     (interrupt-process (oref manager kernel) t)))
 
 (defun jupyter-start-new-kernel (kernel-name &optional client-class)
+  "Start a managed Jupyter kernel.
+KERNEL-NAME is the name of the kernel to start. It can also be
+the prefix of a valid kernel name, in which case the first kernel
+in `jupyter-available-kernelspecs' that has a kernel name with
+KERNEL-NAME as prefix will be used. Optional argument
+CLIENT-CLASS should be a subclass of `jupyer-kernel-client' used
+to initialize a new client connected to the kernel. CLIENT-CLASS
+defaults to `jupyter-kernel-client'.
+
+Return a cons cell (KM . KC) where KM is the
+`jupyter-kernel-manager' that manages the kernel subprocess. KC
+is a `jupyter-kernel-client' already connected to the kernel of
+KM and whose class is CLIENT-CLASS. Note that KC has all channels
+listening and the heartbeat channel un-paused."
   (setq client-class (or client-class 'jupyter-kernel-client))
   (unless (child-of-class-p client-class 'jupyter-kernel-client)
     (signal 'wrong-type-argument

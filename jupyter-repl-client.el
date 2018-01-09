@@ -66,7 +66,11 @@
 ;;; Convenience macros
 
 (defmacro with-jupyter-repl-buffer (client &rest body)
-  "Run BODY with the the REPL buffer of CLIENT as the `current-buffer'."
+  "Switch to CLIENT's buffer before running BODY.
+This switches to CLIENT's buffer slot, sets `inhibit-read-only'
+to t, and then runs BODY. Afterwards, if CLIENT's buffer is
+currently being shown in a window, move windows `point' to the
+value of `point' in the buffer."
   (declare (indent 1) (debug (symbolp &rest form)))
   `(with-current-buffer (oref ,client buffer)
      (let ((inhibit-read-only t))
@@ -75,22 +79,29 @@
            (when win (set-window-point win (point))))))))
 
 (defmacro jupyter-repl-do-at-request (client req &rest body)
-  "Set `point' to the end of the output for REQ and run BODY.
+  "Switch to CLIENT's buffer, move to then end of REQ, and run BODY.
+Switching to CLIENT's buffer is accomplished using
+`with-jupyter-repl-buffer'. After switching, `point' is moved to
+the `jupyter-repl-cell-beginning-position' of the cell after the
+one associated with REQ, where REQ is a `jupyter-request'
+previously made using CLIENT. This position is where any output
+of REQ should be inserted.
 
-BODY is executed with `point' at the proper location to insert
-any output for REQ. If REQ already has output, `point' will be at
-the end of the output so that any text inserted by BODY will be
-appended to the current output for REQ."
+Note that `inhibit-modification-hooks' is set to t when BODY is
+run, this prevents any line continuation prompts to be inserted
+for multi-line output."
   (declare (indent 2) (debug (symbolp &rest form)))
   `(with-jupyter-repl-buffer ,client
      (save-excursion
        (let ((inhibit-modification-hooks t))
-         (jupyter-repl-goto-request req)
+         (jupyter-repl-goto-request ,req)
          (jupyter-repl-next-cell)
          ,@body))))
 
 (defmacro with-jupyter-repl-lang-buffer (&rest body)
-  "Run BODY in the `jupyter-repl-lang-buffer' of the `current-buffer'."
+  "Run BODY in the `jupyter-repl-lang-buffer' of the `current-buffer'.
+The contents of `jupyter-repl-lang-buffer' is erased before
+running BODY."
   (declare (indent 0) (debug (&rest form)))
   `(with-current-buffer jupyter-repl-lang-buffer
      (let ((inhibit-read-only t))
@@ -98,7 +109,11 @@ appended to the current output for REQ."
        ,@body)))
 
 (defmacro with-jupyter-repl-cell (&rest body)
-  "Narrow the buffer to the current code cell and widen afterwards."
+  "Narrow to the current cell, run BODY, then widen.
+The cell is narrowed to the region between and including
+`jupyter-repl-cell-beginning-position' and
+`jupyter-repl-cell-end-position'. Note that this assumes that the
+`current-buffer' is a Jupyter REPL buffer."
   (declare (indent 0) (debug (&rest form)))
   `(save-excursion
      (save-restriction
@@ -111,7 +126,11 @@ appended to the current output for REQ."
 ;; TODO: Do like how org-mode does it and cache buffers which have the
 ;; major mode enabled already
 (defun jupyter-repl-fontify-according-to-mode (mode str)
-  "Fontify STR according to MODE and return the fontified string."
+  "Fontify a string according to MODE.
+MODE should be a function which sets the `major-mode'. MODE will
+be called with the `current-buffer' set to a temporary buffer,
+STR will then be inserted and fontified. Return the fontified
+string, which can then be inserted into a Jupyter REPL buffer."
   ;; Adapted from `org-src-font-lock-fontify-block'
   (with-temp-buffer
     (let ((inhibit-modification-hooks nil))
@@ -297,6 +316,9 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
     (add-text-properties (overlay-start ov) (overlay-end ov) props)))
 
 (defun jupyter-repl-cell-update-prompt (str)
+  "Update the current input prompt string.
+STR should be the text which will replace the current input
+prompt."
   (let ((ov (car (overlays-at (jupyter-repl-cell-beginning-position)))))
     (when ov
       (overlay-put ov 'after-string
@@ -305,9 +327,14 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
                                   str 'jupyter-repl-input-prompt))))))
 
 (defun jupyter-repl-cell-mark-busy ()
+  "Mark the current cell as busy.
+The changes the current input prompt to \"In [*]:\""
   (jupyter-repl-cell-update-prompt "In [*]:"))
 
 (defun jupyter-repl-cell-unmark-busy ()
+  "Un-mark the current cell as busy.
+This changes the current input prompt to \"In [N]:\" where N is
+the execution count of the cell."
   (jupyter-repl-cell-update-prompt
    (format "In [%d]:" (jupyter-repl-cell-count))))
 
@@ -322,11 +349,19 @@ cell, return the cell count of the cell before the current one."
     (nth 1 (get-text-property pos 'jupyter-cell))))
 
 (defun jupyter-repl-cell-request ()
+  "Get the `jupyter-request' of the current cell."
   (get-text-property (jupyter-repl-cell-beginning-position) 'jupyter-request))
 
 ;;; Cell motions
 
 (defun jupyter-repl-cell-beginning-position ()
+  "Return the cell beginning position of the current cell.
+If `point' is already at the beginning of the current cell,
+return `point'. Note that if the end of a cell is found before
+the beginning of a cell, i.e. when `point' is somewhere inside
+the output of a cell, raise an error. If the beginning of the
+buffer is found before the beginning of a cell, raise a
+`beginning-of-buffer' error."
   (let ((pos (point)))
     (while (not (jupyter-repl-cell-beginning-p pos))
       (setq pos (or (previous-single-property-change pos 'jupyter-cell)
@@ -339,6 +374,12 @@ cell, return the cell count of the cell before the current one."
     pos))
 
 (defun jupyter-repl-cell-end-position ()
+  "Return the cell ending position of the current cell.
+This is similar to `jupyter-repl-cell-beginning-position' except
+the position at the end of the current cell is returned and an
+error is raised if the beginning of a cell is found before an
+end. Note that if the current cell is the last cell in the
+buffer, `point-max' is considered the end of the cell."
   (let ((pos (point)))
     (catch 'unfinalized
       (while (not (jupyter-repl-cell-end-p pos))
@@ -350,18 +391,27 @@ cell, return the cell count of the cell before the current one."
       pos)))
 
 (defun jupyter-repl-cell-code-beginning-position ()
+  "Return the beginning of the current cell's code.
+The code beginning position is
+
+   `jupyter-repl-cell-beginning-position' + 1"
   (let ((pos (jupyter-repl-cell-beginning-position)))
     (if pos (1+ pos)
       (point-min))))
 
 (defun jupyter-repl-cell-code-end-position ()
+  "Return the end of the current cell's code.
+The code ending position is
+
+   `jupyter-repl-cell-end-position' - 1"
   (let ((pos (jupyter-repl-cell-end-position)))
     (if (= pos (point-max)) (point-max)
       (1- pos))))
 
 (defun jupyter-repl-next-cell (&optional N)
   "Go to the start of the next cell.
-Returns the count of cells left to move."
+Optional argument N is the number of times to move to the next
+cell. N defaults to 1."
   (interactive "N")
   (setq N (or N 1))
   (let ((dir (if (> N 0) 'forward 'backward)))
@@ -383,7 +433,8 @@ Returns the count of cells left to move."
 
 (defun jupyter-repl-previous-cell (&optional N)
   "Go to the start of the previous cell.
-Returns the count of cells left to move."
+Optional argument N is the number of times to move to the
+previous cell. N defaults to 1."
   (interactive "N")
   (setq N (or N 1))
   (jupyter-repl-next-cell (- N)))
@@ -391,18 +442,24 @@ Returns the count of cells left to move."
 ;;; Predicates to determine what kind of line point is in
 
 (defun jupyter-repl-cell-beginning-p (&optional pos)
+  "Is POS the beginning of a cell?
+POS defaults to `point'."
   (setq pos (or pos (point)))
   (eq (nth 0 (get-text-property pos 'jupyter-cell)) 'beginning))
 
 (defun jupyter-repl-cell-end-p (&optional pos)
+  "Is POS the end of a cell?
+POS defaults to `point'."
   (setq pos (or pos (point)))
   (eq (nth 0 (get-text-property pos 'jupyter-cell)) 'end))
 
 (defun jupyter-repl-multiline-p (text)
+  "Is TEXT a multi-line string?"
   (string-match "\n" text))
 
 (defun jupyter-repl-cell-line-p ()
-  "Is the current line an input cell line?"
+  "Is the current line a cell input line?"
+  ;; TODO: Better predicate
   (or (overlays-at (point-at-eol))
       (when (>= (1- (point-at-bol)) (point-min))
         (and (overlays-at (1- (point-at-bol)))
@@ -413,7 +470,7 @@ Returns the count of cells left to move."
 ;;; Getting/manipulating the code of a cell
 
 (defun jupyter-repl-cell-code ()
-  "Get the code of the cell without prompts."
+  "Get the code of the current cell."
   (if (= (point-min) (point-max)) ""
     (let (lines)
       (save-excursion
@@ -434,7 +491,16 @@ The first character of the cell code corresponds to position 1."
   (- (point) (jupyter-repl-cell-beginning-position)))
 
 (defun jupyter-repl-finalize-cell (req)
-  "Make the current cell read only."
+  "Finalize the current cell.
+REQ is the `jupyter-request' to associate with the current cell.
+Finalizing a cell involves the following steps:
+
+- Associate REQ with the cell
+- Show the cell as busy
+- Move `point' to the location where the next input cell can be
+  inserted
+- Add the text property which marks the end of a cell
+- Make the cell read-only"
   (let* ((beg (jupyter-repl-cell-beginning-position))
          (count (jupyter-repl-cell-count)))
     (jupyter-repl-cell-mark-busy)
@@ -454,6 +520,11 @@ The first character of the cell code corresponds to position 1."
   (jupyter-repl-insert :read-only nil new-code))
 
 (defun jupyter-repl-truncate-buffer ()
+  "Truncate the `current-buffer' based on `jupyter-repl-maximum-size'.
+The `current-buffer' is assumed to be a Jupyter REPL buffer. If
+the `current-buffer' is larger than `jupyter-repl-maximum-size'
+lines then truncate it to something less than
+`jupyter-repl-maximum-size' lines."
   (save-excursion
     (when (= (forward-line (- jupyter-repl-maximum-size)) 0)
       (jupyter-repl-next-cell)
@@ -462,6 +533,11 @@ The first character of the cell code corresponds to position 1."
 ;;; Handlers
 
 (defun jupyter-repl-goto-request (req)
+  "Go to the cell beginning position of REQ.
+REQ should be a `jupyter-request' that corresponds to one of the
+`jupyter-execute-request's created by a cell in the
+`current-buffer'. Note that the `current-buffer' is assumed to be
+a Jupyter REPL buffer."
   (goto-char (point-max))
   (condition-case nil
       (goto-char (jupyter-repl-cell-beginning-position))
@@ -674,6 +750,12 @@ The first character of the cell code corresponds to position 1."
 ;;; Buffer change functions
 
 (defun jupyter-repl-after-buffer-change (beg end len)
+  "Insert line continuation prompts in `jupyter-repl-mode' buffers.
+BEG, END, and LEN have the same meaning as for
+`after-change-functions'. If the change corresponds to text being
+inserted and the beginning of the insertion is on a
+`jupyter-repl-cell-line-p', insert line continuation prompts if
+the inserted text is multi-line."
   (when (eq major-mode 'jupyter-repl-mode)
     (cond
      ;; Insertions only
@@ -686,21 +768,27 @@ The first character of the cell code corresponds to position 1."
       (goto-char end)))))
 
 (defun jupyter-repl-kill-buffer-query-function ()
-  (or (not (eq major-mode 'jupyter-repl-mode))
-      (not (or (jupyter-kernel-alive-p jupyter-repl-kernel-manager)
-               (jupyter-channels-running-p jupyter-repl-current-client)))
-      (not (and (y-or-n-p
+  "Ask before killing a Jupyter REPL buffer.
+If the REPL buffer is killed, stop the client and possibly the
+kernel that the REPL buffer is connected to."
+  (not (and (eq major-mode 'jupyter-repl-mode)
+            (or (jupyter-kernel-alive-p jupyter-repl-kernel-manager)
+                (jupyter-channels-running-p jupyter-repl-current-client))
+            (if (y-or-n-p
                  (format "Jupyter REPL (%s) still connected. Kill it? "
                          (buffer-name (current-buffer))))
                 (prog1 nil
                   (jupyter-stop-channels jupyter-repl-current-client)
-                  (jupyter-stop-kernel jupyter-repl-kernel-manager))))))
+                  (when jupyter-repl-kernel-manager
+                    (jupyter-stop-kernel jupyter-repl-kernel-manager)))
+              t))))
 
 (add-hook 'kill-buffer-query-functions #'jupyter-repl-kill-buffer-query-function)
 
 ;;; Completion
 
 (defun company-jupyter-repl (command &optional arg &rest ignored)
+  "`company-mode' backend using a `jupyter-repl-client'."
   (interactive (list 'interactive))
   (cl-case command
     (interactive (company-begin-backend 'company-jupyter-repl))
@@ -799,8 +887,11 @@ it."
     (add-text-properties start (point) '(font-lock-face shadow fontified t))))
 
 (defun jupyter-repl-update-execution-counter ()
+  "Synchronize the execution count of `jupyter-repl-current-client'.
+Set the execution-count slot of `jupyter-repl-current-client' to
+1+ the execution count of the client's kernel."
   (let ((req (jupyter-execute-request jupyter-repl-current-client
-                                      :code "" :silent t)))
+               :code "" :silent t)))
     (jupyter-request-inhibit-handlers req)
     (jupyter-add-callback req
       :execute-reply (apply-partially
@@ -813,6 +904,11 @@ it."
     (jupyter-wait-until-idle req)))
 
 (defun run-jupyter-repl (kernel-name)
+  "Run a Jupyter REPL connected to a kernel named KERNEL-NAME.
+KERNEL-NAME can be the prefix of an available kernel name, in
+this case the first kernel in `jupyter-available-kernelspecs'
+that has KERNEL-NAME as a prefix will be used to start a new
+kernel."
   (interactive
    (list
     (completing-read

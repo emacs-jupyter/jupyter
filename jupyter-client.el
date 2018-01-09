@@ -119,11 +119,14 @@ connection is terminated before initializing."
                             type
                             message
                             &optional flags)
-  "Encode MESSAGE and send it on CLIENT's CHANNEL.
-The message should have a TYPE corresponding to one of those
-found in the jupyter messaging protocol. Optional variable FLAGS
-are the flags sent to the underlying `zmq-send-multipart' call
-using the CHANNEL's socket."
+  "Send a message on CLIENT's CHANNEL.
+Return a `jupyter-request' representing the sent message. CHANNEL
+is one of the channel's of CLIENT. TYPE is one of the values in
+`jupyter-message-types' and is the type of the MESSAGE. If FLAGS
+is non-nil, it has the same meaning as FLAGS in `zmq-send'. You
+can manipulate how to handle messages received in response to the
+sent message, see `jupyter-add-callback' and
+`jupyter-request-inhibit-handlers'."
   (declare (indent 1))
   (zmq-subprocess-send (oref client ioloop)
     (list 'send (oref channel type) type message flags))
@@ -458,14 +461,14 @@ run when MSG-TYPE is received for REQ."
   "Add a callback to run when a message is received for a request.
 REQ is a `jupyter-request' returned by one of the request methods
 of a `jupyter-kernel-client'. MSG-TYPE is a keyword corresponding
-to one of the keys in `jupyter-message-types'. MSG-TYPE can also
-be a list, in which case run CB for every MSG-TYPE in the list.
-If MSG-TYPE is t, then run CB for every message received for REQ.
-CB is the callback function which will run with a single
-argument, a message whose `jupyter-message-parent-id' is `equal'
-to the `jupyter-request-id' of REQ and whose
-`jupyter-message-type' corresponds to the value of MSG-TYPE in
-`jupyter-message-types'.
+to one of the keys in `jupyter-message-types'. CB is the callback
+function which will run with a single argument, a message whose
+`jupyter-message-parent-id' is `equal' to the
+`jupyter-request-id' of REQ and whose `jupyter-message-type'
+corresponds to the value of MSG-TYPE in `jupyter-message-types'.
+MSG-TYPE can also be a list, in which case run CB for every
+MSG-TYPE in the list. If MSG-TYPE is t, then run CB for every
+message received for REQ.
 
 Any additional arguments to `jupyter-add-callback' are
 interpreted as additional CALLBACKS to add to REQ. So to add
@@ -544,7 +547,7 @@ are taken:
        - Based on message type, dispatch to
          `jupyter-handle-execute-result',
          `jupyter-handle-kernel-info-reply', ...
-   - Cleanup request when kernel is done processing it"
+   - Remove request from client request table when idle message is received"
   (when (jupyter-messages-available-p channel)
     (let* ((msg (jupyter-get-message channel))
            (pmsg-id (jupyter-message-parent-id msg))

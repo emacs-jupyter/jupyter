@@ -115,7 +115,7 @@ Sets `jupyter-request-run-handlers-p' to nil for REQ and returns
 REQ. This function is intended to be a convenience function so
 that you can do:
 
-    (jupyter-add-callback 'execute-reply
+    (jupyter-add-callback :execute-reply
         (jupyter-request-inhibit-handlers
           (jupyter-execute-request client ...))
       (lambda (msg) ...))"

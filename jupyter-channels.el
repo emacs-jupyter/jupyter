@@ -24,8 +24,7 @@
     :type ring
     :initform (make-ring 10)
     :documentation "A queue of messages received on this channel
- that are waiting to be processed. See `jupyter-process-message'
- for its use."))
+ that are waiting to be processed."))
   :abstract t
   :documentation "A base class for channels used by `jupyter'.")
 
@@ -86,6 +85,10 @@ A channel is alive if its socket property is bound to a
        (not (null (oref channel socket)))))
 
 (cl-defmethod jupyter-queue-message ((channel jupyter-channel) msg)
+  "Add a message to a CHANNEL's recieve queue.
+MSG is a cons pair (IDENTS . MSG) which will be added to the
+recv-queue slot of CHANNEL. To receive a message from the channel
+call `jupyter-get-message'."
   (let ((ring (oref channel recv-queue)))
     (ring-insert+extend ring msg 'grow)))
 
