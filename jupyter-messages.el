@@ -77,16 +77,17 @@ protocol.")
 
 ;;; Encode/decoding messages
 
-(defun jupyter--encode-object (object)
+(defun jupyter--encode (object)
   ;; Fix encoding recursive objects so that nil will get turned into "{}"
   (cl-letf (((symbol-function 'json-encode-keyword)
              (lambda (keyword)
                (cond ((eq keyword t)          "true")
                      ((eq keyword json-false) "false")
                      ((eq keyword json-null)  "{}")))))
-    (encode-coding-string (json-encode-plist object) 'utf-8)))
+    (encode-coding-string
+     (if (stringp object) object (json-encode-plist object)) 'utf-8)))
 
-(defun jupyter--decode-string (str)
+(defun jupyter--decode (str)
   (let ((json-object-type 'plist)
         (json-array-type 'list)
         (json-false nil))
@@ -116,10 +117,10 @@ protocol.")
   (cl-check-type buffers list)
   (let* ((header (jupyter--message-header session type))
          (msg-id (plist-get header :msg_id))
-         (parts (mapcar #'jupyter--encode-object (list header
-                                                  parent-header
-                                                  metadata
-                                                  content))))
+         (parts (mapcar #'jupyter--encode (list header
+                                           parent-header
+                                           metadata
+                                           content))))
     (cons msg-id
           (append
            (when idents (if (stringp idents) (list idents) idents))
@@ -143,8 +144,8 @@ protocol.")
   (cl-destructuring-bind
       (header parent-header metadata content &optional buffers)
       (cdr parts)
-    (let ((header (jupyter--decode-string header))
-          (parent-header (jupyter--decode-string parent-header)))
+    (let ((header (jupyter--decode header))
+          (parent-header (jupyter--decode parent-header)))
       ;; Decode dates to time objects as returned by `current-time'
       (mapc (lambda (plist)
            (let ((date (plist-get plist :date)))
@@ -157,8 +158,8 @@ protocol.")
        :msg_id (plist-get header :msg_id)
        :msg_type (plist-get header :msg_type)
        :parent_header parent-header
-       :metadata (jupyter--decode-string metadata)
-       :content (jupyter--decode-string content)
+       :metadata (jupyter--decode metadata)
+       :content (jupyter--decode content)
        :buffers buffers))))
 
 ;;; Sending/receiving
