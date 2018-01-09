@@ -841,31 +841,28 @@ kernel that the REPL buffer is connected to."
     (candidates
      (cons
       :async
-      (lexical-let ((arg arg))
-        (lambda (cb)
-          (let ((client jupyter-repl-current-client))
-            (with-jupyter-repl-buffer client
-              (jupyter-add-callback
-                  (jupyter-complete-request
-                   client
-                   :code (jupyter-repl-cell-code)
-                   ;; Consider the case when completing
-                   ;;
-                   ;;     In [1]: foo|
-                   ;;
-                   ;; The cell code position will be at position 4, i.e. where
-                   ;; the cursor is at, but the cell code will only be 3
-                   ;; characters long.
-                   :pos (1- (jupyter-repl-cell-code-position)))
-                :complete-reply
-                (apply-partially
-                 (lambda (cb msg)
-                   (cl-destructuring-bind (&key status matches
-                                                &allow-other-keys)
-                       (jupyter-message-content msg)
-                     (if (equal status "ok") (funcall cb matches)
-                       (funcall cb '()))))
-                 cb))))))))
+      (lambda (cb)
+        (let ((client jupyter-repl-current-client))
+          (with-jupyter-repl-buffer client
+            (jupyter-add-callback
+                (jupyter-complete-request
+                    client
+                  :code (jupyter-repl-cell-code)
+                  ;; Consider the case when completing
+                  ;;
+                  ;;     In [1]: foo|
+                  ;;
+                  ;; The cell code position will be at position 4, i.e. where
+                  ;; the cursor is at, but the cell code will only be 3
+                  ;; characters long.
+                  :pos (1- (jupyter-repl-cell-code-position)))
+              :complete-reply
+              (lambda (msg)
+                (cl-destructuring-bind (&key status matches
+                                             &allow-other-keys)
+                    (jupyter-message-content msg)
+                  (if (equal status "ok") (funcall cb matches)
+                    (funcall cb '()))))))))))
     (sorted t)
     (doc-buffer
      (let ((msg (jupyter-wait-until-received :inspect-reply

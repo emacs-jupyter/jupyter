@@ -527,8 +527,7 @@ that if no TIMEOUT is given, `jupyter-default-timeout' is used."
   (declare (indent 1))
   (setq timeout (or timeout jupyter-default-timeout))
   (cl-check-type timeout number)
-  (lexical-let ((msg nil)
-                (cb cb))
+  (let ((msg nil))
     (jupyter-add-callback req
       msg-type (lambda (m) (setq msg (when (funcall cb m) m))))
     (with-timeout (timeout nil)

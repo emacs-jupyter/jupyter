@@ -180,8 +180,8 @@ testing the callback functionality of a
           (setq ran-callbacks (nreverse ran-callbacks))
           (should (equal ran-callbacks '(1 1 1 2 2 2)))))
       (ert-info ("Multiple callbacks for a single message type")
-        (lexical-let* ((ran-callbacks nil)
-                       (req (jupyter-execute-request client :code "foo")))
+        (let* ((ran-callbacks nil)
+               (req (jupyter-execute-request client :code "foo")))
           (jupyter-add-callback req
             :execute-reply (lambda (_msg) (push 1 ran-callbacks)))
           (jupyter-add-callback req

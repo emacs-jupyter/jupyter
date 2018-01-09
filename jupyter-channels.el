@@ -245,8 +245,7 @@ connected."
     (oset channel timer
           (run-with-timer
            0 (oref channel time-to-dead)
-           (lexical-let ((identity identity)
-                         (sent nil))
+           (let ((sent nil))
              (lambda (channel)
                (let ((sock (oref channel socket)))
                  (when sent
