@@ -158,14 +158,17 @@ can manipulate how to handle messages received in response to the
 sent message, see `jupyter-add-callback' and
 `jupyter-request-inhibit-handlers'."
   (declare (indent 1))
-  (zmq-subprocess-send (oref client ioloop)
-    (list 'send (oref channel type) type message flags))
-  ;; Anything sent to stdin is a reply not a request so don't add it to
-  ;; `:jupyter-pending-requests.'
-  (unless (eq (oref channel type) :stdin)
-    (let ((req (make-jupyter-request)))
-      (jupyter--ioloop-push-request client req)
-      req)))
+  (let ((ioloop (oref client ioloop)))
+    (unless ioloop
+      (signal 'wrong-type-argument (list 'process ioloop 'ioloop)))
+    (zmq-subprocess-send (oref client ioloop)
+      (list 'send (oref channel type) type message flags))
+    ;; Anything sent to stdin is a reply not a request so don't add it to
+    ;; `:jupyter-pending-requests.'
+    (unless (eq (oref channel type) :stdin)
+      (let ((req (make-jupyter-request)))
+        (jupyter--ioloop-push-request client req)
+        req))))
 
 ;;; IOLoop subprocess communication
 
