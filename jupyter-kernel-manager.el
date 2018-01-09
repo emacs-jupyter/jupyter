@@ -242,46 +242,37 @@ shutdown/interrupt requests"
       (jupyter-stop-channel control-channel)
       (oset manager control-channel nil))))
 
-(cl-defmethod jupyter-send ((manager jupyter-kernel-manager) type message)
-  (unless (member type '("shutdown_request" "interrupt_request"))
-    (error "Only shutdown or interrupt requests on control channel (%s)."
-           type))
-  (let ((session (oref manager session))
-        (sock (oref (oref manager control-channel) socket))
-        (res nil))
-    (jupyter-send session sock type message)
-    ;; FIXME: Should everything sent on the control channel be synchronous?
-    (with-timeout (2 nil)
-      (while (condition-case nil
-                 (progn
-                   (setq res (jupyter-recv session sock zmq-NOBLOCK))
-                   nil)
-               (zmq-EAGAIN t))
-        (sleep-for 0 100))
-      res)))
-
-(cl-defmethod jupyter-stop-kernel ((manager jupyter-kernel-manager))
+(cl-defmethod jupyter-shutdown-kernel ((manager jupyter-kernel-manager)
+                                       &optional timeout)
   (when (jupyter-kernel-alive-p manager)
-    (jupyter-shutdown-request manager)
-    (with-timeout (5 (delete-process (oref manager kernel)))
+    (jupyter-send (oref manager control-channel) "shutdown_request"
+                  (jupyter-message-shutdown-request))
+    (with-timeout ((or timeout 1)
+                   (delete-process (oref manager kernel))
+                   (warn "Kernel did not shutdown by request"))
       (while (jupyter-kernel-alive-p manager)
-        (sleep-for 0 100)))))
+        (sleep-for 0.01)))
+    (jupyter-stop-channels manager)))
+
+(cl-defmethod jupyter-interrupt-kernel ((manager jupyter-kernel-manager) &optional timeout)
+  (pcase (plist-get (oref manager kernel-spec) :interrupt_mode)
+    ("message"
+     (let ((session (oref manager session))
+           (sock (oref (oref manager control-channel) socket)))
+       (jupyter-send
+        session sock "interrupt_request" (jupyter-message-interrupt-request))
+       (with-timeout ((or timeout 1) (warn "No interrupt reply from kernel"))
+         (while (condition-case nil
+                    (progn
+                      (jupyter-recv session sock zmq-NOBLOCK)
+                      nil)
+                  (zmq-EAGAIN t))
+           (sleep-for 0.01)))))
+    (_
+     (interrupt-process (oref manager kernel) t))))
 
 (cl-defmethod jupyter-kernel-alive-p ((manager jupyter-kernel-manager))
   (process-live-p (oref manager kernel)))
-
-(cl-defmethod jupyter-shutdown-request ((manager jupyter-kernel-manager))
-  "Request a shutdown of MANAGER's kernel.
-If RESTART is non-nil, request a restart instead of a complete shutdown."
-  ;; FIXME: This shutdown request doesn't seem to work
-  (let ((msg (jupyter-message-shutdown-request)))
-    (jupyter-send manager "shutdown_request" msg)))
-
-(cl-defmethod jupyter-interrupt-request ((manager jupyter-kernel-manager))
-  (if (equal (plist-get (oref manager kernel-spec) :interrupt_mode) "message")
-      (let ((msg (jupyter-message-interrupt-request)))
-        (jupyter-send manager "interrupt_request" msg))
-    (interrupt-process (oref manager kernel) t)))
 
 (defun jupyter-start-new-kernel (kernel-name &optional client-class)
   "Start a managed Jupyter kernel.
@@ -323,7 +314,7 @@ listening and the heartbeat channel un-paused."
               (error "Kernel did not respond to kernel-info request"))))
       ((error quit)
        (jupyter-stop-channels kc)
-       (jupyter-stop-kernel km 0)))
+       (jupyter-shutdown-kernel km 0)))
     (cons km kc)))
 
 (provide 'jupyter-kernel-manager)

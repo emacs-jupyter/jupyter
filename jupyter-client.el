@@ -403,7 +403,6 @@ by `jupyter--ioloop'."
                                       &key (shell t)
                                       (iopub t)
                                       (stdin t)
-                                      (control t)
                                       (hb t))
   "Start the pre-configured channels of CLIENT.
 This function calls `jupyter-start-channel' for every channel
@@ -630,52 +629,6 @@ the user. Otherwise `read-from-minibuffer' is used."
     ;; http://jupyter-client.readthedocs.io/en/latest/messaging.html#stdin-messages
     (jupyter-send client channel "input_reply" msg)))
 
-;;; CONTROL message requests/handlers
-
-(cl-defgeneric jupyter-handle-message ((channel jupyter-control-channel)
-                                       client
-                                       req
-                                       msg)
-  (cl-destructuring-bind (&key status ename evalue &allow-other-keys)
-      (jupyter-message-content msg)
-    (if (equal status "ok")
-        ;; FIXME: An interrupt reply is only sent when interrupt_mode is set
-        ;; to message in a kernel's kernelspec.
-        (pcase (jupyter-message-type msg)
-          ("interrupt_reply"
-           (jupyter-handle-interrupt-reply client req)))
-      ;; FIXME: How to handle errors more generally? Just let the IOPub message
-      ;; handle it?
-      (if (equal status "error") (error "Error (%s): %s" ename evalue)
-        (error "Error: aborted")))))
-
-(cl-defgeneric jupyter-shutdown-request ((client jupyter-kernel-client)
-                                         &optional restart)
-  "Request a shutdown of CLIENT's kernel.
-If RESTART is non-nil, request a restart instead of a complete shutdown."
-  (let ((channel (oref client shell-channel))
-        (msg (jupyter-message-shutdown-request :restart restart)))
-    (jupyter-send client channel "shutdown_request" msg)))
-
-(cl-defgeneric jupyter-handle-shutdown-reply ((client jupyter-kernel-client)
-                                              req
-                                              restart)
-  "Default shutdown reply handler."
-  nil)
-
-;; FIXME: This breaks the convention that all jupyter-request-* functions
-;; returns a message-id future object.
-;; (cl-defmethod jupyter-request-interrupt ((client jupyter-kernel-client))
-;;   ;; TODO: Check for interrupt_mode of the kernel's kernelspec
-;;   ;; http://jupyter-client.readthedocs.io/en/latest/messaging.html#kernel-interrupt
-;;   (let ((channel (oref client control-channel)))
-;;     (jupyter-send client channel "interrupt_request" ())))
-
-(cl-defgeneric jupyter-handle-interrupt-reply ((client jupyter-kernel-client)
-                                               req)
-  "Default interrupt reply handler."
-  nil)
-
 ;;; SHELL message requests/handlers
 
 ;; http://jupyter-client.readthedocs.io/en/latest/messaging.html#messages-on-the-shell-router-dealer-channel
@@ -890,6 +843,20 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                                  banner
                                                  help-links)
   "Default kernel-info reply handler."
+  nil)
+
+(cl-defgeneric jupyter-shutdown-request ((client jupyter-kernel-client)
+                                         &optional restart)
+  "Request a shutdown of CLIENT's kernel.
+If RESTART is non-nil, request a restart instead of a complete shutdown."
+  (let ((channel (oref client shell-channel))
+        (msg (jupyter-message-shutdown-request :restart restart)))
+    (jupyter-send client channel "shutdown_request" msg)))
+
+(cl-defgeneric jupyter-handle-shutdown-reply ((client jupyter-kernel-client)
+                                              req
+                                              restart)
+  "Default shutdown reply handler."
   nil)
 
 ;;; IOPUB message handlers

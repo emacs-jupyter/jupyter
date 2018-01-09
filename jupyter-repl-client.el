@@ -816,7 +816,7 @@ kernel that the REPL buffer is connected to."
                 (prog1 nil
                   (jupyter-stop-channels jupyter-repl-current-client)
                   (when jupyter-repl-kernel-manager
-                    (jupyter-stop-kernel jupyter-repl-kernel-manager)))
+                    (jupyter-shutdown-kernel jupyter-repl-kernel-manager)))
               t))))
 
 (add-hook 'kill-buffer-query-functions #'jupyter-repl-kill-buffer-query-function)

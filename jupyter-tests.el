@@ -407,23 +407,6 @@ testing the callback functionality of a
               (should-not (null res))
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "is_complete_reply"))))
-          ;; (ert-info ("Interrupt")
-          ;;   (let ((time (current-time))
-          ;;         (interrupt-time nil))
-          ;;     (jupyter-add-callback
-          ;;         (jupyter-execute-request
-          ;;          client :code "import time\ntime.sleep(2)")
-          ;;       :status (lambda (msg)
-          ;;                 (when (jupyter-message-status-idle-p msg)
-          ;;                   (setq interrupt-time (current-time)))))
-          ;;     (sleep-for 0.2)
-          ;;     (let ((res (jupyter-wait-until-received :interrupt-reply
-          ;;                  (jupyter-interrupt-request client))))
-          ;;       (should-not (null res))
-          ;;       (should (json-plist-p res))
-          ;;       (should (equal (jupyter-message-type res) "interrupt_reply"))
-          ;;       (should (< (float-time (time-subtract interrupt-time time))
-          ;;                  2)))))
           (ert-info ("Shutdown")
             (let ((res (jupyter-wait-until-received :shutdown-reply
                          (jupyter-shutdown-request client))))
