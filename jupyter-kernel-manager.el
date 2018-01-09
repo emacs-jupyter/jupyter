@@ -208,6 +208,7 @@ shutdown/interrupt requests"
                   (error "Kernel did not read connection file within timeout."))
             (while (equal atime (nth 4 (file-attributes conn-file)))
               (sleep-for 0 100)))
+          (oset manager kernel proc)
           (oset manager conn-file (expand-file-name
                                    (format "kernel-%d.json" (process-id proc))
                                    (file-name-directory conn-file)))
