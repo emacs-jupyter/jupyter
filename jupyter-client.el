@@ -428,12 +428,24 @@ created for each channel which monitors the channel's socket for
 input events. Note that this polling subprocess is not created
 for the heartbeat channel."
   (unless (oref client ioloop)
-    (when hb (jupyter-start-channel (oref client hb-channel)))
-    (oset client ioloop
-          (zmq-start-process
-           (jupyter--ioloop client)
-           (apply-partially #'jupyter--ioloop-filter client)
-           (apply-partially #'jupyter--ioloop-sentinel client)))))
+    ;; TODO: Currently there is no way to stop/start a channel individually
+    ;; outside of this method. Create channel methods which are aware of a
+    ;; client's ioloop so that you can send commands to the ioloop to start and
+    ;; stop a channel. Also figure out a way to block until the ioloop says it
+    ;; has finished with the operation. This may need changes in
+    ;; `jupyter--ioloop'
+    (let ((ioloop (zmq-start-process
+                   (jupyter--ioloop client)
+                   (apply-partially #'jupyter--ioloop-filter client)
+                   (apply-partially #'jupyter--ioloop-sentinel client))))
+      (oset client ioloop ioloop)
+      (when hb (jupyter-start-channel (oref client hb-channel)))
+      (unless shell
+        (zmq-subprocess-send ioloop '(stop-channel :shell)))
+      (unless iopub
+        (zmq-subprocess-send ioloop '(stop-channel :iopub)))
+      (unless stdin
+        (zmq-subprocess-send ioloop '(stop-channel :stdin))))))
 
 (cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
   "Stop any running channels of CLIENT."
@@ -453,6 +465,7 @@ for the heartbeat channel."
                         'iopub-channel
                         'hb-channel
                         'stdin-channel)
+   ;; FIXME: This does not work with the current implementation of channels
    thereis (jupyter-channel-alive-p (slot-value client channel))))
 
 ;;; Message callbacks
