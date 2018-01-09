@@ -951,8 +951,6 @@ kernel."
       (jupyter-start-new-kernel kernel-name 'jupyter-repl-client)
     (oset kc buffer (generate-new-buffer
                      (format "*jupyter-repl[%s]*" (oref km name))))
-    ;; hb channel starts in a paused state
-    (jupyter-hb-unpause (oref kc hb-channel))
     (with-jupyter-repl-buffer kc
       (cl-destructuring-bind (&key language_info banner &allow-other-keys)
           (oref km kernel-info)
