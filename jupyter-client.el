@@ -814,8 +814,8 @@ the user. Otherwise `read-from-minibuffer' is used."
     (jupyter-send client channel "history_request" msg)))
 
 (cl-defgeneric jupyter-handle-history-reply ((client jupyter-kernel-client)
-                                            req
-                                            history)
+                                             req
+                                             history)
   "Default history reply handler."
   nil)
 

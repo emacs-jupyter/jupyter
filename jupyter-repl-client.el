@@ -761,8 +761,8 @@ a Jupyter REPL buffer."
       ;; request times out.
       (let ((res (jupyter-wait-until-received :is-complete-reply
                    (jupyter-is-complete-request
-                    jupyter-repl-current-client
-                    :code (jupyter-repl-cell-code)))))
+                       jupyter-repl-current-client
+                     :code (jupyter-repl-cell-code)))))
         ;; If the kernel responds to an is-complete request then the
         ;; is-complete handler takes care of executing the code.
         (unless res
@@ -869,8 +869,8 @@ kernel that the REPL buffer is connected to."
      (let ((msg (jupyter-wait-until-received :inspect-reply
                   (jupyter-request-inhibit-handlers
                    (jupyter-inspect-request
-                    jupyter-repl-current-client
-                    :code arg :pos (length arg))))))
+                       jupyter-repl-current-client
+                     :code arg :pos (length arg))))))
        (when msg
          (cl-destructuring-bind (&key status found data &allow-other-keys)
              (jupyter-message-content msg)
