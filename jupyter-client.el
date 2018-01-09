@@ -331,10 +331,9 @@ message that has a channel type with the lower priority."
                      ;; Lengthen timeout so as to not waste CPU cycles
                      (when (= idle-count 100)
                        (setq timeout 1000))
-                     (when (or (= idle-count 50)
-                               ;; Clamp the number of messages that can be
-                               ;; queued before sending to the parent process
-                               (> (length messages 10)))
+                     (when (and messages
+                                (or (> idle-count 20)
+                                    (> (length messages) 10)))
                        (while messages
                          (zmq-prin1 (cons 'recvd (pop messages)))))))))
            (error (signal (car err) (cdr err)))
