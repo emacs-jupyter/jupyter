@@ -406,7 +406,7 @@ by `jupyter--ioloop'."
     ('(quit)
      ;; Cleanup handled in sentinel
      (when jupyter--debug
-       (message "KERNEL KILLED")))))
+       (message "CLIENT CLOSED")))))
 
 (cl-defmethod jupyter-start-channels ((client jupyter-kernel-client)
                                       &key (shell t)
