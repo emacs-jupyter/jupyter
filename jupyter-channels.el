@@ -121,9 +121,8 @@ underlying channel's socket."
   "Start an iopub CHANNEL subscribed to all messages.
 If IDENTITY is non-nil, it is used as the ROUTING_ID of the
 underlying channel's socket."
-  (let ((sock (cl-call-next-method)))
-    (when sock
-      (zmq-socket-set sock zmq-SUBSCRIBE ""))))
+  (when (cl-call-next-method)
+    (zmq-socket-set (oref channel socket) zmq-SUBSCRIBE "")))
 
 (cl-defmethod jupyter-stop-channel ((channel jupyter-channel))
   "Stop a CHANNEL.
