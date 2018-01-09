@@ -60,6 +60,7 @@
  live channels of the client.")
    (shell-channel
     :type (or null jupyter-shell-channel)
+    :initform nil
     :initarg :shell-channel
     :documentation "The shell channel.")
    (iopub-channel
