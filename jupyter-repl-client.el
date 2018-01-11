@@ -81,22 +81,21 @@
 (defvar jupyter-repl-prompt-margin-width 12
   "The width of the margin which displays prompt strings.")
 
-(defvar-local jupyter-repl-lang-buffer nil
-  "A buffer with the current major mode set to the language of
-  the REPL.")
+(defvar jupyter-repl-lang-buffer nil
+  "A buffer with the `major-mode' set to the REPL language's `major-mode'.")
 
-(defvar-local jupyter-repl-current-client nil
+(defvar jupyter-repl-current-client nil
   "The `jupyter-repl-client' for the `current-buffer'.")
 
-(defvar-local jupyter-repl-kernel-manager nil
+(defvar jupyter-repl-kernel-manager nil
   "If the REPL is connected to a kernel which was started as a
  subprocess. This will contain the kernel manager used to control
  the lifetime of the kernel.")
 
-(defvar-local jupyter-repl-lang-mode nil
+(defvar jupyter-repl-lang-mode nil
   "The major mode corresponding to the kernel's language.")
 
-(defvar-local jupyter-repl-history nil
+(defvar jupyter-repl-history nil
   "The history of the current Jupyter REPL.")
 
 ;;; Convenience macros
@@ -948,19 +947,19 @@ kernel."
             language_info
           (erase-buffer)
           (jupyter-repl-mode)
-          (setq left-margin-width jupyter-repl-prompt-margin-width)
-          (setq jupyter-repl-current-client kc)
-          (setq jupyter-repl-kernel-manager km)
-          (setq jupyter-repl-history (make-ring 100))
-          (setq jupyter-repl-lang-buffer
-                (get-buffer-create (format " *jupyter-repl-lang-%s*" name)))
+          (setq-local left-margin-width jupyter-repl-prompt-margin-width)
+          (setq-local jupyter-repl-current-client kc)
+          (setq-local jupyter-repl-kernel-manager km)
+          (setq-local jupyter-repl-history (make-ring 100))
+          (setq-local jupyter-repl-lang-buffer
+                      (get-buffer-create (format " *jupyter-repl-lang-%s*" name)))
           (let (mode)
             (with-jupyter-repl-lang-buffer
               (let ((buffer-file-name
                      (concat "jupyter-repl-lang" file_extension)))
                 (set-auto-mode)
                 (setq mode major-mode)))
-            (setq jupyter-repl-lang-mode mode))
+            (setq-local jupyter-repl-lang-mode mode))
           (jupyter-history-request kc :n 100 :raw nil :unique t)
           (jupyter-repl-initialize-fontification)
           (jupyter-repl-insert-banner banner)
