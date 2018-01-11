@@ -117,7 +117,9 @@ connection is terminated before initializing."
                                      (json-object-type 'plist)
                                      (json-false nil))
                                  (json-read-file file-or-plist))))
-                     (oref client conn-info))))
+                     (or (ignore-errors (oref client conn-info))
+                         (signal 'unbound-slot
+                                 (list 'json-plist client 'conn-info))))))
     (cl-destructuring-bind
         (&key shell_port iopub_port stdin_port hb_port ip
               key transport signature_scheme
@@ -128,25 +130,24 @@ connection is terminated before initializing."
         (error "Unsupported signature scheme: %s" signature_scheme))
       ;; Stop the channels if connected to some other kernel
       (jupyter-stop-channels client)
-      (let ((addr (concat transport "://" ip)))
-        ;; A kernel manager may have already initialized the session, see
-        ;; `jupyter-make-client'
-        (unless (and (slot-boundp client 'session)
-                     (oref client session)
-                     (equal (jupyter-session-key (oref client session)) key))
-          (oset client session (jupyter-session :key key)))
-        (cl-loop
-         for (channel . port) in (list (cons 'stdin-channel stdin_port)
-                                       (cons 'shell-channel shell_port)
-                                       (cons 'hb-channel hb_port)
-                                       (cons 'iopub-channel iopub_port))
-         for class = (intern (concat "jupyter-" (symbol-name channel)))
-         do (setf (slot-value client channel)
-                  (make-instance
-                   class
-                   ;; So channels have access to the client's session
-                   :parent-instance client
-                   :endpoint (format "%s:%d" addr port))))))))
+      ;; A kernel manager may have already initialized the session, see
+      ;; `jupyter-make-client'
+      (unless (and (ignore-errors (oref client session))
+                   (equal (jupyter-session-key (oref client session)) key))
+        (oset client session (jupyter-session :key key)))
+      (cl-loop
+       with addr = (concat transport "://" ip)
+       for (channel . port) in `((stdin-channel . ,stdin_port)
+                                 (shell-channel . ,shell_port)
+                                 (hb-channel . ,hb_port)
+                                 (iopub-channel . ,iopub_port))
+       for class = (intern (concat "jupyter-" (symbol-name channel)))
+       do (setf (slot-value client channel)
+                (make-instance
+                 class
+                 ;; So channels have access to the client's session
+                 :parent-instance client
+                 :endpoint (format "%s:%d" addr port)))))))
 
 ;;; Lower level sending/receiving
 
