@@ -281,22 +281,68 @@ message that has a channel type with the lower priority."
          (if (eq head tail) (setq ,messages (cons elem head))
            (setcdr head (cons elem tail)))))))
 
+(defmacro jupyter--ioloop-collect-messages
+    (session poller channels messages priorities timeout)
+  "Collect messages from kernel.
+SESSION, POLLER, CHANNELS, MESSAGES, PRIORITIES, and TIMEOUT
+should all be variable names bound to objects with the following
+meanings:
+
+SESSION - A `jupyter-session'
+
+POLLER - A `zmq-poller'
+
+CHANNELS - An alist of (SOCK . CTYPE) pairs where sock is a
+           `zmq-socket' representing a `jupyter-channel' with
+           type CTYPE.
+
+MESSAGES - A variable in which to store the collected list of
+           messages collected during this polling period. If the
+           variable is already bound to a list, new messages
+           added to it will be sorted based on the `:date' field
+           of the Jupyter message also taking into account
+           PRIORITIES.
+
+PRIORITIES - An alist of (CTYPE . PRIORITY) pairs where CTYPE is
+             a `jupyter-channel' type with PRIORITY, a number. If
+             one channel has a higher priority than another and
+             two messages, one from each channel, have the same
+             `:date' field, the message with the higher channel
+             priority will have its message come before the
+             message whose channel has a lower priority in the
+             sorted order."
+  `(let ((events (zmq-poller-wait-all ,poller 4 ,timeout)))
+     (when (alist-get 0 events)
+       ;; Got input from stdin, do the command it
+       ;; specifies
+       (setf (alist-get 0 events nil 'remove) nil)
+       (jupyter--ioloop-do-command ,session ,poller ,channels))
+     (dolist (sock (mapcar #'car events))
+       (jupyter--ioloop-queue-message ,messages ,priorities
+         (cons (alist-get sock channels)
+               (jupyter-recv ,session sock))))
+     events))
+
+;; TODO: Make this more debuggable, I've spent hours wondering why I wasn't
+;; receiving messages only to find out (caar elem) should have been (car elem)
+;; in `jupyter--ioloop-queue-message'. For some reason the `condition-case' in
+;; `zmq--init-subprocess' is not sending back the error.
 (defun jupyter--ioloop (client)
   "Return the function used for communicating with CLIENT's kernel."
-  (let ((session (oref client session))
-        (iopub-ep (oref (oref client iopub-channel) endpoint))
-        (shell-ep (oref (oref client shell-channel) endpoint))
-        (stdin-ep (oref (oref client stdin-channel) endpoint)))
+  (let* ((session (oref client session))
+         (sid (jupyter-session-id session))
+         (skey (jupyter-session-key session))
+         (iopub-ep (oref (oref client iopub-channel) endpoint))
+         (shell-ep (oref (oref client shell-channel) endpoint))
+         (stdin-ep (oref (oref client stdin-channel) endpoint)))
     `(lambda (ctx)
        (push ,(file-name-directory (locate-library "jupyter-base")) load-path)
        (require 'jupyter-channels)
        (require 'jupyter-messages)
-       ;; We can splice the session object because it contains primitive types
-       (let* ((session ,session)
-              (session-id (jupyter-session-id session))
-              (iopub (jupyter-connect-channel :iopub ,iopub-ep session-id))
-              (shell (jupyter-connect-channel :shell ,shell-ep session-id))
-              (stdin (jupyter-connect-channel :stdin ,stdin-ep session-id))
+       (let* ((session (jupyter-session :id ,sid :key ,skey))
+              (iopub (jupyter-connect-channel :iopub ,iopub-ep ,sid))
+              (shell (jupyter-connect-channel :shell ,shell-ep ,sid))
+              (stdin (jupyter-connect-channel :stdin ,stdin-ep ,sid))
               (priorities '((:shell . 4)
                             (:iopub . 2)
                             (:stdin . 2)))
@@ -307,37 +353,26 @@ message that has a channel type with the lower priority."
               (timeout 20)
               (messages nil))
          (zmq-socket-set iopub zmq-SUBSCRIBE "")
-         (condition-case err
+         (condition-case nil
              (with-zmq-poller poller
                ;; Poll for stdin messages
                (zmq-poller-register poller 0 zmq-POLLIN)
                (mapc (lambda (x) (zmq-poller-register poller (car x) zmq-POLLIN))
                   channels)
                (while t
-                 (let ((messages-received-p
-                        (let ((events (zmq-poller-wait-all poller 4 timeout)))
-                          (when (alist-get 0 events)
-                            ;; Got input from stdin, do the command it
-                            ;; specifies
-                            (setf (alist-get 0 events nil 'remove) nil)
-                            (jupyter--ioloop-do-command session poller channels))
-                          (dolist (sock (mapcar #'car events))
-                            (jupyter--ioloop-queue-message messages priorities
-                              (cons (alist-get sock channels)
-                                    (jupyter-recv session sock))))
-                          events)))
-                   (if messages-received-p
-                       (setq idle-count 0 timeout 20)
-                     (setq idle-count (1+ idle-count))
-                     ;; Lengthen timeout so as to not waste CPU cycles
-                     (when (= idle-count 100)
-                       (setq timeout 1000))
-                     (when (and messages
-                                (or (> idle-count 20)
-                                    (> (length messages) 10)))
-                       (while messages
-                         (zmq-prin1 (cons 'recvd (pop messages)))))))))
-           (error (signal (car err) (cdr err)))
+                 (if (jupyter--ioloop-collect-messages
+                      session poller channels messages priorities timeout)
+                     (setq idle-count 0 timeout 20)
+                   (setq idle-count (1+ idle-count))
+                   ;; Lengthen timeout so as to not waste CPU cycles
+                   (when (= idle-count 100) (setq timeout 100)))
+                 ;; Pool at least some messages, but not at the cost of
+                 ;; responsiveness. If messages are being blasted at us by the
+                 ;; kernel ensure that they still get through and not pooled
+                 ;; indefinately.
+                 (when (or (= idle-count 5) (> (length messages) 10))
+                   (while messages
+                     (zmq-prin1 (cons 'recvd (pop messages)))))))
            (quit
             (mapc (lambda (x)
                  (zmq-socket-set (car x) zmq-LINGER 0)
