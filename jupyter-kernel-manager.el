@@ -242,17 +242,19 @@ shutdown/interrupt requests"
       (jupyter-stop-channel control-channel)
       (oset manager control-channel nil))))
 
-(cl-defmethod jupyter-shutdown-kernel ((manager jupyter-kernel-manager)
-                                       &optional timeout)
+(cl-defmethod jupyter-shutdown-kernel ((manager jupyter-kernel-manager) &optional timeout)
   (when (jupyter-kernel-alive-p manager)
-    (jupyter-send (oref manager control-channel) "shutdown_request"
-                  (jupyter-message-shutdown-request))
-    (with-timeout ((or timeout 1)
-                   (delete-process (oref manager kernel))
-                   (warn "Kernel did not shutdown by request"))
-      (while (jupyter-kernel-alive-p manager)
-        (sleep-for 0.01)))
-    (jupyter-stop-channels manager)))
+    (let ((session (oref manager session))
+          (sock (oref (oref manager control-channel) socket)))
+      (jupyter-send
+       session sock "shutdown_request" (jupyter-message-shutdown-request))
+      (with-timeout ((or timeout 1)
+                     (delete-process (oref manager kernel))
+                     (display-warning
+                      "jupyter" "Kernel did not shutdown by request" :warning))
+        (while (jupyter-kernel-alive-p manager)
+          (sleep-for 0.01)))
+      (jupyter-stop-channels manager))))
 
 (cl-defmethod jupyter-interrupt-kernel ((manager jupyter-kernel-manager) &optional timeout)
   (pcase (plist-get (oref manager kernel-spec) :interrupt_mode)
