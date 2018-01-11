@@ -261,7 +261,7 @@ message that has a channel type with the lower priority."
   `(let ((elem ,elem))
      (if (null ,messages) (push elem ,messages)
        ;; Put elem in its sorted position
-       (let ((ctype (caar elem))
+       (let ((ctype (car elem))
              (mt (jupyter-message-time (cddr elem)))
              (head ,messages)
              (tail ,messages))
