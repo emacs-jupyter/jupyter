@@ -98,6 +98,13 @@
 (defvar jupyter-repl-history nil
   "The history of the current Jupyter REPL.")
 
+(defvar jupyter-repl-use-builtin-is-complete nil
+  "Whether or not to send an is_complete_request to a kernel.
+If a Jupyter kernel does not respond to an is_complete_request,
+this variable is automatically set to t and code in a cell is
+considered complete if the last line in a code cell is a blank
+line, i.e. if RET is pressed twice in a row.")
+
 ;;; Convenience macros
 
 (defmacro with-jupyter-repl-buffer (client &rest body)
@@ -750,23 +757,27 @@ a Jupyter REPL buffer."
 
 (defun jupyter-repl-ret (arg)
   (interactive "P")
-  (let ((last-cell-pos (save-excursion
+  (let ((client jupyter-repl-current-client)
+        (last-cell-pos (save-excursion
                          (goto-char (point-max))
                          (jupyter-repl-cell-beginning-position))))
     (if (< (point) last-cell-pos)
         (goto-char (point-max))
-      ;; TODO: Not all kernels will respond to an is_complete_request. The
-      ;; jupyter console will switch to its own internal handler when the
-      ;; request times out.
-      (let ((res (jupyter-wait-until-received :is-complete-reply
-                   (jupyter-is-complete-request
-                       jupyter-repl-current-client
-                     :code (jupyter-repl-cell-code)))))
-        ;; If the kernel responds to an is-complete request then the
-        ;; is-complete handler takes care of executing the code.
-        (unless res
-          ;; TODO: Indent or send (on prefix arg)?
-          )))))
+      (if (not jupyter-repl-use-builtin-is-complete)
+          (let ((res (jupyter-wait-until-received :is-complete-reply
+                       (jupyter-is-complete-request client
+                         :code (jupyter-repl-cell-code)))))
+            (unless res
+              (setq-local jupyter-repl-use-builtin-is-complete t)
+              (jupyter-repl-ret arg)))
+        (let ((complete-p (equal
+                           (save-excursion
+                             (goto-char (jupyter-repl-cell-code-end-position))
+                             (buffer-substring-no-properties
+                              (line-beginning-position) (point)))
+                           "")))
+          (jupyter-handle-is-complete-reply client
+            nil (if complete-p "complete" "incomplete") ""))))))
 
 (defun jupyter-repl-indent-line ()
   "Indent the line according to the language of the REPL."
