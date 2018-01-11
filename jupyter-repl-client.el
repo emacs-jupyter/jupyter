@@ -896,29 +896,12 @@ kernel that the REPL buffer is connected to."
   (setq-local company-backends (cons 'company-jupyter-repl company-backends))
   (add-hook 'after-change-functions 'jupyter-repl-after-buffer-change nil t))
 
-(defun jupyter-repl-initialize-fontification (ext)
-  "In the `current-buffer', `turn-on-font-lock-mode' based on EXT.
-EXT should be a file extension (including the '.'). The major
-mode to initialize fontification with is found by using the
-`auto-mode-alist'. Initialization of fontification does the
-following:
-
-- Sets the major mode of the `jupyter-repl-lang-buffer' based on
-  `auto-mode-alist' and EXT
-
-- Captures the `font-lock-defaults' that are set by the major
-  mode and sets them as the `font-lock-defaults' of the
-  `current-buffer'.
-
-- `turn-on-font-lock-mode' in the `current-buffer'"
+(defun jupyter-repl-initialize-fontification ()
   (let (fld)
     (with-jupyter-repl-lang-buffer
-      (setq buffer-file-name (concat "jupyter-repl-lang" ext))
-      (set-auto-mode)
-      (setq buffer-file-name nil)
       (setq fld font-lock-defaults))
     (setq font-lock-defaults fld)
-    (turn-on-font-lock-mode)))
+    (font-lock-mode)))
 
 (defun jupyter-repl-insert-banner (banner)
   "Insert BANNER into the `current-buffer'.
@@ -930,21 +913,17 @@ it."
     (jupyter-repl-newline)
     (add-text-properties start (point) '(font-lock-face shadow fontified t))))
 
-(defun jupyter-repl-update-execution-counter ()
+(defun jupyter-repl-sync-execution-count ()
   "Synchronize the execution count of `jupyter-repl-current-client'.
 Set the execution-count slot of `jupyter-repl-current-client' to
 1+ the execution count of the client's kernel."
-  (let ((req (jupyter-execute-request jupyter-repl-current-client
-               :code "" :silent t)))
+  (let* ((client jupyter-repl-current-client)
+         (req (jupyter-execute-request client :code "" :silent t)))
     (jupyter-request-inhibit-handlers req)
     (jupyter-add-callback req
-      :execute-reply (apply-partially
-                      (lambda (client msg)
-                        (oset client execution-count
-                              (1+ (jupyter-message-get msg :execution_count)))
-                        (with-jupyter-repl-buffer client
-                          (jupyter-repl-insert-prompt 'in)))
-                      jupyter-repl-current-client))
+      :execute-reply (lambda (msg)
+                       (oset client execution-count
+                             (1+ (jupyter-message-get msg :execution_count)))))
     (jupyter-wait-until-idle req)))
 
 (defun run-jupyter-repl (kernel-name)
@@ -969,16 +948,24 @@ kernel."
             language_info
           (erase-buffer)
           (jupyter-repl-mode)
+          (setq left-margin-width jupyter-repl-prompt-margin-width)
           (setq jupyter-repl-current-client kc)
           (setq jupyter-repl-kernel-manager km)
           (setq jupyter-repl-history (make-ring 100))
-          (setq left-margin-width jupyter-repl-prompt-margin-width)
-          (setq jupyter-repl-lang-buffer (get-buffer-create
-                                          (format " *jupyter-repl-lang-%s*" name)))
+          (setq jupyter-repl-lang-buffer
+                (get-buffer-create (format " *jupyter-repl-lang-%s*" name)))
+          (let (mode)
+            (with-jupyter-repl-lang-buffer
+              (let ((buffer-file-name
+                     (concat "jupyter-repl-lang" file_extension)))
+                (set-auto-mode)
+                (setq mode major-mode)))
+            (setq jupyter-repl-lang-mode mode))
           (jupyter-history-request kc :n 100 :raw nil :unique t)
-          (jupyter-repl-initialize-fontification file_extension)
+          (jupyter-repl-initialize-fontification)
           (jupyter-repl-insert-banner banner)
-          (jupyter-repl-update-execution-counter))))
+          (jupyter-repl-sync-execution-count)
+          (jupyter-repl-insert-prompt 'in))))
     (pop-to-buffer (oref kc buffer))))
 
 (provide 'jupyter-repl-client)
