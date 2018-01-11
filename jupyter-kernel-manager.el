@@ -303,11 +303,7 @@ listening and the heartbeat channel un-paused."
     (jupyter-start-kernel km)
     (condition-case nil
         (progn
-          ;; Wait for the startup message
-          (jupyter-wait-until-received :status (jupyter-missing-request kc) 10)
-          ;; Remove the callback since the `jupyter-missing-request' does not go
-          ;; through the normal request code path in `jupyter-kernel-client'
-          (setf (jupyter-request-callbacks (jupyter-missing-request kc)) nil)
+          (jupyter-wait-until-startup kc 10)
           (let ((info (jupyter-wait-until-received :kernel-info-reply
                         (jupyter-request-inhibit-handlers
                          (jupyter-kernel-info-request kc))

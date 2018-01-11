@@ -612,6 +612,34 @@ that if no TIMEOUT is given, it defaults to
   (declare (indent 1))
   (jupyter-wait-until req msg-type #'identity timeout))
 
+;; TODO: Check if kernel has already started. This doesn't seem possible at
+;; first glance since a client can connect to a kernel at any time. We may be
+;; able to check if client has a kernel manager parent instance.
+;;
+;; TODO: Global message callbacks, i.e. messages callbacks for all messages of
+;; a channel instead of just for a particular request. It would remove the need
+;; for `jupyter-missing-request'. It also seems like channel callbacks should
+;; be a feature anyways.
+(defun jupyter-wait-until-startup (client &optional timeout)
+  "Wait until CLIENT receives a status: starting message.
+Return the startup message if received by CLIENT within TIMEOUT
+seconds otherwise return nil. TIMEOUT defaults to 1 s. Note that
+there are no checks to determine if the kernel CLIENT is
+connected to has already been started."
+  (cl-check-type client jupyter-kernel-client)
+  (prog1 (jupyter-wait-until
+             ;; TODO: Better name than missing-request. Something like headless
+             ;; request seems more accurate since a starting message has no
+             ;; parent header, but it still seems like you need to know more
+             ;; about it.
+             (jupyter-missing-request client) :status
+           (lambda (msg) (equal (jupyter-message-get msg :execution_state)
+                           "starting"))
+           timeout)
+    ;; Remove the callback since the `jupyter-missing-request' does not go
+    ;; through the normal request code path
+    (setf (jupyter-request-callbacks (jupyter-missing-request client)) nil)))
+
 (defun jupyter--drop-idle-requests (client)
   (cl-loop
    with requests = (oref client requests)
