@@ -132,6 +132,7 @@ from the kernel.")
   (-id)
   (time (current-time))
   (idle-received-p nil)
+  (last-message-time nil)
   (run-handlers-p t)
   (callbacks))
 

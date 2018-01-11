@@ -612,6 +612,18 @@ that if no TIMEOUT is given, it defaults to
   (declare (indent 1))
   (jupyter-wait-until req msg-type #'identity timeout))
 
+(defun jupyter--drop-idle-requests (client)
+  (cl-loop
+   with requests = (oref client requests)
+   with ctime = (current-time)
+   for req in (hash-table-values requests)
+   for ltime = (jupyter-request-last-message-time req)
+   for id = (jupyter-request-id req)
+   when (and (jupyter-request-idle-received-p req)
+             (> (float-time (time-subtract ctime ltime)) 60))
+   ;; Don't remove the `jupyter-missing-request'
+   unless (equal id "") do (remhash id requests)))
+
 (cl-defmethod jupyter-handle-message ((client jupyter-kernel-client) channel)
   "Process a message on CLIENT's CHANNEL.
 When a message is received from the kernel, the
@@ -645,6 +657,7 @@ are taken:
           ;; TODO: Would we always want this?
           (when (eq (oref channel type) :iopub)
             (jupyter-handle-message channel client nil msg))
+        (setf (jupyter-request-last-message-time req) (current-time))
         (unwind-protect
             (jupyter--run-callbacks req msg)
           (unwind-protect
@@ -653,10 +666,8 @@ are taken:
             ;; Checking for pmsg-id prevents the removal of
             ;; `jupyter-missing-request' for the client
             (when (and pmsg-id (jupyter-message-status-idle-p msg))
-              (setf (jupyter-request-idle-received-p req) t)
-              ;; TODO: Messages associated with the request might still be
-              ;; received when the request is removed from the requests table.
-              (remhash pmsg-id requests))))))))
+              (setf (jupyter-request-idle-received-p req) t))
+            (jupyter--drop-idle-requests client)))))))
 
 ;;; STDIN message requests/handlers
 
