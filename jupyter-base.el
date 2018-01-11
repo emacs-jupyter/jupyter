@@ -113,7 +113,8 @@ from the kernel.")
                (:constructor nil)
                (:constructor
                 jupyter-session
-                (&key (key nil) &aux (id (jupyter-new-uuid)))))
+                (&key (id (jupyter-new-uuid))
+                      (key nil))))
   (id nil :read-only t)
   (key nil :read-only t))
 
