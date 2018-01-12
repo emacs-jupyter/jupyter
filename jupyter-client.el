@@ -35,7 +35,6 @@
 (require 'jupyter-connection)
 (require 'jupyter-channels)
 (require 'jupyter-messages)
-(eval-when-compile (require 'cl))
 (defcustom jupyter-include-other-output nil
   "Whether or not to handle messages not sent by a client.
 A Jupyter client can receive messages from other clients
