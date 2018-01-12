@@ -150,6 +150,24 @@ connection is terminated before initializing."
                  :endpoint (format "%s:%d" addr port)))))))
 
 ;;; Lower level sending/receiving
+(defmacro with-jupyter-client-buffer (client &rest body)
+  "Run a form inside CLIENT's IOloop subprocess buffer."
+  (declare (indent 1))
+  `(progn
+     (cl-check-type client jupyter-kernel-client)
+     (with-current-buffer (oref client ioloop)
+       ,@body)))
+
+(defun jupyter-set (client symbol newval)
+  "Set CLIENT's local value for SYMBOL to NEWVAL."
+  (with-jupyter-client-buffer client
+    (set (make-local-variable symbol) newval)))
+
+(defun jupyter-get (client symbol)
+  "Get CLIENT's local value of SYMBOL."
+  (with-jupyter-client-buffer client
+    (symbol-value symbol)))
+
 
 (cl-defmethod jupyter-send ((client jupyter-kernel-client)
                             channel
@@ -419,6 +437,8 @@ in CLIENT."
    ((cl-loop for type in '("exited" "failed" "finished" "killed" "deleted")
              thereis (string-prefix-p type event))
     (jupyter-stop-channel (oref client hb-channel))
+    (when (process-buffer ioloop)
+      (kill-buffer (process-buffer ioloop)))
     (oset client ioloop nil))))
 
 (defun jupyter--ioloop-filter (client event)
@@ -484,6 +504,7 @@ for the heartbeat channel."
                    (apply-partially #'jupyter--ioloop-filter client)
                    (apply-partially #'jupyter--ioloop-sentinel client))))
       (oset client ioloop ioloop)
+      (set-process-buffer ioloop (generate-new-buffer " *jupyter-kernel-client*"))
       (when hb (jupyter-start-channel (oref client hb-channel)))
       (unless shell
         (zmq-subprocess-send ioloop '(stop-channel :shell)))
