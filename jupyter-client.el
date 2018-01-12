@@ -55,6 +55,24 @@ client use `jupyter-set'."
 (defvar jupyter-default-timeout 1
   "The default timeout in seconds for `jupyter-wait-until'.")
 
+(defvar jupyter-iopub-message-hook nil
+  "Hook run with one argument, a message received on the IOPub channel.
+Do not add to this hook variable directly, use
+`jupyter-add-hook'.")
+(put 'jupyter-iopub-message-hook 'permanent-local t)
+
+(defvar jupyter-shell-message-hook nil
+  "Hook run with one argument, a message received on the SHELL channel.
+Do not add to this hook variable directly, use
+`jupyter-add-hook'.")
+(put 'jupyter-shell-message-hook 'permanent-local t)
+
+(defvar jupyter-stdin-message-hook nil
+  "Hook run with one argument, a message received on the STDIN channel.
+Do not add to this hook variable directly, use
+`jupyter-add-hook'.")
+(put 'jupyter-stdin-message-hook 'permanent-local t)
+
 (defclass jupyter-kernel-client (jupyter-connection)
   ((requests
     :type hash-table
@@ -100,17 +118,6 @@ client use `jupyter-set'."
     :initform nil
     :initarg :stdin-channel
     :documentation "The stdin channel.")))
-
-(cl-defmethod initialize-instance ((client jupyter-kernel-client) &rest _slots)
-  (cl-call-next-method)
-  ;; Add a catch all request for headless messages received from the kernel.
-  ;; Set -id to a non-nil value so that `jupyter-request-id' works.
-  (puthash nil (make-jupyter-request :-id "" :run-handlers-p nil)
-           (oref client requests)))
-
-(defun jupyter-missing-request (client)
-  (cl-check-type client jupyter-kernel-client)
-  (gethash nil (oref client requests)))
 
 (cl-defmethod jupyter-initialize-connection ((client jupyter-kernel-client)
                                              &optional file-or-plist)
@@ -184,6 +191,27 @@ connection is terminated before initializing."
   (with-jupyter-client-buffer client
     (symbol-value symbol)))
 
+;; FIXME: Remove the dependency of having the ioloop already present by
+;; pre-defining a buffer for the CLIENT before starting its channels. Then
+;; associate the buffer with the ioloop when the channels are started.
+(defun jupyter-add-hook (client hook function &optional append)
+  "Add to the CLIENT value of HOOK the function FUNCTION.
+APPEND has the same meaning as in `add-hook' and FUNCTION is
+added to HOOK using `add-hook', but local only to CLIENT. Note
+that the CLIENT should have its channels already started before
+this is called."
+  (with-jupyter-client-buffer client
+    (add-hook hook function append t)))
+
+(defun jupyter-run-hook-with-args (client hook &rest args)
+  "Run CLIENT's value for HOOK with the arguments ARGS."
+  (with-jupyter-client-buffer client
+    (apply #'run-hook-with-args hook args)))
+
+(defun jupyter-remove-hook (client hook function)
+  "Remove from CLIENT's value of HOOK the function FUNCTION."
+  (with-jupyter-client-buffer client
+    (remove-hook hook function t)))
 
 (cl-defmethod jupyter-send ((client jupyter-kernel-client)
                             channel
@@ -658,33 +686,25 @@ that if no TIMEOUT is given, it defaults to
   (declare (indent 1))
   (jupyter-wait-until req msg-type #'identity timeout))
 
-;; TODO: Check if kernel has already started. This doesn't seem possible at
-;; first glance since a client can connect to a kernel at any time. We may be
-;; able to check if client has a kernel manager parent instance.
-;;
-;; TODO: Global message callbacks, i.e. messages callbacks for all messages of
-;; a channel instead of just for a particular request. It would remove the need
-;; for `jupyter-missing-request'. It also seems like channel callbacks should
-;; be a feature anyways.
 (defun jupyter-wait-until-startup (client &optional timeout)
   "Wait until CLIENT receives a status: starting message.
 Return the startup message if received by CLIENT within TIMEOUT
 seconds otherwise return nil. TIMEOUT defaults to 1 s. Note that
 there are no checks to determine if the kernel CLIENT is
 connected to has already been started."
-  (cl-check-type client jupyter-kernel-client)
-  (prog1 (jupyter-wait-until
-             ;; TODO: Better name than missing-request. Something like headless
-             ;; request seems more accurate since a starting message has no
-             ;; parent header, but it still seems like you need to know more
-             ;; about it.
-             (jupyter-missing-request client) :status
-           (lambda (msg) (equal (jupyter-message-get msg :execution_state)
-                           "starting"))
-           timeout)
-    ;; Remove the callback since the `jupyter-missing-request' does not go
-    ;; through the normal request code path
-    (setf (jupyter-request-callbacks (jupyter-missing-request client)) nil)))
+  (let* ((started nil)
+         (cb (lambda (msg)
+               (setq started
+                     (equal (jupyter-message-get msg :execution_state)
+                            "starting"))))
+         (jupyter-include-other-output t))
+    (jupyter-add-hook client 'jupyter-iopub-message-hook cb)
+    (prog1
+        (with-timeout ((or timeout 1) nil)
+          (while (not started)
+            (sleep-for 0.01))
+          t)
+      (jupyter-remove-hook client 'jupyter-iopub-message-hook cb))))
 
 (defun jupyter--drop-idle-requests (client)
   (cl-loop
@@ -695,8 +715,7 @@ connected to has already been started."
    for id = (jupyter-request-id req)
    when (and (jupyter-request-idle-received-p req)
              (> (float-time (time-subtract ctime ltime)) 60))
-   ;; Don't remove the `jupyter-missing-request'
-   unless (equal id "") do (remhash id requests)))
+   do (remhash id requests)))
 
 (cl-defmethod jupyter-handle-message ((client jupyter-kernel-client) channel)
   "Process a message on CLIENT's CHANNEL.
@@ -731,9 +750,7 @@ are taken:
           (unwind-protect
               (when (jupyter-request-run-handlers-p req)
                 (jupyter-handle-message channel client req msg))
-            ;; Checking for pmsg-id prevents the removal of
-            ;; `jupyter-missing-request' for the client
-            (when (and pmsg-id (jupyter-message-status-idle-p msg))
+            (when (jupyter-message-status-idle-p msg)
               (setf (jupyter-request-idle-received-p req) t))
             (jupyter--drop-idle-requests client)))))))
 
@@ -743,6 +760,7 @@ are taken:
                                       client
                                       req
                                       msg)
+  (jupyter-run-hook-with-args client 'jupyter-stdin-message-hook msg)
   (cl-destructuring-bind (&key prompt password &allow-other-keys)
       (jupyter-message-content msg)
     (jupyter-handle-input-reply client req prompt password)))
@@ -773,6 +791,7 @@ the user. Otherwise `read-from-minibuffer' is used."
                                       client
                                       req
                                       msg)
+  (jupyter-run-hook-with-args client 'jupyter-shell-message-hook msg)
   (let ((content (jupyter-message-content msg)))
     ;; TODO: How to handle errors? Let the IOPub error message handler deal
     ;; with it? Or do something here?
@@ -997,6 +1016,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                       client
                                       req
                                       msg)
+  (jupyter-run-hook-with-args client 'jupyter-iopub-message-hook msg)
   (let ((content (jupyter-message-content msg)))
     (pcase (jupyter-message-type msg)
       ("shutdown_reply"
