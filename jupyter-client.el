@@ -734,68 +734,63 @@ the user. Otherwise `read-from-minibuffer' is used."
                                       req
                                       msg)
   (let ((content (jupyter-message-content msg)))
-    (cl-destructuring-bind (&key status ename evalue &allow-other-keys) content
-      ;; is_complete_reply messages have a status other than "ok" so just
-      ;; ensure that the status does not correspond to an error.
-      (if (not (member status '("error" "abort")))
-          (pcase (jupyter-message-type msg)
-            ("execute_reply"
-             (cl-destructuring-bind (&key execution_count
-                                          user_expressions
-                                          payload
-                                          &allow-other-keys)
-                 content
-               (jupyter-handle-execute-reply
-                client req execution_count user_expressions payload)))
-            ("inspect_reply"
-             (cl-destructuring-bind (&key found
-                                          data
-                                          metadata
-                                          &allow-other-keys)
-                 content
-               (jupyter-handle-inspect-reply
-                client req found data metadata)))
-            ("complete_reply"
-             (cl-destructuring-bind (&key matches
-                                          cursor_start
-                                          cursor_end
-                                          metadata
-                                          &allow-other-keys)
-                 content
-               (jupyter-handle-complete-reply
-                client req matches cursor_start cursor_end metadata)))
-            ("history_reply"
-             (cl-destructuring-bind (&key history &allow-other-keys)
-                 content
-               (jupyter-handle-history-reply client req history)))
-            ("is_complete_reply"
-             (cl-destructuring-bind (&key status indent &allow-other-keys)
-                 content
-               (jupyter-handle-is-complete-reply client req status indent)))
-            ("comm_info_reply"
-             (cl-destructuring-bind (&key comms &allow-other-keys)
-                 content
-               (jupyter-handle-comm-info-reply client req comms)))
-            ("kernel_info_reply"
-             (cl-destructuring-bind (&key protocol_version
-                                          implementation
-                                          implementation_version
-                                          language_info
-                                          banner
-                                          help_links
-                                          &allow-other-keys)
-                 content
-               (jupyter-handle-kernel-info-reply
-                client req protocol_version implementation
-                implementation_version language_info banner help_links)))
-            (_
-             (warn "Message type not handled (%s)" (jupyter-message-type msg))))
-        ;; FIXME: Do something about errors here?
-        ;; (if (equal status "error")
-        ;;     (error "Error (%s): %s"
-        ;;            (plist-get content :ename) (plist-get content :evalue))
-        ;;   (error "Error: aborted"))
-        ))))
+    ;; TODO: How to handle errors? Let the IOPub error message handler deal
+    ;; with it? Or do something here?
+    (cl-destructuring-bind (&key status _ename _evalue &allow-other-keys) content
+      ;; NOTE: Silently does nothing on error
+      (unless (member status '("error" "abort"))
+        (pcase (jupyter-message-type msg)
+          ("execute_reply"
+           (cl-destructuring-bind (&key execution_count
+                                        user_expressions
+                                        payload
+                                        &allow-other-keys)
+               content
+             (jupyter-handle-execute-reply
+              client req execution_count user_expressions payload)))
+          ("inspect_reply"
+           (cl-destructuring-bind (&key found
+                                        data
+                                        metadata
+                                        &allow-other-keys)
+               content
+             (jupyter-handle-inspect-reply
+              client req found data metadata)))
+          ("complete_reply"
+           (cl-destructuring-bind (&key matches
+                                        cursor_start
+                                        cursor_end
+                                        metadata
+                                        &allow-other-keys)
+               content
+             (jupyter-handle-complete-reply
+              client req matches cursor_start cursor_end metadata)))
+          ("history_reply"
+           (cl-destructuring-bind (&key history &allow-other-keys)
+               content
+             (jupyter-handle-history-reply client req history)))
+          ("is_complete_reply"
+           (cl-destructuring-bind (&key status indent &allow-other-keys)
+               content
+             (jupyter-handle-is-complete-reply client req status indent)))
+          ("comm_info_reply"
+           (cl-destructuring-bind (&key comms &allow-other-keys)
+               content
+             (jupyter-handle-comm-info-reply client req comms)))
+          ("kernel_info_reply"
+           (cl-destructuring-bind (&key protocol_version
+                                        implementation
+                                        implementation_version
+                                        language_info
+                                        banner
+                                        help_links
+                                        &allow-other-keys)
+               content
+             (jupyter-handle-kernel-info-reply
+              client req protocol_version implementation
+              implementation_version language_info banner help_links)))
+          (_
+           (warn "Message type not handled (%s)" (jupyter-message-type msg))))))))
 
 (cl-defgeneric jupyter-execute-request ((client jupyter-kernel-client)
                                         &key code
