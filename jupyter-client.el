@@ -385,9 +385,9 @@ PRIORITIES - An alist of (CTYPE . PRIORITY) pairs where CTYPE is
 Specifically remove the oldest element of the ring located in the
 `:jupyter-pending-requests' property of CLIENT's ioloop
 subprocess."
-  (let* ((ring (process-get (oref client ioloop) :jupyter-pending-requests))
-         (req (ring-remove ring)))
-    req))
+  (let ((ring (process-get (oref client ioloop) :jupyter-pending-requests)))
+    (unless (ring-empty-p ring)
+      (ring-remove ring))))
 
 (defun jupyter--ioloop-push-request (client req)
   "Insert a request into CLIENT's pending requests.
