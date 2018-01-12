@@ -326,7 +326,8 @@ PRIORITIES - An alist of (CTYPE . PRIORITY) pairs where CTYPE is
 ;; TODO: Make this more debuggable, I've spent hours wondering why I wasn't
 ;; receiving messages only to find out (caar elem) should have been (car elem)
 ;; in `jupyter--ioloop-queue-message'. For some reason the `condition-case' in
-;; `zmq--init-subprocess' is not sending back the error.
+;; `zmq--init-subprocess' is not sending back the error. Or more specifically,
+;; in the subprocess errors are being turned into warnings.
 (defun jupyter--ioloop (client)
   "Return the function used for communicating with CLIENT's kernel."
   (let* ((session (oref client session))
@@ -391,9 +392,17 @@ subprocess."
 
 (defun jupyter--ioloop-push-request (client req)
   "Insert a request into CLIENT's pending requests.
-REQ is inserted as the newest element in CLIENT's pending
-requests. See `jupyter--ioloop-pop-request' for where pending
-requests are stored for CLIENT."
+Pending requests are `jupyter-request's that have a nil
+`jupyter-request--id'. The `jupyter-send' method for a
+`jupyter-kernel-client' sends message data to the ioloop
+subprocess to encode and send off to the kernel. When the
+subprocess sends a message to the kernel, it sends the message ID
+associated with the request back to the parent Emacs process
+which is when the `jupyter-request--id' field becomes non-nil.
+
+Pending requests are stored as the `:jupyter-pending-requests'
+property of an ioloop subprocess. REQ is added as the newest
+element in `:jupyter-pending-requests'."
   (let* ((ioloop (oref client ioloop))
          (ring (or (process-get ioloop :jupyter-pending-requests)
                    (let ((ring (make-ring 10)))
@@ -577,7 +586,7 @@ multiple callbacks to a request you would do
 (defun jupyter-wait-until (req msg-type cb &optional timeout)
   "Wait until conditions for a request are satisfied.
 REQ, MSG-TYPE, and CB have the same meaning as in
-`jupyter-add-callback'. If CB returns a non-nil within TIMEOUT
+`jupyter-add-callback'. If CB returns non-nil within TIMEOUT
 seconds, return the message that caused CB to return non-nil. If
 CB never returns a non-nil value within TIMEOUT, return nil. Note
 that if no TIMEOUT is given, `jupyter-default-timeout' is used."
