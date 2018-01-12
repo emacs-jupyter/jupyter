@@ -27,6 +27,10 @@
 
 ;;; Code:
 
+(defgroup jupyter-client nil
+  "A Jupyter client."
+  :group 'jupyter)
+
 (require 'jupyter-base)
 (require 'jupyter-connection)
 (require 'jupyter-channels)
