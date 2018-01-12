@@ -32,6 +32,19 @@
 (require 'jupyter-channels)
 (require 'jupyter-messages)
 (eval-when-compile (require 'cl))
+(defcustom jupyter-include-other-output nil
+  "Whether or not to handle messages not sent by a client.
+A Jupyter client can receive messages from other clients
+connected to the same kernel on the IOPub channel. You can choose
+to ignore these messages by setting
+`jupyter-include-other-output' to nil. If
+`jupyter-include-other-output' is non-nil, then any messages that
+are not associated with a request from a client are sent to the
+client's handler methods with a nil value for the request
+argument. To change the value of this variable for a particular
+client use `jupyter-set'."
+  :group 'jupyter
+  :type 'boolean)
 
 (defvar jupyter--debug nil
   "Set to non-nil to emit sent and received messages to *Messages*.")
@@ -708,13 +721,7 @@ are taken:
            (pmsg-id (jupyter-message-parent-id msg))
            (requests (oref client requests))
            (req (gethash pmsg-id requests)))
-      (if (not req)
-          ;; Always run handlers of IOPub messages, even when they are not
-          ;; associated with any request that was sent by us.
-          ;;
-          ;; TODO: Would we always want this?
-          (when (eq (oref channel type) :iopub)
-            (jupyter-handle-message channel client nil msg))
+      (when (or req jupyter-include-other-output)
         (setf (jupyter-request-last-message-time req) (current-time))
         (unwind-protect
             (jupyter--run-callbacks req msg)
