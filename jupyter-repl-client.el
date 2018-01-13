@@ -274,6 +274,14 @@ can contain the following keywords along with their values:
          (shr-insert-document xml))
        (string-trim (buffer-string))))))
 
+(defun jupyter-repl-insert-markdown (text)
+  (jupyter-repl-insert
+   (let ((md (jupyter-repl-fontify-according-to-mode 'markdown-mode text)))
+     (if (display-graphic-p)
+         (with-current-buffer (jupyter-repl-get-fontify-buffer 'markdown-mode)
+           (markdown-display-inline-images)
+           (buffer-string))
+       md))))
 
 (defun jupyter-repl-insert-latex (tex)
   "Generate and insert a LaTeX image based on TEX.
@@ -316,9 +324,7 @@ image."
      ((memq :text/latex mimetypes)
       (jupyter-repl-insert-latex (plist-get data :text/latex)))
      ((memq :text/markdown mimetypes)
-      (jupyter-repl-insert
-       (jupyter-repl-fontify-according-to-mode
-        'markdown-mode (plist-get data :text/markdown))))
+      (jupyter-repl-insert-markdown (plist-get data :text/markdown)))
      ((memq :text/plain mimetypes)
       (let ((text (xterm-color-filter (plist-get data :text/plain))))
         (jupyter-repl-add-font-lock-properties 0 (length text) text)
