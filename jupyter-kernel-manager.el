@@ -140,7 +140,7 @@ Return the newly created kernel process."
 
 ;; TODO: Allow passing arguments like a different kernel file name or different
 ;; ports and arguments to the kernel
-(cl-defmethod jupyter-start-kernel ((manager jupyter-kernel-manager))
+(cl-defmethod jupyter-start-kernel ((manager jupyter-kernel-manager) &optional timeout)
   "Start a kernel and associate it with MANAGER.
 
 The MANAGER's `name' property is passed to
@@ -203,9 +203,9 @@ shutdown/interrupt requests"
                       else collect arg))))
           ;; Block until the kernel reads the connection file
           (with-timeout
-              (10 (delete-file conn-file)
-                  (delete-process proc)
-                  (error "Kernel did not read connection file within timeout"))
+              ((or timeout 5)
+               (delete-process proc)
+               (error "Kernel did not read connection file within timeout"))
             (while (equal atime (nth 4 (file-attributes conn-file)))
               (sleep-for 0 100)))
           (oset manager kernel proc)
@@ -300,7 +300,7 @@ listening and the heartbeat channel un-paused."
     (setq kc (jupyter-make-client km client-class))
     (jupyter-start-channels kc)
     (jupyter-hb-unpause (oref kc hb-channel))
-    (jupyter-start-kernel km)
+    (jupyter-start-kernel km 10)
     (condition-case nil
         (progn
           (jupyter-wait-until-startup kc 10)
