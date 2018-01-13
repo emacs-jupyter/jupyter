@@ -656,8 +656,20 @@ a Jupyter REPL buffer."
         (jupyter-repl-insert-prompt 'in)
         req))))
 
-(defun jupyter-repl-pager-payload (text)
-  (let ((buf (get-buffer-create " *jupyter-repl-pager*")))
+;; TODO: Proper cleanup of pager buffer
+;;
+;; TODO: Define a minor mode for the pager
+(defun jupyter-repl-pager-payload (text &optional line)
+  (setq line (or line 0))
+  (let (buf)
+    (setq buf (get-buffer " *jupyter-repl-pager*"))
+    (unless buf
+      (setq buf (get-buffer-create " *jupyter-repl-pager*"))
+      (with-current-buffer buf
+        (special-mode)
+        (local-set-key "q" #'quit-window)
+        (local-set-key (kbd "SPC") #'scroll-down)
+        (local-set-key (kbd "<backtab>") #'scroll-up)))
     (with-current-buffer buf
       (let ((inhibit-read-only t))
         (erase-buffer)
@@ -665,9 +677,20 @@ a Jupyter REPL buffer."
         (jupyter-repl-add-font-lock-properties 0 (length text) text)
         (insert text)
         (goto-char (point-min))
-        (special-mode)))
-    (split-window-below)
-    (set-window-buffer (next-window) buf)))
+        (forward-line line)))
+    (display-buffer buf '(display-buffer-at-bottom
+                          (pop-up-windows . t)))
+    (fit-window-to-buffer (get-buffer-window buf))))
+
+(defun jupyter-repl-set-next-input-payload (text)
+  (goto-char (point-max))
+  (jupyter-repl-previous-cell)
+  (jupyter-repl-replace-cell-code text)
+  (goto-char (point-max)))
+
+(defun jupyter-repl-edit-payload (file line)
+  (with-current-buffer (find-file-other-window file)
+    (forward-line line)))
 
 (cl-defmethod jupyter-handle-execute-reply ((client jupyter-repl-client)
                                             req
@@ -685,7 +708,15 @@ a Jupyter REPL buffer."
        do (pcase (plist-get pl :source)
             ("page"
              (jupyter-repl-pager-payload
-              (plist-get (plist-get pl :data) :text/plain))))))))
+              (plist-get (plist-get pl :data) :text/plain)
+              (plist-get pl :start)))
+            ((or "edit" "edit_magic")
+             (jupyter-repl-edit-payload
+              (plist-get pl :filename)
+              (plist-get pl :line_number)))
+            ("set_next_input"
+             (jupyter-repl-set-next-input-payload
+              (plist-get pl :text))))))))
 
 (cl-defmethod jupyter-handle-execute-input ((client jupyter-repl-client)
                                             req
