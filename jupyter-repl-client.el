@@ -577,8 +577,9 @@ Finalizing a cell involves the following steps:
   inserted
 - Add the text property which marks the end of a cell
 - Make the cell read-only"
-  (let* ((beg (jupyter-repl-cell-beginning-position))
-         (count (jupyter-repl-cell-count)))
+  (let ((beg (jupyter-repl-cell-beginning-position))
+        (count (jupyter-repl-cell-count)))
+    (remove-text-properties beg (1+ beg) '(rear-nonsticky))
     (jupyter-repl-cell-mark-busy)
     (goto-char (point-max))
     (jupyter-repl-newline)
