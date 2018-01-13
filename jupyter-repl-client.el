@@ -98,6 +98,9 @@
 (defvar jupyter-repl-history nil
   "The history of the current Jupyter REPL.")
 
+(defvar jupyter-repl-fontify-buffers nil
+  "Buffers used for fontification.")
+
 (defvar jupyter-repl-use-builtin-is-complete nil
   "Whether or not to send an is_complete_request to a kernel.
 If a Jupyter kernel does not respond to an is_complete_request,
@@ -165,8 +168,16 @@ The cell is narrowed to the region between and including
 
 ;;; Inserting text into the REPL buffer
 
-;; TODO: Do like how org-mode does it and cache buffers which have the
-;; major mode enabled already
+(defun jupyter-repl-get-fontify-buffer (mode)
+  (let ((buf (alist-get mode jupyter-repl-fontify-buffers)))
+    (unless buf
+      (setq buf (get-buffer-create
+                 (format " *jupyter-repl-fontify[%s]*" mode)))
+      (with-current-buffer buf
+        (funcall mode))
+      (setf (alist-get mode jupyter-repl-fontify-buffers) buf))
+    buf))
+
 (defun jupyter-repl-fontify-according-to-mode (mode str)
   "Fontify a string according to MODE.
 MODE should be a function which sets the `major-mode'. MODE will
@@ -174,9 +185,9 @@ be called with the `current-buffer' set to a temporary buffer,
 STR will then be inserted and fontified. Return the fontified
 string, which can then be inserted into a Jupyter REPL buffer."
   ;; Adapted from `org-src-font-lock-fontify-block'
-  (with-temp-buffer
+  (with-current-buffer (jupyter-repl-get-fontify-buffer mode)
     (let ((inhibit-modification-hooks nil))
-      (funcall mode)
+      (erase-buffer)
       (insert str)
       (font-lock-ensure)
       (let ((pos (point-min)) next)
