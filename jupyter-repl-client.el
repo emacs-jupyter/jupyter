@@ -849,6 +849,16 @@ kernel that the REPL buffer is connected to."
 
 (add-hook 'kill-buffer-query-functions #'jupyter-repl-kill-buffer-query-function)
 
+;; FIXME: Sometimes when using packages like `perspective', upon switching back
+;; to a perspective which has a REPL buffer visible, the margins will
+;; disappear. It doesn't happen all the time though. Work around this by
+;; setting the margins after a window configuration change.
+(defun jupyter-repl-preserve-window-margins ()
+  (unless (window-parameter nil 'min-margins)
+    (set-window-parameter
+     nil 'min-margins (cons jupyter-repl-prompt-margin-width 0))
+    (set-window-margins nil jupyter-repl-prompt-margin-width)))
+
 ;;; Completion
 
 (defun company-jupyter-repl (command &optional arg &rest ignored)
@@ -921,7 +931,8 @@ kernel that the REPL buffer is connected to."
   "A major mode for interacting with a Jupyter kernel."
   (setq-local indent-line-function #'jupyter-repl-indent-line)
   (setq-local company-backends (cons 'company-jupyter-repl company-backends))
-  (add-hook 'after-change-functions 'jupyter-repl-after-buffer-change nil t))
+  (add-hook 'after-change-functions 'jupyter-repl-after-buffer-change nil t)
+  (add-hook 'window-configuration-change-hook 'jupyter-repl-preserve-window-margins nil t))
 
 (defun jupyter-repl-initialize-fontification ()
   (let (fld)
