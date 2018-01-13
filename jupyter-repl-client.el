@@ -214,6 +214,9 @@ string, which can then be inserted into a Jupyter REPL buffer."
                  new-prop))))
           (setq pos next))))
     (jupyter-repl-add-font-lock-properties (point-min) (point-max))
+    (unless (memq fill-forward-paragraph-function
+                  '(forward-paragraph))
+      (fill-region (point-min) (point-max) t t t))
     (buffer-string)))
 
 (defun jupyter-repl-insert (&rest args)
