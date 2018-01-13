@@ -177,8 +177,8 @@ connection is terminated before initializing."
   "Run a form inside CLIENT's IOloop subprocess buffer."
   (declare (indent 1))
   `(progn
-     (cl-check-type client jupyter-kernel-client)
-     (with-current-buffer (oref client ioloop)
+     (cl-check-type ,client jupyter-kernel-client)
+     (with-current-buffer (process-buffer (oref ,client ioloop))
        ,@body)))
 
 (defun jupyter-set (client symbol newval)
