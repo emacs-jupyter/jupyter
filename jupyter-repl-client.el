@@ -139,7 +139,7 @@ for multi-line output."
   `(with-jupyter-repl-buffer ,client
      (save-excursion
        (let ((inhibit-modification-hooks t))
-         (jupyter-repl-goto-request ,req)
+         (jupyter-repl-goto-cell ,req)
          (jupyter-repl-next-cell)
          ,@body))))
 
@@ -605,7 +605,7 @@ lines then truncate it to something less than
 
 ;;; Handlers
 
-(defun jupyter-repl-goto-request (req)
+(defun jupyter-repl-goto-cell (req)
   "Go to the cell beginning position of REQ.
 REQ should be a `jupyter-request' that corresponds to one of the
 `jupyter-execute-request's created by a cell in the
@@ -676,24 +676,9 @@ a Jupyter REPL buffer."
                                             payload)
   (oset client execution-count (1+ execution-count))
   (with-jupyter-repl-buffer client
-    (let ((pos (point)))
-      ;; KLUDGE: Clean this up. It seems the semantics of
-      ;; `jupyter-repl-goto-request' depends on a lot of assumptions. This
-      ;; condition case is necessary because of the initial state of the
-      ;; buffer.
-      (when (condition-case nil
-                (progn
-                  (jupyter-repl-goto-request req)
-                  t)
-              ;; Handle the initial state of the buffer when starting and
-              ;; possibly other cases
-              (beginning-of-buffer
-               (goto-char (point-max))
-               (jupyter-repl-insert-prompt 'in)
-               nil))
-        (jupyter-repl-cell-unmark-busy)
-        (goto-char pos)))
-
+    (save-excursion
+      (jupyter-repl-goto-cell req)
+      (jupyter-repl-cell-unmark-busy))
     (when payload
       (cl-loop
        for pl in payload
