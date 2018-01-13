@@ -181,7 +181,6 @@ shutdown/interrupt requests"
       ;; SESSION and CONN-INFO slots are automatically set to default values if
       ;; missing, see `slot-unbound' of `jupyter-kernel-manager'.
       (let* ((key (jupyter-session-key (oref manager session)))
-             (name (oref manager name))
              (resource-dir (string-trim-right
                             (shell-command-to-string
                              "jupyter --runtime-dir")))
