@@ -609,12 +609,9 @@ run when MSG-TYPE is received for REQ."
       (let ((cb-for-type (assoc msg-type callbacks)))
         (if (not cb-for-type)
             (nconc callbacks (list (cons msg-type cb)))
-          (setq cb (apply-partially
-                    (lambda (cb1 cb2 msg)
-                      (funcall cb1 msg)
-                      (funcall cb2 msg))
-                    (cdr cb-for-type)
-                    cb))
+          (setq cb (lambda (msg)
+                     (funcall cb-for-type msg)
+                     (funcall cb msg)))
           (setcdr cb-for-type cb))))))
 
 (defun jupyter-add-callback (req msg-type cb &rest callbacks)
