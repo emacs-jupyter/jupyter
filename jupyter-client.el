@@ -721,7 +721,9 @@ are taken:
            (pmsg-id (jupyter-message-parent-id msg))
            (requests (oref client requests))
            (req (gethash pmsg-id requests)))
-      (when (or req jupyter-include-other-output)
+      (if (not req)
+          (when jupyter-include-other-output
+            (jupyter-handle-message channel client nil msg))
         (setf (jupyter-request-last-message-time req) (current-time))
         (unwind-protect
             (jupyter--run-callbacks req msg)
