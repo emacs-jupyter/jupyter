@@ -320,7 +320,7 @@ listening and the heartbeat channel un-paused."
     (jupyter-start-channels kc)
     (jupyter-hb-unpause (oref kc hb-channel))
     (jupyter-start-kernel km 10)
-    (condition-case nil
+    (unwind-protect
         (progn
           (unless (jupyter--wait-until-startup kc 10)
             (error "Kernel did not send startup message"))
@@ -329,11 +329,11 @@ listening and the heartbeat channel un-paused."
                          (jupyter-kernel-info-request kc))
                         30)))
             (if info (oset km kernel-info (jupyter-message-content info))
-              (error "Kernel did not respond to kernel-info request"))))
-      ((error quit)
-       (jupyter-stop-channels kc)
-       (jupyter-shutdown-kernel km 0)))
-    (cons km kc)))
+              (error "Kernel did not respond to kernel-info request")))
+          (cons km kc))
+      (unless (oref km kernel-info)
+        (jupyter-stop-channels kc)
+        (jupyter-shutdown-kernel km 0)))))
 
 (provide 'jupyter-kernel-manager)
 
