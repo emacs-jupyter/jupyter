@@ -683,25 +683,6 @@ that if no TIMEOUT is given, it defaults to
   (declare (indent 1))
   (jupyter-wait-until req msg-type #'identity timeout))
 
-(defun jupyter-wait-until-startup (client &optional timeout)
-  "Wait until CLIENT receives a status: starting message.
-Return the startup message if received by CLIENT within TIMEOUT
-seconds otherwise return nil. TIMEOUT defaults to 1 s. Note that
-there are no checks to determine if the kernel CLIENT is
-connected to has already been started."
-  (let* ((started nil)
-         (cb (lambda (msg)
-               (setq started
-                     (equal (jupyter-message-get msg :execution_state)
-                            "starting"))))
-         (jupyter-include-other-output t))
-    (jupyter-add-hook client 'jupyter-iopub-message-hook cb)
-    (prog1
-        (with-timeout ((or timeout 1) nil)
-          (while (not started)
-            (sleep-for 0.01))
-          t)
-      (jupyter-remove-hook client 'jupyter-iopub-message-hook cb))))
 
 (defun jupyter--drop-idle-requests (client)
   (cl-loop
