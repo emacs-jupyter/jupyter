@@ -261,12 +261,19 @@ can contain the following keywords along with their values:
 
 (defun jupyter-repl-insert-html (html)
   "Parse and insert the HTML string using `shr-insert-document'."
-  (let ((start (point)))
-    (shr-insert-document
+  (jupyter-repl-insert
+   ;; `save-excursion' is necessary here since it seems that `with-temp-buffer'
+   ;; moves the REPL window's `point' when it is visible
+   (save-excursion
      (with-temp-buffer
        (insert html)
-       (libxml-parse-html-region (point-min) (point-max))))
-    (add-text-properties start (point) '(read-only t))))
+       (let ((xml (libxml-parse-html-region
+                   (point-min) (point-max))))
+         (erase-buffer)
+         (goto-char (point-min))
+         (shr-insert-document xml))
+       (string-trim (buffer-string))))))
+
 
 (defun jupyter-repl-insert-latex (tex)
   "Generate and insert a LaTeX image based on TEX.
@@ -301,11 +308,11 @@ image."
         (plist-get data :image/svg+xml) 'svg)
        (propertize " " 'read-only t)))
      ((memq :text/html mimetypes)
-      ;; TODO: If this can fail handle the execute request again but with
-      ;; the html key removed from the data plist
-      (jupyter-repl-newline)
-      (jupyter-repl-insert-html (plist-get data :text/html))
-      (jupyter-repl-newline))
+      (let ((html (plist-get data :text/html)))
+        (when (string-match-p "^<img" html)
+          (jupyter-repl-newline))
+        (jupyter-repl-insert-html html)
+        (jupyter-repl-newline)))
      ((memq :text/latex mimetypes)
       (jupyter-repl-insert-latex (plist-get data :text/latex)))
      ((memq :text/markdown mimetypes)
