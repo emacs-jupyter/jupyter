@@ -73,6 +73,9 @@
   "Maximum number of lines before the buffer is truncated."
   :group 'jupyter-repl)
 
+(defcustom jupyter-repl-history-maximum-length 100
+  "The maximum number of history elements to keep track of."
+  :group 'jupyter-repl)
 (defclass jupyter-repl-client (jupyter-kernel-client)
   ((kernel-info)
    (buffer :initarg :buffer)
@@ -768,21 +771,34 @@ a Jupyter REPL buffer."
 
 (defun jupyter-repl-history-next (n)
   (interactive "p")
-  (setq n (or n 1))
-  (cl-loop repeat n
-           do (ring-insert
-               jupyter-repl-history (ring-remove jupyter-repl-history -1)))
-  (jupyter-repl-replace-cell-code
-   (ring-ref jupyter-repl-history -1)))
+  (if (cl-loop
+       repeat (or n 1)
+       thereis (eq (ring-ref jupyter-repl-history -1) 'jupyter-repl-history)
+       do (ring-insert
+           jupyter-repl-history (ring-remove jupyter-repl-history -1)))
+      (cond
+       ((equal (jupyter-repl-cell-code)
+               (ring-ref jupyter-repl-history 0))
+        (jupyter-repl-replace-cell-code ""))
+       ((equal (jupyter-repl-cell-code) "")
+        (message "End of history"))
+       (t))
+    (jupyter-repl-replace-cell-code
+     (ring-ref jupyter-repl-history 0))))
 
 (defun jupyter-repl-history-previous (n)
   (interactive "p")
-  (setq n (or n 1))
-  (cl-loop repeat n
-           do (ring-insert-at-beginning
-               jupyter-repl-history (ring-remove jupyter-repl-history 0)))
-  (jupyter-repl-replace-cell-code
-   (ring-ref jupyter-repl-history -1)))
+  (if (not (equal (jupyter-repl-cell-code)
+                  (ring-ref jupyter-repl-history 0)))
+      (jupyter-repl-replace-cell-code (ring-ref jupyter-repl-history 0))
+    (if (cl-loop
+         repeat (or n 1)
+         thereis (eq (ring-ref jupyter-repl-history 1) 'jupyter-repl-history)
+         do (ring-insert-at-beginning
+             jupyter-repl-history (ring-remove jupyter-repl-history 0)))
+        (message "End of history")
+      (jupyter-repl-replace-cell-code
+       (ring-ref jupyter-repl-history 0)))))
 
 (cl-defmethod jupyter-handle-history-reply ((client jupyter-repl-client) req history)
   (with-jupyter-repl-buffer client
@@ -1020,7 +1036,12 @@ kernel."
           (setq-local left-margin-width jupyter-repl-prompt-margin-width)
           (setq-local jupyter-repl-current-client kc)
           (setq-local jupyter-repl-kernel-manager km)
-          (setq-local jupyter-repl-history (make-ring 100))
+          (setq-local jupyter-repl-history
+                      (make-ring (1+ jupyter-repl-history-maximum-length)))
+          ;; The sentinel value keeps track of the newest/oldest elements of
+          ;; the history since next/previous navigation is implemented by
+          ;; rotations on the ring.
+          (ring-insert jupyter-repl-history 'jupyter-repl-history)
           (setq-local jupyter-repl-lang-buffer
                       (get-buffer-create (format " *jupyter-repl-lang-%s*" name)))
           (let (mode)
