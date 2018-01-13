@@ -156,20 +156,18 @@ of kernels returned by:
 If a valid kernel is found, its kernelspec is used to start a new
 kernel. Starting a kernel involves the following steps:
 
-1. Generating a new connection info with random ports for the
+1. Generate a new connection info plist with random ports for the
    channels. See `jupyter-create-connection-info'.
 
-2. Assigning a new `jupyter-session' to the MANAGER using the
-   generated key from the connection info. (TODO: Should first
-   start with generating a session key and then assigning it to
-   the connection info)
+2. Assign a new `jupyter-session' to the MANAGER using the
+   generated key from the connection info.
 
-3. Writing the connection info to file
+3. Write the connection info to file in the Jupyter runtime
+   directory (found using \"jupyter --runtime-dir\")
 
-4. Starting a new subprocess kernel
-
-5. Starting a control channel for the MANAGER to send
-shutdown/interrupt requests"
+4. Start a kernel subprocess passing the connection info file as
+   the {connection_file} argument in the kernelspec argument
+   vector of the kernel."
   (let ((kname-spec (jupyter-find-kernelspec (oref manager name))))
     (unless kname-spec
       (error "No kernel found that starts with name (%s)" (oref manager name)))
@@ -178,8 +176,9 @@ shutdown/interrupt requests"
       ;; TODO: Require a valid kernel name when initializing the manager
       (oset manager name kernel-name)
       (oset manager kernel-spec spec)
-      ;; SESSION and CONN-INFO slots are automatically set to default values if
-      ;; missing, see `slot-unbound' of `jupyter-kernel-manager'.
+      ;; NOTE: `jupyter-connection' fields are shared between other
+      ;; `jupyter-connection' objects. The `jupyter-kernel-manager' sets
+      ;; defaults for these when their slots are unbound, see `slot-unbound'.
       (let* ((key (jupyter-session-key (oref manager session)))
              (resource-dir (string-trim-right
                             (shell-command-to-string
@@ -301,15 +300,16 @@ KERNEL-NAME is the name of the kernel to start. It can also be
 the prefix of a valid kernel name, in which case the first kernel
 in `jupyter-available-kernelspecs' that has a kernel name with
 KERNEL-NAME as prefix will be used. Optional argument
-CLIENT-CLASS should be a subclass of `jupyer-kernel-client' used
-to initialize a new client connected to the kernel. CLIENT-CLASS
-defaults to `jupyter-kernel-client'.
+CLIENT-CLASS should be a subclass of `jupyer-kernel-client' which
+will be used to initialize a new client connected to the new
+kernel. CLIENT-CLASS defaults to `jupyter-kernel-client'.
 
 Return a cons cell (KM . KC) where KM is the
-`jupyter-kernel-manager' that manages the kernel subprocess. KC
-is a `jupyter-kernel-client' already connected to the kernel of
-KM and whose class is CLIENT-CLASS. Note that KC has all channels
-listening and the heartbeat channel un-paused."
+`jupyter-kernel-manager' that manages the lifetime of the kernel
+subprocess. KC is a new client connected to the kernel and whose
+class is CLIENT-CLASS. The client is connected to the kernel with
+all channels listening for messages and the heartbeat channel
+un-paused."
   (setq client-class (or client-class 'jupyter-kernel-client))
   (unless (child-of-class-p client-class 'jupyter-kernel-client)
     (signal 'wrong-type-argument
