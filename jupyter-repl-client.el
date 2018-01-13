@@ -168,6 +168,16 @@ The cell is narrowed to the region between and including
 
 ;;; Inserting text into the REPL buffer
 
+(defun jupyter-repl-add-font-lock-properties (start end &optional object)
+  "Add font lock text properties between START and END in the `current-buffer'.
+START, END, and OBJECT have the same meaning as in
+`add-text-properties'. Add the font lock properties needed for
+text inserted into a `jupyter-repl-client's buffer."
+  (add-text-properties
+   start end '(fontified t font-lock-fontified t font-lock-multiline t) object)
+  (font-lock-fillin-text-property
+   start end 'font-lock-face 'default object))
+
 (defun jupyter-repl-get-fontify-buffer (mode)
   (let ((buf (alist-get mode jupyter-repl-fontify-buffers)))
     (unless buf
@@ -203,8 +213,7 @@ string, which can then be inserted into a Jupyter REPL buffer."
                (if (eq prop 'face) (or new-prop 'default)
                  new-prop))))
           (setq pos next))))
-    (add-text-properties
-     (point-min) (point-max) '(font-lock-multiline t fontified t))
+    (jupyter-repl-add-font-lock-properties (point-min) (point-max))
     (buffer-string)))
 
 (defun jupyter-repl-insert (&rest args)
@@ -305,12 +314,7 @@ image."
         'markdown-mode (plist-get data :text/markdown))))
      ((memq :text/plain mimetypes)
       (let ((text (xterm-color-filter (plist-get data :text/plain))))
-        (add-text-properties
-         0 (length text) '(fontified t font-lock-fontified t
-                                     font-lock-multiline t)
-         text)
-        (font-lock-fillin-text-property
-         0 (length text) 'font-lock-face 'default text)
+        (jupyter-repl-add-font-lock-properties 0 (length text) text)
         (jupyter-repl-insert text)
         (jupyter-repl-newline)))
      (t (error "No supported mimetype found %s" mimetypes)))))
@@ -641,6 +645,8 @@ a Jupyter REPL buffer."
     (with-current-buffer buf
       (let ((inhibit-read-only t))
         (erase-buffer)
+        (setq text (xterm-color-filter text))
+        (jupyter-repl-add-font-lock-properties 0 (length text) text)
         (insert text)
         (goto-char (point-min))
         (special-mode)))
@@ -702,7 +708,9 @@ a Jupyter REPL buffer."
 
 (cl-defmethod jupyter-handle-stream ((client jupyter-repl-client) req name text)
   (jupyter-repl-do-at-request client req
-    (jupyter-repl-insert (xterm-color-filter text))))
+    (let ((s (xterm-color-filter text)))
+      (jupyter-repl-add-font-lock-properties 0 (length s) s)
+      (jupyter-repl-insert s))))
 
 (cl-defmethod jupyter-handle-error ((client jupyter-repl-client)
                                     req ename evalue traceback)
@@ -714,10 +722,7 @@ a Jupyter REPL buffer."
       (jupyter-repl-previous-cell)
       (jupyter-repl-cell-unmark-busy))
     (let ((s (mapconcat #'xterm-color-filter traceback "\n")))
-      (add-text-properties
-       0 (length s) '(fontified t font-lock-fontified t font-lock-multiline t) s)
-      (font-lock-fillin-text-property
-       0 (length s) 'font-lock-face 'default s)
+      (jupyter-repl-add-font-lock-properties 0 (length s) s)
       (jupyter-repl-insert s))
     (jupyter-repl-newline)))
 
