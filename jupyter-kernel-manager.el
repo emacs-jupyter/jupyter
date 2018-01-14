@@ -106,12 +106,9 @@ to connect to MANAGER's kernel."
   (cond
    ((cl-loop for type in '("exited" "failed" "finished" "killed" "deleted")
              thereis (string-prefix-p type event))
-    (jupyter-stop-channels manager)
-    ;; TODO: Only delete file when it hasn't been modified since it was created?
     (delete-file (oref manager conn-file))
     (oset manager kernel nil)
-    (oset manager conn-file nil)
-    (oset manager conn-info nil))))
+    (oset manager conn-file nil))))
 
 (defun jupyter--start-kernel (manager kernel-name env args)
   "Start a kernel.
