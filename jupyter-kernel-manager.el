@@ -106,7 +106,8 @@ to connect to MANAGER's kernel."
   (cond
    ((cl-loop for type in '("exited" "failed" "finished" "killed" "deleted")
              thereis (string-prefix-p type event))
-    (delete-file (oref manager conn-file))
+    (when (file-exists-p (oref manager conn-file))
+      (delete-file (oref manager conn-file)))
     (oset manager kernel nil)
     (oset manager conn-file nil))))
 
@@ -331,7 +332,8 @@ un-paused."
           (cons km kc))
       (unless (oref km kernel-info)
         (jupyter-stop-channels kc)
-        (jupyter-shutdown-kernel km 0)))))
+        (jupyter-stop-channels km)
+        (delete-process (oref km kernel))))))
 
 (provide 'jupyter-kernel-manager)
 
