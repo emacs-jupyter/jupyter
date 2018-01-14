@@ -1089,13 +1089,19 @@ COMMAND and ARG have the same meaning as the elements of
                   (remove-text-properties 0 (length doc) '(read-only) doc)
                   (when doc (company-doc-buffer doc))))))
 
-;;; The mode
+;;; `jupyter-repl-mode'
 
-(defvar jupyter-repl-mode-map (let ((map (make-sparse-keymap)))
-                                (define-key map (kbd "RET") #'jupyter-repl-ret)
-                                (define-key map (kbd "C-n") #'jupyter-repl-history-next)
-                                (define-key map (kbd "C-p") #'jupyter-repl-history-previous)
-                                map))
+(defvar jupyter-repl-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map "q" nil)
+    (define-key map [remap backward-sentence] #'jupyter-repl-backward-cell)
+    (define-key map [remap forward-sentence] #'jupyter-repl-forward-cell)
+    (define-key map (kbd "RET") #'jupyter-repl-ret)
+    (define-key map (kbd "C-n") #'jupyter-repl-history-next)
+    (define-key map (kbd "C-p") #'jupyter-repl-history-previous)
+    (define-key map (kbd "M-n") #'jupyter-repl-history-next)
+    (define-key map (kbd "M-p") #'jupyter-repl-history-previous)
+    map))
 
 (define-derived-mode jupyter-repl-mode fundamental-mode
   "Jupyter-REPL"
