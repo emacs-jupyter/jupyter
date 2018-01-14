@@ -810,6 +810,7 @@ lines then truncate it to something less than
 
 (defun jupyter-repl-history-next (n)
   (interactive "p")
+  (goto-char (point-max))
   (if (cl-loop
        repeat (or n 1)
        thereis (eq (ring-ref jupyter-repl-history -1) 'jupyter-repl-history)
@@ -820,13 +821,14 @@ lines then truncate it to something less than
                (ring-ref jupyter-repl-history 0))
         (jupyter-repl-replace-cell-code ""))
        ((equal (jupyter-repl-cell-code) "")
-        (message "End of history"))
+        (message "Beginning of history"))
        (t))
     (jupyter-repl-replace-cell-code
      (ring-ref jupyter-repl-history 0))))
 
 (defun jupyter-repl-history-previous (n)
   (interactive "p")
+  (goto-char (point-max))
   (if (not (equal (jupyter-repl-cell-code)
                   (ring-ref jupyter-repl-history 0)))
       (jupyter-repl-replace-cell-code (ring-ref jupyter-repl-history 0))
