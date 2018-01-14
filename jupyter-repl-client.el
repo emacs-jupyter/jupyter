@@ -972,10 +972,9 @@ kernel that the REPL buffer is connected to."
 ;; disappear. It doesn't happen all the time though. Work around this by
 ;; setting the margins after a window configuration change.
 (defun jupyter-repl-preserve-window-margins ()
-  (unless (window-parameter nil 'min-margins)
-    (set-window-parameter
-     nil 'min-margins (cons jupyter-repl-prompt-margin-width 0))
-    (set-window-margins nil jupyter-repl-prompt-margin-width)))
+  (let ((margins (window-margins)))
+    (unless (and margins (= (car margins) jupyter-repl-prompt-margin-width))
+      (set-window-margins nil jupyter-repl-prompt-margin-width))))
 
 ;;; Completion
 
