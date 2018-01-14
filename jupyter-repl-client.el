@@ -734,16 +734,6 @@ lines then truncate it to something less than
                           (pop-up-windows . t)))
     (fit-window-to-buffer (get-buffer-window buf))))
 
-(defun jupyter-repl-set-next-input-payload (text)
-  (goto-char (point-max))
-  (jupyter-repl-previous-cell)
-  (jupyter-repl-replace-cell-code text)
-  (goto-char (point-max)))
-
-(defun jupyter-repl-edit-payload (file line)
-  (with-current-buffer (find-file-other-window file)
-    (forward-line line)))
-
 (cl-defmethod jupyter-handle-execute-reply ((client jupyter-repl-client)
                                             req
                                             execution-count
@@ -753,22 +743,24 @@ lines then truncate it to something less than
   (with-jupyter-repl-buffer client
     (save-excursion
       (jupyter-repl-goto-cell req)
-      (jupyter-repl-cell-unmark-busy))
-    (when payload
-      (cl-loop
-       for pl in payload
-       do (pcase (plist-get pl :source)
-            ("page"
-             (jupyter-repl-pager-payload
-              (plist-get (plist-get pl :data) :text/plain)
-              (plist-get pl :start)))
-            ((or "edit" "edit_magic")
-             (jupyter-repl-edit-payload
-              (plist-get pl :filename)
-              (plist-get pl :line_number)))
-            ("set_next_input"
-             (jupyter-repl-set-next-input-payload
-              (plist-get pl :text))))))))
+      (jupyter-repl-cell-unmark-busy)
+      (when payload
+        (cl-loop
+         for pl in payload
+         do (pcase (plist-get pl :source)
+              ("page"
+               (jupyter-repl-pager-payload
+                (plist-get (plist-get pl :data) :text/plain)
+                (plist-get pl :start)))
+              ((or "edit" "edit_magic")
+               (with-current-buffer (find-file-other-window
+                                     (plist-get pl :filename))
+                 (forward-line (plist-get pl :line_number))))
+              ("set_next_input"
+               (goto-char (point-max))
+               (jupyter-repl-previous-cell)
+               (jupyter-repl-replace-cell-code (plist-get pl :text))
+               (goto-char (point-max)))))))))
 
 (cl-defmethod jupyter-handle-execute-input ((client jupyter-repl-client)
                                             req
