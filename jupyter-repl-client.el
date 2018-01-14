@@ -522,9 +522,49 @@ cell. N defaults to 1."
   "Go to the start of the previous cell.
 Optional argument N is the number of times to move to the
 previous cell. N defaults to 1."
-  (interactive "N")
-  (setq N (or N 1))
-  (jupyter-repl-next-cell (- N)))
+  (jupyter-repl-next-cell (- (or N 1))))
+
+(defun jupyter-repl-goto-cell (req)
+  "Go to the cell beginning position of REQ.
+REQ should be a `jupyter-request' that corresponds to one of the
+`jupyter-execute-request's created by a cell in the
+`current-buffer'. Note that the `current-buffer' is assumed to be
+a Jupyter REPL buffer."
+  (goto-char (point-max))
+  (condition-case nil
+      (goto-char (jupyter-repl-cell-beginning-position))
+    ;; Handle error when seeing the end of the previous cell
+    (error (jupyter-repl-previous-cell)))
+  (let (cell-req)
+    (while (and (not (eq (setq cell-req (jupyter-repl-cell-request)) req))
+                (not (= (point) (point-min))))
+      (jupyter-repl-previous-cell))
+    ;; Unless the request was found, assume it is for the current un-finalized
+    ;; cell
+    (unless (eq cell-req req)
+      (goto-char (point-max)))))
+
+(defun jupyter-repl-forward-cell (&optional arg)
+  "Move to the code beginning of the cell after the current one.
+ARG is the number of cells to move and defaults to 1."
+  (interactive "^p")
+  (or arg (setq arg 1))
+  (jupyter-repl-next-cell arg)
+  (goto-char (jupyter-repl-cell-code-beginning-position)))
+
+(defun jupyter-repl-backward-cell (&optional arg)
+  "Move to the code beginning of the cell before the current one.
+ARG is the number of cells to move and defaults to 1."
+  (interactive "^p")
+  (or arg (setq arg 1))
+  ;; `jupyter-previous-cell' only goes to the start of the current cell if
+  ;; `point' is greater than `jupyter-repl-cell-beginning-p' so move there when
+  ;; at the beginning of the current cell code so that we can escape to the
+  ;; previous cell.
+  (when (= (jupyter-repl-cell-code-beginning-position) (point))
+    (goto-char (jupyter-repl-cell-beginning-position)))
+  (jupyter-repl-previous-cell arg)
+  (goto-char (jupyter-repl-cell-code-beginning-position)))
 
 ;;; Predicates to determine what kind of line point is in
 
@@ -619,26 +659,6 @@ lines then truncate it to something less than
       (delete-region (point-min) (point)))))
 
 ;;; Handlers
-
-(defun jupyter-repl-goto-cell (req)
-  "Go to the cell beginning position of REQ.
-REQ should be a `jupyter-request' that corresponds to one of the
-`jupyter-execute-request's created by a cell in the
-`current-buffer'. Note that the `current-buffer' is assumed to be
-a Jupyter REPL buffer."
-  (goto-char (point-max))
-  (condition-case nil
-      (goto-char (jupyter-repl-cell-beginning-position))
-    ;; Handle error when seeing the end of the previous cell
-    (error (jupyter-repl-previous-cell)))
-  (let (cell-req)
-    (while (and (not (eq (setq cell-req (jupyter-repl-cell-request)) req))
-                (not (= (point) (point-min))))
-      (jupyter-repl-previous-cell))
-    ;; Unless the request was found, assume it is for the current un-finalized
-    ;; cell
-    (unless (eq cell-req req)
-      (goto-char (point-max)))))
 
 (defun jupyter-repl-history-add-input (code)
   (ring-insert jupyter-repl-history code))
