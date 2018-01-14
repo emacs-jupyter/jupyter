@@ -172,7 +172,8 @@ connection is terminated before initializing."
                  :parent-instance client
                  :endpoint (format "%s:%d" addr port)))))))
 
-;;; Lower level sending/receiving
+;;; Hooks
+
 (defmacro with-jupyter-client-buffer (client &rest body)
   "Run a form inside CLIENT's IOloop subprocess buffer."
   (declare (indent 1))
@@ -213,6 +214,8 @@ this is called."
   (with-jupyter-client-buffer client
     (remove-hook hook function t)))
 
+;;; Sending messages
+
 (cl-defmethod jupyter-send ((client jupyter-kernel-client)
                             channel
                             type
@@ -239,7 +242,7 @@ sent message, see `jupyter-add-callback' and
         (jupyter--ioloop-push-request client req)
         req))))
 
-;;; IOLoop subprocess communication
+;;; Channel subprocess (receiving messages)
 
 (defmacro jupyter--ioloop-do-command (session poller channels)
   "Read and execute a command from stdin.
@@ -428,14 +431,15 @@ PRIORITIES - An alist of (CTYPE . PRIORITY) pairs where CTYPE is
                      (setq idle-count 0 timeout 20)
                    (setq idle-count (1+ idle-count))
                    ;; Lengthen timeout so as to not waste CPU cycles
-                   (when (= idle-count 100) (setq timeout 100)))
-                 ;; Pool at least some messages, but not at the cost of
-                 ;; responsiveness. If messages are being blasted at us by the
-                 ;; kernel ensure that they still get through and not pooled
-                 ;; indefinately.
-                 (when (or (= idle-count 5) (> (length messages) 10))
-                   (while messages
-                     (zmq-prin1 (cons 'recvd (pop messages)))))))
+                   (when (= idle-count 100)
+                     (setq timeout 100))
+                   ;; Pool at least some messages, but not at the cost of
+                   ;; responsiveness. If messages are being blasted at us by the
+                   ;; kernel ensure that they still get through and not pooled
+                   ;; indefinately.
+                   (when (or (= idle-count 5) (> (length messages) 10))
+                     (while messages
+                       (zmq-prin1 (cons 'recvd (pop messages))))))))
            (quit
             (mapc (lambda (x)
                  (zmq-socket-set (car x) zmq-LINGER 0)
@@ -472,7 +476,9 @@ element in `:jupyter-pending-requests'."
                      ring))))
     (ring-insert+extend ring req 'grow)))
 
-(defun jupyter--ioloop-sentinel (client _ioloop event)
+;;; Channel subprocess filter/sentinel
+
+(defun jupyter--ioloop-sentinel (client ioloop event)
   "The process sentinel for CLIENT's IOLOOP subprocess.
 When EVENT is one of the events signifying that the process is
 dead, stop the heartbeat channel and set the IOLOOP slot to nil
@@ -516,6 +522,7 @@ by `jupyter--ioloop'."
      ;; Cleanup handled in sentinel
      (when jupyter--debug
        (message "CLIENT CLOSED")))))
+;;; Starting the channel subprocess
 
 (cl-defmethod jupyter-start-channels ((client jupyter-kernel-client)
                                       &key (shell t)
@@ -645,6 +652,8 @@ multiple callbacks to a request you would do
              do (mapc (lambda (mt) (jupyter--add-callback req mt cb)) msg-type)
              else do (jupyter--add-callback req msg-type cb))))
 
+;;; Waiting for messages
+
 (defun jupyter-wait-until (req msg-type cb &optional timeout)
   "Wait until conditions for a request are satisfied.
 REQ, MSG-TYPE, and CB have the same meaning as in
@@ -683,6 +692,7 @@ that if no TIMEOUT is given, it defaults to
   (declare (indent 1))
   (jupyter-wait-until req msg-type #'identity timeout))
 
+;;; Client handlers
 
 (defun jupyter--drop-idle-requests (client)
   (cl-loop
@@ -734,7 +744,7 @@ are taken:
               (setf (jupyter-request-idle-received-p req) t))
             (jupyter--drop-idle-requests client)))))))
 
-;;; STDIN message requests/handlers
+;;; STDIN handlers
 
 (cl-defmethod jupyter-handle-message ((channel jupyter-stdin-channel)
                                       client
@@ -764,7 +774,7 @@ the user. Otherwise `read-from-minibuffer' is used."
     ;; http://jupyter-client.readthedocs.io/en/latest/messaging.html#stdin-messages
     (jupyter-send client channel "input_reply" msg)))
 
-;;; SHELL message requests/handlers
+;;; SHELL handlers
 
 ;; http://jupyter-client.readthedocs.io/en/latest/messaging.html#messages-on-the-shell-router-dealer-channel
 (cl-defmethod jupyter-handle-message ((channel jupyter-shell-channel)
@@ -990,7 +1000,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
   "Default shutdown reply handler."
   nil)
 
-;;; IOPUB message handlers
+;;; IOPUB handlers
 
 (cl-defmethod jupyter-handle-message ((channel jupyter-iopub-channel)
                                       client
