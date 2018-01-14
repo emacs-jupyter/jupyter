@@ -1089,6 +1089,19 @@ COMMAND and ARG have the same meaning as the elements of
                   (remove-text-properties 0 (length doc) '(read-only) doc)
                   (when doc (company-doc-buffer doc))))))
 
+(defun jupyter-repl--inspect (code pos &optional timeout)
+  (let ((msg (jupyter-wait-until-received :inspect-reply
+               (jupyter-request-inhibit-handlers
+                (jupyter-inspect-request jupyter-repl-current-client
+                  :code code :pos pos))
+               timeout)))
+    (when msg
+      (cl-destructuring-bind (&key status found data &allow-other-keys)
+          (jupyter-message-content msg)
+        (when (and (equal status "ok") found)
+          (with-temp-buffer
+            (jupyter-repl-insert-data data)
+            (buffer-string)))))))
 ;;; `jupyter-repl-mode'
 
 (defvar jupyter-repl-mode-map
