@@ -884,28 +884,42 @@ lines then truncate it to something less than
                   'font-lock-face 'warning))
      (jupyter-repl-newline))))
 
-(defun jupyter-repl-ret (arg)
+(defun jupyter-repl-ret (&optional force)
+  "Send the current cell code to the kernel.
+If `point' is before the last cell in the REPL buffer move to
+`point-max', i.e. move to the last cell. Otherwise if `point' is
+at some position within the last cell of the REPL buffer, either
+insert a newline or ask the kernel to execute the cell code
+depending on the kernel's response to an is_complete_request. If
+FORCE is non-nil, force the kernel to execute the current cell
+code without sending the is_complete_request. See
+`jupyter-repl-use-builtin-is-complete' for yet another way to
+execute the current cell."
   (interactive "P")
-  (let ((client jupyter-repl-current-client)
-        (last-cell-pos (save-excursion
-                         (goto-char (point-max))
-                         (jupyter-repl-cell-beginning-position))))
-    (if (< (point) last-cell-pos)
-        (goto-char (point-max))
+  (if (< (point) (save-excursion
+                   (goto-char (point-max))
+                   (jupyter-repl-cell-beginning-position)))
+      (goto-char (point-max))
+    (if force
+        (jupyter-execute-request jupyter-repl-current-client)
       (if (not jupyter-repl-use-builtin-is-complete)
-          (let ((res (jupyter-wait-until-received :is-complete-reply
-                       (jupyter-is-complete-request client
+          (let ((res (jupyter-wait-until-received
+                         :is-complete-reply
+                       (jupyter-is-complete-request
+                           jupyter-repl-current-client
                          :code (jupyter-repl-cell-code)))))
             (unless res
+              (message "Kernel did not respond to is-complete-request, using built-in is-complete")
               (setq-local jupyter-repl-use-builtin-is-complete t)
-              (jupyter-repl-ret arg)))
+              (jupyter-repl-ret force)))
         (let ((complete-p (equal
                            (save-excursion
                              (goto-char (jupyter-repl-cell-code-end-position))
                              (buffer-substring-no-properties
                               (line-beginning-position) (point)))
                            "")))
-          (jupyter-handle-is-complete-reply client
+          (jupyter-handle-is-complete-reply
+              jupyter-repl-current-client
             nil (if complete-p "complete" "incomplete") ""))))))
 
 (defun jupyter-repl-indent-line ()
