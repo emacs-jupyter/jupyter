@@ -180,6 +180,46 @@ The cell is narrowed to the region between and including
                          (jupyter-repl-cell-end-position))
        ,@body)))
 
+(defun jupyter-repl-get-doc-buffer (name)
+  "Return the REPL documentation buffer for NAME.
+A REPL documentation buffer has the following characteristics:
+
+- `major-mode' is `special-mode'
+
+- local keybindings to quit the window (q), and scroll the
+  window (SPC and <backtab>).
+
+The buffer returned will have a `buffer-name' with the form
+
+    \" *jupyter-repl-NAME*\""
+  (let* ((bname (format " *jupyter-repl-%s*" name))
+         (buffer (get-buffer bname)))
+    (unless buffer
+      (setq buffer (get-buffer-create bname))
+      (with-current-buffer buffer
+        (special-mode)
+        (local-set-key "q" #'quit-window)
+        (local-set-key (kbd "SPC") #'scroll-down)
+        (local-set-key (kbd "<backtab>") #'scroll-up)))
+    buffer))
+
+(defmacro with-jupyter-repl-doc-buffer (name &rest body)
+  "With the REPL documentation buffer corresponding to NAME, run BODY.
+NAME should be a string representing the purpose of the
+documentation buffer. The buffer corresponding to NAME will be
+obtained by a call to `juptyer-repl-get-doc-buffer'. Before
+running BODY, the doc buffer is set as the
+`other-window-scroll-buffer' and the contents of the buffer are
+erased."
+  (declare (indent 1))
+  (let ((buffer (make-symbol "buffer")))
+    `(let ((,buffer (jupyter-repl-get-doc-buffer ,name)))
+       (with-current-buffer buffer
+         (setq other-window-scroll-buffer (current-buffer))
+         (let ((inhibit-read-only t))
+           (erase-buffer)
+           ,@body)))))
+
 ;;; Inserting text into the REPL buffer
 
 (defun jupyter-repl-add-font-lock-properties (start end &optional object)
@@ -724,32 +764,6 @@ lines then truncate it to something less than
          (jupyter-repl-insert-prompt 'in))
         req))))
 
-;; TODO: Proper cleanup of pager buffer
-;;
-;; TODO: Define a minor mode for the pager
-(defun jupyter-repl-pager-payload (text &optional line)
-  (setq line (or line 0))
-  (let (buf)
-    (setq buf (get-buffer " *jupyter-repl-pager*"))
-    (unless buf
-      (setq buf (get-buffer-create " *jupyter-repl-pager*"))
-      (with-current-buffer buf
-        (special-mode)
-        (local-set-key "q" #'quit-window)
-        (local-set-key (kbd "SPC") #'scroll-down)
-        (local-set-key (kbd "<backtab>") #'scroll-up)))
-    (with-current-buffer buf
-      (let ((inhibit-read-only t))
-        (erase-buffer)
-        (setq text (xterm-color-filter text))
-        (jupyter-repl-add-font-lock-properties 0 (length text) text)
-        (insert text)
-        (goto-char (point-min))
-        (forward-line line)))
-    (display-buffer buf '(display-buffer-at-bottom
-                          (pop-up-windows . t)))
-    (fit-window-to-buffer (get-buffer-window buf))))
-
 (cl-defmethod jupyter-handle-execute-reply ((client jupyter-repl-client)
                                             req
                                             execution-count
@@ -765,9 +779,17 @@ lines then truncate it to something less than
          for pl in payload
          do (pcase (plist-get pl :source)
               ("page"
-               (jupyter-repl-pager-payload
-                (plist-get (plist-get pl :data) :text/plain)
-                (plist-get pl :start)))
+               (let ((text (plist-get (plist-get pl :data) :text/plain))
+                     (line (or (plist-get pl :start) 0))))
+               (with-jupyter-repl-doc-buffer "pager"
+                 (setq text (xterm-color-filter text))
+                 (jupyter-repl-add-font-lock-properties 0 (length text) text)
+                 (insert text)
+                 (goto-char (point-min))
+                 (forward-line line)
+                 (display-buffer (current-buffer) '(display-buffer-at-bottom
+                                                    (pop-up-windows . t)))
+                 (fit-window-to-buffer (get-buffer-window))))
               ((or "edit" "edit_magic")
                (with-current-buffer (find-file-other-window
                                      (plist-get pl :filename))
