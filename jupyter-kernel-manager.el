@@ -238,19 +238,21 @@ kernel. Starting a kernel involves the following steps:
       (jupyter-stop-channel control-channel)
       (oset manager control-channel nil))))
 
-(cl-defmethod jupyter-shutdown-kernel ((manager jupyter-kernel-manager) &optional timeout)
+(cl-defmethod jupyter-shutdown-kernel ((manager jupyter-kernel-manager) &optional restart timeout)
   (when (jupyter-kernel-alive-p manager)
     (let ((session (oref manager session))
-          (sock (oref (oref manager control-channel) socket)))
-      (jupyter-send
-       session sock "shutdown_request" (jupyter-message-shutdown-request))
+          (sock (oref (oref manager control-channel) socket))
+          (msg (jupyter-message-shutdown-request :restart restart)))
+      (jupyter-send session sock "shutdown_request" msg)
       (with-timeout ((or timeout 1)
                      (delete-process (oref manager kernel))
                      (display-warning
                       "jupyter" "Kernel did not shutdown by request" :warning))
         (while (jupyter-kernel-alive-p manager)
           (sleep-for 0.01)))
-      (jupyter-stop-channels manager))))
+      (if restart
+          (jupyter-start-kernel manager)
+        (jupyter-stop-channels manager)))))
 
 (cl-defmethod jupyter-interrupt-kernel ((manager jupyter-kernel-manager) &optional timeout)
   (pcase (plist-get (oref manager kernel-spec) :interrupt_mode)
