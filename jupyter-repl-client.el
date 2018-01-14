@@ -1116,11 +1116,20 @@ COMMAND and ARG have the same meaning as the elements of
     (define-key map (kbd "M-p") #'jupyter-repl-history-previous)
     map))
 
+(put 'jupyter-repl-mode 'mode-class 'special)
 (define-derived-mode jupyter-repl-mode fundamental-mode
   "Jupyter-REPL"
   "A major mode for interacting with a Jupyter kernel."
   (setq-local indent-line-function #'jupyter-repl-indent-line)
-  (setq-local company-backends (cons 'company-jupyter-repl company-backends))
+  (setq-local left-margin-width jupyter-repl-prompt-margin-width)
+  (setq-local jupyter-repl-history
+              (make-ring (1+ jupyter-repl-history-maximum-length)))
+  ;; The sentinel value keeps track of the newest/oldest elements of
+  ;; the history since next/previous navigation is implemented by
+  ;; rotations on the ring.
+  (ring-insert jupyter-repl-history 'jupyter-repl-history)
+  (erase-buffer)
+  (jupyter-repl-interaction-mode)
   (add-hook 'after-change-functions 'jupyter-repl-after-buffer-change nil t)
   (add-hook 'window-configuration-change-hook 'jupyter-repl-preserve-window-margins nil t))
 
@@ -1174,19 +1183,13 @@ kernel."
           (oref km kernel-info)
         (cl-destructuring-bind (&key name file_extension &allow-other-keys)
             language_info
-          (erase-buffer)
           (jupyter-repl-mode)
-          (setq-local left-margin-width jupyter-repl-prompt-margin-width)
+          (jupyter-set kc 'jupyter-include-other-output t)
           (setq-local jupyter-repl-current-client kc)
           (setq-local jupyter-repl-kernel-manager km)
-          (setq-local jupyter-repl-history
-                      (make-ring (1+ jupyter-repl-history-maximum-length)))
-          ;; The sentinel value keeps track of the newest/oldest elements of
-          ;; the history since next/previous navigation is implemented by
-          ;; rotations on the ring.
-          (ring-insert jupyter-repl-history 'jupyter-repl-history)
           (setq-local jupyter-repl-lang-buffer
-                      (get-buffer-create (format " *jupyter-repl-lang-%s*" name)))
+                      (get-buffer-create
+                       (format " *jupyter-repl-lang-%s*" name)))
           (let (mode)
             (with-jupyter-repl-lang-buffer
               (let ((buffer-file-name
