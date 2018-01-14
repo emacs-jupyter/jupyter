@@ -129,6 +129,15 @@ value of `point' in the buffer."
          (let ((win (get-buffer-window)))
            (when win (set-window-point win (point))))))))
 
+(defmacro jupyter-repl-without-continuation-prompts (&rest body)
+  "Run BODY without inserting continuation prompts.
+Normally a continuation prompt is inserted for every newline
+inserted into the REPL buffer through a function in
+`after-change-functions'. Prevent the function from running while
+executing BODY."
+  `(let ((inhibit-modification-hooks t))
+     ,@body))
+
 (defmacro jupyter-repl-do-at-request (client req &rest body)
   "Switch to CLIENT's buffer, move to then end of REQ, and run BODY.
 Switching to CLIENT's buffer is accomplished using
@@ -143,11 +152,11 @@ run, this prevents any line continuation prompts to be inserted
 for multi-line output."
   (declare (indent 2) (debug (symbolp &rest form)))
   `(with-jupyter-repl-buffer ,client
-     (save-excursion
-       (let ((inhibit-modification-hooks t))
-         (jupyter-repl-goto-cell ,req)
-         (jupyter-repl-next-cell)
-         ,@body))))
+     (jupyter-repl-without-continuation-prompts
+      (save-excursion
+        (jupyter-repl-goto-cell ,req)
+        (jupyter-repl-next-cell)
+        ,@body))))
 
 (defmacro with-jupyter-repl-lang-buffer (&rest body)
   "Run BODY in the `jupyter-repl-lang-buffer' of the `current-buffer'.
@@ -683,12 +692,10 @@ lines then truncate it to something less than
       (let ((req (cl-call-next-method
                   client :code code :silent silent :store-history store-history
                   :user-expressions user-expressions :allow-stdin allow-stdin
-                  :stop-on-error stop-on-error))
-            ;; Don't insert a continuation prompt when inserting a new input
-            ;; prompt
-            (inhibit-modification-hooks t))
-        (jupyter-repl-finalize-cell req)
-        (jupyter-repl-insert-prompt 'in)
+                  :stop-on-error stop-on-error)))
+        (jupyter-repl-without-continuation-prompts
+         (jupyter-repl-finalize-cell req)
+         (jupyter-repl-insert-prompt 'in))
         req))))
 
 ;; TODO: Proper cleanup of pager buffer
@@ -1144,11 +1151,11 @@ COMMAND and ARG have the same meaning as the elements of
   "Insert BANNER into the `current-buffer'.
 Make the text of BANNER read only and apply the `shadow' face to
 it."
-  (let ((start (point))
-        (inhibit-modification-hooks t))
-    (jupyter-repl-insert banner)
-    (jupyter-repl-newline)
-    (add-text-properties start (point) '(font-lock-face shadow fontified t))))
+  (jupyter-repl-without-continuation-prompts
+   (let ((start (point)))
+     (jupyter-repl-insert banner)
+     (jupyter-repl-newline)
+     (add-text-properties start (point) '(font-lock-face shadow fontified t)))))
 
 (defun jupyter-repl-sync-execution-count ()
   "Synchronize the execution count of `jupyter-repl-current-client'.
