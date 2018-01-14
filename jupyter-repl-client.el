@@ -33,11 +33,12 @@
   "A Jupyter REPL client"
   :group 'communication)
 
+(require 'jupyter-base)
 (require 'jupyter-client)
 (require 'jupyter-kernel-manager)
 (require 'xterm-color)
 (require 'shr)
-(eval-when-compile (require 'cl))
+(require 'ring)
 
 ;; TODO: Read up on how method tags can be used, see
 ;; https://ericabrahamsen.net/tech/2016/feb/bbdb-eieio-object-oriented-elisp.html
