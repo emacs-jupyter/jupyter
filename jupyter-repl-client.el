@@ -340,7 +340,7 @@ image."
         (jupyter-repl-newline)))
      ((memq :text/latex mimetypes)
       (jupyter-repl-insert-latex (plist-get data :text/latex)))
-     ((memq :text/markdown mimetypes)
+     ((and (memq :text/markdown mimetypes) (require 'markdown-mode nil t))
       (jupyter-repl-insert-markdown (plist-get data :text/markdown)))
      ((memq :text/plain mimetypes)
       (let ((text (xterm-color-filter (plist-get data :text/plain))))
