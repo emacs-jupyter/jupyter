@@ -29,9 +29,9 @@
 
 ;;; Code:
 
-(defgroup jupyter-repl-client nil
+(defgroup jupyter-repl nil
   "A Jupyter REPL client"
-  :group 'communication)
+  :group 'jupyter)
 
 (require 'jupyter-base)
 (require 'jupyter-client)
