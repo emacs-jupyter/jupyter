@@ -670,7 +670,17 @@ lines then truncate it to something less than
 ;;; Handlers
 
 (defun jupyter-repl-history-add-input (code)
-  (ring-insert jupyter-repl-history code))
+  "Add CODE as the newest element in the REPL history."
+  ;; Ensure the newest element is actually the newest element and not the most
+  ;; recently navigated history element.
+  (while (not (eq (ring-ref jupyter-repl-history -1) 'jupyter-repl-history))
+    (ring-insert jupyter-repl-history (ring-remove jupyter-repl-history)))
+  ;; Remove the second to last element when the ring is full to preserve the
+  ;; sentinel.
+  (when (eq (ring-length jupyter-repl-history)
+            (ring-size jupyter-repl-history))
+    (ring-remove jupyter-repl-history -2))
+  (ring-remove+insert+extend jupyter-repl-history code))
 
 (cl-defmethod jupyter-execute-request ((client jupyter-repl-client)
                                        &key code
