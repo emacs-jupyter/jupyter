@@ -88,11 +88,13 @@
 
 (defvar jupyter-repl-current-client nil
   "The `jupyter-repl-client' for the `current-buffer'.")
+(put 'jupyter-repl-current-client 'permanent-local t)
 
 (defvar jupyter-repl-kernel-manager nil
   "If the REPL is connected to a kernel which was started as a
  subprocess. This will contain the kernel manager used to control
  the lifetime of the kernel.")
+(put 'jupyter-repl-kernel-manager 'permanent-local t)
 
 (defvar jupyter-repl-lang-mode nil
   "The major mode corresponding to the kernel's language.")
