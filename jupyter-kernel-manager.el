@@ -113,7 +113,7 @@ to connect to MANAGER's kernel."
     (oset manager conn-file nil)
     (oset manager conn-info nil))))
 
-(defun jupyter--start-kernel (kernel-name env args)
+(defun jupyter--start-kernel (manager kernel-name env args)
   "Start a kernel.
 A kernel named KERNEL-NAME is started using ARGS. The name of the
 command used to start the kernel subprocess should be the first
@@ -133,10 +133,13 @@ Return the newly created kernel process."
             for k = (car e)
             for v = (cadr e)
             collect (format "%s=%s" (cl-subseq (symbol-name k) 1) v))
-           process-environment)))
-    (apply #'start-process
-           (format "jupyter-kernel-%s" kernel-name)
-           nil (car args) (cdr args))))
+           process-environment))
+         (proc (apply #'start-process
+                      (format "jupyter-kernel-%s" kernel-name)
+                      nil (car args) (cdr args))))
+    (prog1 proc
+      (set-process-sentinel
+       proc (apply-partially #'jupyter--kernel-sentinel manager)))))
 
 ;; TODO: Allow passing arguments like a different kernel file name or different
 ;; ports and arguments to the kernel
@@ -193,7 +196,7 @@ kernel. Starting a kernel involves the following steps:
         ;; Start the process
         (let ((atime (nth 4 (file-attributes conn-file)))
               (proc (jupyter--start-kernel
-                     kernel-name (plist-get spec :env)
+                     manager kernel-name (plist-get spec :env)
                      (cl-loop
                       for arg in (plist-get spec :argv)
                       if (equal arg "{connection_file}") collect conn-file
@@ -211,8 +214,6 @@ kernel. Starting a kernel involves the following steps:
                                    (format "kernel-%d.json" (process-id proc))
                                    (file-name-directory conn-file)))
           (rename-file conn-file (oref manager conn-file))
-          (set-process-sentinel
-           proc (apply-partially #'jupyter--kernel-sentinel manager))
           (jupyter-start-channels manager)
           manager)))))
 
