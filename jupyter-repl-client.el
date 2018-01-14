@@ -821,10 +821,8 @@ lines then truncate it to something less than
 (cl-defmethod jupyter-handle-input-reply ((client jupyter-repl-client) req prompt password)
   (jupyter-repl-do-at-request client req
     (let ((value (cl-call-next-method)))
-      (jupyter-repl-previous-cell)
-      (goto-char (1+ (jupyter-repl-cell-end-position)))
-      (jupyter-repl-newline)
-      (jupyter-repl-insert (concat prompt value)))))
+      (jupyter-repl-insert (concat prompt value))
+      (jupyter-repl-newline))))
 
 (defun jupyter-repl-history-next (&optional n)
   "Go to the next history element.
