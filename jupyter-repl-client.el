@@ -868,6 +868,22 @@ lines then truncate it to something less than
        (jupyter-execute-request client))
       ("unknown"))))
 
+(cl-defmethod jupyter-handle-shutdown-reply ((client jupyter-repl-client) _req restart)
+  (with-jupyter-repl-buffer client
+    (goto-char (point-max))
+    (add-text-properties (jupyter-repl-cell-beginning-position)
+                         (jupyter-repl-cell-end-position)
+                         '(read-only t))
+    (jupyter-repl-without-continuation-prompts
+     (jupyter-repl-newline)
+     (jupyter-repl-newline)
+     ;; TODO: Add a slot mentioning that the kernel is shutdown so that we can
+     ;; block sending requests or delay until it has restarted.
+     (jupyter-repl-insert
+      (propertize (concat "kernel " (if restart "restart" "shutdown"))
+                  'font-lock-face 'warning))
+     (jupyter-repl-newline))))
+
 (defun jupyter-repl-ret (arg)
   (interactive "P")
   (let ((client jupyter-repl-current-client)
