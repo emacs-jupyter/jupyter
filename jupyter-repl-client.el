@@ -77,13 +77,15 @@
 (defcustom jupyter-repl-history-maximum-length 100
   "The maximum number of history elements to keep track of."
   :group 'jupyter-repl)
+
+(defcustom jupyter-repl-prompt-margin-width 12
+  "The width of the margin which displays prompt strings."
+  :group 'jupyter-repl)
+
 (defclass jupyter-repl-client (jupyter-kernel-client)
   ((kernel-info)
    (buffer :initarg :buffer)
    (execution-count :initform 1)))
-
-(defvar jupyter-repl-prompt-margin-width 12
-  "The width of the margin which displays prompt strings.")
 
 (defvar jupyter-repl-lang-buffer nil
   "A buffer with the `major-mode' set to the REPL language's `major-mode'.")
