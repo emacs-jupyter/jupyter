@@ -910,62 +910,154 @@ kernel that the REPL buffer is connected to."
 
 ;;; Completion
 
-(defun company-jupyter-repl (command &optional arg &rest ignored)
-  "`company-mode' backend using a `jupyter-repl-client'."
+(defun jupyter-repl-company-normalize-position (pos prefix)
+  "Normalize POS based on the length of PREFIX for the current context.
+If the `major-mode' is `jupyter-repl-mode' then POS is relative
+to the contents of the current code cell."
+  (if (eq major-mode 'jupyter-repl-mode)
+      (cl-decf pos (- (point) (jupyter-repl-cell-code-beginning-position)))
+    pos))
+
+(defun jupyter-repl-code-context-at-point (type &optional prefix)
+  "Return a cons cell, (CODE . POS), for the context around `point'.
+Returns the required context depending on TYPE which can be
+either `inspect' or `complete'. If TYPE is `inspect' return an
+appropriate context for an inspect request. If TYPE is `complete'
+return an appropriate context for a completion request.
+
+The context also depends on the `major-mode' of the
+`current-buffer'. If the `current-buffer' is a
+`jupyter-repl-mode' buffer, CODE is the contents of the entire
+code cell. Otherwise its either the line up to `point' if TYPE is
+`complete' or the entire line TYPE is `inspect'."
+  ;; FIXME: Remove the need for PREFIX it is currently used because the Julia
+  ;; kernel doesn't return the right completions in the following scenario
+  ;;
+  ;;     readline(ST|)
+  ;;
+  ;; If the entire line is sent with the code position at |, then the kernel
+  ;; just dumps all available completions without a prefix when clearly we want
+  ;; the ones that start with ST.
+  (unless (memq type '(complete inspect))
+    (error "Type not `compete' or `inspect' (%s)" type))
+  (if (eq major-mode 'jupyter-repl-mode)
+      (if (and prefix (eq jupyter-repl-lang-mode 'julia-mode))
+          (cons prefix (length prefix))
+        (let ((code (jupyter-repl-cell-code))
+              (pos (jupyter-repl-cell-code-position)))
+          ;; Consider the case when completing
+          ;;
+          ;;     In [1]: foo|
+          ;;
+          ;; The cell code position will be at position 4, i.e. where the cursor
+          ;; is at, but the cell code will only be 3 characters long. This is the
+          ;; reason for the check on pos.
+          (cons code (if (> pos (length code)) (length code) pos))))
+    (cons (buffer-substring (line-beginning-position)
+                            (cl-case type
+                              (inspect (line-end-position))
+                              (otherwise (point))))
+          (- (point) (line-beginning-position)))))
+
+(defun jupyter-repl-completion-prefix ()
+  "Return the prefix for the current completion context.
+Note that the prefix returned is not the content sent to the
+kernel. The prefix is the symbol (including punctuation) just
+before `point'. See `jupyter-repl-code-context-at-point' for what
+is actually sent to the kernel."
+  (when jupyter-repl-current-client
+    (let ((lang-mode (with-jupyter-repl-buffer
+                         jupyter-repl-current-client
+                       jupyter-repl-lang-mode)))
+      (and (memq major-mode `(,lang-mode jupyter-repl-mode))
+           ;; No completion in finalized cells
+           (not (get-text-property (point) 'read-only))
+           (if (or (looking-at "\\_>")
+                   (looking-back "\\.\\|->\\|::" 2))
+               (buffer-substring
+                (save-excursion
+                  (skip-syntax-backward "w_.")
+                  (point))
+                (point))
+             (unless (and (char-after)
+                          (memq (char-syntax (char-after))
+                                '(?w ?_ ?.)))
+               ""))))))
+
+;; FIXME: start and end are actually not currently used. What would be the most
+;; general way of using them.
+(defun jupyter-repl-construct-completion-candidates (prefix matches metadata start end)
+  "Construct candidates for `company-mode' completion.
+PREFIX is the prefix used to start the current completion.
+MATCHES are the completion matches returned by the kernel,
+METADATA is any extra data associated with MATCHES and is
+currently used for adding annotations to each candidate. START
+and END are the start and end of text in the current
+`jupyter-repl-company-context' that should be replaced by the
+elements of MATCHES."
+  ;; TODO: Handle cases in the Jupyter repl when
+  ;; `company-minimum-prefix-length' is 1 and the prefix is '='
+  (let ((types (plist-get metadata :_jupyter_types_experimental)))
+    (let ((matches matches) match)
+      (while (setq match (car matches))
+        ;; TODO: Maybe set the match property when it doesn't have the prefix,
+        ;; indicating that it should replace part of the prefix?
+        (unless (string-prefix-p prefix match)
+          ;; FIXME: Note that prefix is not the code cent to the kernel in some
+          ;; cases, but the symbol behind point
+          (setcar matches (concat (seq-subseq prefix (- end start))
+                                  (car matches))))
+        ;; (put-text-property 0 1 'match match-start (car matches))
+        (setq matches (cdr matches))))
+    (when types
+      (let ((max-len (apply #'max (mapcar #'length matches))))
+        (cl-mapcar
+         (lambda (match meta)
+           (put-text-property
+            0 1 'annot
+            (concat (make-string (1+ (- max-len (length match))) ? )
+                    (plist-get meta :type))
+            match)
+           match)
+         matches types)))
+    matches))
+
+(defun company-jupyter-repl (command &optional arg &rest _)
+  "`company-mode' backend using a `jupyter-repl-client'.
+COMMAND and ARG have the same meaning as the elements of
+`company-backends'."
   (interactive (list 'interactive))
   (cl-case command
     (interactive (company-begin-backend 'company-jupyter-repl))
-    (prefix (and (eq major-mode 'jupyter-repl-mode)
-                 (not (get-text-property (point) 'read-only))
-                 ;; Just grab a symbol, we will just send the whole code cell
-                 (company-grab-symbol)
-                 ;; (buffer-substring (or (save-excursion
-                 ;;                         (when (re-search-backward "[ \t]" (point-at-bol) 'noerror)
-                 ;;                           (1+ (point))))
-                 ;;                       (point-at-bol))
-                 ;;                   (point))
-                 ))
-    (candidates
-     (cons
-      :async
-      (lambda (cb)
-        (let ((client jupyter-repl-current-client))
-          (with-jupyter-repl-buffer client
-            (jupyter-add-callback
-                (jupyter-complete-request
-                    client
-                  :code (jupyter-repl-cell-code)
-                  ;; Consider the case when completing
-                  ;;
-                  ;;     In [1]: foo|
-                  ;;
-                  ;; The cell code position will be at position 4, i.e. where
-                  ;; the cursor is at, but the cell code will only be 3
-                  ;; characters long.
-                  :pos (1- (jupyter-repl-cell-code-position)))
-              :complete-reply
-              (lambda (msg)
-                (cl-destructuring-bind (&key status matches
-                                             &allow-other-keys)
-                    (jupyter-message-content msg)
-                  (if (equal status "ok") (funcall cb matches)
-                    (funcall cb '()))))))))))
     (sorted t)
-    (doc-buffer
-     (let ((msg (jupyter-wait-until-received :inspect-reply
-                  (jupyter-request-inhibit-handlers
-                   (jupyter-inspect-request
-                       jupyter-repl-current-client
-                     :code arg :pos (length arg))))))
-       (when msg
-         (cl-destructuring-bind (&key status found data &allow-other-keys)
-             (jupyter-message-content msg)
-           (when (and (equal status "ok") found)
-             (with-current-buffer (company-doc-buffer)
-               ;; TODO: This uses `font-lock-face', should font lcok mode be
-               ;; enabled or should I add an option to just use `face'
-               (jupyter-repl-insert-data data)
-               (current-buffer)))))))))
+    (prefix (or (jupyter-repl-completion-prefix) 'stop))
+    (candidates (cons
+                 :async
+                 (lambda (cb)
+                   (cl-destructuring-bind (code . pos)
+                       (jupyter-repl-code-context-at-point 'complete arg)
+                     (jupyter-add-callback
+                         ;; Ignore errors during completion
+                         (jupyter-request-inhibit-handlers
+                          (jupyter-complete-request
+                              jupyter-repl-current-client
+                            :code code :pos pos))
+                       :complete-reply
+                       (lambda (msg)
+                         (cl-destructuring-bind (&key status
+                                                      matches metadata
+                                                      cursor_start cursor_end
+                                                      &allow-other-keys)
+                             (jupyter-message-content msg)
+                           (funcall
+                            cb (when (equal status "ok")
+                                 (jupyter-repl-construct-completion-candidates
+                                  arg matches metadata cursor_start cursor_end))))))))))
+    (annotation (get-text-property 0 'annot arg))
+    (doc-buffer (let ((doc (jupyter-repl--inspect
+                            arg (length arg) company-async-timeout)))
+                  (remove-text-properties 0 (length doc) '(read-only) doc)
+                  (when doc (company-doc-buffer doc))))))
 
 ;;; The mode
 
