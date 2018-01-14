@@ -61,7 +61,7 @@
      :foreground "indianred3")
     (((class color) (min-colors 88) (background dark))
      :foreground "darkred"))
-  "Face used for the input prompt."
+  "Face used for the output prompt."
   :group 'jupyter-repl)
 
 (defcustom jupyter-repl-maximum-size 1024
@@ -103,14 +103,15 @@
   "The history of the current Jupyter REPL.")
 
 (defvar jupyter-repl-fontify-buffers nil
-  "Buffers used for fontification.")
+  "An alist of (MODE . BUFFER) pairs used for fontification.
+See `jupyter-repl-fontify-according-to-mode'.")
 
 (defvar jupyter-repl-use-builtin-is-complete nil
-  "Whether or not to send an is_complete_request to a kernel.
+  "Whether or not to send is_complete_request's to a kernel.
 If a Jupyter kernel does not respond to an is_complete_request,
-this variable is automatically set to t and code in a cell is
-considered complete if the last line in a code cell is a blank
-line, i.e. if RET is pressed twice in a row.")
+the buffer local value of this variable is set to t and code in a
+cell is considered complete if the last line in a code cell is a
+blank line, i.e. if RET is pressed twice in a row.")
 
 ;;; Convenience macros
 
@@ -192,6 +193,13 @@ text inserted into a `jupyter-repl-client's buffer."
    start end 'font-lock-face 'default object))
 
 (defun jupyter-repl-get-fontify-buffer (mode)
+  "Get the cached buffer used to fontify MODE.
+Consult the `jupyter-repl-fontify-buffers' alist for a buffer
+used for fontification according to MODE and return the buffer
+found. If no buffer exits for MODE in
+`jupyter-repl-fontify-buffers': create a new buffer, set its
+`major-mode' to MODE, add the new buffer to
+`jupyter-repl-fontify-buffers' and return the buffer."
   (let ((buf (alist-get mode jupyter-repl-fontify-buffers)))
     (unless buf
       (setq buf (get-buffer-create
@@ -359,6 +367,9 @@ image."
 ;;; Prompt
 
 (defun jupyter-repl--prompt-display-value (str face)
+  "Return the margin display value for a prompt.
+STR is the string used for the display value and FACE is the
+`font-lock-face' to use for STR."
   (list '(margin left-margin)
         (propertize
          (concat (make-string
@@ -370,6 +381,12 @@ image."
          'font-lock-face face)))
 
 (defun jupyter-repl--insert-prompt (str face)
+  "Insert a new prompt at `point'.
+STR is the prompt string displayed in the `left-margin' using
+FACE as the `font-lock-face'. A newline is inserted before adding
+the prompt. The prompt string is inserted as a `display' text
+property in the `after-string' property of the overlay and the
+overlay is added to the newline character just inserted."
   (jupyter-repl-newline)
   (let ((ov (make-overlay (1- (point)) (point) nil t))
         (md (jupyter-repl--prompt-display-value str face)))
@@ -410,9 +427,8 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
     (add-text-properties (overlay-start ov) (overlay-end ov) props)))
 
 (defun jupyter-repl-cell-update-prompt (str)
-  "Update the current input prompt string.
-STR should be the text which will replace the current input
-prompt."
+  "Update the current cell's input prompt.
+STR is the replacement prompt string."
   (let ((ov (car (overlays-at (jupyter-repl-cell-beginning-position)))))
     (when ov
       (overlay-put ov 'after-string
