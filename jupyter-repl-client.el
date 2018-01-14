@@ -826,54 +826,58 @@ lines then truncate it to something less than
       (jupyter-repl-newline)
       (jupyter-repl-insert (concat prompt value)))))
 
-(defun jupyter-repl-history-next (n)
+(defun jupyter-repl-history-next (&optional n)
   "Go to the next history element.
 Navigate through the REPL history to the next (newer) history
 element and insert it as the last code cell. For N positive move
 forward in history that many times. If N is negative, move to
 older history elements."
   (interactive "p")
-  (goto-char (point-max))
-  (if (cl-loop
-       repeat (or n 1)
-       thereis (eq (ring-ref jupyter-repl-history -1) 'jupyter-repl-history)
-       do (ring-insert
-           jupyter-repl-history (ring-remove jupyter-repl-history -1)))
-      (cond
-       ((equal (jupyter-repl-cell-code)
-               (ring-ref jupyter-repl-history 0))
-        (jupyter-repl-replace-cell-code ""))
-       ((equal (jupyter-repl-cell-code) "")
-        (message "Beginning of history"))
-       (t))
-    (jupyter-repl-replace-cell-code
-     (ring-ref jupyter-repl-history 0))))
+  (or n (setq n 1))
+  (if (< n 0) (jupyter-repl-history-previous (- n))
+    (goto-char (point-max))
+    (if (cl-loop
+         repeat n
+         thereis (eq (ring-ref jupyter-repl-history -1) 'jupyter-repl-history)
+         do (ring-insert
+             jupyter-repl-history (ring-remove jupyter-repl-history -1)))
+        (cond
+         ((equal (jupyter-repl-cell-code)
+                 (ring-ref jupyter-repl-history 0))
+          (jupyter-repl-replace-cell-code ""))
+         ((equal (jupyter-repl-cell-code) "")
+          (message "Beginning of history"))
+         (t))
+      (jupyter-repl-replace-cell-code
+       (ring-ref jupyter-repl-history 0)))))
 
-(defun jupyter-repl-history-previous (n)
+(defun jupyter-repl-history-previous (&optional n)
   "Go to the previous history element.
 Similar to `jupyter-repl-history-next' but for older history
 elements. If N is negative in this case, move to newer history
 elements."
   (interactive "p")
-  (goto-char (point-max))
-  (if (not (equal (jupyter-repl-cell-code)
-                  (ring-ref jupyter-repl-history 0)))
-      (jupyter-repl-replace-cell-code (ring-ref jupyter-repl-history 0))
-    (if (cl-loop
-         repeat (or n 1)
-         thereis (eq (ring-ref jupyter-repl-history 1) 'jupyter-repl-history)
-         do (ring-insert-at-beginning
-             jupyter-repl-history (ring-remove jupyter-repl-history 0)))
-        (message "End of history")
-      (jupyter-repl-replace-cell-code
-       (ring-ref jupyter-repl-history 0)))))
+  (or n (setq n 1))
+  (if (< n 0) (jupyter-repl-history-next (- n))
+    (goto-char (point-max))
+    (if (not (equal (jupyter-repl-cell-code)
+                    (ring-ref jupyter-repl-history 0)))
+        (jupyter-repl-replace-cell-code (ring-ref jupyter-repl-history 0))
+      (if (cl-loop
+           repeat n
+           thereis (eq (ring-ref jupyter-repl-history 1) 'jupyter-repl-history)
+           do (ring-insert-at-beginning
+               jupyter-repl-history (ring-remove jupyter-repl-history 0)))
+          (message "End of history")
+        (jupyter-repl-replace-cell-code
+         (ring-ref jupyter-repl-history 0))))))
 
 (cl-defmethod jupyter-handle-history-reply ((client jupyter-repl-client) req history)
   (with-jupyter-repl-buffer client
-    (cl-loop for (session line-number input-output) in history
-             do (ring-insert jupyter-repl-history input-output))))
+    (cl-loop for (_session _line-number input-output) in history
+             do (ring-remove+insert+extend jupyter-repl-history input-output))))
 
-(cl-defmethod jupyter-handle-is-complete-reply ((client jupyter-repl-client) req status indent)
+(cl-defmethod jupyter-handle-is-complete-reply ((client jupyter-repl-client) _req status indent)
   (with-jupyter-repl-buffer client
     (pcase status
       ("complete"
