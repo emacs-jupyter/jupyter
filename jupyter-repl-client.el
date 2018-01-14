@@ -827,6 +827,11 @@ lines then truncate it to something less than
       (jupyter-repl-insert (concat prompt value)))))
 
 (defun jupyter-repl-history-next (n)
+  "Go to the next history element.
+Navigate through the REPL history to the next (newer) history
+element and insert it as the last code cell. For N positive move
+forward in history that many times. If N is negative, move to
+older history elements."
   (interactive "p")
   (goto-char (point-max))
   (if (cl-loop
@@ -845,6 +850,10 @@ lines then truncate it to something less than
      (ring-ref jupyter-repl-history 0))))
 
 (defun jupyter-repl-history-previous (n)
+  "Go to the previous history element.
+Similar to `jupyter-repl-history-next' but for older history
+elements. If N is negative in this case, move to newer history
+elements."
   (interactive "p")
   (goto-char (point-max))
   (if (not (equal (jupyter-repl-cell-code)
