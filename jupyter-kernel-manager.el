@@ -314,11 +314,11 @@ un-paused."
   (let (km kc)
     (setq km (jupyter-kernel-manager :name kernel-name))
     (setq kc (jupyter-make-client km client-class))
-    (jupyter-start-channels kc)
-    (jupyter-hb-unpause (oref kc hb-channel))
-    (jupyter-start-kernel km 10)
     (unwind-protect
         (progn
+          (jupyter-start-channels kc)
+          (jupyter-hb-unpause (oref kc hb-channel))
+          (jupyter-start-kernel km 10)
           (unless (jupyter--wait-until-startup kc 10)
             (error "Kernel did not send startup message"))
           (let ((info (jupyter-wait-until-received :kernel-info-reply
