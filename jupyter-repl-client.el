@@ -43,16 +43,10 @@
 ;; TODO: Read up on how method tags can be used, see
 ;; https://ericabrahamsen.net/tech/2016/feb/bbdb-eieio-object-oriented-elisp.html
 
-;; TODO: Still need to figure out how to remove requests from the client's
-;; request table.
-
 ;; TODO: Fallbacks for when the language doesn't have a major mode installed.
 
-;; TODO: Add a text property to all output depending on which handler it came
-;; from. Then it would make it easier to traverse the buffer and collect
-;; information to save the REPL to a notebook format. But what about the text
-;; properties from `xterm-color-filter'? Maybe I can use overlays, this way the
-;; text is preserved but color is still there.
+
+;;; User variables
 
 (defface jupyter-repl-input-prompt
   '((((class color) (min-colors 88) (background light))
@@ -81,6 +75,8 @@
 (defcustom jupyter-repl-prompt-margin-width 12
   "The width of the margin which displays prompt strings."
   :group 'jupyter-repl)
+
+;;; Implementation
 
 (defclass jupyter-repl-client (jupyter-kernel-client)
   ((kernel-info)
@@ -652,8 +648,10 @@ Finalizing a cell involves the following steps:
 
 (defun jupyter-repl-replace-cell-code (new-code)
   "Replace the current cell code with NEW-CODE."
-  (delete-region (jupyter-repl-cell-code-beginning-position)
-                 (jupyter-repl-cell-code-end-position))
+  ;; Prevent wrapping with `inhibit-read-only' so that an error is thrown when
+  ;; trying to replace a finalized cell.
+  (goto-char (jupyter-repl-cell-code-beginning-position))
+  (delete-region (point) (jupyter-repl-cell-code-end-position))
   (jupyter-repl-insert :read-only nil new-code))
 
 (defun jupyter-repl-truncate-buffer ()
