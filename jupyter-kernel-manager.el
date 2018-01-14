@@ -172,8 +172,8 @@ kernel. Starting a kernel involves the following steps:
     (unless kname-spec
       (error "No kernel found that starts with name (%s)" (oref manager name)))
     (cl-destructuring-bind (kernel-name . spec) kname-spec
-      ;; Ensure we use the full name of the kernel
-      ;; TODO: Require a valid kernel name when initializing the manager
+      ;; Ensure we use the full name of the kernel since
+      ;; `jupyter-find-kernelspec' accepts a prefix of a kernel
       (oset manager name kernel-name)
       (oset manager kernel-spec spec)
       ;; NOTE: `jupyter-connection' fields are shared between other
@@ -186,8 +186,8 @@ kernel. Starting a kernel involves the following steps:
              (conn-file (expand-file-name
                          (concat "kernel-" key ".json")
                          resource-dir)))
-        ;; Write the connection file
-        (with-temp-file conn-file
+        ;; Write the connection info file
+        (with-temp-file (oset manager conn-file conn-file)
           (let ((json-encoding-pretty-print t))
             (insert (json-encode-plist (oref manager conn-info)))))
         ;; Start the process
@@ -258,18 +258,15 @@ kernel. Starting a kernel involves the following steps:
   (pcase (plist-get (oref manager kernel-spec) :interrupt_mode)
     ("message"
      (let ((session (oref manager session))
-           (sock (oref (oref manager control-channel) socket)))
-       (jupyter-send
-        session sock "interrupt_request" (jupyter-message-interrupt-request))
+           (sock (oref (oref manager control-channel) socket))
+           (msg (jupyter-message-interrupt-request)))
+       (jupyter-send session sock "interrupt_request" msg)
        (with-timeout ((or timeout 1) (warn "No interrupt reply from kernel"))
          (while (condition-case nil
-                    (progn
-                      (jupyter-recv session sock zmq-NOBLOCK)
-                      nil)
+                    (prog1 nil (jupyter-recv session sock zmq-NOBLOCK))
                   (zmq-EAGAIN t))
            (sleep-for 0.01)))))
-    (_
-     (interrupt-process (oref manager kernel) t))))
+    (_ (interrupt-process (oref manager kernel) t))))
 
 (cl-defmethod jupyter-kernel-alive-p ((manager jupyter-kernel-manager))
   (process-live-p (oref manager kernel)))
