@@ -269,7 +269,8 @@ kernel. Starting a kernel involves the following steps:
     (_ (interrupt-process (oref manager kernel) t))))
 
 (cl-defmethod jupyter-kernel-alive-p ((manager jupyter-kernel-manager))
-  (process-live-p (oref manager kernel)))
+  (when (oref manager kernel)
+    (process-live-p (oref manager kernel))))
 
 (defun jupyter--wait-until-startup (client &optional timeout)
   "Wait until CLIENT receives a status: starting message.
