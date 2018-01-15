@@ -376,7 +376,9 @@ PRIORITIES - An alist of (CTYPE . PRIORITY) pairs where CTYPE is
              priority will have its message come before the
              message whose channel has a lower priority in the
              sorted order."
-  `(let ((events (zmq-poller-wait-all ,poller 4 ,timeout)))
+  `(let ((events (condition-case nil
+                     (zmq-poller-wait-all ,poller (length ,channels) ,timeout)
+                   (zmq-EINTR nil))))
      (when (alist-get 0 events)
        ;; Got input from stdin, do the command it
        ;; specifies
