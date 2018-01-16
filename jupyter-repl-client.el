@@ -980,17 +980,20 @@ execute the current cell."
 
 (defun jupyter-repl-indent-line ()
   "Indent the line according to the language of the REPL."
-  (let ((spos (jupyter-repl-cell-code-beginning-position))
-        (pos (jupyter-repl-cell-code-position))
-        (code (jupyter-repl-cell-code)))
-    (jupyter-repl-replace-cell-code
-     (with-jupyter-repl-lang-buffer
-       (insert code)
-       (goto-char pos)
-       (indent-according-to-mode)
-       (setq pos (point))
-       (buffer-string)))
-    (goto-char (+ pos spos))))
+  (let* ((spos (jupyter-repl-cell-code-beginning-position))
+         (pos (jupyter-repl-cell-code-position))
+         (code (jupyter-repl-cell-code))
+         (replacement (with-jupyter-repl-lang-buffer
+                        (insert code)
+                        (goto-char pos)
+                        (indent-according-to-mode)
+                        (setq pos (point))
+                        (buffer-string))))
+    ;; Don't modify the buffer when unnecessary, this allows
+    ;; `company-indent-or-complete-common' to work.
+    (unless (equal code replacement)
+      (jupyter-repl-replace-cell-code replacement)
+      (goto-char (+ pos spos)))))
 
 ;;; Buffer change functions
 
