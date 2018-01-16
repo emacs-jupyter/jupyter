@@ -338,6 +338,49 @@ testing the callback functionality of a
            and do (should (jupyter-channel-alive-p (eieio-oref client cname)))))
       (mapc (lambda (se) (zmq-close (car se))) sock-endpoint))))
 
+(ert-deftest jupyter-channel-subprocess ()
+  (ert-info ("Queuing messages preserves sort order")
+    (cl-flet ((queue-msg
+               (messages priorities msg)
+               (jupyter--ioloop-queue-message messages priorities msg)
+               messages))
+      (let* ((priorities '((:iopub . 1)
+                           (:shell . 2)))
+             (messages nil)
+             (time '(0 0 100 0))
+             (out-of-order
+              `((:iopub . (nil . (:header (:date ,time))))
+                (:shell . (nil . (:header (:date ,time))))
+                (:shell . (nil . (:header (:date ,(time-add time '(0 0 100))))))
+                (:iopub . (nil . (:header (:date ,(time-subtract
+                                                   time '(0 0 100)))))))))
+        (setq msg (nth 0 out-of-order))
+        (setq messages (queue-msg messages priorities msg))
+        (should
+         (equal messages `((:iopub . (nil . (:header (:date ,time)))))))
+
+        (setq msg (nth 1 out-of-order))
+        (setq messages (queue-msg messages priorities msg))
+        (should (equal  messages `((:shell . (nil . (:header (:date ,time))))
+                                   (:iopub . (nil . (:header (:date ,time)))))))
+
+        (setq msg (nth 2 out-of-order))
+        (setq messages (queue-msg messages priorities msg))
+        (should
+         (equal
+          messages `((:shell . (nil . (:header (:date ,time))))
+                     (:iopub . (nil . (:header (:date ,time))))
+                     (:shell . (nil . (:header (:date ,(time-add time '(0 0 100)))))))))
+
+        (setq msg (nth 3 out-of-order))
+        (setq messages (queue-msg messages priorities msg))
+        (should
+         (equal
+          messages `((:iopub . (nil . (:header (:date ,(time-subtract time '(0 0 100))))))
+                     (:shell . (nil . (:header (:date ,time))))
+                     (:iopub . (nil . (:header (:date ,time))))
+                     (:shell . (nil . (:header (:date ,(time-add time '(0 0 100)))))))))))))
+
 (ert-deftest jupyter-message-types ()
   (let* ((manager (jupyter-kernel-manager "python"))
          (client (jupyter-make-client manager 'jupyter-kernel-client)))
