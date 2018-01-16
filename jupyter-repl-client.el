@@ -1267,6 +1267,65 @@ inspection text will already be in a form ready for display."
             ;; TODO: Customizable action
             (display-buffer (current-buffer))
             (set-window-start (get-buffer-window) (point-min))))))))
+
+;;; Evaluation
+
+(defun jupyter-repl-eval-string (str)
+  "Evaluate STR with the `jupyter-repl-current-client'.
+The contents of the last cell in the REPL buffer will be replaced
+with STR and the last cell executed with the
+`juptyer-repl-current-client'. After execution, the execution
+result is echoed to the *Message* buffer or a new buffer showing
+the result is open if the result output is larger than 10 lines
+long."
+  (interactive)
+  (unless (buffer-local-value
+           'jupyter-repl-current-client (current-buffer))
+    (user-error "No `jupyter-repl-current-client' set, see `jupyter-repl-associate-buffer'"))
+  (with-jupyter-repl-buffer jupyter-repl-current-client
+    (goto-char (point-max))
+    (unless (= (save-excursion (jupyter-repl-previous-cell)) 0)
+      (jupyter-repl-insert-prompt 'in))
+    (jupyter-repl-replace-cell-code (string-trim-right str))
+    (let ((req (jupyter-execute-request jupyter-repl-current-client)))
+      (jupyter-add-callback req
+        :execute-result
+        (lambda (msg)
+          (let ((res (jupyter-message-data msg :text/plain)))
+            (when res
+              (if (and (jupyter-repl-multiline-p res)
+                       (cl-loop
+                        with nlines = 0
+                        for c across res when (eq c ?\n) do (cl-incf nlines)
+                        thereis (> nlines 10)))
+                  (with-current-buffer
+                      (get-buffer-create "*jupyter-repl-result*")
+                    (erase-buffer)
+                    (insert res)
+                    (goto-char (point-min))
+                    (pop-to-buffer (current-buffer)))
+                (if (equal res "") (message "jupyter: eval done")
+                  (message res)))))))
+      req)))
+
+(defun jupyter-repl-eval-region (beg end)
+  "Evaluate a region with the `jupyter-repl-current-client'.
+BEG and END are the beginning and end of the region to evaluate.
+See `jupyter-repl-eval-string' for how the results of evaluation
+are displayed."
+  (interactive "r")
+  (jupyter-repl-eval-string
+   (buffer-substring-no-properties beg end)))
+
+(defun jupyter-repl-eval-line-or-region ()
+  "Evaluate the current line or region with the `jupyter-repl-current-client'.
+If the current region is active send the current region using
+`jupyter-repl-eval-region', otherwise send the current line."
+  (interactive)
+  (if (use-region-p)
+      (jupyter-repl-eval-region (region-beginning) (region-end))
+    (jupyter-repl-eval-region (line-beginning-position) (line-end-position))))
+
 ;;; `jupyter-repl-mode'
 
 (defvar jupyter-repl-mode-map
