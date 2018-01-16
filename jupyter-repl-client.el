@@ -1189,10 +1189,15 @@ COMMAND and ARG have the same meaning as the elements of
                                  (jupyter-repl-construct-completion-candidates
                                   arg matches metadata cursor_start cursor_end))))))))))
     (annotation (get-text-property 0 'annot arg))
-    (doc-buffer (let ((doc (jupyter-repl--inspect
-                            arg (length arg) company-async-timeout)))
-                  (remove-text-properties 0 (length doc) '(read-only) doc)
-                  (when doc (company-doc-buffer doc))))))
+    (doc-buffer (let* ((inhibit-read-only t)
+                       (buf (jupyter-repl--inspect
+                             arg (length arg) (company-doc-buffer)
+                             company-async-timeout)))
+                  (when buf
+                    (with-current-buffer buf
+                      (remove-text-properties
+                       (point-max) (point-min) '(read-only)))
+                    buf)))))
 
 (defun jupyter-repl--inspect (code pos &optional buffer timeout)
   "Send an inspect request to a Jupyter kernel.
