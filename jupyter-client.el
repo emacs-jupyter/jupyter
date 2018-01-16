@@ -576,7 +576,8 @@ for the heartbeat channel."
   (let ((ioloop (oref client ioloop)))
     (when ioloop
       (zmq-subprocess-send ioloop (cons 'quit nil))
-      (with-timeout (1 (delete-process ioloop))
+      (with-timeout (1 (delete-process ioloop)
+                       (warn "IOloop process not killed by request"))
         (while (oref client ioloop)
           (sleep-for 0 100))))))
 
