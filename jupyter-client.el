@@ -513,11 +513,14 @@ by `jupyter--ioloop'."
                 (jupyter-message-type msg)
                 (jupyter-message-parent-id msg)
                 (jupyter-message-content msg)))
-     (let ((channel (cl-find-if (lambda (c) (eq (oref c type) ctype))
-                                (mapcar (lambda (x) (slot-value client x))
-                                   '(stdin-channel
-                                     shell-channel
-                                     iopub-channel)))))
+     (let ((channel (cl-loop
+                     for c in '(stdin-channel
+                                shell-channel
+                                iopub-channel)
+                     for channel = (slot-value client c)
+                     when (eq (oref channel type) ctype)
+                     return channel
+                     finally (error "No handler for channel type (%s)" ctype))))
        (jupyter-queue-message channel (cons idents msg))
        (run-with-timer 0.0001 nil #'jupyter-handle-message client channel)))
     ('(quit)
