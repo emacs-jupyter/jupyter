@@ -1046,9 +1046,8 @@ kernel that the REPL buffer is connected to."
 (add-hook 'kill-buffer-query-functions #'jupyter-repl-kill-buffer-query-function)
 
 ;; FIXME: Sometimes when using packages like `perspective', upon switching back
-;; to a perspective which has a REPL buffer visible, the margins will
-;; disappear. It doesn't happen all the time though. Work around this by
-;; setting the margins after a window configuration change.
+;; to a perspective which has a REPL buffer visible, the margins will disappear
+;; when the `selected-window' after the switch is the REPL buffer.
 (defun jupyter-repl-preserve-window-margins ()
   (let ((margins (window-margins)))
     (unless (and margins (= (car margins) jupyter-repl-prompt-margin-width))
