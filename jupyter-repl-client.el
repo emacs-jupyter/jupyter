@@ -214,10 +214,11 @@ erased."
   (declare (indent 1))
   (let ((buffer (make-symbol "buffer")))
     `(let ((,buffer (jupyter-repl-get-doc-buffer ,name)))
-       (with-current-buffer buffer
-         (setq other-window-scroll-buffer (current-buffer))
-         (let ((inhibit-read-only t))
+       (with-current-buffer ,buffer
+         (let ((other-window-scroll-buffer nil)
+               (inhibit-read-only t))
            (erase-buffer)
+           (setq other-window-scroll-buffer (current-buffer))
            ,@body)))))
 
 ;;; Inserting text into the REPL buffer
