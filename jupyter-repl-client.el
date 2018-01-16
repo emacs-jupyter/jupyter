@@ -285,17 +285,9 @@ In addition to fontifying STR, if MODE has a non-default
                  new-prop))))
           (setq pos next))))
     (jupyter-repl-add-font-lock-properties (point-min) (point-max))
-    (cond
-     ((and fill-paragraph-function
-           (not (eq fill-paragraph-function t)))
-      (goto-char (point-min))
-      (fill-paragraph)
-      (while (and (= (fill-forward-paragraph 1) 0)
-                  (/= (point) (point-max)))
-        (fill-paragraph)))
-     ((not (memq fill-forward-paragraph-function
-                 '(forward-paragraph)))
-      (fill-region (point-min) (point-max))))
+    (when (not (memq fill-forward-paragraph-function
+                     '(forward-paragraph)))
+      (fill-region (point-min) (point-max)))
     (buffer-string)))
 
 (defun jupyter-repl-insert (&rest args)
