@@ -560,9 +560,7 @@ buffer, `point-max' is considered the end of the cell."
 The code beginning position is
 
    `jupyter-repl-cell-beginning-position' + 1"
-  (let ((pos (jupyter-repl-cell-beginning-position)))
-    (if pos (1+ pos)
-      (point-min))))
+  (1+ (jupyter-repl-cell-beginning-position)))
 
 (defun jupyter-repl-cell-code-end-position ()
   "Return the end of the current cell's code.
