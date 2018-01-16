@@ -1148,15 +1148,18 @@ elements of MATCHES."
   ;; TODO: Handle cases in the Jupyter repl when
   ;; `company-minimum-prefix-length' is 1 and the prefix is '='
   (let ((types (plist-get metadata :_jupyter_types_experimental)))
-    (let ((matches matches) match)
+    (let ((matches matches)
+          ;; TODO: This may not be the most general way to use start and end
+          (prefix (seq-subseq prefix 0 (- (length prefix)
+                                          (- end start))))
+          match)
       (while (setq match (car matches))
         ;; TODO: Maybe set the match property when it doesn't have the prefix,
         ;; indicating that it should replace part of the prefix?
         (unless (string-prefix-p prefix match)
-          ;; FIXME: Note that prefix is not the code cent to the kernel in some
+          ;; FIXME: Note that prefix is not the code sent to the kernel in some
           ;; cases, but the symbol behind point
-          (setcar matches (concat (seq-subseq prefix (- end start))
-                                  (car matches))))
+          (setcar matches (concat prefix (car matches))))
         ;; (put-text-property 0 1 'match match-start (car matches))
         (setq matches (cdr matches))))
     (when types
