@@ -1326,6 +1326,63 @@ If the current region is active send the current region using
       (jupyter-repl-eval-region (region-beginning) (region-end))
     (jupyter-repl-eval-region (line-beginning-position) (line-end-position))))
 
+;;; Kernel management
+
+(defun jupyter-repl-interrupt-kernel ()
+  "Interrupt the kernel if possible.
+A kernel can be interrupted if it was started using a
+`jupyter-kernel-manager'. See `jupyter-start-new-kernel'."
+  (interactive)
+  (if jupyter-repl-kernel-manager
+      (with-jupyter-repl-buffer jupyter-repl-current-client
+        (message "Interrupting kernel")
+        (jupyter-interrupt-kernel jupyter-repl-kernel-manager))
+    (user-error "Cannot interrupt non-subprocess kernels")))
+
+;; TODO: Make timeouts configurable
+;; TODO: Handle all consequences of a shutdown
+(defun jupyter-repl-restart-kernel (shutdown)
+  "Restart the kernel.
+With a prefix argument, SHUTDOWN the kernel completely instead."
+  (interactive "P")
+  (unless shutdown
+    ;; Gets reset to default value in
+    ;; `jupyter-repl-insert-prompt-when-starting'
+    (jupyter-set
+     jupyter-repl-current-client
+     'jupyter-include-other-output
+     (list (jupyter-get
+            jupyter-repl-current-client
+            'jupyter-include-other-output)))
+    (setq-local jupyter-include-other-output
+                (list jupyter-include-other-output))
+    ;; This may have been set to t due to a non-responsive kernel so make sure
+    ;; that we try again when restarting.
+    (setq-local jupyter-repl-use-builtin-is-complete nil))
+  (if jupyter-repl-kernel-manager
+      (if (jupyter-kernel-alive-p jupyter-repl-kernel-manager)
+          (progn
+            (message "%s kernel..." (if shutdown "Shutting down" "Restarting"))
+            (jupyter-shutdown-kernel jupyter-repl-kernel-manager (not shutdown)))
+        (message "Starting dead kernel...")
+        (jupyter-start-kernel jupyter-repl-kernel-manager))
+    (when (null (jupyter-wait-until-received :shutdown-reply
+                  (jupyter-shutdown-request jupyter-repl-current-client
+                    (not shutdown))))
+      (message "Kernel did not respond to shutdown request"))))
+
+(defun jupyter-repl-display-kernel-buffer ()
+  "Display the kernel processes stdout."
+  (interactive)
+  (if jupyter-repl-kernel-manager
+      (display-buffer (process-buffer (oref jupyter-repl-kernel-manager kernel)))
+    (user-error "Kernel not a subprocess")))
+
+(defun jupyter-repl-restart-channels ()
+  (interactive)
+  (message "Restarting client channels...")
+  (jupyter-stop-channels jupyter-repl-current-client)
+  (jupyter-start-channels jupyter-repl-current-client))
 ;;; `jupyter-repl-mode'
 
 (defvar jupyter-repl-mode-map
