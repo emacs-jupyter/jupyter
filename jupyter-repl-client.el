@@ -1194,7 +1194,15 @@ COMMAND and ARG have the same meaning as the elements of
                   (remove-text-properties 0 (length doc) '(read-only) doc)
                   (when doc (company-doc-buffer doc))))))
 
-(defun jupyter-repl--inspect (code pos &optional timeout)
+(defun jupyter-repl--inspect (code pos &optional buffer timeout)
+  "Send an inspect request to a Jupyter kernel.
+CODE and POS are the code to send and the position within the
+code, respectively. TIMEOUT is how long to wait (in seconds) for
+the kernel to respond. If the kernel does not respond within
+TIMEOUT, return nil. Otherwise if a reply was received within
+TIMEOUT, then return either the inspection text or BUFFER after
+inserting the inspection text in BUFFER. In both cases, the
+inspection text will already be in a form ready for display."
   (let ((msg (jupyter-wait-until-received :inspect-reply
                (jupyter-request-inhibit-handlers
                 (jupyter-inspect-request jupyter-repl-current-client
@@ -1204,9 +1212,12 @@ COMMAND and ARG have the same meaning as the elements of
       (cl-destructuring-bind (&key status found data &allow-other-keys)
           (jupyter-message-content msg)
         (when (and (equal status "ok") found)
-          (with-temp-buffer
-            (jupyter-repl-insert-data data)
-            (buffer-string)))))))
+          (if buffer (with-current-buffer buffer
+                       (jupyter-repl-insert-data data)
+                       buffer)
+            (with-temp-buffer
+              (jupyter-repl-insert-data data)
+              (buffer-string))))))))
 ;;; `jupyter-repl-mode'
 
 (defvar jupyter-repl-mode-map
