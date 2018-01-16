@@ -1383,6 +1383,80 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
   (message "Restarting client channels...")
   (jupyter-stop-channels jupyter-repl-current-client)
   (jupyter-start-channels jupyter-repl-current-client))
+
+;;; Isearch
+;; Adapted from isearch in `comint', see `comint-history-isearch-search' for
+;; details
+
+(defun jupyter-repl-isearch-setup ()
+  (setq-local isearch-search-fun-function
+              #'jupyter-repl-history-isearch-search)
+  (setq-local isearch-wrap-function
+              #'jupyter-repl-history-isearch-wrap)
+  (setq-local isearch-push-state-function
+              #'jupyter-repl-history-isearch-push-state))
+
+;; Adapted from `comint-history-isearch-search'
+(defun jupyter-repl-history-isearch-search ()
+  (lambda (string bound noerror)
+    (let ((search-fun (isearch-search-fun-default)) found)
+      (unless isearch-forward (goto-char (point-max)))
+      (or
+       ;; 1. First try searching in the initial cell text
+       (funcall search-fun string
+                (if isearch-forward bound
+                  (jupyter-repl-cell-code-beginning-position))
+                noerror)
+       ;; 2. If the above search fails, start putting next/prev history
+       ;; elements in the cell successively, and search the string in them. Do
+       ;; this only when bound is nil (i.e. not while lazy-highlighting search
+       ;; strings in the current cell text).
+       (unless bound
+         (condition-case err
+             (progn
+               (while (not found)
+                 (cond (isearch-forward
+                        ;; See the comment in
+                        ;; `jupyter-repl-history-isearch-wrap'
+                        (if (eq (ring-ref jupyter-repl-history -1)
+                                'jupyter-repl-history)
+                            (error "End of history")
+                          (jupyter-repl-history-next))
+                        (goto-char (jupyter-repl-cell-code-beginning-position)))
+                       (t
+                        (jupyter-repl-history-previous)
+                        (goto-char (point-max))))
+                 (setq isearch-barrier (point) isearch-opoint (point))
+                 ;; After putting the next/prev history element, search the
+                 ;; string in them again, until an error is thrown at the
+                 ;; beginning/end of history.
+                 (setq found (funcall search-fun string
+                                      (unless isearch-forward
+                                        (jupyter-repl-cell-code-beginning-position))
+                                      noerror)))
+               ;; Return point of the new search result
+               (point))
+           ;; Return nil on the error "no next/preceding item"
+           (error nil)))))))
+
+(defun jupyter-repl-history-isearch-wrap ()
+  (condition-case nil
+      (if isearch-forward
+          (jupyter-repl-history-next (ring-length jupyter-repl-history) t)
+        (jupyter-repl-history-previous (ring-length jupyter-repl-history) t))
+    (error nil))
+  (jupyter-repl-replace-cell-code (ring-ref jupyter-repl-history 0))
+  (goto-char (if isearch-forward (jupyter-repl-cell-code-beginning-position)
+               (point-max))))
+
+(defun jupyter-repl-history-isearch-push-state ()
+  (let ((elem (ring-ref jupyter-repl-history 0)))
+    (lambda (_cmd)
+      (while (not (eq (ring-ref jupyter-repl-history 0) elem))
+        (if isearch-forward (jupyter-repl-history-next 1 t)
+          (jupyter-repl-history-previous 1 t)))
+      (jupyter-repl-replace-cell-code (ring-ref jupyter-repl-history 0)))))
+
 ;;; `jupyter-repl-mode'
 
 (defvar jupyter-repl-mode-map
@@ -1411,6 +1485,7 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
   (ring-insert jupyter-repl-history 'jupyter-repl-history)
   (erase-buffer)
   (jupyter-repl-interaction-mode)
+  (jupyter-repl-isearch-setup)
   (add-hook 'after-change-functions 'jupyter-repl-after-buffer-change nil t)
   (add-hook 'window-configuration-change-hook 'jupyter-repl-preserve-window-margins nil t))
 
