@@ -251,8 +251,7 @@ kernel. Starting a kernel involves the following steps:
       (jupyter-send session sock "shutdown_request" msg)
       (with-timeout ((or timeout 1)
                      (delete-process (oref manager kernel))
-                     (display-warning
-                      "jupyter" "Kernel did not shutdown by request" :warning))
+                     (message "Kernel did not shutdown by request (%s)" (oref manager name)))
         (while (jupyter-kernel-alive-p manager)
           (sleep-for 0.01)))
       (if restart
@@ -266,7 +265,8 @@ kernel. Starting a kernel involves the following steps:
            (sock (oref (oref manager control-channel) socket))
            (msg (jupyter-message-interrupt-request)))
        (jupyter-send session sock "interrupt_request" msg)
-       (with-timeout ((or timeout 1) (warn "No interrupt reply from kernel"))
+       (with-timeout ((or timeout 1)
+                      (message "No interrupt reply from kernel (%s)" (oref manager name)))
          (while (condition-case nil
                     (prog1 nil (jupyter-recv session sock zmq-NOBLOCK))
                   (zmq-EAGAIN t))
