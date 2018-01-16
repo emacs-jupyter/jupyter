@@ -91,13 +91,15 @@
 (put 'jupyter-repl-current-client 'permanent-local t)
 
 (defvar jupyter-repl-kernel-manager nil
-  "If the REPL is connected to a kernel which was started as a
- subprocess. This will contain the kernel manager used to control
- the lifetime of the kernel.")
+  "The `jupyter-kernel-manager' for the `current-buffer' (if available).
+When the kernel that the `jupyter-repl-client' of the
+`current-buffer' is connected to was started as a subprocess of
+the current Emacs process, this variable will hold the
+`jupyter-kernel-manager' used.")
 (put 'jupyter-repl-kernel-manager 'permanent-local t)
 
 (defvar jupyter-repl-lang-mode nil
-  "The major mode corresponding to the kernel's language.")
+  "The `major-mode' corresponding to the kernel's language.")
 
 (defvar jupyter-repl-history nil
   "The history of the current Jupyter REPL.")
@@ -113,7 +115,7 @@ the buffer local value of this variable is set to t and code in a
 cell is considered complete if the last line in a code cell is a
 blank line, i.e. if RET is pressed twice in a row.")
 
-;;; Convenience macros
+;;; Macros
 
 (defmacro with-jupyter-repl-buffer (client &rest body)
   "Switch to CLIENT's buffer before running BODY.
@@ -191,8 +193,8 @@ A REPL documentation buffer has the following characteristics:
 
 The buffer returned will have a `buffer-name' with the form
 
-    \" *jupyter-repl-NAME*\""
-  (let* ((bname (format " *jupyter-repl-%s*" name))
+    \"*jupyter-repl-NAME*\""
+  (let* ((bname (format "*jupyter-repl-%s*" name))
          (buffer (get-buffer bname)))
     (unless buffer
       (setq buffer (get-buffer-create bname))
@@ -221,26 +223,28 @@ erased."
            (setq other-window-scroll-buffer (current-buffer))
            ,@body)))))
 
-;;; Inserting text into the REPL buffer
+;;; Text insertion
 
 (defun jupyter-repl-add-font-lock-properties (start end &optional object)
   "Add font lock text properties between START and END in the `current-buffer'.
 START, END, and OBJECT have the same meaning as in
-`add-text-properties'. Add the font lock properties needed for
-text inserted into a `jupyter-repl-client's buffer."
+`add-text-properties'. The properties added are the ones that
+mark the text between START and END as fontified according to
+font lock. Any text between START and END that does not have a
+`font-lock-face' property will have the `default' face filled in
+for the property."
   (add-text-properties
    start end '(fontified t font-lock-fontified t font-lock-multiline t) object)
   (font-lock-fillin-text-property
    start end 'font-lock-face 'default object))
 
 (defun jupyter-repl-get-fontify-buffer (mode)
-  "Get the cached buffer used to fontify MODE.
-Consult the `jupyter-repl-fontify-buffers' alist for a buffer
-used for fontification according to MODE and return the buffer
-found. If no buffer exits for MODE in
-`jupyter-repl-fontify-buffers': create a new buffer, set its
-`major-mode' to MODE, add the new buffer to
-`jupyter-repl-fontify-buffers' and return the buffer."
+  "Get the cached buffer used to fontify text for MODE.
+Consult the `jupyter-repl-fontify-buffers' alist for a buffer to
+use for fontification according to MODE and return the buffer
+found. If no buffer exists for MODE: create a new buffer, set its
+`major-mode' to MODE, add it to `juptyer-repl-fontify-buffers',
+and return the buffer."
   (let ((buf (alist-get mode jupyter-repl-fontify-buffers)))
     (unless buf
       (setq buf (get-buffer-create
@@ -252,10 +256,15 @@ found. If no buffer exits for MODE in
 
 (defun jupyter-repl-fontify-according-to-mode (mode str)
   "Fontify a string according to MODE.
-MODE should be a function which sets the `major-mode'. MODE will
-be called with the `current-buffer' set to a temporary buffer,
-STR will then be inserted and fontified. Return the fontified
-string, which can then be inserted into a Jupyter REPL buffer."
+MODE has the same meaning as in
+`jupyter-repl-get-fontify-buffer'. STR is a string that will be
+fontified according to MODE by inserting it into the buffer
+returned by `jupyter-repl-get-fontify-buffer' (erasing any
+contents of the buffer before insertion).
+
+In addition to fontifying STR, if MODE has a non-default
+`fill-forward-paragraph-function', STR will be filled using
+`fill-region'."
   ;; Adapted from `org-src-font-lock-fontify-block'
   (with-current-buffer (jupyter-repl-get-fontify-buffer mode)
     (let ((inhibit-modification-hooks nil))
@@ -559,7 +568,10 @@ The code beginning position is
   "Return the end of the current cell's code.
 The code ending position is
 
-   `jupyter-repl-cell-end-position' - 1"
+   `jupyter-repl-cell-end-position' - 1
+
+In the case of the last cell in the REPL buffer, i.e. an
+unfinalized cell, the code ending position is `point-max'."
   (let ((pos (jupyter-repl-cell-end-position)))
     (if (= pos (point-max)) (point-max)
       (1- pos))))
@@ -636,7 +648,7 @@ ARG is the number of cells to move and defaults to 1."
   (jupyter-repl-previous-cell arg)
   (goto-char (jupyter-repl-cell-code-beginning-position)))
 
-;;; Predicates to determine what kind of line point is in
+;;; Predicates
 
 (defun jupyter-repl-cell-beginning-p (&optional pos)
   "Is POS the beginning of a cell?
