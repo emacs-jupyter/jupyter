@@ -1166,28 +1166,31 @@ COMMAND and ARG have the same meaning as the elements of
     (interactive (company-begin-backend 'company-jupyter-repl))
     (sorted t)
     (prefix (or (jupyter-repl-completion-prefix) 'stop))
-    (candidates (cons
-                 :async
-                 (lambda (cb)
-                   (cl-destructuring-bind (code . pos)
-                       (jupyter-repl-code-context-at-point 'complete arg)
-                     (jupyter-add-callback
-                         ;; Ignore errors during completion
-                         (jupyter-request-inhibit-handlers
-                          (jupyter-complete-request
-                              jupyter-repl-current-client
-                            :code code :pos pos))
-                       :complete-reply
-                       (lambda (msg)
-                         (cl-destructuring-bind (&key status
-                                                      matches metadata
-                                                      cursor_start cursor_end
-                                                      &allow-other-keys)
-                             (jupyter-message-content msg)
-                           (funcall
-                            cb (when (equal status "ok")
-                                 (jupyter-repl-construct-completion-candidates
-                                  arg matches metadata cursor_start cursor_end))))))))))
+    (candidates
+     (cons
+      :async
+      (lambda (cb)
+        (let* ((ctx (jupyter-repl-code-context-at-point 'complete arg))
+               (code (car ctx))
+               (pos (cdr ctx)))
+          (jupyter-add-callback
+              ;; Ignore errors during completion
+              (jupyter-request-inhibit-handlers
+               (jupyter-complete-request
+                   jupyter-repl-current-client
+                 :code code :pos pos))
+            :complete-reply
+            (lambda (msg)
+              (cl-destructuring-bind (&key status
+                                           matches metadata
+                                           cursor_start cursor_end
+                                           &allow-other-keys)
+                  (jupyter-message-content msg)
+                (funcall
+                 cb (when (equal status "ok")
+                      (jupyter-repl-construct-completion-candidates
+                       arg matches metadata cursor_start cursor_end))))))))))
+    (ignore-case t)
     (annotation (get-text-property 0 'annot arg))
     (doc-buffer (let* ((inhibit-read-only t)
                        (buf (jupyter-repl--inspect
