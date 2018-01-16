@@ -92,6 +92,13 @@ Do not add to this hook variable directly, use
     :initform nil
     :documentation "The process which polls for events on all
  live channels of the client.")
+   ;; TODO: Periodically cleanup these buffers when the object they point to
+   ;; are no longer in use. How can we determine if an object has no more
+   ;; references? Maybe do something with `post-gc-hook'?
+   (-buffer
+    :type buffer
+    :documentation "An internal buffer used to store client local
+variables and intermediate ioloop process output.")
    ;; NOTE: With the current implementation all channels except the heartbeat
    ;;       channel actually communicate with the kernel through the ioloop
    ;;       subprocess. This means that the socket field of the channels are
@@ -118,6 +125,10 @@ Do not add to this hook variable directly, use
     :initform nil
     :initarg :stdin-channel
     :documentation "The stdin channel.")))
+
+(cl-defmethod initialize-instance ((client jupyter-kernel-client))
+  (cl-call-next-method)
+  (oset client -buffer (generate-new-buffer " *jupyter-kernel-client*")))
 
 (cl-defmethod jupyter-initialize-connection ((client jupyter-kernel-client)
                                              &optional file-or-plist)
@@ -172,14 +183,18 @@ connection is terminated before initializing."
                  :parent-instance client
                  :endpoint (format "%s:%d" addr port)))))))
 
-;;; Hooks
+;;; Client local variables
 
 (defmacro with-jupyter-client-buffer (client &rest body)
   "Run a form inside CLIENT's IOloop subprocess buffer."
   (declare (indent 1))
   `(progn
      (cl-check-type ,client jupyter-kernel-client)
-     (with-current-buffer (process-buffer (oref ,client ioloop))
+     ;; NOTE: -buffer will be set as the IOLoop process buffer, see
+     ;; `jupyter-start-channels', but we would like to have a buffer available
+     ;; before the ioloop process is started so that client local variables can
+     ;; be set on the buffer.
+     (with-current-buffer (oref ,client -buffer)
        ,@body)))
 
 (defun jupyter-set (client symbol newval)
@@ -192,9 +207,8 @@ connection is terminated before initializing."
   (with-jupyter-client-buffer client
     (symbol-value symbol)))
 
-;; FIXME: Remove the dependency of having the ioloop already present by
-;; pre-defining a buffer for the CLIENT before starting its channels. Then
-;; associate the buffer with the ioloop when the channels are started.
+;;; Hooks
+
 (defun jupyter-add-hook (client hook function &optional append)
   "Add to the CLIENT value of HOOK the function FUNCTION.
 APPEND has the same meaning as in `add-hook' and FUNCTION is
@@ -489,8 +503,6 @@ in CLIENT."
    ((cl-loop for type in '("exited" "failed" "finished" "killed" "deleted")
              thereis (string-prefix-p type event))
     (jupyter-stop-channel (oref client hb-channel))
-    (when (process-buffer ioloop)
-      (kill-buffer (process-buffer ioloop)))
     (oset client ioloop nil))))
 
 (defun jupyter--ioloop-filter (client event)
@@ -558,9 +570,9 @@ for the heartbeat channel."
     (let ((ioloop (zmq-start-process
                    (jupyter--ioloop client)
                    (apply-partially #'jupyter--ioloop-filter client)
-                   (apply-partially #'jupyter--ioloop-sentinel client))))
+                   (apply-partially #'jupyter--ioloop-sentinel client)
+                   (oref client -buffer))))
       (oset client ioloop ioloop)
-      (set-process-buffer ioloop (generate-new-buffer " *jupyter-kernel-client*"))
       (when hb (jupyter-start-channel (oref client hb-channel)))
       (unless shell
         (zmq-subprocess-send ioloop '(stop-channel :shell)))
