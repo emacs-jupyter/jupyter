@@ -1519,6 +1519,89 @@ Set the execution-count slot of `jupyter-repl-current-client' to
                              (1+ (jupyter-message-get msg :execution_count)))))
     (jupyter-wait-until-idle req)))
 
+;;; `jupyter-repl-interaction-mode'
+
+(defun jupyter-repl-pop-to-buffer ()
+  "Switch to the REPL buffer associated with `jupyter-repl-current-client'."
+  (interactive)
+  (with-jupyter-repl-buffer jupyter-repl-current-client
+    (goto-char (point-max))
+    (pop-to-buffer (current-buffer))))
+
+(defun jupyter-repl-available-repl-buffers (&optional mode)
+  "Get a list of REPL buffers that are connected to live kernels.
+If MODE is non-nil, return REPL buffers connected to MODE's
+language. MODE should be the `major-mode' used to edit files of
+one of the Jupyter kernel languages."
+  (delq nil (mapcar (lambda (b)
+                 (with-current-buffer b
+                   (and (eq major-mode 'jupyter-repl-mode)
+                        (if mode (eq mode jupyter-repl-lang-mode) t)
+                        (or (condition-case nil
+                                ;; Check if the kernel is local
+                                (jupyter-kernel-alive-p
+                                 (oref jupyter-repl-current-client
+                                       parent-instance))
+                              (error nil))
+                            (jupyter-hb-beating-p
+                             (oref jupyter-repl-current-client hb-channel)))
+                        (buffer-name b))))
+               (buffer-list))))
+
+;;;###autoload
+(defun jupyter-repl-associate-buffer (client)
+  "Associate the `current-buffer' with a REPL CLIENT.
+The `current-buffer's `major-mode' must be the
+`jupyter-repl-lang-mode' of the CLIENT. CLIENT can either be a
+`jupyter-repl-client' or a buffer with a non-nil
+`jupyter-repl-current-client'. The buffer-local value of
+`jupyter-repl-current-client' in the `current-buffer' is set to
+that of CLIENT."
+  (interactive
+   (list
+    (completing-read
+     "jupyter-repl: "
+     (or (jupyter-repl-available-repl-buffers major-mode)
+         (error "No live REPL for `current-buffer's `major-mode'"))
+     nil t)))
+  (setq client (if (or (bufferp client) (stringp client))
+                   (with-current-buffer client
+                     jupyter-repl-current-client)
+                 client))
+  (cl-check-type client jupyter-repl-client)
+  (setq-local jupyter-repl-current-client client)
+  (setq-local jupyter-repl-kernel-manager (with-jupyter-repl-buffer client
+                                            jupyter-repl-kernel-manager))
+  (jupyter-repl-interaction-mode))
+
+(defvar jupyter-repl-interaction-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "C-c C-c") #'jupyter-repl-eval-line-or-region)
+    (define-key map (kbd "C-c C-f") #'jupyter-repl-inspect-at-point)
+    (define-key map (kbd "C-c C-r") #'jupyter-repl-restart-kernel)
+    (define-key map (kbd "C-c R") #'jupyter-repl-restart-channels)
+    (define-key map (kbd "C-c C-i") #'jupyter-repl-interrupt-kernel)
+    (define-key map (kbd "C-c C-z") #'jupyter-repl-pop-to-buffer)
+    map))
+
+(define-minor-mode jupyter-repl-interaction-mode
+  "Minor mode for interacting with a Jupyter REPL."
+  :group 'jupyter-repl
+  :lighter " JuPy"
+  :init-value nil
+  :keymap jupyter-repl-interaction-map
+  (if jupyter-repl-interaction-mode
+      (when (boundp 'company-mode)
+        (unless (cl-find-if
+                 (lambda (x) (or (and (listp x) (memq 'company-jupyter-repl x))
+                            (eq x 'company-jupyter-repl)))
+                 company-backends)
+          (setq-local company-backends
+                      (cons 'company-jupyter-repl company-backends))))
+    (when (boundp 'company-mode)
+      (setq-local company-backends
+                  (delq 'company-jupyter-repl company-backends)))))
+
 (defun run-jupyter-repl (kernel-name)
   "Run a Jupyter REPL connected to a kernel named KERNEL-NAME.
 KERNEL-NAME can be the prefix of an available kernel name, in
