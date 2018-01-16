@@ -1219,6 +1219,8 @@ COMMAND and ARG have the same meaning as the elements of
                        (point-max) (point-min) '(read-only)))
                     buf)))))
 
+;;; Inspection
+
 (defun jupyter-repl--inspect (code pos &optional buffer timeout)
   "Send an inspect request to a Jupyter kernel.
 CODE and POS are the code to send and the position within the
@@ -1243,6 +1245,28 @@ inspection text will already be in a form ready for display."
             (with-temp-buffer
               (jupyter-repl-insert-data data)
               (buffer-string))))))))
+
+(defun jupyter-repl-inspect-at-point ()
+  (interactive)
+  (cl-destructuring-bind (code . pos)
+      (jupyter-repl-code-context-at-point 'inspect)
+    ;; Set the default value of the client for
+    ;; `jupyter-jupyter-repl-doc-buffer'
+    (let ((client jupyter-repl-current-client))
+      (with-jupyter-repl-doc-buffer "inspect"
+        ;; TODO: Cleanup how `jupyter-repl--inspect' works, make it more clear
+        ;; that `current-buffer' here means to insert the inspected result in
+        ;; the current buffer.
+        ;;
+        ;; TODO: Figure out why setting this outside
+        ;; `with-jupyter-repl-doc-buffer' doesn't work. Possibly to do with
+        ;; this variable being `permanent-local'?
+        (let ((jupyter-repl-current-client client))
+          (if (not (jupyter-repl--inspect code pos (current-buffer)))
+              (message "Inspect timed out")
+            ;; TODO: Customizable action
+            (display-buffer (current-buffer))
+            (set-window-start (get-buffer-window) (point-min))))))))
 ;;; `jupyter-repl-mode'
 
 (defvar jupyter-repl-mode-map
