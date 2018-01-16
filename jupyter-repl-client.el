@@ -664,7 +664,16 @@ POS defaults to `point'."
                                               'jupyter-cell))
                       'out))))))
 
-;;; Getting/manipulating the code of a cell
+(defun jupyter-repl-cell-finalized-p ()
+  "Has the current cell been finalized?
+A cell is considered finalized when `jupyter-repl-finalize-cell'
+has been previously called for it. After a call to
+`jupyter-repl-finalize-cell', `jupyter-repl-cell-end-p' will
+return a non-nil value for the `jupyter-repl-cell-end-position'."
+  (jupyter-repl-cell-end-p
+   (jupyter-repl-cell-end-position)))
+
+;;; Buffer text manipulation
 
 (defun jupyter-repl-cell-code ()
   "Get the code of the current cell."
