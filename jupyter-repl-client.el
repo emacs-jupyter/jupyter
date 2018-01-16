@@ -562,30 +562,31 @@ The code ending position is
   "Go to the start of the next cell.
 Optional argument N is the number of times to move to the next
 cell. N defaults to 1."
-  (interactive "N")
-  (setq N (or N 1))
-  (let ((dir (if (> N 0) 'forward 'backward)))
-    (if (> N 0) (setq fun #'next-single-property-change)
-      (setq N (abs N)
-            fun #'previous-single-property-change))
-    (catch 'done
-      (while (> N 0)
-        (let ((pos (funcall fun (point) 'jupyter-cell)))
-          (while (and pos (not (jupyter-repl-cell-beginning-p pos)))
-            (setq pos (funcall fun pos 'jupyter-cell)))
-          (if pos (progn
-                    (goto-char pos)
-                    (setq N (1- N)))
-            (goto-char (if (eq dir 'forward) (point-max)
-                         (point-min)))
-            (throw 'done t)))))
-    N))
+  (or N (setq N 1))
+  (catch 'done
+    (while (> N 0)
+      (let ((pos (next-single-property-change (point) 'jupyter-cell)))
+        (while (and pos (not (jupyter-repl-cell-beginning-p pos)))
+          (setq pos (next-single-property-change pos 'jupyter-cell)))
+        (unless (when pos (goto-char pos) (setq N (1- N)))
+          (goto-char (point-max))
+          (throw 'done t)))))
+  N)
 
 (defun jupyter-repl-previous-cell (&optional N)
   "Go to the start of the previous cell.
 Optional argument N is the number of times to move to the
 previous cell. N defaults to 1."
-  (jupyter-repl-next-cell (- (or N 1))))
+  (or N (setq N 1))
+  (catch 'done
+    (while (> N 0)
+      (let ((pos (previous-single-property-change (point) 'jupyter-cell)))
+        (while (and pos (not (jupyter-repl-cell-beginning-p pos)))
+          (setq pos (previous-single-property-change pos 'jupyter-cell)))
+        (unless (when pos (goto-char pos) (setq N (1- N)))
+          (goto-char (point-min))
+          (throw 'done t)))))
+  N)
 
 (defun jupyter-repl-goto-cell (req)
   "Go to the cell beginning position of REQ.
