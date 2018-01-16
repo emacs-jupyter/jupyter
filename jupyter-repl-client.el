@@ -389,7 +389,8 @@ image."
   (jupyter-repl-insert text))
 
 (defun jupyter-repl-insert-data (data)
-  (let ((mimetypes (seq-filter #'keywordp data)))
+  (let ((mimetypes (cl-loop for (k d) on data by #'cddr
+                            when (and d (not (equal d ""))) collect k)))
     (cond
      ((memq :image/png mimetypes)
       (insert-image
