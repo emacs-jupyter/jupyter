@@ -106,6 +106,8 @@ to connect to MANAGER's kernel."
   (cond
    ((cl-loop for type in '("exited" "failed" "finished" "killed" "deleted")
              thereis (string-prefix-p type event))
+    (and (buffer-live-p (process-buffer kernel))
+         (kill-buffer (process-buffer kernel)))
     (when (file-exists-p (oref manager conn-file))
       (delete-file (oref manager conn-file)))
     (oset manager kernel nil)
@@ -134,7 +136,9 @@ Return the newly created kernel process."
            process-environment))
          (proc (apply #'start-process
                       (format "jupyter-kernel-%s" kernel-name)
-                      nil (car args) (cdr args))))
+                      (generate-new-buffer
+                       (format " *jupyter-kernel[%s]*" kernel-name))
+                      (car args) (cdr args))))
     (prog1 proc
       (set-process-sentinel
        proc (apply-partially #'jupyter--kernel-sentinel manager)))))
