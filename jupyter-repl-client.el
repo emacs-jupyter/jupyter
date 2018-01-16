@@ -1119,7 +1119,11 @@ is actually sent to the kernel."
            ;; No completion in finalized cells
            (not (get-text-property (point) 'read-only))
            (if (or (looking-at "\\_>")
-                   (looking-back "\\.\\|->\\|::" 2))
+                   ;; TODO: What about other operators like :: and ->, this
+                   ;; most likely will depend on the kernel in use.
+                   ;; `jupyter-repl-lang-mode' can be used here with some alist
+                   ;; mapping modes to operators.
+                   (looking-back "\\." 2))
                (buffer-substring
                 (save-excursion
                   (skip-syntax-backward "w_.")
