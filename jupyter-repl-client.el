@@ -851,15 +851,18 @@ lines then truncate it to something less than
       (jupyter-repl-insert (concat prompt value))
       (jupyter-repl-newline))))
 
-(defun jupyter-repl-history-next (&optional n)
+(defun jupyter-repl-history-next (&optional n no-replace)
   "Go to the next history element.
 Navigate through the REPL history to the next (newer) history
 element and insert it as the last code cell. For N positive move
 forward in history that many times. If N is negative, move to
-older history elements."
+older history elements.
+
+If NO-REPLACE is non-nil, don't insert the history element in the
+REPL buffer."
   (interactive "p")
   (or n (setq n 1))
-  (if (< n 0) (jupyter-repl-history-previous (- n))
+  (if (< n 0) (jupyter-repl-history-previous (- n) no-replace)
     (goto-char (point-max))
     (if (cl-loop
          repeat n
@@ -871,19 +874,23 @@ older history elements."
                  (ring-ref jupyter-repl-history 0))
           (jupyter-repl-replace-cell-code ""))
          ((equal (jupyter-repl-cell-code) "")
-          (message "Beginning of history"))
+          (error "End of history"))
          (t))
-      (jupyter-repl-replace-cell-code
-       (ring-ref jupyter-repl-history 0)))))
+      (unless no-replace
+        (jupyter-repl-replace-cell-code
+         (ring-ref jupyter-repl-history 0))))))
 
-(defun jupyter-repl-history-previous (&optional n)
+(defun jupyter-repl-history-previous (&optional n no-replace)
   "Go to the previous history element.
 Similar to `jupyter-repl-history-next' but for older history
 elements. If N is negative in this case, move to newer history
-elements."
+elements.
+
+If NO-REPLACE is non-nil, don't insert the history element in the
+REPL buffer."
   (interactive "p")
   (or n (setq n 1))
-  (if (< n 0) (jupyter-repl-history-next (- n))
+  (if (< n 0) (jupyter-repl-history-next (- n) no-replace)
     (goto-char (point-max))
     (if (not (equal (jupyter-repl-cell-code)
                     (ring-ref jupyter-repl-history 0)))
@@ -893,9 +900,10 @@ elements."
            thereis (eq (ring-ref jupyter-repl-history 1) 'jupyter-repl-history)
            do (ring-insert-at-beginning
                jupyter-repl-history (ring-remove jupyter-repl-history 0)))
-          (message "End of history")
-        (jupyter-repl-replace-cell-code
-         (ring-ref jupyter-repl-history 0))))))
+          (error "Beginning of history")
+        (unless no-replace
+          (jupyter-repl-replace-cell-code
+           (ring-ref jupyter-repl-history 0)))))))
 
 (cl-defmethod jupyter-handle-history-reply ((client jupyter-repl-client) req history)
   (with-jupyter-repl-buffer client
