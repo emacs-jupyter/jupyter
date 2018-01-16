@@ -337,7 +337,8 @@ un-paused."
       (unless (oref km kernel-info)
         (jupyter-stop-channels kc)
         (jupyter-stop-channels km)
-        (delete-process (oref km kernel))))))
+        (when (processp (oref km kernel))
+          (delete-process (oref km kernel)))))))
 
 (provide 'jupyter-kernel-manager)
 
