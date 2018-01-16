@@ -580,10 +580,10 @@ for the heartbeat channel."
 (cl-defmethod jupyter-channels-running-p ((client jupyter-kernel-client))
   "Are any channels of CLIENT alive?"
   (cl-loop
-   for channel in (list 'shell-channel
-                        'iopub-channel
-                        'hb-channel
-                        'stdin-channel)
+   for channel in '(shell-channel
+                    iopub-channel
+                    hb-channel
+                    stdin-channel)
    ;; FIXME: This does not work with the current implementation of channels
    thereis (jupyter-channel-alive-p (slot-value client channel))))
 
