@@ -693,7 +693,6 @@ REQ is the `jupyter-request' to associate with the current cell.
 Finalizing a cell involves the following steps:
 
 - Associate REQ with the cell
-- Show the cell as busy
 - Move `point' to the location where the next input cell can be
   inserted
 - Add the text property which marks the end of a cell
@@ -701,7 +700,6 @@ Finalizing a cell involves the following steps:
   (let ((beg (jupyter-repl-cell-beginning-position))
         (count (jupyter-repl-cell-count)))
     (remove-text-properties beg (1+ beg) '(rear-nonsticky))
-    (jupyter-repl-cell-mark-busy)
     (goto-char (point-max))
     (jupyter-repl-newline)
     (add-text-properties
@@ -767,6 +765,7 @@ lines then truncate it to something less than
                   :user-expressions user-expressions :allow-stdin allow-stdin
                   :stop-on-error stop-on-error)))
         (jupyter-repl-without-continuation-prompts
+         (jupyter-repl-cell-mark-busy)
          (jupyter-repl-finalize-cell req)
          (jupyter-repl-insert-prompt 'in))
         req))))
