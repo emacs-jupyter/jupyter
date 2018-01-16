@@ -765,16 +765,15 @@ are taken:
 PROMPT is the prompt the kernel would like to show the user. If
 PASSWORD is non-nil, then `read-passwd' is used to get input from
 the user. Otherwise `read-from-minibuffer' is used."
-  ;; TODO: Allow for quiting the input request. In this case, I suppose send an
-  ;; interrupt request to the kernel
-  (let ((channel (oref client stdin-channel))
-        (msg (jupyter-message-input-reply
-              :value (funcall (if password #'read-passwd
-                                #'read-from-minibuffer)
-                              prompt))))
-    ;; TODO: Check for 'allow_stdin'
-    ;; http://jupyter-client.readthedocs.io/en/latest/messaging.html#stdin-messages
-    (jupyter-send client channel "input_reply" msg)))
+  (let* ((channel (oref client stdin-channel))
+         (value nil)
+         (msg (jupyter-message-input-reply
+               :value (condition-case nil
+                          (if password (read-passwd prompt)
+                            (setq value (read-from-minibuffer prompt)))
+                        (quit "")))))
+    (jupyter-send client channel "input_reply" msg)
+    (or value "")))
 
 ;;; SHELL handlers
 
