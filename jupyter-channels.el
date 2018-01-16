@@ -251,7 +251,7 @@ connected."
                    (setq sent nil)
                    (if (condition-case nil
                            (zmq-recv sock zmq-NOBLOCK)
-                         (zmq-EAGAIN nil))
+                         ((zmq-EINTR zmq-EAGAIN) nil))
                        (oset channel beating t)
                      (oset channel beating nil)
                      (zmq-socket-set sock zmq-LINGER 0)
