@@ -372,6 +372,12 @@ image."
      ;; Use the default method for creating image files
      org-preview-latex-default-process)))
 
+(defun jupyter-repl-insert-ansi-coded-text (text)
+  "Insert TEXT, converting ANSI color codes to font lock faces."
+  (setq text (xterm-color-filter text))
+  (jupyter-repl-add-font-lock-properties 0 (length text) text)
+  (jupyter-repl-insert text))
+
 (defun jupyter-repl-insert-data (data)
   (let ((mimetypes (seq-filter #'keywordp data)))
     (cond
@@ -398,11 +404,10 @@ image."
      ((and (memq :text/markdown mimetypes) (require 'markdown-mode nil t))
       (jupyter-repl-insert-markdown (plist-get data :text/markdown)))
      ((memq :text/plain mimetypes)
-      (let ((text (xterm-color-filter (plist-get data :text/plain))))
-        (jupyter-repl-add-font-lock-properties 0 (length text) text)
-        (jupyter-repl-insert text)
-        (jupyter-repl-newline)))
-     (t (error "No supported mimetype found %s" mimetypes)))))
+      (jupyter-repl-insert-ansi-coded-text
+       (plist-get data :text/plain))
+      (jupyter-repl-newline))
+     (t (warn "No supported mimetype found %s" mimetypes)))))
 
 ;;; Prompt
 
@@ -823,9 +828,7 @@ lines then truncate it to something less than
 
 (cl-defmethod jupyter-handle-stream ((client jupyter-repl-client) req name text)
   (jupyter-repl-do-at-request client req
-    (let ((s (xterm-color-filter text)))
-      (jupyter-repl-add-font-lock-properties 0 (length s) s)
-      (jupyter-repl-insert s))))
+    (jupyter-repl-insert-ansi-coded-text text)))
 
 (cl-defmethod jupyter-handle-error ((client jupyter-repl-client)
                                     req ename evalue traceback)
