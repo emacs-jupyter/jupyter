@@ -1639,20 +1639,22 @@ Set the execution-count slot of `jupyter-repl-current-client' to
 If MODE is non-nil, return REPL buffers connected to MODE's
 language. MODE should be the `major-mode' used to edit files of
 one of the Jupyter kernel languages."
-  (delq nil (mapcar (lambda (b)
-                 (with-current-buffer b
-                   (and (eq major-mode 'jupyter-repl-mode)
-                        (if mode (eq mode jupyter-repl-lang-mode) t)
-                        (or (condition-case nil
-                                ;; Check if the kernel is local
-                                (jupyter-kernel-alive-p
-                                 (oref jupyter-repl-current-client
-                                       parent-instance))
-                              (error nil))
-                            (jupyter-hb-beating-p
-                             (oref jupyter-repl-current-client hb-channel)))
-                        (buffer-name b))))
-               (buffer-list))))
+  (delq
+   nil
+   (mapcar (lambda (b)
+        (with-current-buffer b
+          (and (eq major-mode 'jupyter-repl-mode)
+               (if mode (eq mode jupyter-repl-lang-mode) t)
+               (or (condition-case nil
+                       ;; Check if the kernel is local
+                       (jupyter-kernel-alive-p
+                        (oref jupyter-repl-current-client parent-instance))
+                     (error nil))
+                   (let ((hb (oref jupyter-repl-current-client hb-channel)))
+                     (and (and (jupyter-channel-alive-p hb))
+                          (jupyter-hb-beating-p hb))))
+               (buffer-name b))))
+      (buffer-list))))
 
 ;;;###autoload
 (defun jupyter-repl-associate-buffer (client)
