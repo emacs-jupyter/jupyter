@@ -136,6 +136,12 @@ variables and intermediate ioloop process output.")
   (cl-call-next-method)
   (oset client -buffer (generate-new-buffer " *jupyter-kernel-client*")))
 
+(cl-defmethod destructor ((client jupyter-kernel-client) &rest _params)
+  "Close CLIENT's channels and cleanup internal resources."
+  (jupyter-stop-channels client)
+  (when (buffer-live-p (oref client -buffer))
+    (kill-buffer (oref client -buffer))))
+
 (defun jupyter-initialize-connection (client &optional file-or-plist)
   "Initialize CLIENT with a connection FILE-OR-PLIST.
 When FILE-OR-PLIST is a file name, read the JSON connection

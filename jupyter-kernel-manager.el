@@ -72,6 +72,13 @@ default kernel is a python kernel."
   (unless (slot-boundp manager 'name)
     (oset manager name "python")))
 
+(cl-defmethod destructor ((manager jupyter-kernel-manager) &rest _params)
+  "Kill the kernel of MANAGER and stop its channels."
+  ;; See `jupyter--kernel-sentinel' for other cleanup
+  (when (processp (oref manager kernel))
+    (delete-process (oref manager kernel)))
+  (jupyter-stop-channels manager))
+
 (cl-defmethod slot-unbound ((manager jupyter-kernel-manager) _class slot-name _fn)
   "Set default values for the SESSION and CONN-INFO slots of MANAGER.
 When a MANAGER's `jupyter-connection' slots are missing set them
@@ -333,11 +340,8 @@ un-paused."
             (if info (oset km info (jupyter-message-content info))
               (error "Kernel did not respond to kernel-info request")))
           (cons km kc))
-      (unless (oref km kernel-info)
-        (jupyter-stop-channels kc)
-        (jupyter-stop-channels km)
-        (when (processp (oref km kernel))
-          (delete-process (oref km kernel)))))))
+      (destructor kc)
+      (destructor km))))
 
 (provide 'jupyter-kernel-manager)
 
