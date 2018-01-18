@@ -1043,13 +1043,22 @@ kernel that the REPL buffer is connected to."
                     (jupyter-shutdown-kernel jupyter-repl-kernel-manager)))
               t))))
 
-;; FIXME: Sometimes when using packages like `perspective', upon switching back
-;; to a perspective which has a REPL buffer visible, the margins will disappear
-;; when the `selected-window' after the switch is the REPL buffer.
-(defun jupyter-repl-preserve-window-margins ()
-  (let ((margins (window-margins)))
-    (unless (and margins (= (car margins) jupyter-repl-prompt-margin-width))
-      (set-window-margins nil jupyter-repl-prompt-margin-width))))
+;; FIXME: This is necessary due to some interaction with other packages (I
+;; think). Sometimes the margins will disappear after the window configuration
+;; changes which is why `window-configuration-change-hook' is not used.
+(defun jupyter-repl-preserve-window-margins (&optional window)
+  "Ensure that the margins of a REPL window are present.
+This function is added as a hook to `pre-redisplay-functions' to
+ensure that a REPL windows margins are present. If WINDOW is
+showing a REPL buffer and the margins are not set to
+`jupyter-repl-prompt-margin-width', set them to the proper
+value."
+  (when (and (eq major-mode 'jupyter-repl-mode)
+             (let ((margins (window-margins window)))
+               (not (and (consp margins)
+                         (car margins)
+                         (= (car margins) jupyter-repl-prompt-margin-width)))))
+    (set-window-buffer window (current-buffer))))
 
 ;;; Completion
 
@@ -1515,7 +1524,7 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
   (jupyter-repl-isearch-setup)
   (add-hook 'kill-buffer-query-functions #'jupyter-repl-kill-buffer-query-function nil t)
   (add-hook 'after-change-functions 'jupyter-repl-after-buffer-change nil t)
-  (add-hook 'window-configuration-change-hook 'jupyter-repl-preserve-window-margins nil t))
+  (add-hook 'pre-redisplay-functions 'jupyter-repl-preserve-window-margins nil t))
 
 (defun jupyter-repl-initialize-fontification ()
   (let (fld)
