@@ -676,13 +676,13 @@ POS defaults to `point'."
 
 (defun jupyter-repl-cell-line-p ()
   "Is the current line a cell input line?"
-  ;; TODO: Better predicate
-  (or (overlays-at (point-at-eol))
-      (when (>= (1- (point-at-bol)) (point-min))
-        (and (overlays-at (1- (point-at-bol)))
-             (not (eq (car (get-text-property (1- (point-at-bol))
-                                              'jupyter-cell))
-                      'out))))))
+  (let ((pos (point)))
+    (save-excursion
+      (unless (= (point) (jupyter-repl-cell-beginning-position))
+        (jupyter-repl-previous-cell))
+      (<= (jupyter-repl-cell-code-beginning-position)
+          pos
+          (jupyter-repl-cell-code-end-position)))))
 
 (defun jupyter-repl-cell-finalized-p ()
   "Has the current cell been finalized?
