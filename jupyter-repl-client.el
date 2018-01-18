@@ -876,18 +876,31 @@ lines then truncate it to something less than
                                            (pop-up-windows . t)))))))
 
 (cl-defmethod jupyter-handle-error ((client jupyter-repl-client)
-                                    req ename evalue traceback)
-  (jupyter-repl-do-at-request client req
-    (save-excursion
-      ;; `point' is at the cell beginning of the next cell after REQ,
-      ;; `jupyter-repl-previous-cell' will take us back to the start of the
-      ;; cell corresponding to REQ.
-      (jupyter-repl-previous-cell)
-      (jupyter-repl-cell-unmark-busy))
-    (let ((s (mapconcat #'xterm-color-filter traceback "\n")))
-      (jupyter-repl-add-font-lock-properties 0 (length s) s)
-      (jupyter-repl-insert s))
-    (jupyter-repl-newline)))
+                                    req ename _evalue traceback)
+  ;; When the request is from us
+  (when req
+    (jupyter-repl-do-at-request client req
+      (save-excursion
+        ;; `point' is at the cell beginning of the next cell after REQ,
+        ;; `jupyter-repl-previous-cell' will take us back to the start of the
+        ;; cell corresponding to REQ.
+        (jupyter-repl-previous-cell)
+        (jupyter-repl-cell-unmark-busy))
+      (when traceback
+        (let ((pos (point)))
+          (jupyter-repl-insert-ansi-coded-text
+           (mapconcat #'identity traceback "\n"))
+          (when (eq jupyter-repl-lang-mode 'python-mode)
+            ;; Fix spacing between error name and Traceback
+            (save-excursion
+              (goto-char pos)
+              (when (search-forward ename nil t)
+                (let ((len (- (length jupyter-repl-error-prefix)
+                              (- (point) (line-beginning-position))
+                              (- (line-end-position) (point)))))
+                  (jupyter-repl-insert
+                   (make-string (if (> len 4) len 4) ? )))))))
+        (jupyter-repl-newline)))))
 
 (cl-defmethod jupyter-handle-input-reply ((client jupyter-repl-client) req prompt password)
   (jupyter-repl-do-at-request client req
