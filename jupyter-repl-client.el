@@ -68,6 +68,10 @@
   "Maximum number of lines before the buffer is truncated."
   :group 'jupyter-repl)
 
+(defcustom jupyter-repl-maximum-is-complete-timeout 2
+  "Maximum number of seconds to wait for a is-complete reply."
+  :group 'jupyter-repl)
+
 (defcustom jupyter-repl-history-maximum-length 100
   "The maximum number of history elements to keep track of."
   :group 'jupyter-repl)
@@ -978,7 +982,8 @@ execute the current cell."
                          :is-complete-reply
                        (jupyter-is-complete-request
                            jupyter-repl-current-client
-                         :code (jupyter-repl-cell-code)))))
+                         :code (jupyter-repl-cell-code))
+                       jupyter-repl-maximum-is-complete-timeout)))
             (unless res
               (message "Kernel did not respond to is-complete-request, using built-in is-complete")
               (setq-local jupyter-repl-use-builtin-is-complete t)
