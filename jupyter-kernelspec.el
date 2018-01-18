@@ -106,6 +106,45 @@ Optional argument REFRESH has the same meaning as in
     (delq nil (mapcar (lambda (s) (and (string-prefix-p prefix (car s)) s))
                  (jupyter-available-kernelspecs refresh)))))
 
+(defun jupyter-completing-read-kernelspec (&optional refresh)
+  "Use `completing-read' to select a kernel and return its kernelspec.
+The returned kernelspec has the form
+
+    (KERNEL-NAME . (DIRECTORY . PLIST))
+
+where KERNEL-NAME is the name of the kernel, DIRECTORY is the
+resource directory of the kernel, and PLIST is the kernelspec
+plist.
+
+Optional argument REFRESH has the same meaning as in
+`jupyter-available-kernelspecs'."
+  (let* ((specs (jupyter-available-kernelspecs refresh))
+         (display-names (mapcar (lambda (k) (plist-get (cddr k) :display_name))
+                           specs))
+         (name (completing-read "kernel: " display-names)))
+    (nth (- (length display-names)
+            (length (member name display-names)))
+         specs)))
+
+(defun jupyter-kernelspecs-for-mode (&optional mode refresh)
+  "Attempt to find available kernelspecs for MODE.
+MODE should be a major mode symbol and defautls to `major-mode'.
+REFRESH has the same meaning as in
+`jupyter-available-kernelspecs'. Return a list of available
+kernelspecs or nil if none could be found. Note that this does
+not mean that no kernel exists for MODE.
+
+Currently this just concatenates the kernelspec language name
+with `-mode' to see if `major-mode' is equivalent. This is
+sufficient for `python' and `julia' kernels using their standard
+major modes, but most likely will fail for other cases."
+  (cl-loop
+   for x in (jupyter-available-kernelspecs refresh)
+   for (_k . (_d . spec)) = x
+   for language = (plist-get spec :language)
+   ;; attempt to match the major mode to a spec
+   if (eq (intern (concat language "-mode")) (or mode major-mode)) collect x))
+
 (provide 'jupyter-kernelspec)
 
 ;;; jupyter-kernelspec.el ends here
