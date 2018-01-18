@@ -706,12 +706,11 @@ return a non-nil value for the `jupyter-repl-cell-end-position'."
     (let (lines)
       (save-excursion
         (goto-char (jupyter-repl-cell-code-beginning-position))
-        (push (buffer-substring-no-properties (point-at-bol) (point-at-eol))
+        (push (buffer-substring-no-properties (point) (point-at-eol))
               lines)
         (while (and (line-move-1 1 'noerror)
                     (jupyter-repl-cell-line-p))
-          (push (buffer-substring-no-properties (point-at-bol) (point-at-eol))
-                lines))
+          (push (buffer-substring-no-properties (point-at-bol) (point-at-eol)) lines))
         (mapconcat #'identity (nreverse lines) "\n")))))
 
 (defun jupyter-repl-cell-code-position ()
