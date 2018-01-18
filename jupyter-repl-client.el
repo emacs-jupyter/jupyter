@@ -615,9 +615,11 @@ cell. N defaults to 1."
   N)
 
 (defun jupyter-repl-previous-cell (&optional N)
-  "Go to the start of the previous cell.
-Optional argument N is the number of times to move to the
-previous cell. N defaults to 1."
+  "Go to the start of the current of previous cell.
+If `point' is already at the start of the current cell, go to the
+start of the previous cell. Otherwise go to the start of the
+current cell. Optional argument N is the number of times to move
+to the previous cell. N defaults to 1."
   (or N (setq N 1))
   (catch 'done
     (while (> N 0)
@@ -692,11 +694,10 @@ POS defaults to `point'."
 (defun jupyter-repl-cell-finalized-p ()
   "Has the current cell been finalized?
 A cell is considered finalized when `jupyter-repl-finalize-cell'
-has been previously called for it. After a call to
-`jupyter-repl-finalize-cell', `jupyter-repl-cell-end-p' will
-return a non-nil value for the `jupyter-repl-cell-end-position'."
-  (jupyter-repl-cell-end-p
-   (jupyter-repl-cell-end-position)))
+has been previously called for it. `jupyter-repl-finalize-cell'
+is responsible for adding the text properties which cause
+`jupyter-repl-cell-end-p' to return non-nil."
+  (jupyter-repl-cell-end-p (jupyter-repl-cell-end-position)))
 
 ;;; Buffer text manipulation
 
@@ -1135,7 +1136,9 @@ to the contents of the current code cell."
 Returns the required context depending on TYPE which can be
 either `inspect' or `complete'. If TYPE is `inspect' return an
 appropriate context for an inspect request. If TYPE is `complete'
-return an appropriate context for a completion request.
+return an appropriate context for a completion request. PREFIX
+should be the prefix of the completion when TYPE is `complete'.
+PREFIX is unused when TYPE is `inspect'.
 
 The context also depends on the `major-mode' of the
 `current-buffer'. If the `current-buffer' is a
@@ -1161,9 +1164,9 @@ code cell. Otherwise its either the line up to `point' if TYPE is
           ;;
           ;;     In [1]: foo|
           ;;
-          ;; The cell code position will be at position 4, i.e. where the cursor
-          ;; is at, but the cell code will only be 3 characters long. This is the
-          ;; reason for the check on pos.
+          ;; The cell code position will be at position 4, i.e. where the
+          ;; cursor is at, but the cell code will only be 3 characters long.
+          ;; This is the reason for the check on pos.
           (cons code (if (> pos (length code)) (length code) pos))))
     (cons (buffer-substring (line-beginning-position)
                             (cl-case type
@@ -1200,19 +1203,18 @@ is actually sent to the kernel."
                                 '(?w ?_ ?.)))
                ""))))))
 
-;; FIXME: start and end are actually not currently used. What would be the most
-;; general way of using them.
 (defun jupyter-repl-construct-completion-candidates (prefix matches metadata start end)
   "Construct candidates for `company-mode' completion.
 PREFIX is the prefix used to start the current completion.
 MATCHES are the completion matches returned by the kernel,
 METADATA is any extra data associated with MATCHES and is
 currently used for adding annotations to each candidate. START
-and END are the start and end of text in the current
-`jupyter-repl-company-context' that should be replaced by the
-elements of MATCHES."
-  ;; TODO: Handle cases in the Jupyter repl when
-  ;; `company-minimum-prefix-length' is 1 and the prefix is '='
+and END are the start and end of text that the elements of
+MATCHES should be replace as reported by the kernel. Note that
+START and END are relative to the
+`jupyter-repl-code-context-at-point' and not to PREFIX. See
+`jupyter-repl-completion-prefix' for the value that PREFIX
+takes."
   (let ((types (plist-get metadata :_jupyter_types_experimental)))
     (let ((matches matches)
           ;; TODO: This may not be the most general way to use start and end
@@ -1294,9 +1296,11 @@ CODE and POS are the code to send and the position within the
 code, respectively. TIMEOUT is how long to wait (in seconds) for
 the kernel to respond. If the kernel does not respond within
 TIMEOUT, return nil. Otherwise if a reply was received within
-TIMEOUT, then return either the inspection text or BUFFER after
-inserting the inspection text in BUFFER. In both cases, the
-inspection text will already be in a form ready for display."
+TIMEOUT, return either the inspection text or BUFFER depending on
+if BUFFER is non-nil. When buffer is nil, return the inspection
+text, otherwise return BUFFER after inserting the inspection text
+in BUFFER. In both cases, the inspection text will already be in
+a form ready for display."
   (let* ((jupyter-inhibit-handlers t)
          (msg (jupyter-wait-until-received :inspect-reply
                 (jupyter-inspect-request jupyter-repl-current-client
