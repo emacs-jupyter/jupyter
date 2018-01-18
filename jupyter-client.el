@@ -250,7 +250,7 @@ sent message, see `jupyter-add-callback' and
     (zmq-subprocess-send (oref client ioloop)
       (list 'send (oref channel type) type message flags))
     ;; Anything sent to stdin is a reply not a request so don't add it to
-    ;; `:jupyter-pending-requests.'
+    ;; `:pending-requests'.
     (unless (eq (oref channel type) :stdin)
       (let ((req (make-jupyter-request)))
         (jupyter--ioloop-push-request client req)
@@ -468,7 +468,7 @@ PRIORITIES - An alist of (CTYPE . PRIORITY) pairs where CTYPE is
 Specifically remove the oldest element of the ring located in the
 `:jupyter-pending-requests' property of CLIENT's ioloop
 subprocess."
-  (let ((ring (process-get (oref client ioloop) :jupyter-pending-requests)))
+  (let ((ring (process-get (oref client ioloop) :pending-requests)))
     (unless (ring-empty-p ring)
       (ring-remove ring))))
 
@@ -486,9 +486,9 @@ Pending requests are stored as the `:jupyter-pending-requests'
 property of an ioloop subprocess. REQ is added as the newest
 element in `:jupyter-pending-requests'."
   (let* ((ioloop (oref client ioloop))
-         (ring (or (process-get ioloop :jupyter-pending-requests)
+         (ring (or (process-get ioloop :pending-requests)
                    (let ((ring (make-ring 10)))
-                     (process-put ioloop :jupyter-pending-requests ring)
+                     (process-put ioloop :pending-requests ring)
                      ring))))
     (ring-insert+extend ring req 'grow)))
 
@@ -515,7 +515,7 @@ by `jupyter--ioloop'."
        (message "SEND: %s" msg-id))
      (unless (eq ctype :stdin)
        ;; Anything sent on stdin is a reply and therefore never added to
-       ;; `:jupyter-pending-requests'
+       ;; `:pending-requests'
        (let ((req (jupyter--ioloop-pop-request client)))
          (setf (jupyter-request--id req) msg-id)
          (puthash msg-id req (oref client requests)))))
