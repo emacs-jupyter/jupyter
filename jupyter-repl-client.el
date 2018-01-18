@@ -1678,13 +1678,15 @@ ASSOCIATE-BUFFER has no effect."
           (setq-local jupyter-repl-lang-buffer
                       (get-buffer-create
                        (format " *jupyter-repl-lang-%s*" name)))
-          (let (mode)
+          (let (mode syntax)
             (with-jupyter-repl-lang-buffer
               (let ((buffer-file-name
                      (concat "jupyter-repl-lang" file_extension)))
                 (set-auto-mode)
-                (setq mode major-mode)))
-            (setq-local jupyter-repl-lang-mode mode))
+                (setq mode major-mode)
+                (setq syntax (syntax-table))))
+            (setq-local jupyter-repl-lang-mode mode)
+            (set-syntax-table syntax))
           (jupyter-history-request kc :n 100 :raw nil :unique t)
           (jupyter-repl-initialize-fontification)
           (jupyter-repl-insert-banner banner)
