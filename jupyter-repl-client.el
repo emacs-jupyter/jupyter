@@ -552,10 +552,7 @@ buffer is found before the beginning of a cell, raise a
 `beginning-of-buffer' error."
   (let ((pos (point)))
     (while (not (jupyter-repl-cell-beginning-p pos))
-      (setq pos (or (previous-single-property-change pos 'jupyter-cell)
-                    ;; Edge case when `point-min' is the beginning of a cell
-                    (and (jupyter-repl-cell-beginning-p (point-min))
-                         (point-min))))
+      (setq pos (previous-single-property-change pos 'jupyter-cell))
       (if pos (when (jupyter-repl-cell-end-p pos)
                 (error "Found end of previous cell"))
         (signal 'beginning-of-buffer nil)))
