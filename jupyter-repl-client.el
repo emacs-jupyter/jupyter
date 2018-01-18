@@ -1270,7 +1270,7 @@ inspection text will already be in a form ready for display."
 
 ;;; Evaluation
 
-(defun jupyter-repl-eval-string (str)
+(defun jupyter-repl-eval-string (str &optional silently)
   "Evaluate STR with the `jupyter-repl-current-client'.
 The contents of the last cell in the REPL buffer will be replaced
 with STR and the last cell executed with the
@@ -1286,9 +1286,19 @@ long."
     (goto-char (point-max))
     (unless (= (save-excursion (jupyter-repl-previous-cell)) 0)
       (jupyter-repl-insert-prompt 'in))
-    (jupyter-repl-replace-cell-code (string-trim-right str))
-    (let ((req (jupyter-execute-request jupyter-repl-current-client)))
+    (setq str (strim-trim str))
+    (let* ((code (if silently (string-trim str)
+                   (prog1 nil
+                     (jupyter-repl-replace-cell-code str))))
+           (req (jupyter-execute-request jupyter-repl-current-client
+                  :code code)))
+      (setf (jupyter-request-run-handlers-p req) (not silently))
       (jupyter-add-callback req
+        :error (lambda (msg)
+                 (cl-destructuring-bind (&key ename evalue &allow-other-keys)
+                     (jupyter-message-content msg)
+                   (message "jupyter (%s): %s" ename
+                            (xterm-color-filter evalue))))
         :execute-result
         (lambda (msg)
           (let ((res (jupyter-message-data msg :text/plain)))
