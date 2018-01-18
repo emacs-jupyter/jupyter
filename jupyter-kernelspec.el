@@ -34,12 +34,11 @@
 (require 'json)
 
 (defvar jupyter--kernelspecs nil
-  "An alist matching kernel names to their kernelspec
-  directories.")
+  "An alist matching kernel names to their kernelspec directories.")
 
 (defun jupyter-read-kernelspec (dir)
   "Return the kernelspec found in DIR.
-If DIR contains a kernel.json file, assume that it is the
+If DIR contains a \"kernel.json\" file, assume that it is the
 kernelspec of a kernel and return the plist created by a call to
 `json-read-file'."
   (let ((json-object-type 'plist)
@@ -49,20 +48,24 @@ kernelspec of a kernel and return the plist created by a call to
     (if (file-exists-p file) (json-read-file file)
       (error "No kernel.json file found in %s" dir))))
 
-(defun jupyter-available-kernelspecs (&optional force-new)
+(defun jupyter-available-kernelspecs (&optional refresh)
   "Get the available kernelspecs.
-Return an alist mapping kernel names to their kernelspec
-directories. The alist is formed by a call to the shell command
+Return an alist mapping kernel names to (DIRECTORY . PLIST) pairs
+where DIRECTORY is the resource directory of the kernel and PLIST
+is its kernelspec plist. The alist is formed by a call to the
+shell command
 
     jupyter kernelspec list
 
 By default the available kernelspecs are cached. To force an
-update of the cached kernelspecs set FORCE-NEW to a non-nil
-value."
-  (when (or (not jupyter--kernelspecs) force-new)
+update of the cached kernelspecs, give a non-nil value to
+REFRESH."
+  (when (or (not jupyter--kernelspecs) refresh)
     (setq jupyter--kernelspecs
           (mapcar (lambda (s) (let ((s (split-string s " " 'omitnull)))
-                      (cons (car s) (jupyter-read-kernelspec (cadr s)))))
+                      ;; (kernel-name . (dir . spec))
+                      (cons (car s) (cons (cadr s)
+                                          (jupyter-read-kernelspec (cadr s))))))
              (seq-subseq
               (split-string
                (shell-command-to-string "jupyter kernelspec list")
@@ -70,34 +73,38 @@ value."
               1))))
   jupyter--kernelspecs)
 
-(defun jupyter-get-kernelspec (name &optional force-new)
+(defun jupyter-get-kernelspec (name &optional refresh)
   "Get the kernelspec for a kernel named NAME.
-If no kernelspec is found for the kernel that has a name of NAME,
-throw an error. Otherwise return the kernelspec plist. Optional
-argument FORCE-NEW has the same meaning as in
-`jupyter-available-kernelspecs'."
-  (or (cdr (assoc name (jupyter-available-kernelspecs force-new)))
+If no kernelspec is found, throw an error. Otherwise return a
+cons cell
+
+    (DIRECTORY . PLIST)
+
+where DIRECTORY is the resource directory of the kernel named
+NAME and PLIST is its kernelspec plist. Optional argument REFRESH
+has the same meaning as in `jupyter-available-kernelspecs'."
+  (or (cdr (assoc name (jupyter-available-kernelspecs refresh)))
       (error "No kernelspec found (%s)" name)))
 
-(defun jupyter-find-kernelspec (prefix &optional force-new)
-  "Find the first kernelspec for the kernel that matches PREFIX.
-From the available kernelspecs returned by
-`jupyter-available-kernelspecs' return a cons cell
+(defun jupyter-find-kernelspecs (prefix &optional refresh)
+  "Find all kernelspecs for kernels that have names matching PREFIX.
+Return a list of all the kernelspecs whose kernel names begin
+with PREFIX. If no kernel matches PREFIX, return nil. Use
+`jupyter-available-kernelspecs' to match against kernel names.
+Each element of the returned list in the case of a match is a
+cons cell
 
-    (KERNEL-NAME . PLIST)
+    (KERNEL-NAME . (DIRECTORY . PLIST))
 
 where KERNEL-NAME is the name of the kernel that begins with
 PREFIX and PLIST is the kernelspec PLIST read from the
-\"kernel.json\" file in the kernel's kernelspec directory.
+\"kernel.json\" file in the kernel's resource DIRECTORY.
 
-If no kernelspec was found that matches PREFIX, return nil.
-
-Optional argument FORCE-NEW has the same meaning as in
+Optional argument REFRESH has the same meaning as in
 `jupyter-available-kernelspecs'."
   (when prefix
-    (cl-find-if
-     (lambda (s) (string-prefix-p prefix (car s)))
-     (jupyter-available-kernelspecs force-new))))
+    (delq nil (mapcar (lambda (s) (and (string-prefix-p prefix (car s)) s))
+                 (jupyter-available-kernelspecs refresh)))))
 
 (provide 'jupyter-kernelspec)
 
