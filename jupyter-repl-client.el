@@ -1102,6 +1102,12 @@ kernel that the REPL buffer is connected to."
                 (prog1 nil
                   (kill-buffer jupyter-repl-lang-buffer)
                   (jupyter-stop-channels jupyter-repl-current-client)
+                  (cl-loop
+                   with client = jupyter-repl-current-client
+                   for buffer in (buffer-list)
+                   do (with-current-buffer buffer
+                        (when (eq jupyter-repl-current-client client)
+                          (setq-local jupyter-repl-current-client nil))))
                   (when jupyter-repl-kernel-manager
                     (jupyter-shutdown-kernel jupyter-repl-kernel-manager)))
               t))))
