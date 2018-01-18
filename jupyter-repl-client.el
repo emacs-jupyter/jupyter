@@ -1639,17 +1639,29 @@ that of CLIENT."
       (setq-local company-backends
                   (delq 'company-jupyter-repl company-backends)))))
 
-(defun run-jupyter-repl (kernel-name)
-  "Run a Jupyter REPL connected to a kernel named KERNEL-NAME.
+;;;###autoload
+(defun run-jupyter-repl (kernel-name &optional associate-buffer)
+  "Run a Jupyter REPL connected to a kernel with name, KERNEL-NAME.
 KERNEL-NAME can be the prefix of an available kernel name, in
 this case the first kernel in `jupyter-available-kernelspecs'
 that has KERNEL-NAME as a prefix will be used to start a new
-kernel."
-  (interactive
-   (list
-    (completing-read
-     "kernel: " (mapcar #'car (jupyter-available-kernelspecs)) nil t)))
+kernel.
+
+Optional argument ASSOCIATE-BUFFER, if non-nil, means to enable
+`jupyter-repl-interaction-mode' in the `current-buffer' and
+associate it with the REPL created. When called interactivel,
+ASSOCIATE-BUFFER is set to t unless `current-prefix-arg' is
+non-nil. If the `current-buffer's `major-mode' does not
+correspond to the language of the kernel started,
+ASSOCIATE-BUFFER has no effect."
+  (interactive (list (jupyter-completing-read-kernelspec)
+                     (not current-prefix-arg)))
   (message "Starting %s kernel..." kernel-name)
+  (setq kernel-name
+        (or (and (called-interactively-p 'interactive)
+                 (car kernel-name))
+            (or (car (jupyter-find-kernelspec kernel-name))
+                (error "No kernel found for prefix (%s)" kernel-name))))
   (cl-destructuring-bind (km . kc)
       (jupyter-start-new-kernel kernel-name 'jupyter-repl-client)
     (oset kc buffer (generate-new-buffer
@@ -1678,6 +1690,10 @@ kernel."
           (jupyter-repl-insert-banner banner)
           (jupyter-repl-sync-execution-count)
           (jupyter-repl-insert-prompt 'in))))
+    (when (and associate-buffer
+               (memq (oref kc buffer) (jupyter-repl-available-repl-buffers
+                                       major-mode)))
+      (jupyter-repl-associate-buffer kc))
     (pop-to-buffer (oref kc buffer))))
 
 (provide 'jupyter-repl-client)
