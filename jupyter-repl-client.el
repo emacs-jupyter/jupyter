@@ -967,8 +967,12 @@ execute the current cell."
                    (goto-char (point-max))
                    (jupyter-repl-cell-beginning-position)))
       (goto-char (point-max))
-    (if force
-        (jupyter-execute-request jupyter-repl-current-client)
+    (unless (or (and jupyter-repl-kernel-manager
+                     (jupyter-kernel-alive-p jupyter-repl-kernel-manager))
+                (jupyter-hb-beating-p
+                 (oref jupyter-repl-current-client hb-channel)))
+      (error "Kernel not alive"))
+    (if force (jupyter-execute-request jupyter-repl-current-client)
       (if (not jupyter-repl-use-builtin-is-complete)
           (let ((res (jupyter-wait-until-received
                          :is-complete-reply
