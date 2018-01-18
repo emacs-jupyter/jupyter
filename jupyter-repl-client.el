@@ -367,13 +367,12 @@ can contain the following keywords along with their values:
        (string-trim (buffer-string))))))
 
 (defun jupyter-repl-insert-markdown (text)
+  "Insert TEXT, fontifying it using `markdown-mode' first."
   (jupyter-repl-insert
-   (let ((md (jupyter-repl-fontify-according-to-mode 'markdown-mode text)))
-     (if (display-graphic-p)
-         (with-current-buffer (jupyter-repl-get-fontify-buffer 'markdown-mode)
-           (markdown-display-inline-images)
-           (buffer-string))
-       md))))
+   (let ((markdown-hide-markup t)
+         (markdown-hide-urls t)
+         (markdown-fontify-code-blocks-natively t))
+     (jupyter-repl-fontify-according-to-mode 'markdown-mode text))))
 
 (defun jupyter-repl-insert-latex (tex)
   "Generate and insert a LaTeX image based on TEX.
