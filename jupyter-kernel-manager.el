@@ -54,12 +54,12 @@
    (control-channel
     :type (or null jupyter-control-channel)
     :initform nil)
-   (kernel-info
+   (info
     :type (or null json-plist)
     :initform nil
     :documentation "Contains the result of the initial kernel_info_request
  to the kernel after starting the kernel.")
-   (kernel-spec
+   (spec
     :type (or null json-plist)
     :initform nil)))
 
@@ -176,11 +176,11 @@ kernel. Starting a kernel involves the following steps:
   (let ((kname-spec (jupyter-find-kernelspec (oref manager name))))
     (unless kname-spec
       (error "No kernel found that starts with name (%s)" (oref manager name)))
-    (cl-destructuring-bind (kernel-name . spec) kname-spec
+    (cl-destructuring-bind (kernel-name . (_dir . spec)) kname-spec
       ;; Ensure we use the full name of the kernel since
       ;; `jupyter-find-kernelspec' accepts a prefix of a kernel
       (oset manager name kernel-name)
-      (oset manager kernel-spec spec)
+      (oset manager spec spec)
       ;; NOTE: `jupyter-connection' fields are shared between other
       ;; `jupyter-connection' objects. The `jupyter-kernel-manager' sets
       ;; defaults for these when their slots are unbound, see `slot-unbound'.
@@ -221,12 +221,11 @@ kernel. Starting a kernel involves the following steps:
 
 (cl-defmethod jupyter-start-channels ((manager jupyter-kernel-manager))
   "Start a control channel on MANAGER."
-  (let ((control-channel (oref manager control-channel)))
-    (if control-channel
-        (unless (jupyter-channel-alive-p control-channel)
+  (let ((channel (oref manager control-channel)))
+    (if channel
+        (unless (jupyter-channel-alive-p channel)
           (jupyter-start-channel
-           control-channel
-           :identity (jupyter-session-id (oref manager session))))
+           channel :identity (jupyter-session-id (oref manager session))))
       (let ((conn-info (oref manager conn-info)))
         (oset manager control-channel
               (jupyter-control-channel
@@ -238,9 +237,9 @@ kernel. Starting a kernel involves the following steps:
 
 (cl-defmethod jupyter-stop-channels ((manager jupyter-kernel-manager))
   "Stop the control channel on MANAGER."
-  (let ((control-channel (oref manager control-channel)))
-    (when control-channel
-      (jupyter-stop-channel control-channel)
+  (let ((channel (oref manager control-channel)))
+    (when channel
+      (jupyter-stop-channel channel)
       (oset manager control-channel nil))))
 
 (cl-defmethod jupyter-shutdown-kernel ((manager jupyter-kernel-manager) &optional restart timeout)
@@ -259,7 +258,7 @@ kernel. Starting a kernel involves the following steps:
         (jupyter-stop-channels manager)))))
 
 (cl-defmethod jupyter-interrupt-kernel ((manager jupyter-kernel-manager) &optional timeout)
-  (pcase (plist-get (oref manager kernel-spec) :interrupt_mode)
+  (pcase (plist-get (oref manager spec) :interrupt_mode)
     ("message"
      (let ((session (oref manager session))
            (sock (oref (oref manager control-channel) socket))

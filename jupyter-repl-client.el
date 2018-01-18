@@ -1619,7 +1619,7 @@ kernel."
                      (format "*jupyter-repl[%s]*" (oref km name))))
     (with-jupyter-repl-buffer kc
       (cl-destructuring-bind (&key language_info banner &allow-other-keys)
-          (oref km kernel-info)
+          (oref km info)
         (cl-destructuring-bind (&key name file_extension &allow-other-keys)
             language_info
           (jupyter-repl-mode)
