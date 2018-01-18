@@ -421,33 +421,33 @@ testing the callback functionality of a
           (ert-info ("Inspect")
             (let ((res (jupyter-wait-until-received :inspect-reply
                          (jupyter-inspect-request
-                          client
-                          :code "list((1, 2, 3))"
-                          :pos 2
-                          :detail 0))))
+                             client
+                           :code "list((1, 2, 3))"
+                           :pos 2
+                           :detail 0))))
               (should-not (null res))
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "inspect_reply"))))
           (ert-info ("Complete")
             (let ((res (jupyter-wait-until-received :complete-reply
                          (jupyter-complete-request
-                          client
-                          :code "foo = lis"
-                          :pos 8))))
+                             client
+                           :code "foo = lis"
+                           :pos 8))))
               (should-not (null res))
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "complete_reply"))))
           (ert-info ("History")
             (let ((res (jupyter-wait-until-received :history-reply
                          (jupyter-history-request
-                          client :hist-access-type "tail" :n 2))))
+                             client :hist-access-type "tail" :n 2))))
               (should-not (null res))
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "history_reply"))))
           (ert-info ("Is Complete")
             (let ((res (jupyter-wait-until-received :is-complete-reply
                          (jupyter-is-complete-request
-                          client :code "for i in range(5):"))))
+                             client :code "for i in range(5):"))))
               (should-not (null res))
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "is_complete_reply"))))
