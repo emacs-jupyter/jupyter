@@ -988,12 +988,10 @@ execute the current cell."
               (message "Kernel did not respond to is-complete-request, using built-in is-complete")
               (setq-local jupyter-repl-use-builtin-is-complete t)
               (jupyter-repl-ret force)))
-        (let ((complete-p (equal
-                           (save-excursion
-                             (goto-char (jupyter-repl-cell-code-end-position))
-                             (buffer-substring-no-properties
-                              (line-beginning-position) (point)))
-                           "")))
+        (goto-char (point-max))
+        (let ((complete-p (equal (buffer-substring
+                                  (line-beginning-position) (point))
+                                 "")))
           (jupyter-handle-is-complete-reply
               jupyter-repl-current-client
             nil (if complete-p "complete" "incomplete") ""))))))
