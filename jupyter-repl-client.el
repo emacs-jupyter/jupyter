@@ -857,8 +857,23 @@ lines then truncate it to something less than
   (oset client execution-state execution-state))
 
 (cl-defmethod jupyter-handle-stream ((client jupyter-repl-client) req name text)
-  (jupyter-repl-do-at-request client req
-    (jupyter-repl-insert-ansi-coded-text text)))
+  (if req
+      (jupyter-repl-do-at-request client req
+        (jupyter-repl-insert-ansi-coded-text text)
+        (jupyter-repl-newline))
+    ;; Otherwise the stream request is due to someone else, pop up a buffer.
+    ;; TODO: Make this configurable so that we can just ignore output.
+    (let* ((bname (buffer-name (oref client buffer)))
+           (inhibit-read-only t)
+           (stream-buffer
+            (concat (substring bname 0 (1- (length bname)))
+                    "-" name "*")))
+      (with-current-buffer (get-buffer-create stream-buffer)
+        (let ((pos (point)))
+          (jupyter-repl-insert-ansi-coded-text text)
+          (fill-region pos (point)))
+        (display-buffer (current-buffer) '(display-buffer-pop-up-window
+                                           (pop-up-windows . t)))))))
 
 (cl-defmethod jupyter-handle-error ((client jupyter-repl-client)
                                     req ename evalue traceback)
