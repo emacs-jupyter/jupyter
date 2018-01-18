@@ -631,18 +631,13 @@ REQ should be a `jupyter-request' that corresponds to one of the
 `current-buffer'. Note that the `current-buffer' is assumed to be
 a Jupyter REPL buffer."
   (goto-char (point-max))
-  (condition-case nil
-      (goto-char (jupyter-repl-cell-beginning-position))
-    ;; Handle error when seeing the end of the previous cell
-    (error (jupyter-repl-previous-cell)))
-  (let (cell-req)
-    (while (and (not (eq (setq cell-req (jupyter-repl-cell-request)) req))
-                (not (= (point) (point-min))))
-      (jupyter-repl-previous-cell))
-    ;; Unless the request was found, assume it is for the current un-finalized
-    ;; cell
-    (unless (eq cell-req req)
-      (goto-char (point-max)))))
+  (jupyter-repl-previous-cell)
+  (when (catch 'not-found
+          (while (not (eq (jupyter-repl-cell-request) req))
+            (jupyter-repl-previous-cell)
+            (when (= (point) (point-min))
+              (throw 'not-found t))))
+    (error "Cell for request not found")))
 
 (defun jupyter-repl-forward-cell (&optional arg)
   "Move to the code beginning of the cell after the current one.
@@ -657,12 +652,7 @@ ARG is the number of cells to move and defaults to 1."
 ARG is the number of cells to move and defaults to 1."
   (interactive "^p")
   (or arg (setq arg 1))
-  ;; `jupyter-previous-cell' only goes to the start of the current cell if
-  ;; `point' is greater than `jupyter-repl-cell-beginning-p' so move there when
-  ;; at the beginning of the current cell code so that we can escape to the
-  ;; previous cell.
-  (when (= (jupyter-repl-cell-code-beginning-position) (point))
-    (goto-char (jupyter-repl-cell-beginning-position)))
+  (goto-char (jupyter-repl-cell-beginning-position))
   (jupyter-repl-previous-cell arg)
   (goto-char (jupyter-repl-cell-code-beginning-position)))
 
