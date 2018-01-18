@@ -380,7 +380,18 @@ can contain the following keywords along with their values:
 Note that this uses `org-format-latex' to generate the LaTeX
 image."
   (require 'org)
-  (let (beg end)
+  ;; FIXME: Getting a weird error when killing the temp buffers created by
+  ;; `org-format-latex'. When generating the image, it seems that the temp
+  ;; buffers created have the same major mode and local variables as the REPL
+  ;; buffer which causes the query function to ask to kill the kernel client
+  ;; when the temp buffers are killed!
+  (let ((kill-buffer-query-functions nil)
+        (org-format-latex-options
+         `(:foreground
+           default
+           :background default :scale 2.0
+           :matchers ,(plist-get org-format-latex-options :matchers)))
+        beg end)
     (setq beg (point))
     (jupyter-repl-insert tex)
     (setq end (point))
@@ -389,7 +400,8 @@ image."
      'overlays "Creating LaTeX image...%s"
      'forbuffer
      ;; Use the default method for creating image files
-     org-preview-latex-default-process)))
+     org-preview-latex-default-process)
+    (goto-char end)))
 
 (defun jupyter-repl-insert-ansi-coded-text (text)
   "Insert TEXT, converting ANSI color codes to font lock faces."
@@ -420,7 +432,8 @@ image."
         (jupyter-repl-insert-html html)
         (jupyter-repl-newline)))
      ((memq :text/latex mimetypes)
-      (jupyter-repl-insert-latex (plist-get data :text/latex)))
+      (jupyter-repl-insert-latex (plist-get data :text/latex))
+      (jupyter-repl-newline))
      ((and (memq :text/markdown mimetypes) (require 'markdown-mode nil t))
       (jupyter-repl-insert-markdown (plist-get data :text/markdown)))
      ((memq :text/plain mimetypes)
