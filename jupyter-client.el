@@ -72,6 +72,12 @@ Do not add to this hook variable directly, use
 Do not add to this hook variable directly, use
 `jupyter-add-hook'.")
 (put 'jupyter-stdin-message-hook 'permanent-local t)
+(defvar jupyter-inhibit-handlers nil
+  "Whether or not new requests inhibit client handlers.
+Do not set this variable directly, locally bind it to t if you
+would like to inhibit handlers for any new requests. If this is
+set to t globally, all new requests will have message handlers
+inhibited.")
 
 (defclass jupyter-kernel-client (jupyter-connection)
   ((requests
@@ -255,6 +261,8 @@ sent message, see `jupyter-add-callback' and
     ;; `:pending-requests'.
     (unless (eq (oref channel type) :stdin)
       (let ((req (make-jupyter-request)))
+        (setf (jupyter-request-run-handlers-p req)
+              (not jupyter-inhibit-handlers))
         (jupyter--ioloop-push-request client req)
         req))))
 

@@ -1230,8 +1230,8 @@ TIMEOUT, return nil. Otherwise if a reply was received within
 TIMEOUT, then return either the inspection text or BUFFER after
 inserting the inspection text in BUFFER. In both cases, the
 inspection text will already be in a form ready for display."
-  (let ((msg (jupyter-wait-until-received :inspect-reply
-               (jupyter-request-inhibit-handlers
+  (let* ((jupyter-inhibit-handlers t)
+         (msg (jupyter-wait-until-received :inspect-reply
                 (jupyter-inspect-request jupyter-repl-current-client
                   :code code :pos pos))
                timeout)))
@@ -1512,7 +1512,7 @@ Set the execution-count slot of `jupyter-repl-current-client' to
 1+ the execution count of the client's kernel."
   (let* ((client jupyter-repl-current-client)
          (req (jupyter-execute-request client :code "" :silent t)))
-    (jupyter-request-inhibit-handlers req)
+    (setf (jupyter-request-run-handlers-p req) nil)
     (jupyter-add-callback req
       :execute-reply (lambda (msg)
                        (oset client execution-count

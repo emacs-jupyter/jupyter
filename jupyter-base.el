@@ -143,19 +143,6 @@ from the kernel.")
       (sleep-for 0 10)))
   (jupyter-request--id req))
 
-(defun jupyter-request-inhibit-handlers (req)
-  "Inhibit the execution of a `jupyter-kernel-client's handlers for REQ.
-Sets `jupyter-request-run-handlers-p' to nil for REQ and returns
-REQ. This function is intended to be a convenience function so
-that you can do:
-
-    (jupyter-add-callback :execute-reply
-        (jupyter-request-inhibit-handlers
-          (jupyter-execute-request client ...))
-      (lambda (msg) ...))"
-  (setf (jupyter-request-run-handlers-p req) nil)
-  req)
-
 (provide 'jupyter-base)
 
 ;;; jupyter-base.el ends here

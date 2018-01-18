@@ -327,11 +327,11 @@ un-paused."
           (jupyter-start-kernel km 10)
           (unless (jupyter--wait-until-startup kc 10)
             (error "Kernel did not send startup message"))
-          (let ((info (jupyter-wait-until-received :kernel-info-reply
-                        (jupyter-request-inhibit-handlers
-                         (jupyter-kernel-info-request kc))
-                        30)))
-            (if info (oset km kernel-info (jupyter-message-content info))
+          (let* ((jupyter-inhibit-handlers t)
+                 (info (jupyter-wait-until-received :kernel-info-reply
+                         (jupyter-kernel-info-request kc)
+                         30)))
+            (if info (oset km info (jupyter-message-content info))
               (error "Kernel did not respond to kernel-info request")))
           (cons km kc))
       (unless (oref km kernel-info)
