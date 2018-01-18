@@ -1318,6 +1318,25 @@ long."
                   (message res)))))))
       req)))
 
+(defun jupyter-repl-eval-file (file)
+  "Send the contents of FILE using `jupyter-repl-current-client'."
+  (interactive
+   (list (read-file-name "File name: " nil nil nil
+                         (file-name-nondirectory
+                          (or (buffer-file-name) "")))))
+  (message "Evaluating %s..." file)
+  (setq file (expand-file-name file))
+  (if (file-exists-p file)
+      (let ((buf (find-buffer-visiting file)))
+        (jupyter-repl-eval-string
+         (if buf (with-current-buffer buf
+                   (buffer-string))
+           (with-current-buffer (delay-mode-hooks (find-file-noselect file))
+             (prog1 (buffer-string)
+               (kill-buffer))))
+         'silently))
+    (error "Not a file (%s)" file)))
+
 (defun jupyter-repl-eval-region (beg end)
   "Evaluate a region with the `jupyter-repl-current-client'.
 BEG and END are the beginning and end of the region to evaluate.
