@@ -138,10 +138,11 @@ from the kernel.")
 
 (defun jupyter-request-id (req)
   "Get the message ID for REQ."
-  (with-timeout (0.5 (error "Request not processed"))
-    (while (null (jupyter-request--id req))
-      (sleep-for 0 10)))
-  (jupyter-request--id req))
+  (or (jupyter-request--id req)
+      (with-timeout (0.5 (error "Request not processed"))
+        (while (null (jupyter-request--id req))
+          (sleep-for 0 10))
+        (jupyter-request--id req))))
 
 (provide 'jupyter-base)
 
