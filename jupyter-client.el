@@ -130,8 +130,7 @@ variables and intermediate ioloop process output.")
   (cl-call-next-method)
   (oset client -buffer (generate-new-buffer " *jupyter-kernel-client*")))
 
-(cl-defmethod jupyter-initialize-connection ((client jupyter-kernel-client)
-                                             &optional file-or-plist)
+(defun jupyter-initialize-connection (client &optional file-or-plist)
   "Initialize CLIENT with a connection FILE-OR-PLIST.
 When FILE-OR-PLIST is a file name, read the JSON connection
 information from the file and initialize CLIENT's connection and
@@ -144,6 +143,7 @@ http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files.
 
 As a side effect, if CLIENT is already connected to a kernel its
 connection is terminated before initializing."
+  (cl-check-type client jupyter-kernel-client)
   (let ((conn-info (if file-or-plist
                        (oset client conn-info
                              (if (json-plist-p file-or-plist) file-or-plist
@@ -151,6 +151,8 @@ connection is terminated before initializing."
                                      (json-object-type 'plist)
                                      (json-false nil))
                                  (json-read-file file-or-plist))))
+                     ;; The conn-info slot is shared with a client's
+                     ;; parent-instance, see if the parent instance has it
                      (or (ignore-errors (oref client conn-info))
                          (signal 'unbound-slot
                                  (list 'json-plist client 'conn-info))))))
