@@ -410,8 +410,13 @@ image."
   (jupyter-repl-insert text))
 
 (defun jupyter-repl-insert-data (data)
-  (let ((mimetypes (cl-loop for (k d) on data by #'cddr
-                            when (and d (not (equal d ""))) collect k)))
+  (let ((mimetypes (cl-loop
+                    with graphic-types = '(:image/png :image/svg+xml :text/latex)
+                    for (k d) on data by #'cddr
+                    when (and d (not (equal d ""))
+                              (or (display-graphic-p)
+                                  (not (memq k graphics-types))))
+                    collect k)))
     (cond
      ((memq :image/png mimetypes)
       (insert-image
