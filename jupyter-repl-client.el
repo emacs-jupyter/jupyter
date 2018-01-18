@@ -1043,8 +1043,6 @@ kernel that the REPL buffer is connected to."
                     (jupyter-shutdown-kernel jupyter-repl-kernel-manager)))
               t))))
 
-(add-hook 'kill-buffer-query-functions #'jupyter-repl-kill-buffer-query-function)
-
 ;; FIXME: Sometimes when using packages like `perspective', upon switching back
 ;; to a perspective which has a REPL buffer visible, the margins will disappear
 ;; when the `selected-window' after the switch is the REPL buffer.
@@ -1515,6 +1513,7 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
   (erase-buffer)
   (jupyter-repl-interaction-mode)
   (jupyter-repl-isearch-setup)
+  (add-hook 'kill-buffer-query-functions #'jupyter-repl-kill-buffer-query-function nil t)
   (add-hook 'after-change-functions 'jupyter-repl-after-buffer-change nil t)
   (add-hook 'window-configuration-change-hook 'jupyter-repl-preserve-window-margins nil t))
 
