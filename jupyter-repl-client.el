@@ -1337,14 +1337,14 @@ long."
          'silently))
     (error "Not a file (%s)" file)))
 
-(defun jupyter-repl-eval-region (beg end)
+(defun jupyter-repl-eval-region (beg end &optional silently)
   "Evaluate a region with the `jupyter-repl-current-client'.
 BEG and END are the beginning and end of the region to evaluate.
 See `jupyter-repl-eval-string' for how the results of evaluation
 are displayed."
   (interactive "r")
   (jupyter-repl-eval-string
-   (buffer-substring-no-properties beg end)))
+   (buffer-substring-no-properties beg end) silently))
 
 (defun jupyter-repl-eval-line-or-region ()
   "Evaluate the current line or region with the `jupyter-repl-current-client'.
