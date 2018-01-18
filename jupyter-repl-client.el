@@ -83,9 +83,10 @@
 ;;; Implementation
 
 (defclass jupyter-repl-client (jupyter-kernel-client)
-  ((kernel-info)
-   (buffer :initarg :buffer)
-   (execution-count :initform 1)))
+  ((buffer :type buffer :initarg :buffer)
+   (execution-state :type string :initform "idle")
+   (execution-count :type integer :initform 1)))
+
 
 (defvar jupyter-repl-lang-buffer nil
   "A buffer with the `major-mode' set to the REPL language's `major-mode'.")
@@ -842,6 +843,9 @@ lines then truncate it to something less than
   (jupyter-repl-do-at-request client req
     (jupyter-repl-insert-data data)))
 
+(cl-defmethod jupyter-handle-status ((client jupyter-repl-client) req execution-state)
+  (oset client execution-state execution-state))
+
 (cl-defmethod jupyter-handle-stream ((client jupyter-repl-client) req name text)
   (jupyter-repl-do-at-request client req
     (jupyter-repl-insert-ansi-coded-text text)))
@@ -976,6 +980,13 @@ execute the current cell."
                 (jupyter-hb-beating-p
                  (oref jupyter-repl-current-client hb-channel)))
       (error "Kernel not alive"))
+    ;; NOTE: kernels allow execution requests to queue up, but we prevent
+    ;; sending a request when the kernel is busy because of the is-complete
+    ;; request. Some kernels don't respond to this request when the kernel is
+    ;; busy.
+    (unless (member (oref jupyter-repl-current-client execution-state)
+                    '("starting" "idle"))
+      (error "Kernel busy"))
     (if force (jupyter-execute-request jupyter-repl-current-client)
       (if (not jupyter-repl-use-builtin-is-complete)
           (let ((res (jupyter-wait-until-received
@@ -1550,7 +1561,7 @@ it."
      (jupyter-repl-newline)
      (add-text-properties start (point) '(font-lock-face shadow fontified t)))))
 
-(defun jupyter-repl-sync-execution-count ()
+(defun jupyter-repl-sync-execution-state ()
   "Synchronize the execution count of `jupyter-repl-current-client'.
 Set the execution-count slot of `jupyter-repl-current-client' to
 1+ the execution count of the client's kernel."
@@ -1558,6 +1569,9 @@ Set the execution-count slot of `jupyter-repl-current-client' to
          (req (jupyter-execute-request client :code "" :silent t)))
     (setf (jupyter-request-run-handlers-p req) nil)
     (jupyter-add-callback req
+      :status (lambda (msg)
+                (oset client execution-state
+                      (jupyter-message-get msg :execution_state)))
       :execute-reply (lambda (msg)
                        (oset client execution-count
                              (1+ (jupyter-message-get msg :execution_count)))))
@@ -1697,7 +1711,7 @@ ASSOCIATE-BUFFER has no effect."
           (jupyter-history-request kc :n 100 :raw nil :unique t)
           (jupyter-repl-initialize-fontification)
           (jupyter-repl-insert-banner banner)
-          (jupyter-repl-sync-execution-count)
+          (jupyter-repl-sync-execution-state)
           (jupyter-repl-insert-prompt 'in))))
     (when (and associate-buffer
                (memq (oref kc buffer) (jupyter-repl-available-repl-buffers
