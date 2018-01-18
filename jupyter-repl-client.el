@@ -817,9 +817,7 @@ lines then truncate it to something less than
                (let ((text (plist-get (plist-get pl :data) :text/plain))
                      (line (or (plist-get pl :start) 0))))
                (with-jupyter-repl-doc-buffer "pager"
-                 (setq text (xterm-color-filter text))
-                 (jupyter-repl-add-font-lock-properties 0 (length text) text)
-                 (insert text)
+                 (jupyter-repl-insert-ansi-coded-text text)
                  (goto-char (point-min))
                  (forward-line line)
                  (display-buffer (current-buffer) '(display-buffer-at-bottom
