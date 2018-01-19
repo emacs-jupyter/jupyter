@@ -33,11 +33,10 @@
 
 (defgroup jupyter-messages nil
   "Jupyter messages"
-  :group 'communication)
+  :group 'jupyter)
 
 (defconst jupyter-message-delimiter "<IDS|MSG>"
-  "The message delimiter required in the jupyter messaging
-protocol.")
+  "The message delimiter required in the jupyter messaging protocol.")
 
 (defconst jupyter--false :json-false
   "The symbol used to disambiguate nil from boolean false.")
@@ -297,19 +296,27 @@ The returned time has the same form as returned by
   (plist-get (plist-get msg :header) :date))
 
 (defsubst jupyter-message-get (msg key)
-  "Get the value of KEY in the `jupyter-message-content' of MSG."
+  "Get the value in MSG's `jupyter-message-content' that corresponds to KEY."
   (plist-get (jupyter-message-content msg) key))
 
 (defsubst jupyter-message-data (msg mimetype)
-  "Get one of the MIMETYPE's in MSG's data.
-If MSG does not have a data key in its contents or the MIMETYPE
-does not exist in MSG's data, return nil. Otherwise return the
-value of the MIMETYPE in MSG's data."
+  "Get the message data for a specific mimetype.
+MSG should be a message with a `:data' field in its contents.
+MIMETYPE is should be a standard media mimetype
+keyword (`:text/plain', `:image/png', ...). If the messages data
+has a key corresponding to MIMETYPE, return the value. Otherwise
+return nil."
   (plist-get (jupyter-message-get msg :data) mimetype))
 
 (defun jupyter-message-status-idle-p (msg)
+  "Determine if MSG is a status: idle message."
   (and (equal (jupyter-message-type msg) "status")
        (equal (jupyter-message-get msg :execution_state) "idle")))
+
+(defun jupyter-message-status-starting-p (msg)
+  "Determine if MSG is a status: starting message."
+  (and (equal (jupyter-message-type msg) "status")
+       (equal (jupyter-message-get msg :execution_state) "starting")))
 
 (provide 'jupyter-messages)
 
