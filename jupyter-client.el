@@ -235,6 +235,8 @@ this is called."
 (defun jupyter-run-hook-with-args (client hook &rest args)
   "Run CLIENT's value for HOOK with the arguments ARGS."
   (with-jupyter-client-buffer client
+    (when jupyter--debug
+      (message "RUN-HOOK: %s" hook))
     (apply #'run-hook-with-args hook args)))
 
 (defun jupyter-remove-hook (client hook function)
@@ -261,6 +263,8 @@ sent message, see `jupyter-add-callback' and
   (let ((ioloop (oref client ioloop)))
     (unless ioloop
       (signal 'wrong-type-argument (list 'process ioloop 'ioloop)))
+    (when jupyter--debug
+      (message "SENDING: %s %s" type message))
     (zmq-subprocess-send (oref client ioloop)
       (list 'send (oref channel type) type message flags))
     ;; Anything sent to stdin is a reply not a request so don't add it to
@@ -528,7 +532,7 @@ by `jupyter--ioloop'."
   (pcase event
     (`(sent ,ctype ,msg-id)
      (when jupyter--debug
-       (message "SEND: %s" msg-id))
+       (message "SENT: %s" msg-id))
      (unless (eq ctype :stdin)
        ;; Anything sent on stdin is a reply and therefore never added to
        ;; `:pending-requests'
@@ -537,7 +541,8 @@ by `jupyter--ioloop'."
          (puthash msg-id req (oref client requests)))))
     (`(recvd ,ctype ,idents . ,msg)
      (when jupyter--debug
-       (message "RECV: %s %s %s"
+       (message "RECV: %s %s %s %s"
+                idents
                 (jupyter-message-type msg)
                 (jupyter-message-parent-id msg)
                 (jupyter-message-content msg)))
@@ -738,7 +743,9 @@ that if no TIMEOUT is given, it defaults to
    for id = (jupyter-request-id req)
    when (and (jupyter-request-idle-received-p req)
              (> (float-time (time-subtract ctime ltime)) 60))
-   do (remhash id requests)))
+   do (when jupyter--debug
+        (message "DROPPING-REQ: %s" id))
+   (remhash id requests)))
 
 (cl-defmethod jupyter-handle-message ((client jupyter-kernel-client) channel)
   "Process a message on CLIENT's CHANNEL.
