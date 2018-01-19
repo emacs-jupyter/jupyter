@@ -84,27 +84,29 @@ inhibited.")
     :type hash-table
     :initform (make-hash-table :test 'equal)
     :documentation "A hash table with message ID's as keys. This
- is used to register callback functions to run once a reply from
- a previously sent request is received. See
- `jupyter-add-callback'. Note that this is also used to filter
- received messages that originated from a previous request by
- this client. Whenever the client sends a message in which a
- reply is expected, it sets an entry in this table to represent
- the fact that the message has been sent. So if there is a
- non-nil value for a message ID it means that a message has been
- sent and the client is expecting a reply from the kernel.")
+is used to register callback functions to run once a reply from a
+previously sent request is received. See `jupyter-add-callback'.
+Note that this is also used to filter received messages that
+originated from a previous request by this client. Whenever the
+client sends a message in which a reply is expected, it sets an
+entry in this table to represent the fact that the message has
+been sent. So if there is a non-nil value for a message ID it
+means that a message has been sent and the client is expecting a
+reply from the kernel.")
    (ioloop
     :type (or null process)
     :initform nil
     :documentation "The process which polls for events on all
- live channels of the client.")
+live channels of the client.")
    ;; TODO: Periodically cleanup these buffers when the object they point to
    ;; are no longer in use. How can we determine if an object has no more
    ;; references? Maybe do something with `post-gc-hook'?
    (-buffer
     :type buffer
     :documentation "An internal buffer used to store client local
-variables and intermediate ioloop process output.")
+variables and intermediate ioloop process output. When the ioloop
+slot is non-nil, its `process-buffer' will be `eq' to this
+buffer.")
    ;; NOTE: With the current implementation all channels except the heartbeat
    ;;       channel actually communicate with the kernel through the ioloop
    ;;       subprocess. This means that the socket field of the channels are
@@ -200,7 +202,9 @@ connection is terminated before initializing."
 ;;; Client local variables
 
 (defmacro with-jupyter-client-buffer (client &rest body)
-  "Run a form inside CLIENT's IOloop subprocess buffer."
+  "Run a form inside CLIENT's IOloop subprocess buffer.
+BODY is run with the current buffer set to CLIENT's IOloop
+subprocess buffer."
   (declare (indent 1))
   `(progn
      (cl-check-type ,client jupyter-kernel-client)
@@ -615,7 +619,7 @@ for the heartbeat channel."
           (sleep-for 0 100))))))
 
 (cl-defmethod jupyter-channels-running-p ((client jupyter-kernel-client))
-  "Are any channels of CLIENT alive?"
+  "Are any channels of CLIENT running?"
   (cl-loop
    for channel in '(shell-channel
                     iopub-channel
