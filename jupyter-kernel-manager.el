@@ -184,7 +184,7 @@ kernel. Starting a kernel involves the following steps:
   (let ((kname-spec (jupyter-find-kernelspec (oref manager name))))
     (unless kname-spec
       (error "No kernel found that starts with name (%s)" (oref manager name)))
-    (cl-destructuring-bind (kernel-name . (_dir . spec)) kname-spec
+    (cl-destructuring-bind (kernel-name . (resource-dir . spec)) kname-spec
       ;; Ensure we use the full name of the kernel since
       ;; `jupyter-find-kernelspec' accepts a prefix of a kernel
       (oset manager name kernel-name)
@@ -193,12 +193,9 @@ kernel. Starting a kernel involves the following steps:
       ;; `jupyter-connection' objects. The `jupyter-kernel-manager' sets
       ;; defaults for these when their slots are unbound, see `slot-unbound'.
       (let* ((key (jupyter-session-key (oref manager session)))
-             (resource-dir (string-trim-right
-                            (shell-command-to-string
-                             "jupyter --runtime-dir")))
              (conn-file (expand-file-name
                          (concat "kernel-" key ".json")
-                         resource-dir)))
+                         jupyter-runtime-directory)))
         ;; Write the connection info file
         (with-temp-file (oset manager conn-file conn-file)
           (let ((json-encoding-pretty-print t))
@@ -209,8 +206,10 @@ kernel. Starting a kernel involves the following steps:
                      manager kernel-name (plist-get spec :env)
                      (cl-loop
                       for arg in (plist-get spec :argv)
-                      if (equal arg "{connection_file}") collect conn-file
-                      else if (equal arg "{resource_dir}") collect resource-dir
+                      if (equal arg "{connection_file}")
+                      collect conn-file
+                      else if (equal arg "{resource_dir}")
+                      collect resource-dir
                       else collect arg))))
           ;; Block until the kernel reads the connection file
           (with-timeout
@@ -222,7 +221,7 @@ kernel. Starting a kernel involves the following steps:
           (oset manager kernel proc)
           (oset manager conn-file (expand-file-name
                                    (format "kernel-%d.json" (process-id proc))
-                                   (file-name-directory conn-file)))
+                                   jupyter-runtime-directory))
           (rename-file conn-file (oref manager conn-file))
           (jupyter-start-channels manager)
           manager)))))

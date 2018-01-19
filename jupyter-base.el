@@ -36,6 +36,15 @@
 (require 'hmac-def)
 (require 'jupyter-kernelspec)
 
+(defcustom jupyter-runtime-directory (string-trim-right
+                                      (shell-command-to-string
+                                       "jupyter --runtime-dir"))
+  "The Jupyter runtime directory.
+This is where kernel connection files are written to when
+starting new kernels using a `jupyter-kernel-manager'."
+  :group 'jupyter
+  :type 'string)
+
 (defconst jupyter-protocol-version "5.3"
   "The jupyter protocol version that is implemented.")
 
