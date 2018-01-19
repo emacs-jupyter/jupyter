@@ -38,26 +38,31 @@
 
 (defgroup jupyter-kernel-manager nil
   "Jupyter kernel manager"
-  :group 'communication)
+  :group 'jupyter)
 
 (defclass jupyter-kernel-manager (jupyter-connection)
   ((name
     :initarg :name
-    :type string)
+    :type string
+    :documentation "The name of the kernel that is being managed.")
    (conn-file
-    :type (or null string))
+    :type (or null string)
+    :documentation "The absolute path of the connection file when
+the kernel is alive.")
    (kernel
     :type (or null process)
     :initform nil
-    :documentation "The local kernel process or nil if no local
- kernel was started by this client.")
+    :documentation "The local kernel process when the kernel is
+alive.")
    (control-channel
     :type (or null jupyter-control-channel)
-    :initform nil)
     :initform nil
+    :documentation "A control channel to make shutdown and
+interrupt requests to the kernel.")
    (spec
     :type (or null json-plist)
-    :initform nil)))
+    :initform nil
+    :documentation "The kernelspec used to start/restart the kernel.")))
 
 (cl-defmethod initialize-instance ((manager jupyter-kernel-manager) &rest _slots)
   "Initialize MANAGER based on SLOTS.
