@@ -486,8 +486,20 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
       (let ((count (oref jupyter-repl-current-client execution-count)))
         (setq ov (jupyter-repl--insert-prompt
                   (format "In [%d]:" count) 'jupyter-repl-input-prompt)
-              props (list 'jupyter-cell (list 'beginning count)
-                          'rear-nonsticky t))))
+              props (list 'jupyter-cell (list 'beginning count))))
+      ;; Insertion of an invisible character is to prevent the prompt overlay
+      ;; from inheriting the text properties of code at the beginning of a
+      ;; cell similarly for the output prompt.
+      ;;
+      ;; The front-sticky property is so that `point' will not get trapped in
+      ;; the middle of the newline inserted by `jupyter-repl--insert-prompt'
+      ;; and the invisible character.
+      ;;
+      ;; Finally the field property is so that text motions will stop at the
+      ;; start of the code for a cell instead of moving past this invisible
+      ;; character.
+      (jupyter-repl-insert
+       :properties '(invisible t rear-nonsticky t front-sticky t field t) " "))
      ((eq type 'out)
       ;; Output is normally inserted by first going to the end of the output
       ;; for the request. The end of the ouput for a request is at the
@@ -496,7 +508,10 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
       (let ((count (jupyter-repl-cell-count 'escape)))
         (setq ov (jupyter-repl--insert-prompt
                   (format "Out [%d]:" count) 'jupyter-repl-output-prompt)
-              props (list 'jupyter-cell (list 'out count)))))
+              props (list 'jupyter-cell (list 'out count))))
+      ;; Prevent the overlay from inheriting text properties
+      (jupyter-repl-insert
+       :properties '(invisible t) " "))
      ((eq type 'continuation)
       (setq ov (jupyter-repl--insert-prompt
                 ":" 'jupyter-repl-input-prompt)
@@ -578,8 +593,10 @@ buffer, `point-max' is considered the end of the cell."
   "Return the beginning of the current cell's code.
 The code beginning position is
 
-   `jupyter-repl-cell-beginning-position' + 1"
-  (1+ (jupyter-repl-cell-beginning-position)))
+   `jupyter-repl-cell-beginning-position' + 2
+
+There is an extra invisible character after the prompt."
+  (+ (jupyter-repl-cell-beginning-position) 2))
 
 (defun jupyter-repl-cell-code-end-position ()
   "Return the end of the current cell's code.
