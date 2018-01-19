@@ -819,18 +819,16 @@ lines then truncate it to something less than
                  (jupyter-repl-insert-ansi-coded-text text)
                  (goto-char (point-min))
                  (forward-line line)
-                 (display-buffer (current-buffer) '(display-buffer-at-bottom
-                                                    (pop-up-windows . t)))
-                 (fit-window-to-buffer (get-buffer-window))))
+                 (display-buffer (current-buffer))))
               ((or "edit" "edit_magic")
                (with-current-buffer (find-file-other-window
                                      (plist-get pl :filename))
-                 (forward-line (plist-get pl :line_number))))
+                 (forward-line (plist-get pl :line_number))
+                 (set-window-start (selected-window) (point))))
               ("set_next_input"
                (goto-char (point-max))
                (jupyter-repl-previous-cell)
-               (jupyter-repl-replace-cell-code (plist-get pl :text))
-               (goto-char (point-max)))))))))
+               (jupyter-repl-replace-cell-code (plist-get pl :text)))))))))
 
 (cl-defmethod jupyter-handle-execute-input ((client jupyter-repl-client)
                                             req
@@ -1391,7 +1389,7 @@ long."
                     (erase-buffer)
                     (insert res)
                     (goto-char (point-min))
-                    (pop-to-buffer (current-buffer)))
+                    (display-buffer (current-buffer)))
                 (if (equal res "") (message "jupyter: eval done")
                   (message res)))))))
       req)))
