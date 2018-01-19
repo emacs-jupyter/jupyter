@@ -192,7 +192,9 @@ kernel. Starting a kernel involves the following steps:
       ;; NOTE: `jupyter-connection' fields are shared between other
       ;; `jupyter-connection' objects. The `jupyter-kernel-manager' sets
       ;; defaults for these when their slots are unbound, see `slot-unbound'.
-      (let* ((key (jupyter-session-key (oref manager session)))
+      (let* ((reporter (make-progress-reporter
+                        (format "Starting %s kernel..." kernel-name)))
+             (key (jupyter-session-key (oref manager session)))
              (conn-file (expand-file-name
                          (concat "kernel-" key ".json")
                          jupyter-runtime-directory)))
@@ -217,13 +219,15 @@ kernel. Starting a kernel involves the following steps:
                (delete-process proc)
                (error "Kernel did not read connection file within timeout"))
             (while (equal atime (nth 4 (file-attributes conn-file)))
-              (sleep-for 0 100)))
+              (progress-reporter-update reporter)
+              (sleep-for 0 200)))
           (oset manager kernel proc)
           (oset manager conn-file (expand-file-name
                                    (format "kernel-%d.json" (process-id proc))
                                    jupyter-runtime-directory))
           (rename-file conn-file (oref manager conn-file))
           (jupyter-start-channels manager)
+          (progress-reporter-done reporter)
           manager)))))
 
 (cl-defmethod jupyter-start-channels ((manager jupyter-kernel-manager))
@@ -290,6 +294,7 @@ within TIMEOUT seconds otherwise return nil. TIMEOUT defaults to
 1 s. Note that there are no checks to determine if the kernel
 CLIENT is connected to has already been started."
   (let* ((started nil)
+         (reporter (make-progress-reporter "Kernel starting up..."))
          (cb (lambda (msg)
                (setq started
                      (equal (jupyter-message-get msg :execution_state)
@@ -299,7 +304,9 @@ CLIENT is connected to has already been started."
     (prog1
         (with-timeout ((or timeout 1) nil)
           (while (not started)
-            (sleep-for 0.01))
+            (progress-reporter-update reporter)
+            (sleep-for 0.02))
+          (progress-reporter-done reporter)
           t)
       (jupyter-remove-hook client 'jupyter-iopub-message-hook cb))))
 
@@ -326,22 +333,24 @@ un-paused."
   (let (km kc)
     (setq km (jupyter-kernel-manager :name kernel-name))
     (setq kc (jupyter-make-client km client-class))
-    (unwind-protect
-        (progn
+    (condition-case nil
+        (let ((reporter (make-progress-reporter "Requesting kernel info...")))
           (jupyter-start-channels kc)
           (jupyter-hb-unpause (oref kc hb-channel))
           (jupyter-start-kernel km 10)
           (unless (jupyter--wait-until-startup kc 10)
             (error "Kernel did not send startup message"))
+          (progress-reporter-update reporter)
           (let* ((jupyter-inhibit-handlers t)
                  (info (jupyter-wait-until-received :kernel-info-reply
                          (jupyter-kernel-info-request kc)
                          2)))
             (if info (oset km kernel-info (jupyter-message-content info))
-              (error "Kernel did not respond to kernel-info request")))
+              (error "Kernel did not respond to kernel-info request"))
+            (progress-reporter-done reporter))
           (cons km kc))
-      (destructor kc)
-      (destructor km))))
+      (error (destructor kc)
+             (destructor km)))))
 
 (provide 'jupyter-kernel-manager)
 
