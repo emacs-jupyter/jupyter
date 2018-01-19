@@ -935,21 +935,21 @@ REPL buffer."
   (or n (setq n 1))
   (if (< n 0) (jupyter-repl-history-previous (- n) no-replace)
     (goto-char (point-max))
-    (if (cl-loop
-         repeat n
-         thereis (eq (ring-ref jupyter-repl-history -1) 'jupyter-repl-history)
-         do (ring-insert
-             jupyter-repl-history (ring-remove jupyter-repl-history -1)))
-        (cond
-         ((equal (jupyter-repl-cell-code)
-                 (ring-ref jupyter-repl-history 0))
-          (jupyter-repl-replace-cell-code ""))
-         ((equal (jupyter-repl-cell-code) "")
-          (error "End of history"))
-         (t))
-      (unless no-replace
-        (jupyter-repl-replace-cell-code
-         (ring-ref jupyter-repl-history 0))))))
+    (when (cl-loop
+           repeat n
+           thereis (eq (ring-ref jupyter-repl-history -1) 'jupyter-repl-history)
+           do (ring-insert
+               jupyter-repl-history (ring-remove jupyter-repl-history -1)))
+      (cond
+       ((equal (jupyter-repl-cell-code)
+               (ring-ref jupyter-repl-history 0))
+        (jupyter-repl-replace-cell-code "")
+        (setq no-replace t))
+       ((equal (jupyter-repl-cell-code) "")
+        (error "End of history"))))
+    (unless no-replace
+      (jupyter-repl-replace-cell-code
+       (ring-ref jupyter-repl-history 0)))))
 
 (defun jupyter-repl-history-previous (&optional n no-replace)
   "Go to the previous history element.
