@@ -95,14 +95,6 @@
   "The `jupyter-repl-client' for the `current-buffer'.")
 (put 'jupyter-repl-current-client 'permanent-local t)
 
-(defvar jupyter-repl-kernel-manager nil
-  "The `jupyter-kernel-manager' for the `current-buffer' (if available).
-When the kernel that the `jupyter-repl-client' of the
-`current-buffer' is connected to was started as a subprocess of
-the current Emacs process, this variable will hold the
-`jupyter-kernel-manager' used.")
-(put 'jupyter-repl-kernel-manager 'permanent-local t)
-
 (defvar jupyter-repl-lang-mode nil
   "The `major-mode' corresponding to the kernel's language.")
 
@@ -1020,8 +1012,9 @@ execute the current cell."
                    (goto-char (point-max))
                    (jupyter-repl-cell-beginning-position)))
       (goto-char (point-max))
-    (unless (or (and jupyter-repl-kernel-manager
-                     (jupyter-kernel-alive-p jupyter-repl-kernel-manager))
+    (unless (or (and (jupyter-repl-client-has-manager-p)
+                     (jupyter-kernel-alive-p
+                      (oref jupyter-repl-current-client parent-instance)))
                 (jupyter-hb-beating-p
                  (oref jupyter-repl-current-client hb-channel)))
       (error "Kernel not alive"))
@@ -1094,7 +1087,12 @@ the inserted text is multi-line."
 If the REPL buffer is killed, stop the client and possibly the
 kernel that the REPL buffer is connected to."
   (not (and (eq major-mode 'jupyter-repl-mode)
-            (or (jupyter-kernel-alive-p jupyter-repl-kernel-manager)
+            ;; TODO: Handle case when multiple clients are connected, i.e. do
+            ;; we want to also delete a kernel if this is the last client
+            ;; connected. See eieio instance tracker.
+            (or (and (jupyter-repl-client-has-manager-p)
+                     (jupyter-kernel-alive-p
+                      (oref jupyter-repl-current-client parent-instance)))
                 (jupyter-channels-running-p jupyter-repl-current-client))
             (if (y-or-n-p
                  (format "Jupyter REPL (%s) still connected. Kill it? "
@@ -1107,9 +1105,10 @@ kernel that the REPL buffer is connected to."
                    for buffer in (buffer-list)
                    do (with-current-buffer buffer
                         (when (eq jupyter-repl-current-client client)
-                          (setq-local jupyter-repl-current-client nil))))
-                  (when jupyter-repl-kernel-manager
-                    (jupyter-shutdown-kernel jupyter-repl-kernel-manager)))
+                          (jupyter-repl-interaction-mode -1))))
+                  (when (jupyter-repl-client-has-manager-p)
+                    (jupyter-shutdown-kernel
+                     (oref jupyter-repl-current-client parent-instance))))
               t))))
 
 ;; FIXME: This is necessary due to some interaction with other packages (I
@@ -1436,16 +1435,25 @@ If the current region is active send the current region using
 
 ;;; Kernel management
 
+(defun jupyter-repl-client-has-manager-p ()
+  "Does the `jupyter-repl-current-client' have a `jupyter-kernel-manager'?
+Checks to see if the REPL client of the `current-buffer' has a
+kernel manager as its parent-instance slot."
+  (and jupyter-repl-current-client
+       (slot-boundp jupyter-repl-current-client 'parent-instance)
+       (obj-of-class-p (oref jupyter-repl-current-client parent-instance)
+                       'jupyter-kernel-manager)))
+
 (defun jupyter-repl-interrupt-kernel ()
   "Interrupt the kernel if possible.
 A kernel can be interrupted if it was started using a
 `jupyter-kernel-manager'. See `jupyter-start-new-kernel'."
   (interactive)
-  (if jupyter-repl-kernel-manager
-      (with-jupyter-repl-buffer jupyter-repl-current-client
-        (message "Interrupting kernel")
-        (jupyter-interrupt-kernel jupyter-repl-kernel-manager))
-    (user-error "Cannot interrupt non-subprocess kernels")))
+  (if (not (jupyter-repl-client-has-manager-p))
+      (user-error "Cannot interrupt non-subprocess kernels")
+    (message "Interrupting kernel")
+    (jupyter-interrupt-kernel
+     (oref jupyter-repl-current-client parent-instance))))
 
 ;; TODO: Make timeouts configurable
 ;; TODO: Handle all consequences of a shutdown
@@ -1467,13 +1475,15 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
     ;; This may have been set to t due to a non-responsive kernel so make sure
     ;; that we try again when restarting.
     (setq-local jupyter-repl-use-builtin-is-complete nil))
-  (if jupyter-repl-kernel-manager
-      (if (jupyter-kernel-alive-p jupyter-repl-kernel-manager)
-          (progn
-            (message "%s kernel..." (if shutdown "Shutting down" "Restarting"))
-            (jupyter-shutdown-kernel jupyter-repl-kernel-manager (not shutdown)))
-        (message "Starting dead kernel...")
-        (jupyter-start-kernel jupyter-repl-kernel-manager))
+  (if (jupyter-repl-client-has-manager-p)
+      (let ((manager (oref jupyter-repl-current-client parent-instance)))
+        (if (jupyter-kernel-alive-p manager)
+            (progn
+              (message "%s kernel..." (if shutdown "Shutting down"
+                                        "Restarting"))
+              (jupyter-shutdown-kernel manager (not shutdown)))
+          (message "Starting dead kernel...")
+          (jupyter-start-kernel manager)))
     (when (null (jupyter-wait-until-received :shutdown-reply
                   (jupyter-shutdown-request jupyter-repl-current-client
                     (not shutdown))))
@@ -1482,8 +1492,9 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
 (defun jupyter-repl-display-kernel-buffer ()
   "Display the kernel processes stdout."
   (interactive)
-  (if jupyter-repl-kernel-manager
-      (display-buffer (process-buffer (oref jupyter-repl-kernel-manager kernel)))
+  (if (jupyter-repl-client-has-manager-p)
+      (let ((manager (oref jupyter-repl-current-client parent-instance)))
+        (display-buffer (process-buffer (oref manager kernel))))
     (user-error "Kernel not a subprocess")))
 
 (defun jupyter-repl-restart-channels ()
@@ -1651,11 +1662,10 @@ one of the Jupyter kernel languages."
         (with-current-buffer b
           (and (eq major-mode 'jupyter-repl-mode)
                (if mode (eq mode jupyter-repl-lang-mode) t)
-               (or (condition-case nil
-                       ;; Check if the kernel is local
-                       (jupyter-kernel-alive-p
-                        (oref jupyter-repl-current-client parent-instance))
-                     (error nil))
+               (or (and (jupyter-repl-client-has-manager-p)
+                        ;; Check if the kernel is local
+                        (jupyter-kernel-alive-p
+                         (oref jupyter-repl-current-client parent-instance)))
                    (let ((hb (oref jupyter-repl-current-client hb-channel)))
                      (and (and (jupyter-channel-alive-p hb))
                           (jupyter-hb-beating-p hb))))
@@ -1684,8 +1694,6 @@ that of CLIENT."
                  client))
   (cl-check-type client jupyter-repl-client)
   (setq-local jupyter-repl-current-client client)
-  (setq-local jupyter-repl-kernel-manager (with-jupyter-repl-buffer client
-                                            jupyter-repl-kernel-manager))
   (jupyter-repl-interaction-mode))
 
 (defvar jupyter-repl-interaction-map
