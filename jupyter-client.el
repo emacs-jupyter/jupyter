@@ -547,10 +547,10 @@ by `jupyter--ioloop'."
                                 iopub-channel)
                      for channel = (slot-value client c)
                      when (eq (oref channel type) ctype)
-                     return channel
-                     finally (error "No handler for channel type (%s)" ctype))))
-       (jupyter-queue-message channel (cons idents msg))
-       (run-with-timer 0.0001 nil #'jupyter-handle-message client channel)))
+                     return channel)))
+       (if (not channel) (warn "No handler for channel type (%s)" ctype)
+         (jupyter-queue-message channel (cons idents msg))
+         (run-with-timer 0.0001 nil #'jupyter-handle-message client channel))))
     ('(quit)
      ;; Cleanup handled in sentinel
      (when jupyter--debug
