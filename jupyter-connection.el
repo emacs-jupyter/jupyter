@@ -13,7 +13,11 @@
     :documentation "The connection plist which holds the channel
  ports and other information required for connecting to a kernel.
  See
- http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files"))
+ http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files")
+   (kernel-info
+    :type json-plist
+    :initarg :kernel-info
+    :documentation "The kernel info plist of the kernel."))
   :abstract t)
 
 (cl-defun jupyter-create-connection-info (&key

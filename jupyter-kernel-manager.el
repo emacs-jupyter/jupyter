@@ -54,11 +54,7 @@
    (control-channel
     :type (or null jupyter-control-channel)
     :initform nil)
-   (info
-    :type (or null json-plist)
     :initform nil
-    :documentation "Contains the result of the initial kernel_info_request
- to the kernel after starting the kernel.")
    (spec
     :type (or null json-plist)
     :initform nil)))
@@ -336,8 +332,8 @@ un-paused."
           (let* ((jupyter-inhibit-handlers t)
                  (info (jupyter-wait-until-received :kernel-info-reply
                          (jupyter-kernel-info-request kc)
-                         30)))
-            (if info (oset km info (jupyter-message-content info))
+                         2)))
+            (if info (oset km kernel-info (jupyter-message-content info))
               (error "Kernel did not respond to kernel-info request")))
           (cons km kc))
       (destructor kc)
