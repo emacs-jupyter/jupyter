@@ -132,7 +132,7 @@ variables and intermediate ioloop process output.")
     :initarg :stdin-channel
     :documentation "The stdin channel.")))
 
-(cl-defmethod initialize-instance ((client jupyter-kernel-client))
+(cl-defmethod initialize-instance ((client jupyter-kernel-client) &rest _slots)
   (cl-call-next-method)
   (oset client -buffer (generate-new-buffer " *jupyter-kernel-client*")))
 
