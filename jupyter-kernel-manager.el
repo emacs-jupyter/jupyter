@@ -98,11 +98,17 @@ session."
                              :key (jupyter-session-key (oref manager session)))))
    (t (cl-call-next-method))))
 
+(cl-defgeneric jupyter-make-client ((manager jupyter-kernel-manager) class &rest slots)
+  "Make a new client from CLASS connected to MANAGER's kernel.
+SLOTS are the slots used to initialize the client with.")
+
 (cl-defmethod jupyter-make-client ((manager jupyter-kernel-manager) class &rest slots)
   "Make a new client from CLASS connected to MANAGER's kernel.
 CLASS should be a subclass of `jupyter-kernel-client', a new
-instance of CLASS initialized with SLOTS is returned configured
-to connect to MANAGER's kernel."
+instance of CLASS initialized with SLOTS and configured to
+connect to MANAGER's kernel. The returned `jupyter-kernel-client'
+will have MANAGER set as its parent-instance slot, see
+`jupyter-connection'."
   (unless (child-of-class-p class 'jupyter-kernel-client)
     (signal 'wrong-type-argument (list '(subclass jupyter-kernel-client) class)))
   (let ((client (apply #'make-instance class slots)))
@@ -150,6 +156,9 @@ Return the newly created kernel process."
     (prog1 proc
       (set-process-sentinel
        proc (apply-partially #'jupyter--kernel-sentinel manager)))))
+
+(cl-defgeneric jupyter-start-kernel ((manager jupyter-kernel-manager) &optional timeout)
+  "Start a kernel based on MANAGER's slots. Wait until TIMEOUT for startup.")
 
 ;; TODO: Allow passing arguments like a different kernel file name or different
 ;; ports and arguments to the kernel
@@ -253,7 +262,17 @@ kernel. Starting a kernel involves the following steps:
       (jupyter-stop-channel channel)
       (oset manager control-channel nil))))
 
+(cl-defgeneric jupyter-shutdown-kernel ((manager jupyter-kernel-manager) &optional restart timeout)
+  "Shutdown MANAGER's kernel with an optional RESTART.
+Wait until TIMEOUT before forcibly shutting down the kernel.")
+
 (cl-defmethod jupyter-shutdown-kernel ((manager jupyter-kernel-manager) &optional restart timeout)
+  "Shutdown MANAGER's kernel with an optional RESTART.
+If RESTART is non-nil, then restart the kernel after shutdown.
+First send a shutdown request on the control channel to the
+kernel. If the kernel has not shutdown within TIMEOUT, forcibly
+kill the kernel subprocess. After shutdown the MANAGER's control
+channel is stopped unless RESTART is non-nil."
   (when (jupyter-kernel-alive-p manager)
     (let ((session (oref manager session))
           (sock (oref (oref manager control-channel) socket))
@@ -268,7 +287,18 @@ kernel. Starting a kernel involves the following steps:
           (jupyter-start-kernel manager)
         (jupyter-stop-channels manager)))))
 
+(cl-defgeneric jupyter-interrupt-kernel ((manager jupyter-kernel-manager) &optional timeout)
+  "Interrupt MANAGER's kernel.
+When the kernel has an interrupt mode of \"message\" send an
+interrupt request and wait until TIMEOUT for a reply.")
+
 (cl-defmethod jupyter-interrupt-kernel ((manager jupyter-kernel-manager) &optional timeout)
+  "Interrupt MANAGER's kernel.
+If the kernel's interrupt mode is set to \"message\" send an
+interrupt request on MANAGER's control channel and wait until
+TIMEOUT for a reply. Otherwise if the kernel does not specify an
+interrupt mode, send an interrupt signal to the kernel
+subprocess."
   (pcase (plist-get (oref manager spec) :interrupt_mode)
     ("message"
      (let ((session (oref manager session))
@@ -283,7 +313,11 @@ kernel. Starting a kernel involves the following steps:
            (sleep-for 0.01)))))
     (_ (interrupt-process (oref manager kernel) t))))
 
+(cl-defgeneric jupyter-kernel-alive-p ((manager jupyter-kernel-manager))
+  "Return non-nil if MANAGER's kernel is alive, otherwise return nil.")
+
 (cl-defmethod jupyter-kernel-alive-p ((manager jupyter-kernel-manager))
+  "Is MANGER's kernel alive?"
   (when (oref manager kernel)
     (process-live-p (oref manager kernel))))
 
@@ -325,7 +359,9 @@ Return a cons cell (KM . KC) where KM is the
 subprocess. KC is a new client connected to the kernel and whose
 class is CLIENT-CLASS. The client is connected to the kernel with
 all channels listening for messages and the heartbeat channel
-un-paused."
+un-paused. Note that the client's parent-instance slot will also
+be set to the kernel manager instance, see
+`jupyter-make-client'."
   (setq client-class (or client-class 'jupyter-kernel-client))
   (unless (child-of-class-p client-class 'jupyter-kernel-client)
     (signal 'wrong-type-argument
