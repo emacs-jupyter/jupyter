@@ -1591,21 +1591,45 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
 (put 'jupyter-repl-mode 'mode-class 'special)
 (define-derived-mode jupyter-repl-mode fundamental-mode
   "Jupyter-REPL"
-  "A major mode for interacting with a Jupyter kernel."
+  "A Jupyter REPL major mode."
+  (cl-check-type jupyter-repl-current-client jupyter-repl-client)
+  (setq-local jupyter-repl-current-client jupyter-repl-current-client)
   (setq-local indent-line-function #'jupyter-repl-indent-line)
   (setq-local left-margin-width jupyter-repl-prompt-margin-width)
+  ;; Initialize a buffer using the major-mode correponding to the kernel's
+  ;; language. This will be used for indentation and to capture font lock
+  ;; properties.
+  (cl-destructuring-bind (mode syntax)
+      (jupyter-repl-kernel-mode-info
+       (oref jupyter-repl-current-client kernel-info))
+    (setq-local jupyter-repl-lang-mode mode)
+    (setq-local jupyter-repl-lang-buffer
+                (get-buffer-create
+                 (format " *jupyter-repl-lang-%s*" language-name)))
+    (set-syntax-table syntax)
+    (with-jupyter-repl-lang-buffer
+      (unless (eq major-mode mode)
+        (funcall mode))))
+  ;; Get history from kernel
   (setq-local jupyter-repl-history
               (make-ring (1+ jupyter-repl-history-maximum-length)))
-  ;; The sentinel value keeps track of the newest/oldest elements of
-  ;; the history since next/previous navigation is implemented by
-  ;; rotations on the ring.
+  ;; The sentinel value keeps track of the newest/oldest elements of the
+  ;; history since next/previous navigation is implemented by rotations on the
+  ;; ring.
   (ring-insert jupyter-repl-history 'jupyter-repl-history)
+  (jupyter-history-request jupyter-repl-current-client
+    :n jupyter-repl-history-maximum-length :raw nil :unique t)
   (erase-buffer)
-  (jupyter-repl-interaction-mode)
-  (jupyter-repl-isearch-setup)
+  ;; Add local hooks
   (add-hook 'kill-buffer-query-functions #'jupyter-repl-kill-buffer-query-function nil t)
   (add-hook 'after-change-functions 'jupyter-repl-after-buffer-change nil t)
-  (add-hook 'pre-redisplay-functions 'jupyter-repl-preserve-window-margins nil t))
+  (add-hook 'pre-redisplay-functions 'jupyter-repl-preserve-window-margins nil t)
+  ;; Initialize the REPL
+  (jupyter-set jupyter-repl-current-client 'jupyter-include-other-output t)
+  (jupyter-repl-initialize-fontification)
+  (jupyter-repl-isearch-setup)
+  (jupyter-repl-sync-execution-state)
+  (jupyter-repl-interaction-mode))
 
 (defun jupyter-repl-initialize-fontification ()
   (let (fld)
@@ -1722,6 +1746,63 @@ that of CLIENT."
       (setq-local company-backends
                   (delq 'company-jupyter-repl company-backends)))))
 
+(defun jupyter-repl-kernel-mode-info (kernel-info)
+  "Get the `major-mode' for a kernel based on its KERNEL-INFO.
+Currently this returns a list of information required to
+initialize a REPL buffer such as the `major-mode' used for syntax
+highlighting and indentation purposes. The list has the following
+elements
+
+   (MODE SYNTAX-TABLE)
+
+Where MODE is the `major-mode' to use for syntax highlighting
+purposes and SYNTAX-TABLE is the syntax table of the mode. MODE
+is found by consulting `auto-mode-alist' for the file extension
+found in KERNEL-INFO."
+  (cl-destructuring-bind (&key file_extension &allow-other-keys)
+      (plist-get kernel-info :language_info)
+    (let (mode syntax)
+      (with-temp-buffer
+        (let ((buffer-file-name
+               (concat "jupyter-repl-lang" file_extension)))
+          (delay-mode-hooks (set-auto-mode))
+          (setq mode major-mode)
+          (setq syntax (syntax-table))))
+      (list mode syntax))))
+
+(defun jupyter-repl-same-lang-mode-p (buffer client)
+  "Is BUFFER's `major-mode' the same as CLIENT's `jupyter-repl-lang-mode'?"
+  (with-jupyter-repl-buffer client
+    (eq jupyter-repl-lang-mode (with-current-buffer buffer major-mode))))
+
+(defun jupyter-repl--new-repl (client)
+  "Initialize a new REPL buffer based on CLIENT.
+CLIENT should be a `jupyter-repl-client' already connected to its
+kernel and should have a non-nil kernel-info slot.
+
+A new REPL buffer communicating with CLIENT's kernel is created
+and set as CLIENT'sthis case, if MANAGER will be the buffer slot.
+If CLIENT already has a non-nil buffer slot, raise an error."
+  (cl-check-type client jupyter-repl-client)
+  (if (slot-boundp client 'buffer) (error "Client already has a REPL buffer")
+    (unless (ignore-errors (oref client kernel-info))
+      (error "Client needs to have valid kernel-info"))
+    (cl-destructuring-bind (&key language_info
+                                 banner
+                                 &allow-other-keys)
+        (oref client kernel-info)
+      (let ((language-name (plist-get language_info :name))
+            (language-version (plist-get language_info :version)))
+        (oset client buffer
+              (generate-new-buffer
+               (format "*jupyter-repl[%s]*"
+                       (concat language-name " " language-version))))
+        (let ((jupyter-repl-current-client client))
+          (with-jupyter-repl-buffer client
+            (jupyter-repl-mode)
+            (jupyter-repl-insert-banner banner)
+            (jupyter-repl-insert-prompt 'in)))))))
+
 ;;;###autoload
 (defun run-jupyter-repl (kernel-name &optional associate-buffer)
   "Run a Jupyter REPL connected to a kernel with name, KERNEL-NAME.
@@ -1739,47 +1820,19 @@ correspond to the language of the kernel started,
 ASSOCIATE-BUFFER has no effect."
   (interactive (list (jupyter-completing-read-kernelspec)
                      (not current-prefix-arg)))
-  (message "Starting %s kernel..." kernel-name)
-  (setq kernel-name
-        (or (and (called-interactively-p 'interactive)
-                 (car kernel-name))
-            (or (car (jupyter-find-kernelspec kernel-name))
-                (error "No kernel found for prefix (%s)" kernel-name))))
-  (cl-destructuring-bind (km . kc)
+  (setq kernel-name (car (if (called-interactively-p 'interactive)
+                             kernel-name
+                           (jupyter-find-kernelspec kernel-name))))
+  (unless kernel-name
+    (error "No kernel found for prefix (%s)" kernel-name))
+  (cl-destructuring-bind (_manager . client)
       (jupyter-start-new-kernel kernel-name 'jupyter-repl-client)
-    (oset kc buffer (generate-new-buffer
-                     (format "*jupyter-repl[%s]*" (oref km name))))
-    (with-jupyter-repl-buffer kc
-      (cl-destructuring-bind (&key language_info banner &allow-other-keys)
-          (oref km info)
-        (cl-destructuring-bind (&key name file_extension &allow-other-keys)
-            language_info
-          (jupyter-repl-mode)
-          (jupyter-set kc 'jupyter-include-other-output t)
-          (setq-local jupyter-repl-current-client kc)
-          (setq-local jupyter-repl-kernel-manager km)
-          (setq-local jupyter-repl-lang-buffer
-                      (get-buffer-create
-                       (format " *jupyter-repl-lang-%s*" name)))
-          (let (mode syntax)
-            (with-jupyter-repl-lang-buffer
-              (let ((buffer-file-name
-                     (concat "jupyter-repl-lang" file_extension)))
-                (set-auto-mode)
-                (setq mode major-mode)
-                (setq syntax (syntax-table))))
-            (setq-local jupyter-repl-lang-mode mode)
-            (set-syntax-table syntax))
-          (jupyter-history-request kc :n 100 :raw nil :unique t)
-          (jupyter-repl-initialize-fontification)
-          (jupyter-repl-insert-banner banner)
-          (jupyter-repl-sync-execution-state)
-          (jupyter-repl-insert-prompt 'in))))
+    (jupyter-repl--new-repl client)
     (when (and associate-buffer
-               (memq (oref kc buffer) (jupyter-repl-available-repl-buffers
-                                       major-mode)))
-      (jupyter-repl-associate-buffer kc))
-    (pop-to-buffer (oref kc buffer))))
+               (jupyter-repl-same-lang-mode-p
+                (current-buffer) client))
+      (jupyter-repl-associate-buffer client))
+    (pop-to-buffer (oref client buffer))))
 
 (provide 'jupyter-repl-client)
 
