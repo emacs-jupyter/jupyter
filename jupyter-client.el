@@ -416,7 +416,7 @@ PRIORITIES - An alist of (CTYPE . PRIORITY) pairs where CTYPE is
              sorted order."
   `(let ((events (condition-case nil
                      (zmq-poller-wait-all ,poller (length ,channels) ,timeout)
-                   (zmq-EINTR nil))))
+                   ((zmq-EAGAIN zmq-EINTR zmq-ETIMEDOUT) nil))))
      (when (alist-get 0 events)
        ;; Got input from stdin, do the command it
        ;; specifies
