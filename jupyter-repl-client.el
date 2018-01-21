@@ -1283,10 +1283,10 @@ COMMAND and ARG have the same meaning as the elements of
                (pos (cdr ctx)))
           (jupyter-add-callback
               ;; Ignore errors during completion
-              (jupyter-request-inhibit-handlers
-               (jupyter-complete-request
-                   jupyter-repl-current-client
-                 :code code :pos pos))
+              (let ((jupyter-inhibit-handlers t))
+                (jupyter-complete-request
+                    jupyter-repl-current-client
+                  :code code :pos pos))
             :complete-reply
             (lambda (msg)
               (cl-destructuring-bind (&key status
