@@ -56,18 +56,18 @@ http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
     collect channel and
     if (= port 0) do (setq port (zmq-bind-to-random-port sock addr))
     and collect port and
-    do (zmq-unbind sock (zmq-socket-get sock zmq-LAST_ENDPOINT)) else
+    do (zmq-unbind sock (zmq-socket-get sock zmq-LAST-ENDPOINT)) else
     collect port
     finally (zmq-close sock))))
 
 (defun jupyter-connect-endpoint (type endpoint &optional identity)
   "Create socket with type TYPE and connect it to ENDPOINT.
-If IDENTITY is non-nil, it will be set as the ROUTING_ID of the
+If IDENTITY is non-nil, it will be set as the ROUTING-ID of the
 socket. The return value is the socket created."
   (let ((sock (zmq-socket (zmq-current-context) type)))
     (zmq-socket-set sock zmq-LINGER 1000)
     (when identity
-      (zmq-socket-set sock zmq-ROUTING_ID identity))
+      (zmq-socket-set sock zmq-ROUTING-ID identity))
     (zmq-connect sock endpoint)
     sock))
 
@@ -76,7 +76,7 @@ socket. The return value is the socket created."
 CTYPE will be mapped to a ZMQ socket type based on the plist
 `jupyter-socket-types'. ENDPOINT is the endpoint the socket will
 connect to and if IDENTITY is non-nil it will be set as the
-ROUTING_ID of the socket. The return value is the socket
+ROUTING-ID of the socket. The return value is the socket
 created."
   (let ((sock-type (plist-get jupyter-socket-types ctype)))
     (unless sock-type

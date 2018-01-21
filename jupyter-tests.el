@@ -236,7 +236,7 @@ testing the callback functionality of a
       (should-not (jupyter-channel-alive-p channel))
       (jupyter-start-channel channel :identity "foo")
       (should (oref channel socket))
-      (should (equal (zmq-socket-get (oref channel socket) zmq-ROUTING_ID)
+      (should (equal (zmq-socket-get (oref channel socket) zmq-ROUTING-ID)
                      "foo"))
       (should (jupyter-channel-alive-p channel)))
     (ert-info ("Stopping a channel")

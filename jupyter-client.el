@@ -326,14 +326,14 @@ Any other command sent to the subprocess will be ignored."
              (list 'sent ctype (apply #'jupyter-send ,session sock args))))))
        (start-channel
         (let ((sock (car (rassoc args ,channels))))
-          (zmq-connect sock (zmq-socket-get sock zmq-LAST_ENDPOINT))
+          (zmq-connect sock (zmq-socket-get sock zmq-LAST-ENDPOINT))
           (zmq-poller-register ,poller sock zmq-POLLIN)))
        (stop-channel
         (let ((sock (car (rassoc args ,channels))))
           (zmq-poller-unregister ,poller sock)
           (condition-case err
               (zmq-disconnect
-               sock (zmq-socket-get sock zmq-LAST_ENDPOINT))
+               sock (zmq-socket-get sock zmq-LAST-ENDPOINT))
             (zmq-ENOENT nil))))
        (quit
         (signal 'quit nil))
