@@ -1326,8 +1326,8 @@ a form ready for display."
   (let* ((jupyter-inhibit-handlers t)
          (msg (jupyter-wait-until-received :inspect-reply
                 (jupyter-inspect-request jupyter-repl-current-client
-                  :code code :pos pos))
-               timeout)))
+                  :code code :pos pos)
+                timeout)))
     (when msg
       (cl-destructuring-bind (&key status found data &allow-other-keys)
           (jupyter-message-content msg)
