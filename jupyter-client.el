@@ -400,11 +400,12 @@ CHANNELS - An alist of (SOCK . CTYPE) pairs where sock is a
            type CTYPE.
 
 MESSAGES - A variable in which to store the collected list of
-           messages collected during this polling period. If the
-           variable is already bound to a list, new messages
-           added to it will be sorted based on the `:date' field
-           of the Jupyter message also taking into account
-           PRIORITIES.
+           messages during this polling period. If the variable
+           is already bound to a list, new messages added to it
+           will be sorted based on the `:date' field of the
+           Jupyter message. If two messages have the same
+           `:date', e.g. the fractional seconds resolution is not
+           high enough, also take into account PRIORITIES.
 
 PRIORITIES - An alist of (CTYPE . PRIORITY) pairs where CTYPE is
              a `jupyter-channel' type with PRIORITY, a number. If
