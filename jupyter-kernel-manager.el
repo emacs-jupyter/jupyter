@@ -369,7 +369,7 @@ be set to the kernel manager instance, see
   (let (km kc)
     (setq km (jupyter-kernel-manager :name kernel-name))
     (setq kc (jupyter-make-client km client-class))
-    (condition-case nil
+    (condition-case-unless-debug err
         (let ((reporter (make-progress-reporter "Requesting kernel info...")))
           (jupyter-start-channels kc)
           (jupyter-hb-unpause (oref kc hb-channel))
@@ -386,7 +386,8 @@ be set to the kernel manager instance, see
             (progress-reporter-done reporter))
           (cons km kc))
       (error (destructor kc)
-             (destructor km)))))
+             (destructor km)
+             (signal (car err) (cdr err))))))
 
 (provide 'jupyter-kernel-manager)
 
