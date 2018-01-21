@@ -190,10 +190,10 @@ kernel. Starting a kernel involves the following steps:
 4. Start a kernel subprocess passing the connection info file as
    the {connection_file} argument in the kernelspec argument
    vector of the kernel."
-  (let ((kname-spec (jupyter-find-kernelspec (oref manager name))))
+  (let ((kname-spec (jupyter-find-kernelspecs (oref manager name))))
     (unless kname-spec
       (error "No kernel found that starts with name (%s)" (oref manager name)))
-    (cl-destructuring-bind (kernel-name . (resource-dir . spec)) kname-spec
+    (cl-destructuring-bind (kernel-name . (resource-dir . spec)) (car kname-spec)
       ;; Ensure we use the full name of the kernel since
       ;; `jupyter-find-kernelspec' accepts a prefix of a kernel
       (oset manager name kernel-name)
