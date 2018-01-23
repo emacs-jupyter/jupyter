@@ -142,7 +142,7 @@ connection is terminated before initializing."
                      ;; parent-instance, see if the parent instance has it
                      (or (ignore-errors (oref client conn-info))
                          (signal 'unbound-slot
-                                 (list 'json-plist client 'conn-info))))))
+                                 (list 'conn-info client))))))
     (cl-destructuring-bind
         (&key shell_port iopub_port stdin_port hb_port ip
               key transport signature_scheme
@@ -686,10 +686,10 @@ REQ, MSG-TYPE, and CB have the same meaning as in
 seconds, return the message that caused CB to return non-nil. If
 CB never returns a non-nil value within TIMEOUT, return nil. Note
 that if no TIMEOUT is given, `jupyter-default-timeout' is used."
-  (declare (indent 1))
+  (declare (indent 2))
   (setq timeout (or timeout jupyter-default-timeout))
   (cl-check-type timeout number)
-  (let ((msg nil))
+  (let (msg)
     (jupyter-add-callback req
       msg-type (lambda (m) (setq msg (when (funcall cb m) m))))
     (with-timeout (timeout nil)
@@ -1114,8 +1114,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
            content
          (jupyter-handle-update-display-data
           client req data metadata transient)))
-      (_
-       (warn "Message type not handled (%s)" (jupyter-message-type msg))))))
+      (_ (warn "Message type not handled (%s)" (jupyter-message-type msg))))))
 
 (cl-defgeneric jupyter-handle-stream ((_client jupyter-kernel-client)
                                       _req
