@@ -1765,21 +1765,19 @@ that of CLIENT."
       (setq-local company-backends
                   (delq 'company-jupyter-repl company-backends)))))
 
-(defun jupyter-repl-kernel-mode-info (kernel-info)
-  "Get the `major-mode' for a kernel based on its KERNEL-INFO.
-Currently this returns a list of information required to
-initialize a REPL buffer such as the `major-mode' used for syntax
-highlighting and indentation purposes. The list has the following
-elements
+(defun jupyter-repl-kernel-language-mode-properties (language-info)
+  "Get the `major-mode' info of a kernel's language.
+LANGUAGE-INFO should be the plist of the `:language_info' key in
+a kernel's kernel-info. The `major-mode' is found by consulting
+`auto-mode-alist' using the language's file extension found in
+LANGUAGE-INFO. Return a list
 
-   (MODE SYNTAX-TABLE)
+     (MODE SYNTAX-TABLE)
 
 Where MODE is the `major-mode' to use for syntax highlighting
-purposes and SYNTAX-TABLE is the syntax table of the mode. MODE
-is found by consulting `auto-mode-alist' for the file extension
-found in KERNEL-INFO."
+purposes and SYNTAX-TABLE is the syntax table of MODE."
   (cl-destructuring-bind (&key file_extension &allow-other-keys)
-      (plist-get kernel-info :language_info)
+      language-info
     (let (mode syntax)
       (with-temp-buffer
         (let ((buffer-file-name
