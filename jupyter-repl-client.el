@@ -409,7 +409,7 @@ image."
                     for (k d) on data by #'cddr
                     when (and d (not (equal d ""))
                               (or (display-graphic-p)
-                                  (not (memq k graphics-types))))
+                                  (not (memq k graphic-types))))
                     collect k)))
     (cond
      ((memq :image/png mimetypes)
