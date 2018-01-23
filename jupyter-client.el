@@ -71,7 +71,8 @@ reply from the kernel.")
 live channels of the client.")
    ;; TODO: Periodically cleanup these buffers when the object they point to
    ;; are no longer in use. How can we determine if an object has no more
-   ;; references? Maybe do something with `post-gc-hook'?
+   ;; references? Maybe do something with `post-gc-hook'? Or require explicit
+   ;; cleanup?
    (-buffer
     :type buffer
     :documentation "An internal buffer used to store client local
@@ -180,9 +181,10 @@ subprocess buffer."
   `(progn
      (cl-check-type ,client jupyter-kernel-client)
      ;; NOTE: -buffer will be set as the IOLoop process buffer, see
-     ;; `jupyter-start-channels', but we would like to have a buffer available
-     ;; before the ioloop process is started so that client local variables can
-     ;; be set on the buffer.
+     ;; `jupyter-start-channels', but before the IOLoop process is started we
+     ;; would like to have a buffer available so that client local variables
+     ;; can be set on the buffer. This is why we create our own buffer when a
+     ;; client is initialized.
      (with-current-buffer (oref ,client -buffer)
        ,@body)))
 
@@ -820,9 +822,21 @@ the user. Otherwise `read-from-minibuffer' is used."
   (let ((content (jupyter-message-content msg)))
     ;; TODO: How to handle errors? Let the IOPub error message handler deal
     ;; with it? Or do something here?
-    (cl-destructuring-bind (&key status _ename _evalue &allow-other-keys) content
-      ;; NOTE: Silently does nothing on error
-      (unless (member status '("error" "abort"))
+    (cl-destructuring-bind (&key status ename evalue &allow-other-keys) content
+      (if (member status '("error" "abort"))
+          ;; FIXME: The python kernel will expect errors to be handled by an
+          ;; execute-reply and not emit an error message through IOPub whereas
+          ;; the julia kernel will emit the error both as an IOPub message and
+          ;; in an execute reply.
+          ;;
+          ;; TODO: Since there will likely be differences in messaging between
+          ;; kernels, the easiest solution to this would be to allow users to
+          ;; configure the client handling on a much more granular level than
+          ;; just inhibiting the handlers. For example inhibiting only error
+          ;; messages on the iopub channel.
+          (ignore)
+        ;; (jupyter-handle-error
+        ;;  client req ename evalue (plist-get content :traceback))
         (pcase (jupyter-message-type msg)
           ("execute_reply"
            (cl-destructuring-bind (&key execution_count
