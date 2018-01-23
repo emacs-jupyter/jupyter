@@ -117,6 +117,10 @@ will have MANAGER set as its parent-instance slot, see
     client))
 
 (defun jupyter--kernel-sentinel (manager kernel event)
+  "Cleanup resources after kernel shutdown.
+If MANAGER's KERNEL process terminates, i.e. when EVENT describes
+an event in which the KERNEL process was killed: kill the process
+buffer and delete MANAGER's conn-file."
   (cond
    ((cl-loop for type in '("exited" "failed" "finished" "killed" "deleted")
              thereis (string-prefix-p type event))
@@ -129,13 +133,18 @@ will have MANAGER set as its parent-instance slot, see
 
 (defun jupyter--start-kernel (manager kernel-name env args)
   "Start a kernel.
-A kernel named KERNEL-NAME is started using ARGS. The name of the
-command used to start the kernel subprocess should be the first
-element of ARGS and the rest of the elements of ARGS are the
-command line parameters passed to the command. If ENV is non-nil,
-then it should be a plist containing environment variable names
-as keywords along with their corresponding values. These will be
-set as the process environment before starting the kernel.
+For a `jupyter-kernel-manager', MANAGER, state a kernel named
+KERNEL-NAME with ENV and ARGS.
+
+If ENV is non-nil, then it should be a plist containing
+environment variable names as keywords along with their
+corresponding values. These will be set as the process
+environment before starting the kernel.
+
+ARGS should be a list of command line arguments used to start the
+kernel process. The name of the command used to start the kernel
+should be the first element of ARGS and the rest of the elements
+of ARGS are the arguments of the command.
 
 Return the newly created kernel process."
   (let* ((process-environment
