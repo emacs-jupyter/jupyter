@@ -716,14 +716,27 @@ that if no TIMEOUT is given, it defaults to
 ;;; Client handlers
 
 (defun jupyter--drop-idle-requests (client)
+  "Drop completed/stale requests from CLIENT's request table.
+Since there are no real guarantees on the order of messages
+received by a Jupyter kernel. Requests that are stored in
+CLIENT's requests slot are periodically removed once a request
+has been idle for more than 1 minute. This avoids the request
+table from growing without bound.
+
+FIXME: A request is also removed if its last received message
+time is more than 5 minutes ago. This is to ensure that any stale
+requests that might have been complete, but the idle message was
+not received, are also removed."
   (cl-loop
    with requests = (oref client requests)
    with ctime = (current-time)
    for req in (hash-table-values requests)
    for ltime = (jupyter-request-last-message-time req)
    for id = (jupyter-request-id req)
-   when (and (jupyter-request-idle-received-p req)
-             (> (float-time (time-subtract ctime ltime)) 60))
+   when (or (and (jupyter-request-idle-received-p req)
+                 (> (float-time (time-subtract ctime ltime)) 60))
+            ;; Remove stale requests
+            (> (float-time (time-subtract ctime ltime)) 300))
    do (when jupyter--debug
         (message "DROPPING-REQ: %s" id))
    (remhash id requests)))
