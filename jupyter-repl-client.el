@@ -831,12 +831,12 @@ lines then truncate it to something less than
          do (pcase (plist-get pl :source)
               ("page"
                (let ((text (plist-get (plist-get pl :data) :text/plain))
-                     (line (or (plist-get pl :start) 0))))
-               (with-jupyter-repl-doc-buffer "pager"
-                 (jupyter-repl-insert-ansi-coded-text text)
-                 (goto-char (point-min))
-                 (forward-line line)
-                 (display-buffer (current-buffer))))
+                     (line (or (plist-get pl :start) 0)))
+                 (with-jupyter-repl-doc-buffer "pager"
+                   (jupyter-repl-insert-ansi-coded-text text)
+                   (goto-char (point-min))
+                   (forward-line line)
+                   (display-buffer (current-buffer)))))
               ((or "edit" "edit_magic")
                (with-current-buffer (find-file-other-window
                                      (plist-get pl :filename))
