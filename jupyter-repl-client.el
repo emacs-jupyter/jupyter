@@ -1430,11 +1430,12 @@ displayed without anything showing up in the REPL buffer."
                   :code code)))
       (setf (jupyter-request-run-handlers-p req) (not silently))
       (jupyter-add-callback req
-        :error (lambda (msg)
-                 (cl-destructuring-bind (&key ename evalue &allow-other-keys)
-                     (jupyter-message-content msg)
-                   (message "jupyter (%s): %s" ename
-                            (xterm-color-filter evalue))))
+        :execute-reply (lambda (msg)
+                         (cl-destructuring-bind (&key status ename evalue &allow-other-keys)
+                             (jupyter-message-content msg)
+                           (unless (equal status "ok")
+                             (message "jupyter (%s): %s" ename
+                                      (xterm-color-filter evalue)))))
         :execute-result
         (lambda (msg)
           (let ((res (jupyter-message-data msg :text/plain)))
