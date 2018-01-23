@@ -1853,10 +1853,39 @@ ASSOCIATE-BUFFER has no effect."
       (jupyter-repl-associate-buffer client))
     (pop-to-buffer (oref client buffer))))
 
-(provide 'jupyter-repl-client)
+;;;###autoload
+(defun connect-jupyter-repl (file-or-plist &optional associate-buffer)
+  "Run a Jupyter REPL connected to a kernel using a connection file.
+FILE-OR-PLIST can be either a file holding the connection
+information or a PLIST of the connection information.
 
-;;; jupyter-repl-client.el ends here
+ASSOCIATE-BUFFER has the same meaning as in `run-jupyter-repl'.
+
+When called interactively, display the newly created REPL buffer.
+Otherwise, in a non-interactive call return the newly created
+client connected to the REPL."
+  (interactive (list (read-file-name "Connection file: ") t))
+  (let ((client (make-instance 'jupyter-repl-client)))
+    (jupyter-initialize-connection client file-or-plist)
+    (jupyter-start-channels client)
+    (let* ((jupyter-inhibit-handlers t)
+           (info (jupyter-wait-until-received :kernel-info-reply
+                   (jupyter-kernel-info-request kc)
+                   5)))
+      (unless info
+        (destructor client)
+        (error "Kernel did not respond to kernel-info request"))
+      (oset client kernel-info (jupyter-message-content info))
+      (jupyter-repl--new-repl client)
+      (when (and associate-buffer (jupyter-repl-same-lang-mode-p client))
+        (jupyter-repl-associate-buffer client))
+      (if (called-interactively-p 'interactive)
+          (pop-to-buffer (oref client buffer))
+        client))))
+
+(provide 'jupyter-repl-client)
 
 ;; Local Variables:
 ;; byte-compile-warnings: (not free-vars)
 ;; End:
+;;; jupyter-repl-client.el ends here
