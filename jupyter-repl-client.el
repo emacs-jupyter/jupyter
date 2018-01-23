@@ -1715,11 +1715,15 @@ Set the execution-count slot of `jupyter-repl-current-client' to
 ;;; `jupyter-repl-interaction-mode'
 
 (defun jupyter-repl-pop-to-buffer ()
-  "Switch to the REPL buffer associated with `jupyter-repl-current-client'."
+  "Switch to the REPL buffer associated with the `current-buffer'.
+Switch to the REPL buffer of the `jupyter-repl-current-client'
+for the `current-buffer'."
   (interactive)
-  (with-jupyter-repl-buffer jupyter-repl-current-client
-    (goto-char (point-max))
-    (pop-to-buffer (current-buffer))))
+  (if jupyter-repl-current-client
+      (with-jupyter-repl-buffer jupyter-repl-current-client
+        (goto-char (point-max))
+        (pop-to-buffer (current-buffer)))
+    (error "Buffer not associated with a REPL, see `jupyter-repl-associate-buffer'")))
 
 (defun jupyter-repl-available-repl-buffers (&optional mode)
   "Get a list of REPL buffers that are connected to live kernels.
