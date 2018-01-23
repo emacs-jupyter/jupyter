@@ -190,54 +190,55 @@ kernel. Starting a kernel involves the following steps:
 4. Start a kernel subprocess passing the connection info file as
    the {connection_file} argument in the kernelspec argument
    vector of the kernel."
-  (let ((kname-spec (jupyter-find-kernelspecs (oref manager name))))
-    (unless kname-spec
-      (error "No kernel found that starts with name (%s)" (oref manager name)))
-    (cl-destructuring-bind (kernel-name . (resource-dir . spec)) (car kname-spec)
-      ;; Ensure we use the full name of the kernel since
-      ;; `jupyter-find-kernelspec' accepts a prefix of a kernel
-      (oset manager name kernel-name)
-      (oset manager spec spec)
-      ;; NOTE: `jupyter-connection' fields are shared between other
-      ;; `jupyter-connection' objects. The `jupyter-kernel-manager' sets
-      ;; defaults for these when their slots are unbound, see `slot-unbound'.
-      (let* ((reporter (make-progress-reporter
-                        (format "Starting %s kernel..." kernel-name)))
-             (key (jupyter-session-key (oref manager session)))
-             (conn-file (expand-file-name
-                         (concat "kernel-" key ".json")
-                         jupyter-runtime-directory)))
-        ;; Write the connection info file
-        (with-temp-file (oset manager conn-file conn-file)
-          (let ((json-encoding-pretty-print t))
-            (insert (json-encode-plist (oref manager conn-info)))))
-        ;; Start the process
-        (let ((atime (nth 4 (file-attributes conn-file)))
-              (proc (jupyter--start-kernel
-                     manager kernel-name (plist-get spec :env)
-                     (cl-loop
-                      for arg in (plist-get spec :argv)
-                      if (equal arg "{connection_file}")
-                      collect conn-file
-                      else if (equal arg "{resource_dir}")
-                      collect resource-dir
-                      else collect arg))))
-          ;; Block until the kernel reads the connection file
-          (with-timeout
-              ((or timeout 5)
-               (delete-process proc)
-               (error "Kernel did not read connection file within timeout"))
-            (while (equal atime (nth 4 (file-attributes conn-file)))
-              (progress-reporter-update reporter)
-              (sleep-for 0 200)))
-          (oset manager kernel proc)
-          (oset manager conn-file (expand-file-name
-                                   (format "kernel-%d.json" (process-id proc))
-                                   jupyter-runtime-directory))
-          (rename-file conn-file (oref manager conn-file))
-          (jupyter-start-channels manager)
-          (progress-reporter-done reporter)
-          manager)))))
+  (unless (jupyter-kernel-alive-p manager)
+    (let ((kname-spec (jupyter-find-kernelspecs (oref manager name))))
+      (unless kname-spec
+        (error "No kernel found that starts with name (%s)" (oref manager name)))
+      (cl-destructuring-bind (kernel-name . (resource-dir . spec)) (car kname-spec)
+        ;; Ensure we use the full name of the kernel since
+        ;; `jupyter-find-kernelspec' accepts a prefix of a kernel
+        (oset manager name kernel-name)
+        (oset manager spec spec)
+        ;; NOTE: `jupyter-connection' fields are shared between other
+        ;; `jupyter-connection' objects. The `jupyter-kernel-manager' sets
+        ;; defaults for these when their slots are unbound, see `slot-unbound'.
+        (let* ((reporter (make-progress-reporter
+                          (format "Starting %s kernel..." kernel-name)))
+               (key (jupyter-session-key (oref manager session)))
+               (conn-file (expand-file-name
+                           (concat "kernel-" key ".json")
+                           jupyter-runtime-directory)))
+          ;; Write the connection info file
+          (with-temp-file (oset manager conn-file conn-file)
+            (let ((json-encoding-pretty-print t))
+              (insert (json-encode-plist (oref manager conn-info)))))
+          ;; Start the process
+          (let ((atime (nth 4 (file-attributes conn-file)))
+                (proc (jupyter--start-kernel
+                       manager kernel-name (plist-get spec :env)
+                       (cl-loop
+                        for arg in (plist-get spec :argv)
+                        if (equal arg "{connection_file}")
+                        collect conn-file
+                        else if (equal arg "{resource_dir}")
+                        collect resource-dir
+                        else collect arg))))
+            ;; Block until the kernel reads the connection file
+            (with-timeout
+                ((or timeout 5)
+                 (delete-process proc)
+                 (error "Kernel did not read connection file within timeout"))
+              (while (equal atime (nth 4 (file-attributes conn-file)))
+                (progress-reporter-update reporter)
+                (sleep-for 0 200)))
+            (oset manager kernel proc)
+            (oset manager conn-file (expand-file-name
+                                     (format "kernel-%d.json" (process-id proc))
+                                     jupyter-runtime-directory))
+            (rename-file conn-file (oref manager conn-file))
+            (jupyter-start-channels manager)
+            (progress-reporter-done reporter)
+            manager))))))
 
 (cl-defmethod jupyter-start-channels ((manager jupyter-kernel-manager))
   "Start a control channel on MANAGER."
