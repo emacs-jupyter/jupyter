@@ -1248,7 +1248,7 @@ is actually sent to the kernel."
                    ;; most likely will depend on the kernel in use.
                    ;; `jupyter-repl-lang-mode' can be used here with some alist
                    ;; mapping modes to operators.
-                   (looking-back "\\." 2))
+                   (looking-back "\\." 1))
                (buffer-substring
                 (save-excursion
                   (skip-syntax-backward "w_.")
