@@ -1645,15 +1645,15 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
   ;; Initialize a buffer using the major-mode correponding to the kernel's
   ;; language. This will be used for indentation and to capture font lock
   ;; properties.
-  (let ((info (oref jupyter-repl-current-client kernel-info)))
+  (let* ((info (oref jupyter-repl-current-client kernel-info))
+         (language-info (plist-get info :language_info)))
     (cl-destructuring-bind (mode syntax)
-        (jupyter-repl-kernel-mode-info info)
+        (jupyter-repl-kernel-language-mode-properties language-info)
       (setq-local jupyter-repl-lang-mode mode)
       (setq-local jupyter-repl-lang-buffer
                   (get-buffer-create
                    (format " *jupyter-repl-lang-%s*"
-                           (plist-get (plist-get info :language_info)
-                                      :language))))
+                           (plist-get langauge-info :language))))
       (set-syntax-table syntax)
       (with-jupyter-repl-lang-buffer
         (unless (eq major-mode mode)
