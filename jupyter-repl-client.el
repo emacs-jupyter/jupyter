@@ -478,45 +478,45 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
   (setq type (or type 'in))
   (unless (memq type '(in out continuation))
     (error "Prompt type can only be (`in', `out', or `continuation')"))
-  (let ((inhibit-read-only t)
-        (inhibit-modification-hooks t)
-        ov props)
-    (cond
-     ((eq type 'in)
-      (let ((count (oref jupyter-repl-current-client execution-count)))
-        (setq ov (jupyter-repl--insert-prompt
-                  (format "In [%d]:" count) 'jupyter-repl-input-prompt)
-              props (list 'jupyter-cell (list 'beginning count))))
-      ;; Insertion of an invisible character is to prevent the prompt overlay
-      ;; from inheriting the text properties of code at the beginning of a
-      ;; cell similarly for the output prompt.
-      ;;
-      ;; The front-sticky property is so that `point' will not get trapped in
-      ;; the middle of the newline inserted by `jupyter-repl--insert-prompt'
-      ;; and the invisible character.
-      ;;
-      ;; Finally the field property is so that text motions will stop at the
-      ;; start of the code for a cell instead of moving past this invisible
-      ;; character.
-      (jupyter-repl-insert
-       :properties '(invisible t rear-nonsticky t front-sticky t field t) " "))
-     ((eq type 'out)
-      ;; Output is normally inserted by first going to the end of the output
-      ;; for the request. The end of the ouput for a request is at the
-      ;; beginning of the next cell after the request which is why `escape' is
-      ;; needed here.
-      (let ((count (jupyter-repl-cell-count 'escape)))
-        (setq ov (jupyter-repl--insert-prompt
-                  (format "Out [%d]:" count) 'jupyter-repl-output-prompt)
-              props (list 'jupyter-cell (list 'out count))))
-      ;; Prevent the overlay from inheriting text properties
-      (jupyter-repl-insert
-       :properties '(invisible t) " "))
-     ((eq type 'continuation)
-      (setq ov (jupyter-repl--insert-prompt
-                ":" 'jupyter-repl-input-prompt)
-            props (list 'read-only nil 'rear-nonsticky t))))
-    (add-text-properties (overlay-start ov) (overlay-end ov) props)))
+  (jupyter-repl-without-continuation-prompts
+   (let ((inhibit-read-only t)
+         ov props)
+     (cond
+      ((eq type 'in)
+       (let ((count (oref jupyter-repl-current-client execution-count)))
+         (setq ov (jupyter-repl--insert-prompt
+                   (format "In [%d]:" count) 'jupyter-repl-input-prompt)
+               props (list 'jupyter-cell (list 'beginning count))))
+       ;; Insertion of an invisible character is to prevent the prompt overlay
+       ;; from inheriting the text properties of code at the beginning of a
+       ;; cell similarly for the output prompt.
+       ;;
+       ;; The front-sticky property is so that `point' will not get trapped in
+       ;; the middle of the newline inserted by `jupyter-repl--insert-prompt'
+       ;; and the invisible character.
+       ;;
+       ;; Finally the field property is so that text motions will stop at the
+       ;; start of the code for a cell instead of moving past this invisible
+       ;; character.
+       (jupyter-repl-insert
+        :properties '(invisible t rear-nonsticky t front-sticky t field t) " "))
+      ((eq type 'out)
+       ;; Output is normally inserted by first going to the end of the output
+       ;; for the request. The end of the ouput for a request is at the
+       ;; beginning of the next cell after the request which is why `escape' is
+       ;; needed here.
+       (let ((count (jupyter-repl-cell-count 'escape)))
+         (setq ov (jupyter-repl--insert-prompt
+                   (format "Out [%d]:" count) 'jupyter-repl-output-prompt)
+               props (list 'jupyter-cell (list 'out count))))
+       ;; Prevent the overlay from inheriting text properties
+       (jupyter-repl-insert
+        :properties '(invisible t) " "))
+      ((eq type 'continuation)
+       (setq ov (jupyter-repl--insert-prompt
+                 ":" 'jupyter-repl-input-prompt)
+             props (list 'read-only nil 'rear-nonsticky t))))
+     (add-text-properties (overlay-start ov) (overlay-end ov) props))))
 
 (defun jupyter-repl-cell-update-prompt (str)
   "Update the current cell's input prompt.
