@@ -1534,7 +1534,7 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
           (jupyter-start-kernel manager)))
     (when (null (jupyter-wait-until-received :shutdown-reply
                   (jupyter-shutdown-request jupyter-repl-current-client
-                    (not shutdown))))
+                    :restart (not shutdown))))
       (message "Kernel did not respond to shutdown request"))))
 
 (defun jupyter-repl-display-kernel-buffer ()
