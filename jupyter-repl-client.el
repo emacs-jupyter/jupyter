@@ -1374,21 +1374,23 @@ a form ready for display."
               (buffer-string))))))))
 
 (defun jupyter-repl-inspect-at-point ()
+  "Inspect the code at point.
+Send an inspect request to the `jupyter-repl-current-client' of
+the `current-buffer' and display the results in a buffer."
   (interactive)
   (cl-destructuring-bind (code . pos)
       (jupyter-repl-code-context-at-point 'inspect)
-    ;; Set the default value of the client for
-    ;; `jupyter-jupyter-repl-doc-buffer'
-    (let ((client jupyter-repl-current-client))
+    (let ((buf (current-buffer)))
       (with-jupyter-repl-doc-buffer "inspect"
-        ;; TODO: Cleanup how `jupyter-repl--inspect' works, make it more clear
-        ;; that `current-buffer' here means to insert the inspected result in
-        ;; the current buffer.
-        ;;
-        ;; TODO: Figure out why setting this outside
-        ;; `with-jupyter-repl-doc-buffer' doesn't work. Possibly to do with
-        ;; this variable being `permanent-local'?
-        (let ((jupyter-repl-current-client client))
+        (let ((jupyter-repl-current-client
+               (buffer-local-value 'jupyter-repl-current-client buf)))
+          ;; FIXME: Better way of inserting documentation into a buffer.
+          ;; Currently the way text is inserted is by inserting in a temp
+          ;; buffer and returning the string, but in cases where overlays may
+          ;; be inserted in the buffer (markdown), this fails. A better way
+          ;; would be to supply the buffer in which to insert text like what is
+          ;; done here, but how to make it more general for all insertion
+          ;; types?
           (if (not (jupyter-repl--inspect code pos (current-buffer)))
               (message "Inspect timed out")
             ;; TODO: Customizable action
