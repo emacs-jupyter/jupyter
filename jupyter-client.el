@@ -35,7 +35,8 @@
 (require 'jupyter-connection)
 (require 'jupyter-channels)
 (require 'jupyter-messages)
-(eval-when-compile (require 'cl-macs))
+
+(declare-function hash-table-values "subr-x" (hash-table))
 
 (defvar jupyter--debug nil
   "Set to non-nil to emit sent and received messages to *Messages*.")
@@ -497,7 +498,7 @@ element in `:jupyter-pending-requests'."
 
 ;;; Channel subprocess filter/sentinel
 
-(defun jupyter--ioloop-sentinel (client ioloop event)
+(defun jupyter--ioloop-sentinel (client _ioloop event)
   "The process sentinel for CLIENT's IOLOOP subprocess.
 When EVENT is one of the events signifying that the process is
 dead, stop the heartbeat channel and set the IOLOOP slot to nil
@@ -543,6 +544,7 @@ by `jupyter--ioloop'."
      ;; Cleanup handled in sentinel
      (when jupyter--debug
        (message "CLIENT CLOSED")))))
+
 ;;; Starting the channel subprocess
 
 (cl-defmethod jupyter-start-channels ((client jupyter-kernel-client)
@@ -784,7 +786,7 @@ are taken:
 
 ;;; STDIN handlers
 
-(cl-defmethod jupyter-handle-message ((channel jupyter-stdin-channel)
+(cl-defmethod jupyter-handle-message ((_channel jupyter-stdin-channel)
                                       client
                                       req
                                       msg)
@@ -794,7 +796,7 @@ are taken:
     (jupyter-handle-input-reply client req prompt password)))
 
 (cl-defgeneric jupyter-handle-input-reply ((client jupyter-kernel-client)
-                                           req
+                                           _req
                                            prompt
                                            password)
   "Handle an input request from CLIENT's kernel.
@@ -814,7 +816,7 @@ the user. Otherwise `read-from-minibuffer' is used."
 ;;; SHELL handlers
 
 ;; http://jupyter-client.readthedocs.io/en/latest/messaging.html#messages-on-the-shell-router-dealer-channel
-(cl-defmethod jupyter-handle-message ((channel jupyter-shell-channel)
+(cl-defmethod jupyter-handle-message ((_channel jupyter-shell-channel)
                                       client
                                       req
                                       msg)
@@ -822,7 +824,7 @@ the user. Otherwise `read-from-minibuffer' is used."
   (let ((content (jupyter-message-content msg)))
     ;; TODO: How to handle errors? Let the IOPub error message handler deal
     ;; with it? Or do something here?
-    (cl-destructuring-bind (&key status ename evalue &allow-other-keys) content
+    (cl-destructuring-bind (&key status _ename _evalue &allow-other-keys) content
       (if (member status '("error" "abort"))
           ;; FIXME: The python kernel will expect errors to be handled by an
           ;; execute-reply and not emit an error message through IOPub whereas
@@ -914,11 +916,11 @@ the user. Otherwise `read-from-minibuffer' is used."
               :stop-on-error stop-on-error)))
     (jupyter-send client channel "execute_request" msg)))
 
-(cl-defgeneric jupyter-handle-execute-reply ((client jupyter-kernel-client)
-                                             req
-                                             execution-count
-                                             user-expressions
-                                             payload)
+(cl-defgeneric jupyter-handle-execute-reply ((_client jupyter-kernel-client)
+                                             _req
+                                             _execution-count
+                                             _user-expressions
+                                             _payload)
   "Default execute reply handler."
   nil)
 
@@ -933,11 +935,11 @@ the user. Otherwise `read-from-minibuffer' is used."
               :code code :pos pos :detail detail)))
     (jupyter-send client channel "inspect_request" msg)))
 
-(cl-defgeneric jupyter-handle-inspect-reply ((client jupyter-kernel-client)
-                                             req
-                                             found
-                                             data
-                                             metadata)
+(cl-defgeneric jupyter-handle-inspect-reply ((_client jupyter-kernel-client)
+                                             _req
+                                             _found
+                                             _data
+                                             _metadata)
   "Default inspect reply handler."
   nil)
 
@@ -951,12 +953,12 @@ the user. Otherwise `read-from-minibuffer' is used."
               :code code :pos pos)))
     (jupyter-send client channel "complete_request" msg)))
 
-(cl-defgeneric jupyter-handle-complete-reply ((client jupyter-kernel-client)
-                                              req
-                                              matches
-                                              cursor-start
-                                              cursor-end
-                                              metadata)
+(cl-defgeneric jupyter-handle-complete-reply ((_client jupyter-kernel-client)
+                                              _req
+                                              _matches
+                                              _cursor-start
+                                              _cursor-end
+                                              _metadata)
   "Default complete reply handler."
   nil)
 
@@ -986,9 +988,9 @@ the user. Otherwise `read-from-minibuffer' is used."
               :unique unique)))
     (jupyter-send client channel "history_request" msg)))
 
-(cl-defgeneric jupyter-handle-history-reply ((client jupyter-kernel-client)
-                                             req
-                                             history)
+(cl-defgeneric jupyter-handle-history-reply ((_client jupyter-kernel-client)
+                                             _req
+                                             _history)
   "Default history reply handler."
   nil)
 
@@ -1001,10 +1003,10 @@ the user. Otherwise `read-from-minibuffer' is used."
               :code code)))
     (jupyter-send client channel "is_complete_request" msg)))
 
-(cl-defgeneric jupyter-handle-is-complete-reply ((client jupyter-kernel-client)
-                                                 req
-                                                 status
-                                                 indent)
+(cl-defgeneric jupyter-handle-is-complete-reply ((_client jupyter-kernel-client)
+                                                 _req
+                                                 _status
+                                                 _indent)
   "Default is complete reply handler."
   nil)
 
@@ -1017,9 +1019,9 @@ the user. Otherwise `read-from-minibuffer' is used."
               :target-name target-name)))
     (jupyter-send client channel "comm_info_request" msg)))
 
-(cl-defgeneric jupyter-handle-comm-info-reply ((client jupyter-kernel-client)
-                                               req
-                                               comms)
+(cl-defgeneric jupyter-handle-comm-info-reply ((_client jupyter-kernel-client)
+                                               _req
+                                               _comms)
   "Default comm info. reply handler."
   nil)
 
@@ -1029,14 +1031,14 @@ the user. Otherwise `read-from-minibuffer' is used."
         (msg (jupyter-message-kernel-info-request)))
     (jupyter-send client channel "kernel_info_request" msg)))
 
-(cl-defgeneric jupyter-handle-kernel-info-reply ((client jupyter-kernel-client)
-                                                 req
-                                                 protocol-version
-                                                 implementation
-                                                 implementation-version
-                                                 language-info
-                                                 banner
-                                                 help-links)
+(cl-defgeneric jupyter-handle-kernel-info-reply ((_client jupyter-kernel-client)
+                                                 _req
+                                                 _protocol-version
+                                                 _implementation
+                                                 _implementation-version
+                                                 _language-info
+                                                 _banner
+                                                 _help-links)
   "Default kernel-info reply handler."
   nil)
 
@@ -1048,15 +1050,15 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
         (msg (jupyter-message-shutdown-request :restart restart)))
     (jupyter-send client channel "shutdown_request" msg)))
 
-(cl-defgeneric jupyter-handle-shutdown-reply ((client jupyter-kernel-client)
-                                              req
-                                              restart)
+(cl-defgeneric jupyter-handle-shutdown-reply ((_client jupyter-kernel-client)
+                                              _req
+                                              _restart)
   "Default shutdown reply handler."
   nil)
 
 ;;; IOPUB handlers
 
-(cl-defmethod jupyter-handle-message ((channel jupyter-iopub-channel)
+(cl-defmethod jupyter-handle-message ((_channel jupyter-iopub-channel)
                                       client
                                       req
                                       msg)
@@ -1114,69 +1116,69 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
       (_
        (warn "Message type not handled (%s)" (jupyter-message-type msg))))))
 
-(cl-defgeneric jupyter-handle-stream ((client jupyter-kernel-client)
-                                      req
-                                      name
-                                      text)
+(cl-defgeneric jupyter-handle-stream ((_client jupyter-kernel-client)
+                                      _req
+                                      _name
+                                      _text)
   "Default stream handler."
   nil)
 
-(cl-defgeneric jupyter-handle-execute-input ((client jupyter-kernel-client)
-                                             req
-                                             code
-                                             execution-count)
+(cl-defgeneric jupyter-handle-execute-input ((_client jupyter-kernel-client)
+                                             _req
+                                             _code
+                                             _execution-count)
   "Default execute input handler."
   nil)
 
-(cl-defgeneric jupyter-handle-execute-result ((client jupyter-kernel-client)
-                                              req
-                                              execution-count
-                                              data
-                                              metadata)
+(cl-defgeneric jupyter-handle-execute-result ((_client jupyter-kernel-client)
+                                              _req
+                                              _execution-count
+                                              _data
+                                              _metadata)
   "Default execute result handler."
   nil)
 
-(cl-defgeneric jupyter-handle-error ((client jupyter-kernel-client)
-                                     req
-                                     ename
-                                     evalue
-                                     traceback)
+(cl-defgeneric jupyter-handle-error ((_client jupyter-kernel-client)
+                                     _req
+                                     _ename
+                                     _evalue
+                                     _traceback)
   "Default error handler."
   nil)
 
-(cl-defgeneric jupyter-handle-status ((client jupyter-kernel-client)
-                                      req
-                                      execution-state)
+(cl-defgeneric jupyter-handle-status ((_client jupyter-kernel-client)
+                                      _req
+                                      _execution-state)
   "Default status handler."
   nil)
 
-(cl-defgeneric jupyter-handle-clear-output ((client jupyter-kernel-client)
-                                            req
-                                            wait)
+(cl-defgeneric jupyter-handle-clear-output ((_client jupyter-kernel-client)
+                                            _req
+                                            _wait)
   "Default clear output handler."
   nil)
 
-(cl-defgeneric jupyter-handle-display-data ((client jupyter-kernel-client)
-                                            req
-                                            data
-                                            metadata
-                                            transient)
+(cl-defgeneric jupyter-handle-display-data ((_client jupyter-kernel-client)
+                                            _req
+                                            _data
+                                            _metadata
+                                            _transient)
   "Default display data handler."
   nil)
 
-(cl-defgeneric jupyter-handle-display-data ((client jupyter-kernel-client)
-                                            req
-                                            data
-                                            metadata
-                                            transient)
+(cl-defgeneric jupyter-handle-display-data ((_client jupyter-kernel-client)
+                                            _req
+                                            _data
+                                            _metadata
+                                            _transient)
   "Default display data handler."
   nil)
 
-(cl-defgeneric jupyter-handle-update-display-data ((client jupyter-kernel-client)
-                                                   req
-                                                   data
-                                                   metadata
-                                                   transient)
+(cl-defgeneric jupyter-handle-update-display-data ((_client jupyter-kernel-client)
+                                                   _req
+                                                   _data
+                                                   _metadata
+                                                   _transient)
   "Default update display handler"
   nil)
 
