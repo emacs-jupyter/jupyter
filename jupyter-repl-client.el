@@ -404,6 +404,19 @@ image."
   (jupyter-repl-insert text))
 
 (defun jupyter-repl-insert-data (data)
+  "Insert DATA into the REPL buffer in order of decreasing richness.
+DATA should be plist mapping mimetypes to their content. Attempt
+to insert a recognized mimetype, trying each one in order of
+decreasing richness of the mimetype. The current order is
+
+- text/html
+- text/markdown (only if `markdown-mode' is available)
+- text/latex
+- image/png
+- image/svg+xml
+- text/plain
+
+When no valid mimetype is present in DATA, a warning is shown."
   (let ((mimetypes (cl-loop
                     with graphic-types = '(:image/png :image/svg+xml :text/latex)
                     for (k d) on data by #'cddr
@@ -412,6 +425,17 @@ image."
                                   (not (memq k graphic-types))))
                     collect k)))
     (cond
+     ((memq :text/html mimetypes)
+      (let ((html (plist-get data :text/html)))
+        (when (string-match-p "^<img" html)
+          (jupyter-repl-newline))
+        (jupyter-repl-insert-html html)
+        (jupyter-repl-newline)))
+     ((and (memq :text/markdown mimetypes) (require 'markdown-mode nil t))
+      (jupyter-repl-insert-markdown (plist-get data :text/markdown)))
+     ((memq :text/latex mimetypes)
+      (jupyter-repl-insert-latex (plist-get data :text/latex))
+      (jupyter-repl-newline))
      ((memq :image/png mimetypes)
       (insert-image
        (create-image
@@ -424,17 +448,6 @@ image."
        (create-image
         (plist-get data :image/svg+xml) 'svg)
        (propertize " " 'read-only t)))
-     ((memq :text/html mimetypes)
-      (let ((html (plist-get data :text/html)))
-        (when (string-match-p "^<img" html)
-          (jupyter-repl-newline))
-        (jupyter-repl-insert-html html)
-        (jupyter-repl-newline)))
-     ((memq :text/latex mimetypes)
-      (jupyter-repl-insert-latex (plist-get data :text/latex))
-      (jupyter-repl-newline))
-     ((and (memq :text/markdown mimetypes) (require 'markdown-mode nil t))
-      (jupyter-repl-insert-markdown (plist-get data :text/markdown)))
      ((memq :text/plain mimetypes)
       (jupyter-repl-insert-ansi-coded-text
        (plist-get data :text/plain))
