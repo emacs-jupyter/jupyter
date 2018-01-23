@@ -1307,7 +1307,7 @@ COMMAND and ARG have the same meaning as the elements of
   (cl-case command
     (interactive (company-begin-backend 'company-jupyter-repl))
     (sorted t)
-    (prefix (or (jupyter-repl-completion-prefix) 'stop))
+    (prefix (jupyter-repl-completion-prefix))
     (candidates
      (cons
       :async
