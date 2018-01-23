@@ -870,6 +870,28 @@ lines then truncate it to something less than
 (cl-defmethod jupyter-handle-status ((client jupyter-repl-client) req execution-state)
   (oset client execution-state execution-state))
 
+(defvar jupyter-repl--output-marker nil)
+
+(defun jupyter-repl-display-other-output (client stream text)
+  "Display output not originating from CLIENT.
+STREAM is the name of a stream which will be used to select the
+buffer to display TEXT."
+  (let* ((bname (buffer-name (oref client buffer)))
+         (inhibit-read-only t)
+         (stream-buffer
+          (concat (substring bname 0 (1- (length bname)))
+                  "-" stream "*")))
+    (with-current-buffer (get-buffer-create stream-buffer)
+      (unless jupyter-repl--output-marker
+        (setq-local jupyter-repl--output-marker (set-marker (make-marker) (point-max))))
+      (goto-char jupyter-repl--output-marker)
+      (let ((pos (point)))
+        (jupyter-repl-insert-ansi-coded-text text)
+        (fill-region pos (point)))
+      (set-marker jupyter-repl--output-marker (point))
+      (display-buffer (current-buffer) '(display-buffer-pop-up-window
+                                         (pop-up-windows . t))))))
+
 (cl-defmethod jupyter-handle-stream ((client jupyter-repl-client) req name text)
   (if req
       (jupyter-repl-do-at-request client req
@@ -877,44 +899,36 @@ lines then truncate it to something less than
         (jupyter-repl-newline))
     ;; Otherwise the stream request is due to someone else, pop up a buffer.
     ;; TODO: Make this configurable so that we can just ignore output.
-    (let* ((bname (buffer-name (oref client buffer)))
-           (inhibit-read-only t)
-           (stream-buffer
-            (concat (substring bname 0 (1- (length bname)))
-                    "-" name "*")))
-      (with-current-buffer (get-buffer-create stream-buffer)
-        (let ((pos (point)))
-          (jupyter-repl-insert-ansi-coded-text text)
-          (fill-region pos (point)))
-        (display-buffer (current-buffer) '(display-buffer-pop-up-window
-                                           (pop-up-windows . t)))))))
+    (jupyter-repl-display-other-output client name text)))
 
 (cl-defmethod jupyter-handle-error ((client jupyter-repl-client)
-                                    req ename _evalue traceback)
+                                    req ename evalue traceback)
   ;; When the request is from us
-  (when req
-    (jupyter-repl-do-at-request client req
-      (save-excursion
-        ;; `point' is at the cell beginning of the next cell after REQ,
-        ;; `jupyter-repl-previous-cell' will take us back to the start of the
-        ;; cell corresponding to REQ.
-        (jupyter-repl-previous-cell)
-        (jupyter-repl-cell-unmark-busy))
-      (when traceback
-        (let ((pos (point)))
-          (jupyter-repl-insert-ansi-coded-text
-           (mapconcat #'identity traceback "\n"))
-          (when (eq jupyter-repl-lang-mode 'python-mode)
-            ;; Fix spacing between error name and Traceback
-            (save-excursion
-              (goto-char pos)
-              (when (search-forward ename nil t)
-                (let ((len (- (length jupyter-repl-error-prefix)
-                              (- (point) (line-beginning-position))
-                              (- (line-end-position) (point)))))
-                  (jupyter-repl-insert
-                   (make-string (if (> len 4) len 4) ? )))))))
-        (jupyter-repl-newline)))))
+  (if req
+      (jupyter-repl-do-at-request client req
+        (save-excursion
+          ;; `point' is at the cell beginning of the next cell after REQ,
+          ;; `jupyter-repl-previous-cell' will take us back to the start of the
+          ;; cell corresponding to REQ.
+          (jupyter-repl-previous-cell)
+          (jupyter-repl-cell-unmark-busy))
+        (when traceback
+          (let ((pos (point)))
+            (jupyter-repl-insert-ansi-coded-text
+             (mapconcat #'identity traceback "\n"))
+            (when (eq jupyter-repl-lang-mode 'python-mode)
+              ;; Fix spacing between error name and Traceback
+              (save-excursion
+                (goto-char pos)
+                (when (search-forward ename nil t)
+                  (let ((len (- (length jupyter-repl-error-prefix)
+                                (- (point) (line-beginning-position))
+                                (- (line-end-position) (point)))))
+                    (jupyter-repl-insert
+                     (make-string (if (> len 4) len 4) ? )))))))
+          (jupyter-repl-newline)))
+    (jupyter-repl-display-other-output
+     client "stderr" (format "(other client) %s: %s" ename evalue))))
 
 (cl-defmethod jupyter-handle-input-reply ((client jupyter-repl-client) req prompt password)
   (jupyter-repl-do-at-request client req
