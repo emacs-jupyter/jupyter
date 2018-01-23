@@ -843,6 +843,11 @@ the user. Otherwise `read-from-minibuffer' is used."
                content
              (jupyter-handle-execute-reply
               client req execution_count user_expressions payload)))
+          ("shutdown_reply"
+           (cl-destructuring-bind (&key restart &allow-other-keys)
+               content
+             (jupyter-handle-shutdown-reply
+              client req restart)))
           ("inspect_reply"
            (cl-destructuring-bind (&key found
                                         data
