@@ -1789,10 +1789,11 @@ found in KERNEL-INFO."
           (setq syntax (syntax-table))))
       (list mode syntax))))
 
-(defun jupyter-repl-same-lang-mode-p (buffer client)
+(defun jupyter-repl-same-lang-mode-p (client)
   "Is BUFFER's `major-mode' the same as CLIENT's `jupyter-repl-lang-mode'?"
-  (with-jupyter-repl-buffer client
-    (eq jupyter-repl-lang-mode (with-current-buffer buffer major-mode))))
+  (let ((mode major-mode))
+    (with-jupyter-repl-buffer client
+      (eq jupyter-repl-lang-mode mode))))
 
 (defun jupyter-repl--new-repl (client)
   "Initialize a new REPL buffer based on CLIENT.
