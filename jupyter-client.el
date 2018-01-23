@@ -1043,9 +1043,10 @@ the user. Otherwise `read-from-minibuffer' is used."
   nil)
 
 (cl-defgeneric jupyter-shutdown-request ((client jupyter-kernel-client)
-                                         &optional restart)
+                                         &key restart)
   "Request a shutdown of CLIENT's kernel.
 If RESTART is non-nil, request a restart instead of a complete shutdown."
+  (declare (indent 1))
   (let ((channel (oref client shell-channel))
         (msg (jupyter-message-shutdown-request :restart restart)))
     (jupyter-send client channel "shutdown_request" msg)))
