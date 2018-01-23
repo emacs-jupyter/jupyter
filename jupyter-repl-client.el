@@ -835,7 +835,7 @@ lines then truncate it to something less than
 (cl-defmethod jupyter-handle-execute-reply ((client jupyter-repl-client)
                                             req
                                             execution-count
-                                            user-expressions
+                                            _user-expressions
                                             payload)
   (oset client execution-count (1+ execution-count))
   (with-jupyter-repl-buffer client
@@ -865,14 +865,14 @@ lines then truncate it to something less than
                (jupyter-repl-replace-cell-code (plist-get pl :text)))))))))
 
 (cl-defmethod jupyter-handle-execute-input ((client jupyter-repl-client)
-                                            req
-                                            code
+                                            _req
+                                            _code
                                             execution-count)
   (oset client execution-count (1+ execution-count)))
 
 (cl-defmethod jupyter-handle-execute-result ((client jupyter-repl-client)
                                              req
-                                             execution-count
+                                             _execution-count
                                              data
                                              _metadata)
   ;; Only handle our results
@@ -882,11 +882,14 @@ lines then truncate it to something less than
       (jupyter-repl-insert-data data))))
 
 (cl-defmethod jupyter-handle-display-data ((client jupyter-repl-client)
-                                           req data metadata transient)
+                                           req
+                                           data
+                                           _metadata
+                                           _transient)
   (jupyter-repl-do-at-request client req
     (jupyter-repl-insert-data data)))
 
-(cl-defmethod jupyter-handle-status ((client jupyter-repl-client) req execution-state)
+(cl-defmethod jupyter-handle-status ((client jupyter-repl-client) _req execution-state)
   (oset client execution-state execution-state))
 
 (defvar jupyter-repl--output-marker nil)
@@ -949,7 +952,7 @@ buffer to display TEXT."
     (jupyter-repl-display-other-output
      client "stderr" (format "(other client) %s: %s" ename evalue))))
 
-(cl-defmethod jupyter-handle-input-reply ((client jupyter-repl-client) req prompt password)
+(cl-defmethod jupyter-handle-input-reply ((client jupyter-repl-client) req prompt _password)
   (jupyter-repl-do-at-request client req
     (let ((value (cl-call-next-method)))
       (jupyter-repl-insert (concat prompt value))
@@ -1009,7 +1012,7 @@ REPL buffer."
           (jupyter-repl-replace-cell-code
            (ring-ref jupyter-repl-history 0)))))))
 
-(cl-defmethod jupyter-handle-history-reply ((client jupyter-repl-client) req history)
+(cl-defmethod jupyter-handle-history-reply ((client jupyter-repl-client) _req history)
   (with-jupyter-repl-buffer client
     (cl-loop for (_session _line-number input-output) in history
              do (ring-remove+insert+extend jupyter-repl-history input-output))))
@@ -1178,7 +1181,7 @@ value."
 
 ;;; Completion
 
-(defun jupyter-repl-company-normalize-position (pos prefix)
+(defun jupyter-repl-company-normalize-position (pos)
   "Normalize POS based on the length of PREFIX for the current context.
 If the `major-mode' is `jupyter-repl-mode' then POS is relative
 to the contents of the current code cell."
@@ -1592,7 +1595,7 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
        ;; this only when bound is nil (i.e. not while lazy-highlighting search
        ;; strings in the current cell text).
        (unless bound
-         (condition-case err
+         (condition-case nil
              (progn
                (while (not found)
                  (cond (isearch-forward
