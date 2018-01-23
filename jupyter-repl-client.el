@@ -761,12 +761,13 @@ Finalizing a cell involves the following steps:
 - Make the cell read-only"
   (let ((beg (jupyter-repl-cell-beginning-position))
         (count (jupyter-repl-cell-count)))
+    ;; Remove this property at the start of a cell so that text can't be
+    ;; inserted there when a cell is finalized.
     (remove-text-properties beg (1+ beg) '(rear-nonsticky))
     (goto-char (point-max))
     (jupyter-repl-newline)
-    (add-text-properties
-     (1- (point)) (point) (list 'jupyter-cell (list 'end count)))
-    (add-text-properties beg (1+ beg) (list 'jupyter-request req))
+    (put-text-property (1- (point)) (point) 'jupyter-cell `(end ,count))
+    (put-text-property beg (1+ beg) 'jupyter-request req)
     ;; font-lock-multiline to avoid improper syntactic elements from
     ;; spilling over to the rest of the buffer.
     (add-text-properties beg (point) '(read-only t font-lock-multiline t))))
