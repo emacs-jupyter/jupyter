@@ -1761,6 +1761,8 @@ that of CLIENT."
                  company-backends)
           (setq-local company-backends
                       (cons 'company-jupyter-repl company-backends))))
+    (unless (eq major-mode 'jupyter-repl-mode)
+      (kill-local-variable 'jupyter-repl-current-client))
     (when (boundp 'company-mode)
       (setq-local company-backends
                   (delq 'company-jupyter-repl company-backends)))))
