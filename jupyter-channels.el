@@ -5,7 +5,6 @@
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 08 Jan 2018
 ;; Version: 0.0.1
-;; X-URL: https://github.com/nathan/jupyter-channels
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -62,7 +61,7 @@
 
 (defgroup jupyter-channels nil
   "Jupyter channels"
-  :group 'communication)
+  :group 'jupyter)
 
 ;;; Basic channel types
 
@@ -156,12 +155,18 @@ call `jupyter-get-message'."
     (ring-insert+extend ring msg 'grow)))
 
 (cl-defmethod jupyter-get-message ((channel jupyter-channel))
+  "Get a message from CHANNEL's recv-queue.
+If messages are available in a channel's recv-queue, return the
+oldest message. Otherwise if no messages are available, return
+nil."
   (when (jupyter-messages-available-p channel)
     (cl-destructuring-bind (_idents . msg)
         (ring-remove (oref channel recv-queue))
       msg)))
 
 (cl-defmethod jupyter-messages-available-p ((channel jupyter-channel))
+  "Determine if CHANNEL has an messages available.
+A CHANNEL has messages available if its recv-queue is not empty."
   (not (ring-empty-p (oref channel recv-queue))))
 
 ;;; Heartbeat channel
@@ -201,8 +206,8 @@ call `jupyter-get-message'."
    (timer
     :type (or null timer)
     :initform nil
-    :documentation "The timer which sends and receives heartbeat
- messages from the kernel."))
+    :documentation "The timer which sends/receives heartbeat
+ messages to/from the kernel."))
   :documentation "A base class for heartbeat channels.")
 
 (cl-defmethod jupyter-channel-alive-p ((channel jupyter-hb-channel))
@@ -229,7 +234,8 @@ connected."
   (oset channel paused nil))
 
 (cl-defmethod jupyter-stop-channel ((channel jupyter-hb-channel))
-  "Stop the heartbeat CHANNEL."
+  "Stop the heartbeat CHANNEL.
+Stop the timer of the heartbeat channel."
   (when (jupyter-channel-alive-p channel)
     (cancel-timer (oref channel timer))
     (zmq-socket-set (oref channel socket) zmq-LINGER 0)
@@ -238,6 +244,11 @@ connected."
     (oset channel timer nil)))
 
 (cl-defmethod jupyter-start-channel ((channel jupyter-hb-channel) &key identity)
+  "Start a heartbeat CHANNEL.
+IDENTITY has the same meaning as in `jupyter-connect-channel'. A
+heartbeat channel is handled specially in that it is implemented
+with a timer in the current Emacs session. Starting a heartbeat
+channel, starts the timer."
   (unless (jupyter-channel-alive-p channel)
     (oset channel socket (jupyter-connect-channel
                           :hb (oref channel endpoint) identity))
