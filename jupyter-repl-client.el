@@ -40,6 +40,10 @@
 (require 'shr)
 (require 'ring)
 
+(declare-function company-begin-backend "company" (backend &optional callback))
+(declare-function company-doc-buffer "company" (&optional string))
+(declare-function org-format-latex "org" (prefix &optional beg end dir overlays msg forbuffer processing-type))
+
 ;; TODO: Read up on how method tags can be used, see
 ;; https://ericabrahamsen.net/tech/2016/feb/bbdb-eieio-object-oriented-elisp.html
 
