@@ -1828,30 +1828,37 @@ If CLIENT already has a non-nil buffer slot, raise an error."
 KERNEL-NAME can be the prefix of an available kernel name, in
 this case the first kernel in `jupyter-available-kernelspecs'
 that has KERNEL-NAME as a prefix will be used to start a new
-kernel.
+kernel. With a prefix argument refresh the list of available
+kernelspecs.
 
 Optional argument ASSOCIATE-BUFFER, if non-nil, means to enable
 `jupyter-repl-interaction-mode' in the `current-buffer' and
 associate it with the REPL created. When called interactivel,
-ASSOCIATE-BUFFER is set to t unless `current-prefix-arg' is
-non-nil. If the `current-buffer's `major-mode' does not
-correspond to the language of the kernel started,
-ASSOCIATE-BUFFER has no effect."
-  (interactive (list (jupyter-completing-read-kernelspec)
-                     (not current-prefix-arg)))
-  (setq kernel-name (car (if (called-interactively-p 'interactive)
-                             kernel-name
-                           (jupyter-find-kernelspec kernel-name))))
-  (unless kernel-name
-    (error "No kernel found for prefix (%s)" kernel-name))
-  (cl-destructuring-bind (_manager . client)
-      (jupyter-start-new-kernel kernel-name 'jupyter-repl-client)
-    (jupyter-repl--new-repl client)
-    (when (and associate-buffer
-               (jupyter-repl-same-lang-mode-p
-                (current-buffer) client))
-      (jupyter-repl-associate-buffer client))
-    (pop-to-buffer (oref client buffer))))
+ASSOCIATE-BUFFER is set to t. If the `current-buffer's
+`major-mode' does not correspond to the language of the kernel
+started, ASSOCIATE-BUFFER has no effect.
+
+When called interactively, display the newly created REPL buffer.
+Otherwise, in a non-interactive call return the newly created
+client connected to the REPL."
+  (interactive (list (jupyter-completing-read-kernelspec
+                      nil current-prefix-arg)
+                     t))
+  ;; FIXME: Be clearer with kernel-name, prefix
+  (let ((prefix kernel-name))
+    (setq kernel-name (if (called-interactively-p 'interactive)
+                          prefix
+                        (caar (jupyter-find-kernelspecs prefix))))
+    (unless kernel-name
+      (error "No kernel found for prefix (%s)" prefix))
+    (cl-destructuring-bind (_manager . client)
+        (jupyter-start-new-kernel kernel-name 'jupyter-repl-client)
+      (jupyter-repl--new-repl client)
+      (when (and associate-buffer (jupyter-repl-same-lang-mode-p client))
+        (jupyter-repl-associate-buffer client))
+      (if (called-interactively-p 'interactive)
+          (pop-to-buffer (oref client buffer))
+        client))))
 
 ;;;###autoload
 (defun connect-jupyter-repl (file-or-plist &optional associate-buffer)
