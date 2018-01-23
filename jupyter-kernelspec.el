@@ -60,18 +60,17 @@ shell command
 By default the available kernelspecs are cached. To force an
 update of the cached kernelspecs, give a non-nil value to
 REFRESH."
-  (when (or (not jupyter--kernelspecs) refresh)
-    (setq jupyter--kernelspecs
-          (mapcar (lambda (s) (let ((s (split-string s " " 'omitnull)))
-                      ;; (kernel-name . (dir . spec))
-                      (cons (car s) (cons (cadr s)
-                                          (jupyter-read-kernelspec (cadr s))))))
-             (seq-subseq
-              (split-string
-               (shell-command-to-string "jupyter kernelspec list")
-               "\n" 'omitnull "[ \t]+")
-              1))))
-  jupyter--kernelspecs)
+  (or (and (not refresh) jupyter--kernelspecs)
+      (setq jupyter--kernelspecs
+            (mapcar (lambda (s) (let ((s (split-string s " " 'omitnull)))
+                        ;; (kernel-name . (dir . spec))
+                        (cons (car s) (cons (cadr s)
+                                            (jupyter-read-kernelspec (cadr s))))))
+               (seq-subseq
+                (split-string
+                 (shell-command-to-string "jupyter kernelspec list")
+                 "\n" 'omitnull "[ \t]+")
+                1)))))
 
 (defun jupyter-get-kernelspec (name &optional refresh)
   "Get the kernelspec for a kernel named NAME.
