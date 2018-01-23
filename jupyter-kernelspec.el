@@ -105,7 +105,7 @@ Optional argument REFRESH has the same meaning as in
     (delq nil (mapcar (lambda (s) (and (string-prefix-p prefix (car s)) s))
                  (jupyter-available-kernelspecs refresh)))))
 
-(defun jupyter-completing-read-kernelspec (&optional refresh)
+(defun jupyter-completing-read-kernelspec (&optional specs refresh)
   "Use `completing-read' to select a kernel and return its kernelspec.
 The returned kernelspec has the form
 
@@ -115,9 +115,13 @@ where KERNEL-NAME is the name of the kernel, DIRECTORY is the
 resource directory of the kernel, and PLIST is the kernelspec
 plist.
 
+If SPECS is non-nil then it should be a list of kernelspecs that
+will be used to select from otherwise the list of kernelspecs
+will be taken from `jupyter-available-kernelspecs'.
+
 Optional argument REFRESH has the same meaning as in
 `jupyter-available-kernelspecs'."
-  (let* ((specs (jupyter-available-kernelspecs refresh))
+  (let* ((specs (or specs (jupyter-available-kernelspecs refresh)))
          (display-names (mapcar (lambda (k) (plist-get (cddr k) :display_name))
                            specs))
          (name (completing-read "kernel: " display-names)))
