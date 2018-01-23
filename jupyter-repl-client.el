@@ -245,10 +245,9 @@ for the property."
 (defun jupyter-repl-fixup-font-lock-properties ()
   "Fixup the text properties in the `curren-buffer'.
 Fixing the text properties of the current buffer involves
-substiuting any face properties with font-lock-face for insertion
-into the REPL buffer and also adds handles
-`font-lock-extra-managed-props'. Note that if text does not have
-a face property, then a face of default is added to it."
+substituting any `face' property with `font-lock-face' for
+insertion into the REPL buffer and adding
+`font-lock-extra-managed-props' to the text."
   (let ((pos (point-min)) next)
     (catch 'done
       (while (setq next (or (next-property-change pos) (point-max)))
@@ -1349,14 +1348,16 @@ COMMAND and ARG have the same meaning as the elements of
 (defun jupyter-repl--inspect (code pos &optional buffer timeout)
   "Send an inspect request to a Jupyter kernel.
 CODE and POS are the code to send and the position within the
-code, respectively. TIMEOUT is how long to wait (in seconds) for
-the kernel to respond. If the kernel does not respond within
-TIMEOUT, return nil. Otherwise if a reply was received within
-TIMEOUT, return either the inspection text or BUFFER depending on
-if BUFFER is non-nil. When buffer is nil, return the inspection
-text, otherwise return BUFFER after inserting the inspection text
-in BUFFER. In both cases, the inspection text will already be in
-a form ready for display."
+code, respectively.
+
+If BUFFER is non-nil then it should be the buffer in which to
+insert the inspection text returned from kernel. After the
+inspection text is inserted into BUFFER, BUFFER is returned. If
+BUFFER is nil, then return the inspection text. In both cases the
+inspection text is already in a form suitable for display.
+
+TIMEOUT is how long to wait (in seconds) for the kernel to
+respond before returning nil."
   (let* ((jupyter-inhibit-handlers t)
          (msg (jupyter-wait-until-received :inspect-reply
                 (jupyter-inspect-request jupyter-repl-current-client
@@ -1405,8 +1406,14 @@ The contents of the last cell in the REPL buffer will be replaced
 with STR and the last cell executed with the
 `juptyer-repl-current-client'. After execution, the execution
 result is echoed to the *Message* buffer or a new buffer showing
-the result is open if the result output is larger than 10 lines
-long."
+the result is opened if the result output is larger than 10 lines
+long.
+
+If optional argument SILENTLY is non-nil, do not replace the
+contents of the last cell and do not run any of the
+`jupyter-repl-client' handlers. All that occurs is that STR is
+sent to the kernel for execution and the results of the execution
+displayed without anything showing up in the REPL buffer."
   (interactive)
   (unless (buffer-local-value
            'jupyter-repl-current-client (current-buffer))
@@ -1469,8 +1476,7 @@ long."
 (defun jupyter-repl-eval-region (beg end &optional silently)
   "Evaluate a region with the `jupyter-repl-current-client'.
 BEG and END are the beginning and end of the region to evaluate.
-See `jupyter-repl-eval-string' for how the results of evaluation
-are displayed."
+SILENTLY has the same meaning as in `jupyter-repl-eval-string'."
   (interactive "r")
   (jupyter-repl-eval-string
    (buffer-substring-no-properties beg end) silently))
@@ -1549,6 +1555,7 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
     (user-error "Kernel not a subprocess")))
 
 (defun jupyter-repl-restart-channels ()
+  "Restart the subprocess which talks to the kernel."
   (interactive)
   (message "Restarting client channels...")
   (jupyter-stop-channels jupyter-repl-current-client)
@@ -1559,6 +1566,7 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
 ;; details
 
 (defun jupyter-repl-isearch-setup ()
+  "Setup Isearch to search through the input history."
   (setq-local isearch-search-fun-function
               #'jupyter-repl-history-isearch-search)
   (setq-local isearch-wrap-function
@@ -1568,6 +1576,7 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
 
 ;; Adapted from `comint-history-isearch-search'
 (defun jupyter-repl-history-isearch-search ()
+  "Return a search function to search through a REPL's input history."
   (lambda (string bound noerror)
     (let ((search-fun (isearch-search-fun-default)) found)
       (unless isearch-forward (goto-char (point-max)))
@@ -1610,6 +1619,9 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
            (error nil)))))))
 
 (defun jupyter-repl-history-isearch-wrap ()
+  "Wrap the input history search when search fails.
+Go to the newest history element for a forward search or to the
+oldest history element for a backward search."
   (condition-case nil
       (if isearch-forward
           (jupyter-repl-history-next (ring-length jupyter-repl-history) t)
@@ -1620,6 +1632,10 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
                (point-max))))
 
 (defun jupyter-repl-history-isearch-push-state ()
+  "Save a function restoring the state of input history search.
+Save the element at index 0 in `jupyter-repl-history'. When
+restoring the state, the `jupyter-repl-history' ring is rotated,
+in the appropriate direction, to the saved element."
   (let ((elem (ring-ref jupyter-repl-history 0)))
     (lambda (_cmd)
       (while (not (eq (ring-ref jupyter-repl-history 0) elem))
@@ -1687,6 +1703,10 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
   (jupyter-repl-interaction-mode))
 
 (defun jupyter-repl-initialize-fontification ()
+  "Initialize fontification for the current REPL buffer.
+Extract `font-lock-defaults' from the `jupyter-repl-lang-buffer',
+set it as the `font-lock-defaults' of the `current-buffer' and
+call the function `font-lock-mode'."
   (let (fld)
     (with-jupyter-repl-lang-buffer
       (setq fld font-lock-defaults))
@@ -1759,9 +1779,11 @@ one of the Jupyter kernel languages."
 The `current-buffer's `major-mode' must be the
 `jupyter-repl-lang-mode' of the CLIENT. CLIENT can either be a
 `jupyter-repl-client' or a buffer with a non-nil
-`jupyter-repl-current-client'. The buffer-local value of
-`jupyter-repl-current-client' in the `current-buffer' is set to
-that of CLIENT."
+`jupyter-repl-current-client'.
+
+Associating a buffer with CLIENT involves setting the
+buffer-local value of `jupyter-repl-current-client' to CLIENT and
+enabling `jupyter-repl-interaction-mode'."
   (interactive
    (list
     (completing-read
