@@ -175,26 +175,23 @@ Return the newly created kernel process."
   "Start a kernel and associate it with MANAGER.
 
 The MANAGER's `name' property is passed to
-`jupyter-find-kernelspec' in order to find the kernel to start,
-this means that `name' can be a prefix of a kernel name as well
-as a full kernel name. For example, if `name' is \"julia\" it
-will match the full kernel names \"julia-0.6\", \"julia-0.4\",
-etc. The kernel used will be the first one matched from the list
-of kernels returned by:
-
-    jupyter kernelspec list
+`jupyter-find-kernelspecs' in order to find the kernel to start.
+If `jupyter-find-kernelspecs' returns multiple kernelspecs that
+match `name', the first one on the list is used.
 
 If a valid kernel is found, its kernelspec is used to start a new
 kernel. Starting a kernel involves the following steps:
 
-1. Generate a new connection info plist with random ports for the
+1. Create a new `jupyter-session'.
+
+2. Create a new connection info plist with random ports for the
    channels. See `jupyter-create-connection-info'.
 
-2. Assign a new `jupyter-session' to the MANAGER using the
-   generated key from the connection info.
-
-3. Write the connection info to file in the Jupyter runtime
-   directory (found using \"jupyter --runtime-dir\")
+2. Write the connection info to a file in the
+   `jupyter-runtime-directory'. Using the standard naming
+   convention, i.e. after a call to `jupyter-start-kernel' the
+   connection file will be named kernel-PID.json where PID is the
+   process ID of the kernel subprocess.
 
 4. Start a kernel subprocess passing the connection info file as
    the {connection_file} argument in the kernelspec argument
@@ -213,6 +210,7 @@ kernel. Starting a kernel involves the following steps:
         ;; defaults for these when their slots are unbound, see `slot-unbound'.
         (let* ((reporter (make-progress-reporter
                           (format "Starting %s kernel..." kernel-name)))
+               ;; session is set in the `slot-unbound' the method
                (key (jupyter-session-key (oref manager session)))
                (conn-file (expand-file-name
                            (concat "kernel-" key ".json")
@@ -220,6 +218,7 @@ kernel. Starting a kernel involves the following steps:
           ;; Write the connection info file
           (with-temp-file (oset manager conn-file conn-file)
             (let ((json-encoding-pretty-print t))
+              ;; conn-info is set in `slot-unbound' the method
               (insert (json-encode-plist (oref manager conn-info)))))
           ;; Start the process
           (let ((atime (nth 4 (file-attributes conn-file)))

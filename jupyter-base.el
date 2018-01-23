@@ -78,8 +78,8 @@ Do not add to this hook variable directly, use
                                       (shell-command-to-string
                                        "jupyter --runtime-dir"))
   "The Jupyter runtime directory.
-This is where kernel connection files are written to when
-starting new kernels using a `jupyter-kernel-manager'."
+When a new kernel is started through `jupyter-start-kernel', this
+directory is where kernel connection files are written to."
   :group 'jupyter
   :type 'string)
 

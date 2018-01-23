@@ -470,7 +470,7 @@ PRIORITIES - An alist of (CTYPE . PRIORITY) pairs where CTYPE is
 (defun jupyter--ioloop-pop-request (client)
   "Remove a pending request from CLIENT's ioloop subprocess.
 Specifically remove the oldest element of the ring located in the
-`:jupyter-pending-requests' property of CLIENT's ioloop
+`:pending-requests' property of CLIENT's ioloop
 subprocess."
   (let ((ring (process-get (oref client ioloop) :pending-requests)))
     (unless (ring-empty-p ring)
@@ -486,14 +486,13 @@ subprocess sends a message to the kernel, it sends the message ID
 associated with the request back to the parent Emacs process
 which is when the `jupyter-request--id' field becomes non-nil.
 
-Pending requests are stored as the `:jupyter-pending-requests'
-property of an ioloop subprocess. REQ is added as the newest
-element in `:jupyter-pending-requests'."
-  (let* ((ioloop (oref client ioloop))
-         (ring (or (process-get ioloop :pending-requests)
-                   (let ((ring (make-ring 10)))
-                     (process-put ioloop :pending-requests ring)
-                     ring))))
+Pending requests are stored in a ring located in the
+`:pending-requests' property of an ioloop subprocess. REQ is
+added as the newest element in this ring."
+  (let ((ring (or (process-get (oref client ioloop) :pending-requests)
+                  (let ((ring (make-ring 10)))
+                    (process-put (oref client ioloop) :pending-requests ring)
+                    ring))))
     (ring-insert+extend ring req 'grow)))
 
 ;;; Channel subprocess filter/sentinel

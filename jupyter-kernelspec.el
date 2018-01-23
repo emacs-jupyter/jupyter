@@ -85,18 +85,16 @@ has the same meaning as in `jupyter-available-kernelspecs'."
   (cdr (assoc name (jupyter-available-kernelspecs refresh))))
 
 (defun jupyter-find-kernelspecs (prefix &optional refresh)
-  "Find all kernelspecs for kernels that have names matching PREFIX.
-Return a list of all the kernelspecs whose kernel names begin
-with PREFIX. If no kernel matches PREFIX, return nil. Use
-`jupyter-available-kernelspecs' to match against kernel names.
-Each element of the returned list in the case of a match is a
-cons cell
+  "Find all specs of kernels that have names matching PREFIX.
+PREFIX is a string matching the beginning of a kernel's name.
+Return an alist with elements of the form:
 
     (KERNEL-NAME . (DIRECTORY . PLIST))
 
-where KERNEL-NAME is the name of the kernel that begins with
-PREFIX and PLIST is the kernelspec PLIST read from the
-\"kernel.json\" file in the kernel's resource DIRECTORY.
+where KERNEL-NAME is a name of a kernel that begins with PREFIX,
+DIRECTORY is the kernel's resource directory, and PLIST is the
+kernelspec propery list read from the \"kernel.json\" file in the
+resource directory.
 
 Optional argument REFRESH has the same meaning as in
 `jupyter-available-kernelspecs'."
