@@ -18,7 +18,19 @@
     :type json-plist
     :initarg :kernel-info
     :documentation "The kernel info plist of the kernel."))
-  :abstract t)
+  :abstract t
+  :documentation "A Jupyter connection encapsulates the necessary
+information of a connection to a Jupyter kernel. The necessary
+information of a connection are the following:
+
+1. A `jupyter-session' used to authenticate messages sent and
+   received to a kernel.
+
+2. The connection info plist used to initialize a connection to a
+   kernel.
+
+3. The kernel info plist after opening a connection to a
+   kernel.")
 
 (cl-defun jupyter-create-connection-info (&key
                                           (kernel-name "python")
@@ -31,13 +43,15 @@
                                           (control-port 0)
                                           (shell-port 0)
                                           (iopub-port 0))
-  "Create a jupyter connection plist.
+  "Create a connection info plist used to connect to a kernel.
 
 The plist has the standard keys found in the jupyter spec. See
-http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
+http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files.
+A port number of 0 for a channel means to use a randomly assigned
+port for that channel."
   (unless (or (= (length key) 0)
               (equal signature-scheme "hmac-sha256"))
-    (error "Only hmac-sha256 signing is currently supported."))
+    (error "Only hmac-sha256 signing is currently supported"))
   (append
    (list :kernel_name kernel-name
          :transport transport

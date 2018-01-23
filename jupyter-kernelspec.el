@@ -74,7 +74,7 @@ REFRESH."
 
 (defun jupyter-get-kernelspec (name &optional refresh)
   "Get the kernelspec for a kernel named NAME.
-If no kernelspec is found, throw an error. Otherwise return a
+If no kernelspec is found, return nil. Otherwise return a
 cons cell
 
     (DIRECTORY . PLIST)
@@ -130,7 +130,7 @@ Optional argument REFRESH has the same meaning as in
 
 (defun jupyter-kernelspecs-for-mode (&optional mode refresh)
   "Attempt to find available kernelspecs for MODE.
-MODE should be a major mode symbol and defautls to `major-mode'.
+MODE should be a major mode symbol and defaults to `major-mode'.
 REFRESH has the same meaning as in
 `jupyter-available-kernelspecs'. Return a list of available
 kernelspecs or nil if none could be found. Note that this does
