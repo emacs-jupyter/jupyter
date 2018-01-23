@@ -35,19 +35,7 @@
 (require 'jupyter-connection)
 (require 'jupyter-channels)
 (require 'jupyter-messages)
-(defcustom jupyter-include-other-output nil
-  "Whether or not to handle messages not sent by a client.
-A Jupyter client can receive messages from other clients
-connected to the same kernel on the IOPub channel. You can choose
-to ignore these messages by setting
-`jupyter-include-other-output' to nil. If
-`jupyter-include-other-output' is non-nil, then any messages that
-are not associated with a request from a client are sent to the
-client's handler methods with a nil value for the request
-argument. To change the value of this variable for a particular
-client use `jupyter-set'."
-  :group 'jupyter
-  :type 'boolean)
+(eval-when-compile (require 'cl-macs))
 
 (defvar jupyter--debug nil
   "Set to non-nil to emit sent and received messages to *Messages*.")
@@ -55,23 +43,6 @@ client use `jupyter-set'."
 (defvar jupyter-default-timeout 1
   "The default timeout in seconds for `jupyter-wait-until'.")
 
-(defvar jupyter-iopub-message-hook nil
-  "Hook run with one argument, a message received on the IOPub channel.
-Do not add to this hook variable directly, use
-`jupyter-add-hook'.")
-(put 'jupyter-iopub-message-hook 'permanent-local t)
-
-(defvar jupyter-shell-message-hook nil
-  "Hook run with one argument, a message received on the SHELL channel.
-Do not add to this hook variable directly, use
-`jupyter-add-hook'.")
-(put 'jupyter-shell-message-hook 'permanent-local t)
-
-(defvar jupyter-stdin-message-hook nil
-  "Hook run with one argument, a message received on the STDIN channel.
-Do not add to this hook variable directly, use
-`jupyter-add-hook'.")
-(put 'jupyter-stdin-message-hook 'permanent-local t)
 (defvar jupyter-inhibit-handlers nil
   "Whether or not new requests inhibit client handlers.
 Do not set this variable directly, locally bind it to t if you
