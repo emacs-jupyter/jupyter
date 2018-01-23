@@ -83,8 +83,7 @@ cons cell
 where DIRECTORY is the resource directory of the kernel named
 NAME and PLIST is its kernelspec plist. Optional argument REFRESH
 has the same meaning as in `jupyter-available-kernelspecs'."
-  (or (cdr (assoc name (jupyter-available-kernelspecs refresh)))
-      (error "No kernelspec found (%s)" name)))
+  (cdr (assoc name (jupyter-available-kernelspecs refresh))))
 
 (defun jupyter-find-kernelspecs (prefix &optional refresh)
   "Find all kernelspecs for kernels that have names matching PREFIX.
