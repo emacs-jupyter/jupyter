@@ -1780,6 +1780,7 @@ that of CLIENT."
 (defvar jupyter-repl-interaction-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "C-c C-c") #'jupyter-repl-eval-line-or-region)
+    (define-key map (kbd "C-c C-l") #'jupyter-repl-eval-file)
     (define-key map (kbd "C-c C-f") #'jupyter-repl-inspect-at-point)
     (define-key map (kbd "C-c C-r") #'jupyter-repl-restart-kernel)
     (define-key map (kbd "C-c R") #'jupyter-repl-restart-channels)
