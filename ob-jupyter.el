@@ -58,7 +58,10 @@ See `org-babel-jupyter-file-name'."
                                                 (:async . "no"))
   "Default header arguments for Jupyter src-blocks.")
 
-(defun org-babel-jupyter--get-src-block-info (light &optional context)
+(defvar org-babel-jupyter-language-regex "^[ \t]*#\\+begin_src[ \t]+jupyter-\\([^ \f\t\n\r\v]+\\)[ \t]*"
+  "Regular expression used to extract a source block's language name.")
+
+(defun org-babel-jupyter--get-src-block-info (&optional light context)
   "Similar to `org-babel-get-src-block-info', but handle inline-babel-call.
 LIGHT and CONTEXT have the same meaning as in
 `org-babel-get-src-block-info'.
@@ -73,40 +76,73 @@ as `org-babel-get-src-block-info'."
        (org-element-property :call context)))
     (org-babel-get-src-block-info light context)))
 
-(defun org-babel-jupyter-src-block-lang (&optional element)
+;; TODO: Handle the case when the kernel changes
+;;
+;; TODO: How to cache results properly? To handle the case when the kernel
+;; argument changes, we are checking for lang every time. Previously we were
+;; adding a text property at the beginning of the block, what we can do instead
+;; is add one as the last character of the kernel argument.
+;;
+;;
+;; FIXME: Parsing with `org-element-at-point' seems to depend on how far away a
+;; source block is from the subtree header line. This is not good if we want
+;; this to be fast, it seems the default value of `org-element-use-cache' is to
+;; blame. In the meantime, do not write large subtrees or large src blocks.
+;; Shouldn't have to anyway.
+(defun org-babel-jupyter-src-block-lang (&optional context)
   "Get the kernel language of a Jupyter src-block.
-ELEMENT should be a src-block org element and and defaults to the
-`org-element-at-point'."
-  (or element (setq element (org-element-at-point)))
-  (when (and (memq (org-element-type element)
-                   '(src-block inline-src-block inline-babel-call))
-             (equal (org-element-property :language element) "jupyter"))
-    (let ((begin (org-element-property :begin element)))
-      (or (get-text-property begin 'jupyter-language)
-          (let* ((args (nth 2 (org-babel-jupyter--get-src-block-info
-                               'light element)))
-                 (spec (cddar
-                        (jupyter-find-kernelspecs (alist-get :kernel args))))
-                 (lang (plist-get spec :language)))
-            (put-text-property begin (1+ begin) 'jupyter-language lang))))))
+CONTEXT should be a src-block org element and and defaults to the
+`org-element-context'."
+  (or context (setq context (org-element-context)))
+  (let ((type (org-element-type context)))
+    (when (and (memq type '(src-block inline-src-block))
+               (equal (org-element-property :language context) "jupyter"))
+      (let* ((kernel
+              (or (alist-get
+                   :kernel
+                   (ignore-errors
+                     (org-babel-parse-header-arguments
+                      (org-element-property :parameters context))))
+                  (alist-get
+                   :kernel
+                   (ignore-errors
+                     (apply #'append
+                            (mapcar #'org-babel-parse-header-arguments
+                               (org-element-property :header context)))))
+                  (alist-get
+                   :kernel
+                   (ignore-errors
+                     (org-with-point-at
+                         (org-element-property :begin context)
+                       ;; FIXME: This looks expensive, but it seems like
+                       ;; having the kernel language be a file local variable
+                       ;; would be common
+                       (org-babel-params-from-properties "jupyter"))))))
+             ;; Possibly cache based on the kernel name. Since
+             ;; `jupyter-find-kernelspecs' matches prefixes, it could
+             ;; possibly match single letters which is not good.
+             (spec (cddar (jupyter-find-kernelspecs kernel))))
+        (plist-get spec :language)))))
 
-(defun org-babel-jupyter--get-lang-mode (orig-fun lang &rest args)
-  "Identical to `org-src--get-lang-mode' but handle jupyter blocks specially.
-This is an advice function for `org-src--get-lang-mode' which
-should be passed as the ORIG-FUN argument. Whenever LANG is
-\"jupyter\" pass the result of `org-babel-jupyter-src-block-lang'
-to ORIG-FUN as its first argument instead of \"jupyter\". ARGS
-are any additional arguments to pass to ORIG-FUN. This should be
-nil."
-  (apply orig-fun
-         (if (equal lang "jupyter")
-             (org-babel-jupyter-src-block-lang)
-           lang)
-         args))
+;; All calls of `org-src--get-lang-mode' in `org-src' currently have `point' at
+;; the src-block <2018-01-23 Tue>.
+;; (defun org-babel-jupyter--get-lang-mode (orig-fun lang &rest args)
+;;   "Identical to `org-src--get-lang-mode' but handle jupyter blocks specially.
+;; This is an advice function for `org-src--get-lang-mode' which
+;; should be passed as the ORIG-FUN argument. Whenever LANG is
+;; \"jupyter\" pass the result of `org-babel-jupyter-src-block-lang'
+;; to ORIG-FUN as its first argument instead of \"jupyter\". ARGS
+;; are any additional arguments to pass to ORIG-FUN. This should be
+;; nil."
+;;   (apply orig-fun
+;;          (if (equal lang "jupyter")
+;;              (org-babel-jupyter-src-block-lang)
+;;            lang)
+;;          args))
 
-(advice-add 'org-src--get-lang-mode :around #'org-babel-jupyter--get-lang-mode)
+;; (advice-add 'org-src--get-lang-mode :around #'org-babel-jupyter--get-lang-mode)
 
-(defun org-babel-variable-assignments:jupyter (params &optional element)
+(defun org-babel-variable-assignments:jupyter (params &optional lang)
   "Assign variables in PARAMS according to the Jupyter kernel language.
 Use `org-babel-jupyter-src-block-lang' to get the kernel language
 of the src-block ELEMENT and call the variable assignment
@@ -118,13 +154,17 @@ call
 
 If the above function doesn't exist or if no kernel langauge can
 be found, fall back to `org-babel-variable-assignments:python'."
-  (let* ((lang (org-babel-jupyter-src-block-lang element))
+  (let* ((lang (or lang
+                   (save-excursion
+                     (when (re-search-backward
+                            org-babel-jupyter-language-regex nil t)
+                       (match-string 1)))))
          (fun (when lang
                 (intern (concat "org-babel-variable-assignments:" lang)))))
     (if (functionp fun) (funcall fun params)
       (org-babel-variable-assignments:python params))))
 
-(defun org-babel-expand-body:jupyter (body params &optional var-lines element)
+(defun org-babel-expand-body:jupyter (body params &optional var-lines lang)
   "Expand BODY according to PARAMS.
 
 BODY is the code to expand, PARAMS should be the header arguments
@@ -143,7 +183,11 @@ So if LANG is the kernel language, call the function
 to expand BODY. If the above function doesn't exist or if no
 kernel langauge can be found fall back to
 `org-babel-expand-body:generic'."
-  (let* ((lang (org-babel-jupyter-src-block-lang element))
+  (let* ((lang (or lang
+                   (save-excursion
+                     (when (re-search-backward
+                            org-babel-jupyter-language-regex nil t)
+                       (match-string 1)))))
          (fun (when lang
                 (intern (concat "org-babel-expand-body:" lang)))))
     (if (functionp fun) (funcall fun body params var-lines)
@@ -439,6 +483,37 @@ PARAMS."
                         (jupyter-request-id req))
         (jupyter-wait-until-received :execute-reply req most-positive-fixnum)
         result))))
+
+(defun org-babel-jupyter-make-language-alias (lang)
+  "Simimilar to `org-babel-make-language-alias' except do not
+make an alias for the header args and set the OLD LANG as
+jupyter."
+  (dolist (fn '("execute" "expand-body" "prep-session" "edit-prep"
+                "variable-assignments" "load-session"))
+    (let ((sym (intern-soft (concat "org-babel-" fn ":jupyter"))))
+      (when (and sym (fboundp sym))
+        (defalias (intern (concat "org-babel-" fn ":" lang)) sym))))
+  (defalias (intern (concat "org-babel-header-args:" lang))
+    'org-babel-header-args:jupyter)
+  (defalias (intern (concat "org-babel-" lang "-initiate-session"))
+    'org-babel-jupyter-initiate-session))
+
+(cl-loop
+ for (kernel . (_dir . spec)) in (jupyter-available-kernelspecs)
+ for lang = (plist-get spec :language)
+ for jupyter-lang = (concat "jupyter-" lang)
+ do
+ (org-babel-jupyter-make-language-alias jupyter-lang)
+ (add-to-list 'org-src-lang-modes
+              (cons jupyter-lang
+                    (intern (or (cdr (assoc lang org-src-lang-modes))
+                                (replace-regexp-in-string
+                                 "[0-9]*" "" lang)))))
+ ;; (add-to-list 'org-babel-tangle-lang-exts
+ ;;              (cons (concat "jupyter-" lang) file_extension))
+ (set (intern (concat "org-babel-default-header-args:" jupyter-lang))
+      `((:kernel . ,kernel)
+        (:async . "no"))))
 
 (provide 'ob-jupyter)
 
