@@ -371,13 +371,13 @@ be set to the kernel manager instance, see
     (setq km (jupyter-kernel-manager :name kernel-name))
     (setq kc (jupyter-make-client km client-class))
     (condition-case-unless-debug err
-        (let ((reporter (make-progress-reporter "Requesting kernel info...")))
+        (let (reporter)
           (jupyter-start-channels kc)
           (jupyter-hb-unpause (oref kc hb-channel))
           (jupyter-start-kernel km 10)
           (unless (jupyter--wait-until-startup kc 10)
             (error "Kernel did not send startup message"))
-          (progress-reporter-update reporter)
+          (setq reporter (make-progress-reporter "Requesting kernel info..."))
           (let* ((jupyter-inhibit-handlers t)
                  (info (jupyter-wait-until-received :kernel-info-reply
                          (jupyter-kernel-info-request kc)
