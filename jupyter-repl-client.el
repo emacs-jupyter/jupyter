@@ -870,10 +870,12 @@ lines then truncate it to something less than
                                              req
                                              execution-count
                                              data
-                                             metadata)
-  (jupyter-repl-do-at-request client req
-    (jupyter-repl-insert-prompt 'out)
-    (jupyter-repl-insert-data data)))
+                                             _metadata)
+  ;; Only handle our results
+  (when req
+    (jupyter-repl-do-at-request client req
+      (jupyter-repl-insert-prompt 'out)
+      (jupyter-repl-insert-data data))))
 
 (cl-defmethod jupyter-handle-display-data ((client jupyter-repl-client)
                                            req data metadata transient)
