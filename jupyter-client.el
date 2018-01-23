@@ -405,6 +405,11 @@ PRIORITIES - An alist of (CTYPE . PRIORITY) pairs where CTYPE is
 ;; in `jupyter--ioloop-queue-message'. For some reason the `condition-case' in
 ;; `zmq--init-subprocess' is not sending back the error. Or more specifically,
 ;; in the subprocess errors are being turned into warnings.
+;;
+;; TODO: Ensure that the subprocess gets killed when the parent emacs exits.
+;; This may not happen if the parent emacs crashes. One solution is to send the
+;; process id of the parent emacs and periodically check if the process is
+;; still alive, then exit the subprocess if the parent process is dead.
 (defun jupyter--ioloop (client)
   "Return the function used for communicating with CLIENT's kernel."
   (let* ((session (oref client session))
