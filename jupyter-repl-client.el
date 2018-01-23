@@ -1415,7 +1415,7 @@ long."
     (goto-char (point-max))
     (unless (= (save-excursion (jupyter-repl-previous-cell)) 0)
       (jupyter-repl-insert-prompt 'in))
-    (setq str (strim-trim str))
+    (setq str (string-trim str))
     (let* ((code (if silently (string-trim str)
                    (prog1 nil
                      (jupyter-repl-replace-cell-code str))))
