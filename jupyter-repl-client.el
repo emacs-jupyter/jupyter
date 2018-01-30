@@ -248,7 +248,8 @@ Fixing the text properties of the current buffer involves
 substituting any `face' property with `font-lock-face' for
 insertion into the REPL buffer and adding
 `font-lock-extra-managed-props' to the text."
-  (let ((pos (point-min)) next)
+  (let ((start (point-min))
+        (pos (point-min)) next)
     (catch 'done
       (while (setq next (or (next-property-change pos) (point-max)))
         ;; Handle additional properties from font-lock, so as to
@@ -256,7 +257,7 @@ insertion into the REPL buffer and adding
         (dolist (prop (cons 'face font-lock-extra-managed-props))
           (let ((new-prop (get-text-property pos prop)))
             (put-text-property
-             pos next
+             (+ start (1- pos)) (1- (+ start next))
              (if (eq prop 'face) 'font-lock-face prop)
              (if (eq prop 'face) (or new-prop 'default)
                new-prop))))
