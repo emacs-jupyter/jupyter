@@ -1860,12 +1860,6 @@ purposes and SYNTAX-TABLE is the syntax table of MODE."
           (setq syntax (syntax-table))))
       (list mode syntax))))
 
-(defun jupyter-repl-same-lang-mode-p (client)
-  "Is BUFFER's `major-mode' the same as CLIENT's `jupyter-repl-lang-mode'?"
-  (let ((mode major-mode))
-    (with-jupyter-repl-buffer client
-      (eq jupyter-repl-lang-mode mode))))
-
 (defun jupyter-repl--new-repl (client)
   "Initialize a new REPL buffer based on CLIENT.
 CLIENT should be a `jupyter-repl-client' already connected to its
@@ -1932,15 +1926,15 @@ Otherwise, in a non-interactive call, return the
 
 ;;;###autoload
 (defun connect-jupyter-repl (file-or-plist &optional associate-buffer)
-  "Run a Jupyter REPL connected to a kernel using a connection file.
+  "Run a Jupyter REPL using a kernel's connection FILE-OR-PLIST.
 FILE-OR-PLIST can be either a file holding the connection
-information or a PLIST of the connection information.
+information or a property list of connection information.
 
 ASSOCIATE-BUFFER has the same meaning as in `run-jupyter-repl'.
 
-When called interactively, display the newly created REPL buffer.
-Otherwise, in a non-interactive call return the newly created
-client connected to the REPL."
+When called interactively, display the new REPL buffer.
+Otherwise, in a non-interactive call return the
+`jupyter-repl-client' connected to the kernel."
   (interactive (list (read-file-name "Connection file: ") t))
   (let ((client (make-instance 'jupyter-repl-client)))
     (jupyter-initialize-connection client file-or-plist)
@@ -1954,7 +1948,9 @@ client connected to the REPL."
         (error "Kernel did not respond to kernel-info request"))
       (oset client kernel-info (jupyter-message-content info))
       (jupyter-repl--new-repl client)
-      (when (and associate-buffer (jupyter-repl-same-lang-mode-p client))
+      (when (and associate-buffer
+                 (eq major-mode (with-jupyter-repl-buffer client
+                                  jupyter-repl-lang-mode)))
         (jupyter-repl-associate-buffer client))
       (if (called-interactively-p 'interactive)
           (pop-to-buffer (oref client buffer))
