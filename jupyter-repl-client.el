@@ -1670,7 +1670,6 @@ in the appropriate direction, to the saved element."
   "Jupyter-REPL"
   "A Jupyter REPL major mode."
   (cl-check-type jupyter-repl-current-client jupyter-repl-client)
-  (setq-local jupyter-repl-current-client jupyter-repl-current-client)
   (setq-local indent-line-function #'jupyter-repl-indent-line)
   (setq-local left-margin-width jupyter-repl-prompt-margin-width)
   ;; Initialize a buffer using the major-mode correponding to the kernel's
@@ -1862,13 +1861,12 @@ purposes and SYNTAX-TABLE is the syntax table of MODE."
 
 (defun jupyter-repl--new-repl (client)
   "Initialize a new REPL buffer based on CLIENT.
-CLIENT should be a `jupyter-repl-client' already connected to its
+CLIENT is a `jupyter-repl-client' already connected to its
 kernel and should have a non-nil kernel-info slot.
 
 A new REPL buffer communicating with CLIENT's kernel is created
 and set as CLIENT'sthis case, if MANAGER will be the buffer slot.
 If CLIENT already has a non-nil buffer slot, raise an error."
-  (cl-check-type client jupyter-repl-client)
   (if (slot-boundp client 'buffer) (error "Client already has a REPL buffer")
     (unless (ignore-errors (oref client kernel-info))
       (error "Client needs to have valid kernel-info"))
@@ -1882,11 +1880,11 @@ If CLIENT already has a non-nil buffer slot, raise an error."
               (generate-new-buffer
                (format "*jupyter-repl[%s]*"
                        (concat language-name " " language-version))))
-        (let ((jupyter-repl-current-client client))
-          (with-jupyter-repl-buffer client
-            (jupyter-repl-mode)
-            (jupyter-repl-insert-banner banner)
-            (jupyter-repl-insert-prompt 'in)))))))
+        (with-jupyter-repl-buffer client
+          (setq-local jupyter-repl-current-client client)
+          (jupyter-repl-mode)
+          (jupyter-repl-insert-banner banner)
+          (jupyter-repl-insert-prompt 'in))))))
 
 ;;;###autoload
 (defun run-jupyter-repl (kernel-name &optional associate-buffer)
