@@ -23,37 +23,6 @@
 
 ;;; Commentary:
 
-;; TODO: The `jupyter-channel' methods need work. `jupyter-kernel-client'
-;; actually only uses a `jupyter-channel' to store received messages in the
-;; recv-queue slot, to get the endpoint information for sockets created in a
-;; client's ioloop subprocess, and to dispatch to message handlers using
-;; `jupyter-handle-message'.
-;;
-;; The start and stop channel methods actually start and stop a channel's
-;; socket in the current Emacs instance. What they should do is start and stop
-;; a channel in a client's ioloop subprocess. A client's ioloop is available to
-;; a channel since any channels initialized through
-;; `jupyter-initialize-connection' have their parent-instance slot (from
-;; `jupyter-connection') set to the client. So what can be done in the start
-;; and stop methods is to check to see if the parent-instance slot is a
-;; `jupyter-kernel-client' and if so, send its ioloop a command using
-;; `zmq-subprocess-send'.
-;;
-;; TODO: `jupyter-channel' classes might not even need to be implemented in
-;; reality. You could just as easily implement functions called on a client to
-;; implement channels. Then the client can hold the recv-queue for each channel
-;; and any channel information. This would even be better because then
-;; internally to the client you can distinguish between a blocking client and
-;; on that uses the ioloop subprocess. If the ioloop subprocess is nil, then
-;; the client is blocking.
-;;
-;; You can do something like
-;;
-;;    (jupyter-get-message client :iopub)
-;;
-;; To get a message from the IOPub recv-queue or directly from a `jupyter-recv'
-;; call based on if the client is blocking or not.
-
 ;;; Code:
 
 (require 'jupyter-connection)
@@ -70,121 +39,139 @@
     :type keyword
     :initarg :type
     :documentation "The type of this channel. Should be one of
- the keys in `jupyter-channel-socket-types', excluding `:hb'
- which corresponds to the heartbeat channel and is handled
- differently than the other channels. See `jupyter-hb-channel'.")
+ the keys in `jupyter-channel-socket-types'.")
    (endpoint
     :type string
     :initarg :endpoint
     :documentation "The endpoint this channel is connected to.
- Typical endpoints look like \"tcp://127.0.0.1:5555\".")
-   (socket
+ Typical endpoints look like \"tcp://127.0.0.1:5555\"."))
+  :abstract t)
+
+(defclass jupyter-sync-channel (jupyter-channel)
+  ((socket
     :type (or null zmq-socket)
     :initform nil
-    :documentation "The socket this channel uses to communicate
- with the kernel.")
+    :documentation "The socket used for communicating with the kernel.")))
+
+(defclass jupyter-async-channel (jupyter-channel)
+  ((ioloop
+    :type (or null process)
+    :initform nil
+    :documentation "The process responsible for sending and
+receiving messages on this channel.")
    (recv-queue
     :type ring
-    :initform (make-ring 10)
-    :documentation "A queue of messages received on this channel
- that are waiting to be processed."))
-  :abstract t
-  :documentation "A base class for channels used by `jupyter'.")
+    :initform (make-ring 10))
+   (status
+    :type symbol
+    :initform 'stopped)))
 
-(defclass jupyter-iopub-channel (jupyter-channel)
-  ((type :initform :iopub))
-  :documentation "A base class for iopub channels.")
+(cl-defgeneric jupyter-start-channel ((channel jupyter-channel) &key identity)
+  "Start a Jupyter CHANNEL using IDENTITY as the routing ID.")
 
-(defclass jupyter-stdin-channel (jupyter-channel)
-  ((type :initform :stdin))
-  :documentation "A base class for stdin channels.")
-
-(defclass jupyter-shell-channel (jupyter-channel)
-  ((type :initform :shell))
-  :documentation "A base class for shell channels.")
-
-(defclass jupyter-control-channel (jupyter-channel)
-  ((type :initform :control))
-  :documentation "A base class for control channels.")
-
-(cl-defmethod jupyter-start-channel ((channel jupyter-channel) &key identity)
-  "Start a CHANNEL.
-If IDENTITY is non-nil, it is used as the ROUTING_ID of the
-underlying channel's socket."
+(cl-defmethod jupyter-start-channel ((channel jupyter-async-channel) &key identity)
+  ;; TODO: In an IOLoop actually start the channel by sending it the endpoint
+  ;; and identity. Currently the IOLoop is assumed to have this information.
+  ;;
+  ;; TODO: Define a mechanism to attach a callback for each type of command in
+  ;; an IOLoop so that the IOLoop filter is not responsible for setting the
+  ;; status slot of a channel. Look how python implements event loops.
   (unless (jupyter-channel-alive-p channel)
-    (let ((sock (jupyter-connect-channel
-                 (oref channel type) (oref channel endpoint) identity)))
-      (oset channel socket sock))))
+    (zmq-subprocess-send (oref channel ioloop)
+      (list 'start-channel (oref channel type)))))
 
-(cl-defmethod jupyter-start-channel ((channel jupyter-iopub-channel) &key _identity)
-  "Start an iopub CHANNEL subscribed to all messages.
-If IDENTITY is non-nil, it is used as the ROUTING_ID of the
-underlying channel's socket."
-  (when (cl-call-next-method)
-    (zmq-socket-set (oref channel socket) zmq-SUBSCRIBE "")))
+(cl-defmethod jupyter-start-channel ((channel jupyter-sync-channel) &key identity)
+  (unless (jupyter-channel-alive-p channel)
+    (let ((socket (jupyter-connect-channel
+                   (oref channel type) (oref channel endpoint) identity)))
+      (oset channel socket socket)
+      (cl-case (oref channel type)
+        (:iopub
+         (zmq-socket-set socket zmq-SUBSCRIBE ""))))))
 
-(cl-defmethod jupyter-stop-channel ((channel jupyter-channel))
-  "Stop a CHANNEL.
-The underlying socket's LINGER property is set to 0, the socket
-is closed, the channel's socket property is set to nil, and any
-pending messages in the channels recv-queue are removed. Note
-that `jupyter-channel-alive-p' on the CHANNEL will return nil
-after a call to this function."
+(cl-defgeneric jupyter-stop-channel ((channel jupyter-channel))
+  "Stop a Jupyter CHANNEL.")
+
+(cl-defmethod jupyter-stop-channel ((channel jupyter-sync-channel))
   (when (jupyter-channel-alive-p channel)
-    (let ((sock (oref channel socket)))
-      (zmq-socket-set sock zmq-LINGER 0)
-      (zmq-close sock)
-      (cl-loop
-       with ring = (oref channel recv-queue)
-       repeat (ring-length ring) do (ring-remove ring))
-      (oset channel socket nil))))
+    (condition-case nil
+        (zmq-close (oref channel socket))
+      (zmq-ENOENT nil))
+    (oset channel socket nil)))
 
-(cl-defmethod jupyter-channel-alive-p ((channel jupyter-channel))
-  "Return non-nil if CHANNEL is alive.
-A channel is alive if its socket property is bound to a
-`zmq-socket'."
-  (and (slot-boundp channel 'socket)
-       (not (null (oref channel socket)))))
+(cl-defmethod jupyter-stop-channel ((channel jupyter-async-channel))
+  (when (jupyter-channel-alive-p channel)
+    (zmq-subprocess-send (oref channel ioloop)
+      (list 'stop-channel (oref channel type)))))
 
-(cl-defmethod jupyter-queue-message ((channel jupyter-channel) msg)
-  "Add a message to a CHANNEL's recieve queue.
+(cl-defgeneric jupyter-get-message ((channel jupyter-channel) &rest _args)
+  "Receive a message on CHANNEL.")
+
+(cl-defmethod jupyter-get-message ((channel jupyter-sync-channel))
+  "Block until a message is received on CHANNEL.
+Return the received message."
+  (cl-destructuring-bind (_idents . msg)
+      (jupyter-recv channel)
+    msg))
+
+(cl-defmethod jupyter-get-message ((channel jupyter-async-channel) &optional timeout)
+  "Get a message from CHANNEL's recv-queue.
+If no message is available, return nil. Otherwise return the
+oldest message in CHANNEL's recv-queue. If TIMEOUT is non-nil,
+wait until TIMEOUT for a message."
+  (let ((idents-msg (jupyter-recv channel timeout)))
+    (when idents-msg
+      (cl-destructuring-bind (_idents . msg)
+          idents-msg
+        msg))))
+
+(cl-defmethod jupyter-send ((channel jupyter-async-channel) type message)
+  (zmq-subprocess-send (oref channel ioloop)
+    (list 'send (oref channel type) type message)))
+
+(cl-defmethod jupyter-send ((channel jupyter-sync-channel) type message)
+  (jupyter-send (oref channel session) (oref channel socket) type message))
+
+(cl-defmethod jupyter-recv ((channel jupyter-sync-channel))
+  (jupyter-recv (oref channel session) (oref channel socket)))
+
+(cl-defmethod jupyter-recv ((channel jupyter-async-channel) &optional timeout)
+  (let ((ring (oref channel recv-queue)))
+    (when timeout
+      (with-timeout (timeout
+                     (error "Message not received on channel within timeout"))
+        (while (ring-empty-p ring)
+          (sleep-for 0.01))))
+    (unless (ring-empty-p ring)
+      (ring-remove ring))))
+
+(cl-defgeneric jupyter-queue-message ((channel jupyter-async-channel) msg)
+  "Queue MSG in CHANNEL's recv-queue.
 MSG is a cons pair (IDENTS . MSG) which will be added to the
 recv-queue slot of CHANNEL. To receive a message from the channel
-call `jupyter-get-message'."
+call `jupyter-get-message'.")
+
+(cl-defmethod jupyter-queue-message ((channel jupyter-async-channel) msg)
+  "Queue MSG in CHANNEL's recv-queue."
   (let ((ring (oref channel recv-queue)))
     (ring-insert+extend ring msg 'grow)))
 
-(cl-defmethod jupyter-get-message ((channel jupyter-channel))
-  "Get a message from CHANNEL's recv-queue.
-If messages are available in a channel's recv-queue, return the
-oldest message. Otherwise if no messages are available, return
-nil."
-  (when (jupyter-messages-available-p channel)
-    (cl-destructuring-bind (_idents . msg)
-        (ring-remove (oref channel recv-queue))
-      msg)))
+(cl-defgeneric jupyter-channel-alive-p ((channel jupyter-channel))
+  "Determine if a CHANNEL is alive.")
 
-(cl-defmethod jupyter-messages-available-p ((channel jupyter-channel))
-  "Determine if CHANNEL has an messages available.
-A CHANNEL has messages available if its recv-queue is not empty."
-  (not (ring-empty-p (oref channel recv-queue))))
+(cl-defmethod jupyter-channel-alive-p ((channel jupyter-sync-channel))
+  (not (null (oref channel socket))))
+
+(cl-defmethod jupyter-channel-alive-p ((channel jupyter-async-channel))
+  (and (oref channel ioloop) (not (eq (oref channel status) 'stopped))))
 
 ;;; Heartbeat channel
 
-(defclass jupyter-hb-channel (jupyter-connection)
+(defclass jupyter-hb-channel (jupyter-sync-channel)
   ((type
     :type keyword
     :initform :hb
     :documentation "The type of this channel is `:hb'.")
-   (endpoint
-    :type string
-    :initarg :endpoint
-    :documentation "The endpoint this channel is connected to.
- Typical endpoints look like \"tcp://127.0.0.1:5555\".")
-   (socket
-    :type (or null zmq-socket)
-    :initform nil
-    :documentation "The socket used for communicating with the kernel.")
    (time-to-dead
     :type integer
     :initform 1
@@ -252,6 +239,9 @@ channel, starts the timer."
   (unless (jupyter-channel-alive-p channel)
     (oset channel socket (jupyter-connect-channel
                           :hb (oref channel endpoint) identity))
+    ;; TODO: Do something when the kernel is for sure dead, i.e. when a message
+    ;; has not been received for a certain number of time-to-dead periods. For
+    ;; example run a hook and pause the channel.
     (oset channel timer
           (run-with-timer
            0 (oref channel time-to-dead)

@@ -55,7 +55,7 @@ the kernel is alive.")
     :documentation "The local kernel process when the kernel is
 alive.")
    (control-channel
-    :type (or null jupyter-control-channel)
+    :type (or null jupyter-sync-channel)
     :initform nil
     :documentation "A control channel to make shutdown and
 interrupt requests to the kernel.")
@@ -257,7 +257,8 @@ kernel. Starting a kernel involves the following steps:
            channel :identity (jupyter-session-id (oref manager session))))
       (let ((conn-info (oref manager conn-info)))
         (oset manager control-channel
-              (jupyter-control-channel
+              (jupyter-sync-channel
+               :type :control
                :endpoint (format "%s://%s:%d"
                                  (plist-get conn-info :transport)
                                  (plist-get conn-info :ip)

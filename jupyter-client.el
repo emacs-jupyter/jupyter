@@ -51,6 +51,20 @@ would like to inhibit handlers for any new requests. If this is
 set to t globally, all new requests will have message handlers
 inhibited.")
 
+;; Define channel classes for method dispatching based on the channel type
+
+(defclass jupyter-shell-channel (jupyter-async-channel)
+  ((type
+    :initform :shell)))
+
+(defclass jupyter-iopub-channel (jupyter-async-channel)
+  ((type
+    :initform :iopub)))
+
+(defclass jupyter-stdin-channel (jupyter-async-channel)
+  ((type
+    :initform :stdin)))
+
 (defclass jupyter-kernel-client (jupyter-connection)
   ((requests
     :type hash-table
@@ -96,16 +110,16 @@ buffer.")
     :initform nil
     :initarg :iopub-channel
     :documentation "The IOPub channel.")
-   (hb-channel
-    :type (or null jupyter-hb-channel)
-    :initform nil
-    :initarg :hb-channel
-    :documentation "The heartbeat channel.")
    (stdin-channel
     :type (or null jupyter-stdin-channel)
     :initform nil
     :initarg :stdin-channel
-    :documentation "The stdin channel.")))
+    :documentation "The stdin channel.")
+   (hb-channel
+    :type (or null jupyter-hb-channel)
+    :initform nil
+    :initarg :hb-channel
+    :documentation "The heartbeat channel.")))
 
 (cl-defmethod initialize-instance ((client jupyter-kernel-client) &rest _slots)
   (cl-call-next-method)
@@ -158,19 +172,28 @@ connection is terminated before initializing."
       (unless (and (ignore-errors (oref client session))
                    (equal (jupyter-session-key (oref client session)) key))
         (oset client session (jupyter-session :key key)))
-      (cl-loop
-       with addr = (concat transport "://" ip)
-       for (channel . port) in `((stdin-channel . ,stdin_port)
-                                 (shell-channel . ,shell_port)
-                                 (hb-channel . ,hb_port)
-                                 (iopub-channel . ,iopub_port))
-       for class = (intern (concat "jupyter-" (symbol-name channel)))
-       do (setf (slot-value client channel)
-                (make-instance
-                 class
-                 ;; So channels have access to the client's session
-                 :parent-instance client
-                 :endpoint (format "%s:%d" addr port)))))))
+      (let ((addr (lambda (port) (format "%s://%s:%d" transport ip port))))
+        (oset client hb-channel (make-instance
+                                 'jupyter-hb-channel
+                                 :parent-instance client
+                                 :endpoint (funcall addr hb_port)))
+        (cl-loop
+         for (channel . port) in `((stdin-channel . ,stdin_port)
+                                   (shell-channel . ,shell_port)
+                                   (iopub-channel . ,iopub_port))
+         do (setf (slot-value client channel)
+                  (make-instance
+                   (cl-case channel
+                     (stdin-channel 'jupyter-stdin-channel)
+                     (shell-channel 'jupyter-shell-channel)
+                     (iopub-channel 'jupyter-iopub-channel)
+                     (otherwise (error "Wrong channel type")))
+                   ;; So channels have access to the client's session
+                   ;;
+                   ;; See `jupyter-start-channels' for when the :ioloop slot is
+                   ;; set
+                   :parent-instance client
+                   :endpoint (funcall addr port))))))))
 
 ;;; Client local variables
 
@@ -227,8 +250,7 @@ this is called."
 (cl-defmethod jupyter-send ((client jupyter-kernel-client)
                             channel
                             type
-                            message
-                            &optional flags)
+                            message)
   "Send a message on CLIENT's CHANNEL.
 Return a `jupyter-request' representing the sent message. CHANNEL
 is one of the channel's of CLIENT. TYPE is one of the values in
@@ -243,8 +265,7 @@ sent message, see `jupyter-add-callback' and
       (signal 'wrong-type-argument (list 'process ioloop 'ioloop)))
     (when jupyter--debug
       (message "SENDING: %s %s" type message))
-    (zmq-subprocess-send (oref client ioloop)
-      (list 'send (oref channel type) type message flags))
+    (jupyter-send channel type message)
     ;; Anything sent to stdin is a reply not a request so don't add it to
     ;; `:pending-requests'.
     (unless (eq (oref channel type) :stdin)
@@ -256,7 +277,7 @@ sent message, see `jupyter-add-callback' and
 
 ;;; Channel subprocess (receiving messages)
 
-(defmacro jupyter--ioloop-do-command (session poller channels)
+(defmacro jupyter--ioloop-do-command (poller channels)
   "Read and execute a command from stdin.
 SESSION is a variable bound to a `jupyter-session' object, POLLER
 is a variable bound to a `zmq-poller' object. and CHANNELS is a
@@ -295,20 +316,21 @@ Any other command sent to the subprocess will be ignored."
      (cl-case cmd
        (send
         (cl-destructuring-bind (ctype . args) args
-          (let ((sock (car (rassoc ctype ,channels))))
-            (zmq-prin1
-             (list 'sent ctype (apply #'jupyter-send ,session sock args))))))
+          (let ((channel (cdr (assoc ctype ,channels))))
+            (zmq-prin1 (list 'sent ctype (apply #'jupyter-send channel args))))))
        (start-channel
-        (let ((sock (car (rassoc args ,channels))))
-          (zmq-connect sock (zmq-socket-get sock zmq-LAST-ENDPOINT))
-          (zmq-poller-register ,poller sock zmq-POLLIN)))
+        (cl-destructuring-bind (ctype) args
+          (let ((channel (cdr (assoc ctype ,channels))))
+            (jupyter-start-channel
+             channel :identity (jupyter-session-id (oref channel session)))
+            (zmq-poller-register ,poller (oref channel socket) zmq-POLLIN)
+            (zmq-prin1 (list 'start-channel ctype)))))
        (stop-channel
-        (let ((sock (car (rassoc args ,channels))))
-          (zmq-poller-unregister ,poller sock)
-          (condition-case err
-              (zmq-disconnect
-               sock (zmq-socket-get sock zmq-LAST-ENDPOINT))
-            (zmq-ENOENT nil))))
+        (cl-destructuring-bind (ctype) args
+          (let ((channel (cdr (assoc ctype ,channels))))
+            (zmq-poller-unregister ,poller (oref channel socket))
+            (jupyter-stop-channel channel)
+            (zmq-prin1 (list 'stop-channel ctype)))))
        (quit
         (signal 'quit nil))
        (otherwise (error "Unhandled command (%s)" cmd)))))
@@ -358,51 +380,6 @@ message that has a channel type with the lower priority."
          (if (eq head tail) (setq ,messages (cons elem head))
            (setcdr head (cons elem tail)))))))
 
-(defmacro jupyter--ioloop-collect-messages
-    (session poller channels messages priorities timeout)
-  "Collect messages from kernel.
-SESSION, POLLER, CHANNELS, MESSAGES, PRIORITIES, and TIMEOUT
-should all be variable names bound to objects with the following
-meanings:
-
-SESSION - A `jupyter-session'
-
-POLLER - A `zmq-poller'
-
-CHANNELS - An alist of (SOCK . CTYPE) pairs where sock is a
-           `zmq-socket' representing a `jupyter-channel' with
-           type CTYPE.
-
-MESSAGES - A variable in which to store the collected list of
-           messages during this polling period. If the variable
-           is already bound to a list, new messages added to it
-           will be sorted based on the `:date' field of the
-           Jupyter message. If two messages have the same
-           `:date', e.g. the fractional seconds resolution is not
-           high enough, also take into account PRIORITIES.
-
-PRIORITIES - An alist of (CTYPE . PRIORITY) pairs where CTYPE is
-             a `jupyter-channel' type with PRIORITY, a number. If
-             one channel has a higher priority than another and
-             two messages, one from each channel, have the same
-             `:date' field, the message with the higher channel
-             priority will have its message come before the
-             message whose channel has a lower priority in the
-             sorted order."
-  `(let ((events (condition-case nil
-                     (zmq-poller-wait-all ,poller (length ,channels) ,timeout)
-                   ((zmq-EAGAIN zmq-EINTR zmq-ETIMEDOUT) nil))))
-     (when (alist-get 0 events)
-       ;; Got input from stdin, do the command it
-       ;; specifies
-       (setf (alist-get 0 events nil 'remove) nil)
-       (jupyter--ioloop-do-command ,session ,poller ,channels))
-     (dolist (sock (mapcar #'car events))
-       (jupyter--ioloop-queue-message ,messages ,priorities
-         (cons (alist-get sock channels)
-               (jupyter-recv ,session sock))))
-     events))
-
 ;; TODO: Make this more debuggable, I've spent hours wondering why I wasn't
 ;; receiving messages only to find out (caar elem) should have been (car elem)
 ;; in `jupyter--ioloop-queue-message'. For some reason the `condition-case' in
@@ -415,9 +392,8 @@ PRIORITIES - An alist of (CTYPE . PRIORITY) pairs where CTYPE is
 ;; still alive, then exit the subprocess if the parent process is dead.
 (defun jupyter--ioloop (client)
   "Return the function used for communicating with CLIENT's kernel."
-  (let* ((session (oref client session))
-         (sid (jupyter-session-id session))
-         (skey (jupyter-session-key session))
+  (let* ((sid (jupyter-session-id (oref client session)))
+         (skey (jupyter-session-key (oref client session)))
          (iopub-ep (oref (oref client iopub-channel) endpoint))
          (shell-ep (oref (oref client shell-channel) endpoint))
          (stdin-ep (oref (oref client stdin-channel) endpoint)))
@@ -426,40 +402,74 @@ PRIORITIES - An alist of (CTYPE . PRIORITY) pairs where CTYPE is
        (require 'jupyter-channels)
        (require 'jupyter-messages)
        (let* ((session (jupyter-session :id ,sid :key ,skey))
-              (iopub (jupyter-connect-channel :iopub ,iopub-ep ,sid))
-              (shell (jupyter-connect-channel :shell ,shell-ep ,sid))
-              (stdin (jupyter-connect-channel :stdin ,stdin-ep ,sid))
+              (iopub (jupyter-sync-channel
+                      :type :iopub
+                      :session session
+                      :endpoint ,iopub-ep))
+              (shell (jupyter-sync-channel
+                      :type :shell
+                      :session session
+                      :endpoint ,shell-ep))
+              (stdin (jupyter-sync-channel
+                      :type :stdin
+                      :session session
+                      :endpoint ,stdin-ep))
               (priorities '((:shell . 4)
                             (:iopub . 2)
                             (:stdin . 2)))
-              (channels `((,stdin . :stdin)
-                          (,shell . :shell)
-                          (,iopub . :iopub)))
+              (channels `((:stdin . ,stdin)
+                          (:shell . ,shell)
+                          (:iopub . ,iopub)))
               (idle-count 0)
               (timeout 20)
               (messages nil))
-         (zmq-socket-set iopub zmq-SUBSCRIBE "")
          (condition-case nil
              (with-zmq-poller poller
                ;; Poll for stdin messages
                (zmq-poller-register poller 0 zmq-POLLIN)
-               (mapc (lambda (x) (zmq-poller-register poller (car x) zmq-POLLIN))
-                  channels)
                (while t
-                 (if (jupyter--ioloop-collect-messages
-                      session poller channels messages priorities timeout)
-                     (setq idle-count 0 timeout 20)
-                   (setq idle-count (1+ idle-count))
-                   ;; Lengthen timeout so as to not waste CPU cycles
-                   (when (= idle-count 100)
-                     (setq timeout 100))
-                   ;; Pool at least some messages, but not at the cost of
-                   ;; responsiveness. If messages are being blasted at us by the
-                   ;; kernel ensure that they still get through and not pooled
-                   ;; indefinately.
-                   (when (or (= idle-count 5) (> (length messages) 10))
-                     (while messages
-                       (zmq-prin1 (cons 'recvd (pop messages))))))))
+                 (let ((events
+                        (condition-case nil
+                            (zmq-poller-wait-all poller (1+ (length channels)) timeout)
+                          ((zmq-EAGAIN zmq-EINTR zmq-ETIMEDOUT) nil))))
+                   ;; Perform a command from stdin
+                   (when (alist-get 0 events)
+                     (setf (alist-get 0 events nil 'remove) nil)
+                     (jupyter--ioloop-do-command poller channels))
+                   ;; Queue received messages
+                   (dolist (sock (mapcar #'car events))
+                     (let ((channel
+                            (cdr (cl-find-if
+                                  (lambda (c) (eq (oref (cdr c) socket) sock))
+                                  channels))))
+                       (jupyter--ioloop-queue-message messages priorities
+                         (cons (oref channel type) (jupyter-recv channel)))))
+                   ;; Possibly send queued messages to parent process
+                   (if events
+                       ;; When messages have been received, reset idle counter
+                       ;; and shorten polling timeout
+                       (setq idle-count 0 timeout 20)
+                     (setq idle-count (1+ idle-count))
+                     ;; When no messages have been received during this polling
+                     ;; period
+                     (when (= idle-count 100)
+                       ;; If no messages have been received for 100 polling
+                       ;; periods, lengthen timeout so as to not waste CPU
+                       ;; cycles
+                       (setq timeout 100))
+                     ;; Send queued messages.
+                     ;;
+                     ;; Pool at least some messages, but not at the cost of
+                     ;; responsiveness. If messages are being blasted at us by
+                     ;; the kernel ensure that they still get through and not
+                     ;; pooled indefinately.
+                     ;;
+                     ;; TODO: Drop messages if they are comming too frequently
+                     ;; to the point where the parent Emacs process would be
+                     ;; spending too much time handling messages.
+                     (when (or (= idle-count 5) (> (length messages) 10))
+                       (while messages
+                         (zmq-prin1 (cons 'recvd (pop messages)))))))))
            (quit
             (mapc (lambda (x)
                  (zmq-socket-set (car x) zmq-LINGER 0)
@@ -539,12 +549,41 @@ by `jupyter--ioloop'."
        (if (not channel) (warn "No handler for channel type (%s)" ctype)
          (jupyter-queue-message channel (cons idents msg))
          (run-with-timer 0.0001 nil #'jupyter-handle-message client channel))))
+    (`(start-channel ,ctype)
+     (let ((channel (cl-loop
+                     for c in '(stdin-channel
+                                shell-channel
+                                iopub-channel)
+                     for channel = (slot-value client c)
+                     when (eq (oref channel type) ctype)
+                     return channel)))
+       (oset channel status 'running)))
+    (`(stop-channel ,ctype)
+     (let ((channel (cl-loop
+                     for c in '(stdin-channel
+                                shell-channel
+                                iopub-channel)
+                     for channel = (slot-value client c)
+                     when (eq (oref channel type) ctype)
+                     return channel)))
+       (oset channel status 'stopped)))
     ('(quit)
      ;; Cleanup handled in sentinel
      (when jupyter--debug
        (message "CLIENT CLOSED")))))
 
 ;;; Starting the channel subprocess
+
+(defun jupyter--start-ioloop (client)
+  (unless (oref client ioloop)
+    (oset client ioloop
+          (zmq-start-process
+           (jupyter--ioloop client)
+           (apply-partially #'jupyter--ioloop-filter client)
+           (apply-partially #'jupyter--ioloop-sentinel client)
+           (oref client -buffer)))
+    ;; Allow the subprocess to start
+    (sleep-for 0.1)))
 
 (cl-defmethod jupyter-start-channels ((client jupyter-kernel-client)
                                       &key (shell t)
@@ -565,31 +604,26 @@ In addition to calling `jupyter-start-channel', a subprocess is
 created for each channel which monitors the channel's socket for
 input events. Note that this polling subprocess is not created
 for the heartbeat channel."
-  (unless (oref client ioloop)
-    ;; TODO: Currently there is no way to stop/start a channel individually
-    ;; outside of this method. Create channel methods which are aware of a
-    ;; client's ioloop so that you can send commands to the ioloop to start and
-    ;; stop a channel. Also figure out a way to block until the ioloop says it
-    ;; has finished with the operation. This may need changes in
-    ;; `jupyter--ioloop'
-    (let ((ioloop (zmq-start-process
-                   (jupyter--ioloop client)
-                   (apply-partially #'jupyter--ioloop-filter client)
-                   (apply-partially #'jupyter--ioloop-sentinel client)
-                   (oref client -buffer))))
-      (oset client ioloop ioloop)
-      (when hb (jupyter-start-channel (oref client hb-channel)))
-      (unless shell
-        (zmq-subprocess-send ioloop '(stop-channel :shell)))
-      (unless iopub
-        (zmq-subprocess-send ioloop '(stop-channel :iopub)))
-      (unless stdin
-        (zmq-subprocess-send ioloop '(stop-channel :stdin))))))
+  (jupyter--start-ioloop client)
+  (when hb
+    (jupyter-start-channel (oref client hb-channel)))
+  (cl-loop
+   for (sym . start) in `((shell-channel . ,shell)
+                          (iopub-channel . ,iopub)
+                          (stdin-channel . ,stdin))
+   for channel = (slot-value client sym)
+   do (oset channel ioloop (oref client ioloop))
+   and if start do (jupyter-start-channel channel)
+   (with-timeout (0.5 (error "Channel not started in ioloop subprocess"))
+     (while (not (jupyter-channel-alive-p channel))
+       (accept-process-output (oref client ioloop) 0.1)))))
 
 (cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
   "Stop any running channels of CLIENT."
-  (when (oref client hb-channel)
-    (jupyter-stop-channel (oref client hb-channel)))
+  (cl-loop
+   for sym in '(hb-channel shell-channel iopub-channel stdin-channel)
+   for channel = (slot-value client sym)
+   when channel do (jupyter-stop-channel channel))
   (let ((ioloop (oref client ioloop)))
     (when ioloop
       (zmq-subprocess-send ioloop (cons 'quit nil))
@@ -601,12 +635,9 @@ for the heartbeat channel."
 (cl-defmethod jupyter-channels-running-p ((client jupyter-kernel-client))
   "Are any channels of CLIENT running?"
   (cl-loop
-   for channel in '(shell-channel
-                    iopub-channel
-                    hb-channel
-                    stdin-channel)
-   ;; FIXME: This does not work with the current implementation of channels
-   thereis (jupyter-channel-alive-p (slot-value client channel))))
+   for sym in '(hb-channel shell-channel iopub-channel stdin-channel)
+   for channel = (slot-value client sym)
+   thereis (jupyter-channel-alive-p channel)))
 
 ;;; Message callbacks
 
@@ -765,23 +796,23 @@ are taken:
          `jupyter-handle-execute-result',
          `jupyter-handle-kernel-info-reply', ...
    - Remove request from client request table when idle message is received"
-  (when (jupyter-messages-available-p channel)
-    (let* ((msg (jupyter-get-message channel))
-           (pmsg-id (jupyter-message-parent-id msg))
-           (requests (oref client requests))
-           (req (gethash pmsg-id requests)))
-      (if (not req)
-          (when (jupyter-get client 'jupyter-include-other-output)
-            (jupyter-handle-message channel client nil msg))
-        (setf (jupyter-request-last-message-time req) (current-time))
-        (unwind-protect
-            (jupyter--run-callbacks req msg)
+  (let ((msg (jupyter-get-message channel)))
+    (when msg
+      (let* ((pmsg-id (jupyter-message-parent-id msg))
+             (requests (oref client requests))
+             (req (gethash pmsg-id requests)))
+        (if (not req)
+            (when (jupyter-get client 'jupyter-include-other-output)
+              (jupyter-handle-message channel client nil msg))
+          (setf (jupyter-request-last-message-time req) (current-time))
           (unwind-protect
-              (when (jupyter-request-run-handlers-p req)
-                (jupyter-handle-message channel client req msg))
-            (when (jupyter-message-status-idle-p msg)
-              (setf (jupyter-request-idle-received-p req) t))
-            (jupyter--drop-idle-requests client)))))))
+              (jupyter--run-callbacks req msg)
+            (unwind-protect
+                (when (jupyter-request-run-handlers-p req)
+                  (jupyter-handle-message channel client req msg))
+              (when (jupyter-message-status-idle-p msg)
+                (setf (jupyter-request-idle-received-p req) t))
+              (jupyter--drop-idle-requests client))))))))
 
 ;;; STDIN handlers
 
