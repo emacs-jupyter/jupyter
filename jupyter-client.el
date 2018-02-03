@@ -952,6 +952,7 @@ the user. Otherwise `read-from-minibuffer' is used."
                                              _user-expressions
                                              _payload)
   "Default execute reply handler."
+  (declare (indent 1))
   nil)
 
 (cl-defgeneric jupyter-inspect-request ((client jupyter-kernel-client)
@@ -971,6 +972,7 @@ the user. Otherwise `read-from-minibuffer' is used."
                                              _data
                                              _metadata)
   "Default inspect reply handler."
+  (declare (indent 1))
   nil)
 
 (cl-defgeneric jupyter-complete-request ((client jupyter-kernel-client)
@@ -990,6 +992,7 @@ the user. Otherwise `read-from-minibuffer' is used."
                                               _cursor-end
                                               _metadata)
   "Default complete reply handler."
+  (declare (indent 1))
   nil)
 
 (cl-defgeneric jupyter-history-request ((client jupyter-kernel-client)
@@ -1022,6 +1025,7 @@ the user. Otherwise `read-from-minibuffer' is used."
                                              _req
                                              _history)
   "Default history reply handler."
+  (declare (indent 1))
   nil)
 
 (cl-defgeneric jupyter-is-complete-request ((client jupyter-kernel-client)
@@ -1038,6 +1042,7 @@ the user. Otherwise `read-from-minibuffer' is used."
                                                  _status
                                                  _indent)
   "Default is complete reply handler."
+  (declare (indent 1))
   nil)
 
 (cl-defgeneric jupyter-comm-info-request ((client jupyter-kernel-client)
@@ -1053,6 +1058,7 @@ the user. Otherwise `read-from-minibuffer' is used."
                                                _req
                                                _comms)
   "Default comm info. reply handler."
+  (declare (indent 1))
   nil)
 
 (cl-defgeneric jupyter-kernel-info-request ((client jupyter-kernel-client))
@@ -1070,6 +1076,7 @@ the user. Otherwise `read-from-minibuffer' is used."
                                                  _banner
                                                  _help-links)
   "Default kernel-info reply handler."
+  (declare (indent 1))
   nil)
 
 (cl-defgeneric jupyter-shutdown-request ((client jupyter-kernel-client)
@@ -1085,6 +1092,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                               _req
                                               _restart)
   "Default shutdown reply handler."
+  (declare (indent 1))
   nil)
 
 ;;; IOPUB handlers
