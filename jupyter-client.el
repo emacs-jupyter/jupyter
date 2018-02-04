@@ -470,11 +470,8 @@ message that has a channel type with the lower priority."
                        (while messages
                          (zmq-prin1 (cons 'recvd (pop messages)))))))))
            (quit
-            (mapc (lambda (x)
-                 (zmq-socket-set (car x) zmq-LINGER 0)
-                 (zmq-close (car x)))
-               channels)
-            (zmq-prin1 (list 'quit))))))))
+            (mapc #'jupyter-stop-channel (mapcar #'cdr channels))
+            (zmq-prin1 '(quit))))))))
 
 (defun jupyter--ioloop-pop-request (client)
   "Remove a pending request from CLIENT's ioloop subprocess.
