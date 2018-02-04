@@ -300,12 +300,13 @@ In this case a file name is automatically generated, see
             result (plist-get data :text/org)))
      ((memq :text/html mimetypes)
       (let ((html (plist-get data :text/html)))
-        (if (string-match "^<img src=\"data:\\(.+\\);base64,\\(.+\\)\"" html)
-            (let ((mimetype (intern (concat ":" (match-string 1 html)))))
-              (org-babel-jupyter-prepare-result
-               (list mimetype (match-string 2 html)) params))
-          (setq param "html"
-                result (plist-get data :text/html)))))
+        (save-match-data
+          (if (string-match "^<img src=\"data:\\(.+\\);base64,\\(.+\\)\"" html)
+              (let ((mimetype (intern (concat ":" (match-string 1 html)))))
+                (org-babel-jupyter-prepare-result
+                 (list mimetype (match-string 2 html)) params))
+            (setq param "html"
+                  result (plist-get data :text/html))))))
      ((memq :text/markdown mimetypes)
       (setq param '(:wrap . "EXPORT markdown")
             result (plist-get data :text/markdown)))
