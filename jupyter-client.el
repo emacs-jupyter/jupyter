@@ -924,7 +924,9 @@ the user. Otherwise `read-from-minibuffer' is used."
                                         (silent nil)
                                         (store-history t)
                                         (user-expressions nil)
-                                        (allow-stdin t)
+                                        (allow-stdin
+                                         (jupyter-channel-alive-p
+                                          (oref client stdin-channel)))
                                         (stop-on-error nil))
   "Send an execute request."
   (declare (indent 1))
