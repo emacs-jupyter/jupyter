@@ -319,21 +319,21 @@ In this case a file name is automatically generated, see
                       (org-babel-jupyter-file-name
                        (plist-get data :image/png) "png"))))
         (setq param "file"
-              result (with-temp-file file
-                       (let ((buffer-file-coding-system 'binary)
-                             (require-final-newline nil))
+              result (let ((buffer-file-coding-system 'binary)
+                           (require-final-newline nil))
+                       (with-temp-file file
                          (insert (plist-get data :image/png))
-                         (base64-decode-region (point-min) (point-max)))
-                       file))))
+                         (base64-decode-region (point-min) (point-max))
+                         file)))))
      ((memq :image/svg+xml mimetypes)
       (let ((file (or (alist-get :file params)
                       (org-babel-jupyter-file-name
                        (plist-get data :image/svg+xml) "svg"))))
         (setq param "file"
-              result (with-temp-file file
-                       (let ((require-final-newline nil))
-                         (insert (plist-get data :image/svg+xml)))
-                       file))))
+              result (let ((require-final-newline nil))
+                       (with-temp-file file
+                         (insert (plist-get data :image/svg+xml))
+                         file)))))
      ((memq :text/plain mimetypes)
       (setq result (plist-get data :text/plain)))
      (t (warn "No supported mimetype found %s" mimetypes)))
