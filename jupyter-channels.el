@@ -78,7 +78,10 @@ receiving messages on this channel.")
   ;; status slot of a channel. Look how python implements event loops.
   (unless (jupyter-channel-alive-p channel)
     (zmq-subprocess-send (oref channel ioloop)
-      (list 'start-channel (oref channel type)))))
+      (list 'start-channel (oref channel type)))
+    (with-timeout (0.5 (error "Channel not started in ioloop subprocess"))
+      (while (not (jupyter-channel-alive-p channel))
+        (accept-process-output (oref channel ioloop) 0.1 nil 0)))))
 
 (cl-defmethod jupyter-start-channel ((channel jupyter-sync-channel) &key identity)
   (unless (jupyter-channel-alive-p channel)

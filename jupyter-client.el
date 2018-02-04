@@ -604,10 +604,7 @@ for the heartbeat channel."
                           (stdin-channel . ,stdin))
    for channel = (slot-value client sym)
    do (oset channel ioloop (oref client ioloop))
-   and if start do (jupyter-start-channel channel)
-   (with-timeout (0.5 (error "Channel not started in ioloop subprocess"))
-     (while (not (jupyter-channel-alive-p channel))
-       (accept-process-output (oref client ioloop) 0.1)))))
+   and if start do (jupyter-start-channel channel)))
 
 (cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
   "Stop any running channels of CLIENT."
