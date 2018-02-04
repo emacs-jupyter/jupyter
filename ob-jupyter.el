@@ -533,19 +533,30 @@ functions."
        `((:kernel . ,kernel)
          (:async . "no"))))
 
-(cl-loop
- for (kernel . (_dir . spec)) in (jupyter-available-kernelspecs)
- for lang = (plist-get spec :language)
- ;; Only make aliases the first time a new language appears
- unless (functionp (intern (concat "org-babel-execute:jupyter-" lang)))
- do (org-babel-jupyter-make-language-alias kernel lang)
- ;; (add-to-list 'org-babel-tangle-lang-exts
- ;;              (cons (concat "jupyter-" lang) file_extension))
- (add-to-list 'org-src-lang-modes
-              (cons (concat "jupyter-" lang)
-                    (intern (or (cdr (assoc lang org-src-lang-modes))
-                                (replace-regexp-in-string
-                                 "[0-9]*" "" lang))))))
+(defun org-babel-jupyter-aliases-from-kernelspecs (&optional refresh)
+  "Make language aliases based on the available kernelspecs.
+For all kernels returned by `jupyter-available-kernelspecs', make
+a language alias for the kernel language if one does not already
+exist. The alias is created with
+`org-babel-jupyter-make-language-alias'.
+
+Optional argument REFRESH has the same meaning as in
+`jupyter-available-kernelspecs'."
+  (cl-loop
+   for (kernel . (_dir . spec)) in (jupyter-available-kernelspecs refresh)
+   for lang = (plist-get spec :language)
+   ;; Only make aliases the first time a new language appears
+   unless (functionp (intern (concat "org-babel-execute:jupyter-" lang)))
+   do (org-babel-jupyter-make-language-alias kernel lang)
+   ;; (add-to-list 'org-babel-tangle-lang-exts
+   ;;              (cons (concat "jupyter-" lang) file_extension))
+   (add-to-list 'org-src-lang-modes
+                (cons (concat "jupyter-" lang)
+                      (intern (or (cdr (assoc lang org-src-lang-modes))
+                                  (replace-regexp-in-string
+                                   "[0-9]*" "" lang)))))))
+
+(org-babel-jupyter-aliases-from-kernelspecs)
 
 (provide 'ob-jupyter)
 
