@@ -430,9 +430,12 @@ BODY is the code to execute for the current Jupyter `:session' of
 PARAMS."
   (let* ((session (alist-get :session params))
          (repl-buffer (org-babel-jupyter-initiate-session session params))
-         (kernel-lang (plist-get (cdr (jupyter-get-kernelspec
-                                       (alist-get :kernel params)))
-                                 :language))
+         (kernel-lang (cl-destructuring-bind (&key language_info
+                                                   &allow-other-keys)
+                          (oref (with-current-buffer repl-buffer
+                                  jupyter-repl-current-client)
+                                kernel-info)
+                        (plist-get language_info :language)))
          (code (org-babel-expand-body:jupyter
                 body params (org-babel-variable-assignments:jupyter
                              params kernel-lang)
