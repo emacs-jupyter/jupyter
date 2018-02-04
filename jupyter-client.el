@@ -466,9 +466,11 @@ message that has a channel type with the lower priority."
                      ;; TODO: Drop messages if they are comming too frequently
                      ;; to the point where the parent Emacs process would be
                      ;; spending too much time handling messages.
-                     (when (or (= idle-count 5) (> (length messages) 10))
+                     (when (and messages (or (= idle-count 5)
+                                             (> (length messages) 10)))
                        (while messages
-                         (zmq-prin1 (cons 'recvd (pop messages)))))))))
+                         (prin1 (cons 'recvd (pop messages))))
+                       (zmq-flush 'stdout))))))
            (quit
             (mapc #'jupyter-stop-channel (mapcar #'cdr channels))
             (zmq-prin1 '(quit))))))))
