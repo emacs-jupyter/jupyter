@@ -29,7 +29,7 @@
 
 (defgroup ob-jupyter nil
   "Jupyter integration with org-mdoe"
-  :group 'jupyter)
+  :group 'org-babel)
 
 (require 'jupyter)
 (require 'ob)
