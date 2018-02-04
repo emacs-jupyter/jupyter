@@ -61,21 +61,6 @@ See `org-babel-jupyter-file-name'."
 (defvar org-babel-jupyter-language-regex "^[ \t]*#\\+begin_src[ \t]+jupyter-\\([^ \f\t\n\r\v]+\\)[ \t]*"
   "Regular expression used to extract a source block's language name.")
 
-(defun org-babel-jupyter--get-src-block-info (&optional light context)
-  "Similar to `org-babel-get-src-block-info', but handle inline-babel-call.
-LIGHT and CONTEXT have the same meaning as in
-`org-babel-get-src-block-info'.
-
-If CONTEXT corresponds to an inline-babel-call, go to the named
-src block and return its info. Otherwise the behavior is the same
-as `org-babel-get-src-block-info'."
-  (or context (setq context (org-element-context)))
-  (save-excursion
-    (when (eq (org-element-type context) 'inline-babel-call)
-      (org-babel-goto-named-src-block
-       (org-element-property :call context)))
-    (org-babel-get-src-block-info light context)))
-
 ;; TODO: Handle the case when the kernel changes
 ;;
 ;; TODO: How to cache results properly? To handle the case when the kernel
@@ -424,12 +409,9 @@ BODY is the code to execute for the current Jupyter `:session' of
 PARAMS."
   (let* ((session (alist-get :session params))
          (repl-buffer (org-babel-jupyter-initiate-session session params))
-         ;; TODO: Figure out if the current context is always a source block
-         ;; context for the various commands that can execute code blocks.
-         ;; Since this function is only given a body and params, I am assuming
-         ;; it should be written to not depend on a context.
-         (block-info (org-babel-jupyter--get-src-block-info))
-         (kernel-lang (cadr (org-split-string (car block-info) "-")))
+         (kernel-lang (plist-get (cdr (jupyter-get-kernelspec
+                                       (alist-get :kernel params)))
+                                 :language))
          (code (org-babel-expand-body:jupyter
                 body params (org-babel-variable-assignments:jupyter
                              params kernel-lang)
