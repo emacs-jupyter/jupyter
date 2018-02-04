@@ -499,20 +499,21 @@ PARAMS."
         (jupyter-wait-until-idle req most-positive-fixnum)
         ;; Finalize the list of results
         (setq results (nreverse results))
-        (when (eq result-type 'output)
-          (setq results (list (cons nil (mapconcat #'identity results "\n")))))
-        (let ((render-param (caar results))
-              (result (cdar results)))
-          (org-babel-jupyter--inject-render-params render-param params)
-          (prog1 result
-            ;; Insert remaining results after the first one has been inserted.
-            (when (cdr results)
-              (run-at-time
-               0.01 nil
-               (lambda ()
-                 (org-babel-jupyter--clear-render-params render-param params)
-                 (org-babel-jupyter-insert-results
-                  (cdr results) params kernel-lang))))))))))
+        (if (eq result-type 'output) (mapconcat #'identity results "\n")
+          (let ((render-param (caar results))
+                (result (cdar results)))
+            (org-babel-jupyter--inject-render-param render-param params)
+            (prog1 result
+              ;; Insert remaining results after the first one has been
+              ;; inserted.
+              (when (cdr results)
+                (run-at-time
+                 0.01 nil
+                 (lambda ()
+                   (org-babel-jupyter--clear-render-param render-param params)
+                   (org-babel-jupyter--inject-render-param "append" params)
+                   (org-babel-jupyter-insert-results
+                    (cdr results) params kernel-lang)))))))))))
 
 (defun org-babel-jupyter-make-language-alias (kernel lang)
   "Simimilar to `org-babel-make-language-alias' but for Jupyter src-blocks.
