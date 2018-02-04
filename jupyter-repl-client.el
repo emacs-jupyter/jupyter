@@ -711,13 +711,12 @@ POS defaults to `point'."
 
 (defun jupyter-repl-cell-line-p ()
   "Is the current line a cell input line?"
-  (let ((pos (point)))
-    (save-excursion
-      (unless (= (point) (jupyter-repl-cell-beginning-position))
-        (jupyter-repl-previous-cell))
-      (<= (jupyter-repl-cell-code-beginning-position)
-          pos
-          (jupyter-repl-cell-code-end-position)))))
+  (save-excursion
+    (unless (= (point) (jupyter-repl-cell-beginning-position))
+      (jupyter-repl-previous-cell))
+    (<= (jupyter-repl-cell-code-beginning-position)
+        (point)
+        (jupyter-repl-cell-code-end-position))))
 
 (defun jupyter-repl-cell-finalized-p ()
   "Has the current cell been finalized?
