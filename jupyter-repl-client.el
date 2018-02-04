@@ -1235,7 +1235,7 @@ code cell. Otherwise its either the line up to `point' if TYPE is
   ;; just dumps all available completions without a prefix when clearly we want
   ;; the ones that start with ST.
   (unless (memq type '(complete inspect))
-    (error "Type not `compete' or `inspect' (%s)" type))
+    (error "Type not `complete' or `inspect' (%s)" type))
   (if (eq major-mode 'jupyter-repl-mode)
       (if (and prefix (eq jupyter-repl-lang-mode 'julia-mode))
           (cons prefix (length prefix))
