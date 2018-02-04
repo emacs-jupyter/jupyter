@@ -513,19 +513,24 @@ PARAMS."
                  (org-babel-jupyter-insert-results
                   (cdr results) params kernel-lang))))))))))
 
-(defun org-babel-jupyter-make-language-alias (lang)
-  "Simimilar to `org-babel-make-language-alias' except do not
-make an alias for the header args and set the OLD LANG as
-jupyter."
+(defun org-babel-jupyter-make-language-alias (kernel lang)
+  "Simimilar to `org-babel-make-language-alias' but for Jupyter src-blocks.
+KERNEL should be the name of a the default kernel using for the
+kernel LANG. All necessary org-babel functions for a language
+with the name jupyter-LANG will be aliased to the jupyter
+functions."
   (dolist (fn '("execute" "expand-body" "prep-session" "edit-prep"
                 "variable-assignments" "load-session"))
     (let ((sym (intern-soft (concat "org-babel-" fn ":jupyter"))))
       (when (and sym (fboundp sym))
-        (defalias (intern (concat "org-babel-" fn ":" lang)) sym))))
-  (defalias (intern (concat "org-babel-header-args:" lang))
-    'org-babel-header-args:jupyter)
-  (defalias (intern (concat "org-babel-" lang "-initiate-session"))
-    'org-babel-jupyter-initiate-session))
+        (defalias (intern (concat "org-babel-" fn ":jupyter-" lang)) sym))))
+  (defalias (intern (concat "org-babel-jupyter-" lang "-initiate-session"))
+    'org-babel-jupyter-initiate-session)
+  (set (intern (concat "org-babel-header-args:jupyter-" lang))
+       org-babel-header-args:jupyter)
+  (set (intern (concat "org-babel-default-header-args:jupyter-" lang))
+       `((:kernel . ,kernel)
+         (:async . "no"))))
 
 (cl-loop
  for (kernel . (_dir . spec)) in (jupyter-available-kernelspecs)
