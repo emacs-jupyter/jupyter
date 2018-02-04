@@ -285,7 +285,7 @@ file (excluding the dot)."
           (concat (file-name-as-directory dir)
                   (org-babel-sha1-hash info) "." ext)))))
 
-(defun org-babel-jupyter-render-result (data info)
+(defun org-babel-jupyter-prepare-result (data _metadata info)
   "Return the rendered DATA.
 DATA is a plist, (:mimetype1 value1 ...), which is used to render
 a result which can be passed to `org-babel-insert-result'.
@@ -324,7 +324,7 @@ In this case a file name is automatically generated, see
       (let ((html (plist-get data :text/html)))
         (if (string-match "^<img src=\"data:\\(.+\\);base64,\\(.+\\)\"" html)
             (let ((mimetype (intern (concat ":" (match-string 1 html)))))
-              (org-babel-jupyter-render-result
+              (org-babel-jupyter-prepare-result
                (list mimetype (match-string 2 html)) info))
           (setq param "html"
                 result (plist-get data :text/html)))))
@@ -354,7 +354,62 @@ In this case a file name is automatically generated, see
      ((memq :text/plain mimetypes)
       (setq result (plist-get data :text/plain)))
      (t (warn "No supported mimetype found %s" mimetypes)))
-    (list param result)))
+    (cons param result)))
+
+(defun org-babel-jupyter--inject-render-params (render-param params)
+  "Destructively modify result parameters for `org-babel-insert-result'.
+RENDER-PARAM is the first element of the list returned by
+`org-babel-jupyter-prepare-result', PARAMS are the paramters
+passed to `org-babel-execute:jupyter'.
+
+Append RENDER-PARAM to RESULT-PARAMS if it is a string, otherwise
+if RENDER-PARAM is a cons cell, (KEYWORD . STRING), append
+RENDER-PARAM to the PARAMS."
+  (nconc
+   (cond
+    ((consp render-param) params)
+    ((stringp render-param) (alist-get :result-params params)))
+   (list render-param)))
+
+(defun org-babel-jupyter--clear-render-params (render-param params)
+  (cond
+   ((consp render-param)
+    (setcar (nthcdr (1- (length params)) params) nil))
+   ((stringp render-param)
+    (let ((rparams (alist-get :result-params params)))
+      (setcar (nthcdr (1- (length rparams)) rparams) nil)))))
+
+(defun org-babel-jupyter--clear-request-id (req)
+  "Delete the request id when prepending or appending results"
+  (save-excursion
+    (let ((start (org-babel-where-is-src-block-result)))
+      (when start
+        (goto-char start)
+        (forward-line 1)
+        (when (search-forward (jupyter-request-id req) nil t)
+          (delete-region (line-beginning-position)
+                         (1+ (line-end-position)))
+          (when (and (org-at-drawer-p)
+                     (progn
+                       (forward-line -1)
+                       (org-at-drawer-p)))
+            (delete-region
+             (point)
+             (progn
+               (forward-line 1)
+               (1+ (line-end-position))))))))))
+
+(defun org-babel-jupyter-insert-results (results params block-info kernel-lang)
+  (when (listp results)
+    (org-babel-jupyter--inject-render-params "append" params))
+  (cl-loop
+   with result-params = (alist-get :result-params params)
+   for (render-param . result) in results
+   do (org-babel-jupyter--inject-render-params render-param params)
+   (cl-letf (((symbol-function 'message) #'ignore))
+     (org-babel-insert-result
+      result result-params block-info nil kernel-lang))
+   (org-babel-jupyter--clear-render-params render-param params)))
 
 ;; TODO: Properly handle the execution-state and execution-count of the REPL
 ;; buffer. I don't think ob-jupyter should be responsible for updating the
@@ -376,13 +431,12 @@ PARAMS."
          ;; context for the various commands that can execute code blocks.
          ;; Since this function is only given a body and params, I am assuming
          ;; it should be written to not depend on a context.
-         (element (org-element-at-point))
-         (context (org-element-context element))
-         (block-info (org-babel-jupyter--get-src-block-info nil context))
+         (block-info (org-babel-jupyter--get-src-block-info))
+         (kernel-lang (cadr (org-split-string (car block-info) "-")))
          (code (org-babel-expand-body:jupyter
                 body params (org-babel-variable-assignments:jupyter
-                             params element)
-                element))
+                             params kernel-lang)
+                kernel-lang))
          (req (with-current-buffer repl-buffer
                 (goto-char (point-max))
                 (jupyter-repl-replace-cell-code code)
@@ -397,92 +451,88 @@ PARAMS."
                     (set-window-point (get-buffer-window) (point)))))))
     ;; Setup callbacks for the request
     (let* ((result-type (alist-get :result-type params))
-           (result-params (alist-get :result-params params))
            (async (equal (alist-get :async params) "yes"))
            (block-beginning
             (copy-marker org-babel-current-src-block-location))
-           (finalize-execution
+           (id-cleared nil)
+           (results nil)
+           (add-result
             (lambda (result)
-              ;; Unmark the REPL cell as busy. This is needed since we set
-              ;; `jupyter-inhibit-handlers' to t before executing a jupyter
-              ;; src-block which means that the handler which unmark's the cell
-              ;; is not run. The cell is marked as busy in
-              ;; `jupyter-execute-request' for a `jupyter-repl-client'.
-              (with-current-buffer repl-buffer
-                (save-excursion
-                  (jupyter-repl-goto-cell req)
-                  (jupyter-repl-cell-unmark-busy)))
-              (when async
-                (org-with-point-at block-beginning
-                  (let ((lang (org-babel-jupyter-src-block-lang)))
-                    (org-babel-insert-result
-                     result result-params block-info nil lang))))
-              (set-marker block-beginning nil)))
-           result output)
+              (if async
+                  (org-with-point-at block-beginning
+                    (unless id-cleared
+                      (setq id-cleared t)
+                      (org-babel-jupyter--clear-request-id req)
+                      (org-babel-jupyter--inject-render-params "append" params))
+                    (org-babel-jupyter-insert-results result params block-info kernel-lang))
+                (push (if (consp result) result (cons "scalar" result)) results)))))
       (jupyter-add-callback req
         :stream
         (lambda (msg)
           (and (eq result-type 'output)
                (equal (jupyter-message-get msg :name) "stdout")
-               (push (ansi-color-apply (jupyter-message-get msg :text))
-                     output)))
-        ;; FIXME: finalize-execution should be called when the status goes idle
-        ;; so that in the case of result-type output, all of the output is
-        ;; captured. See
-        ;; http://jupyter-client.readthedocs.io/en/stable/messaging.html#request-reply
-        ;;
-        ;; The reason this is not done is due to the Julia kernel not sending
-        ;; the idle message when multiple execute requests are queued. It seems
-        ;; to mangle the parent message id when this is the case so that
-        ;; multiple idle messages are received for the same request instead of
-        ;; one for each queued request. <2018-01-22 Mon>
+               (funcall add-result (ansi-color-apply
+                                    (jupyter-message-get msg :text)))))
+        :status
+        (lambda (msg)
+          (when (jupyter-message-status-idle-p msg)
+            ;; Unmark the REPL cell as busy. This is needed since we set
+            ;; `jupyter-inhibit-handlers' to t before executing a jupyter
+            ;; src-block which means that the handler which unmark's the cell
+            ;; is not run. The cell is marked as busy in
+            ;; `jupyter-execute-request' for a `jupyter-repl-client'.
+            (with-current-buffer repl-buffer
+              (save-excursion
+                (jupyter-repl-goto-cell req)
+                (jupyter-repl-cell-unmark-busy)))
+            (when (and async (not id-cleared))
+              (org-babel-jupyter--clear-request-id req))
+            (set-marker block-beginning nil)))
         :execute-reply
         (lambda (msg)
           (cl-destructuring-bind (&key status ename evalue traceback
                                        &allow-other-keys)
               (jupyter-message-content msg)
-            (if (equal status "ok")
-                ;; See the execute-result callback for when result-type is
-                ;; value
-                (when (eq result-type 'output)
-                  (setq result (mapconcat #'identity (nreverse output) "\n")))
-              (if (eq result-type 'value)
-                  (setq result (format "%s: %s" ename (ansi-color-apply evalue)))
-                (push (mapconcat #'ansi-color-apply traceback "\n") output)
-                (setq result (mapconcat #'identity (nreverse output) "\n"))))
-            (funcall finalize-execution result)))
+            (unless (equal status "ok")
+              (if (eq result-type 'output)
+                  (funcall add-result (mapconcat #'ansi-color-apply traceback "\n"))
+                (funcall add-result (format "%s: %s" ename (ansi-color-apply evalue)))))))
+        :display-data
+        (lambda (msg)
+          (unless (eq result-type 'output)
+            (funcall add-result (org-babel-jupyter-prepare-result
+                                 (jupyter-message-get msg :data)
+                                 (jupyter-message-get msg :metadata)
+                                 block-info))))
         :execute-result
         (lambda (msg)
           (unless (eq result-type 'output)
-            (cl-destructuring-bind (render-param res)
-                (org-babel-jupyter-render-result
-                 (jupyter-message-get msg :data) block-info)
-              ;; Update params/result-params for `org-babel-insert-result' This
-              ;; gives a way to insert the results based on its mimetype.
-              ;;
-              ;; NOTE: This relies on the semantics of
-              ;; `org-babel-insert-result' which prioritizes the various values
-              ;; of result-params. So if a user species different result-params
-              ;; locally to a block, the settings here may override the user's
-              ;; setting and vice versa.
-              ;;
-              ;; NOTE: This modifies the lists contained in params so that
-              ;; synchronous evaluation will work. This seems to be the only
-              ;; way to handle both cases of async and synchronous execution.
-              (cond
-               ((consp render-param)
-                (nconc params (list render-param))
-                ;; Since async results are inserted using block-info
-                (cl-callf org-babel-merge-params (nth 2 block-info)
-                  (list render-param)))
-               ((stringp render-param)
-                (nconc result-params (list render-param))))
-              (setq result res)))))
+            (funcall add-result (org-babel-jupyter-prepare-result
+                                 (jupyter-message-get msg :data)
+                                 (jupyter-message-get msg :metadata)
+                                 block-info)))))
       (if async (format "%s%s"
-                        (if (member "raw" result-params) ": " "")
+                        (if (member "raw" (alist-get :result-params params))
+                            ": "
+                          "")
                         (jupyter-request-id req))
-        (jupyter-wait-until-received :execute-reply req most-positive-fixnum)
-        result))))
+        (jupyter-wait-until-idle req most-positive-fixnum)
+        ;; Finalize the list of results
+        (setq results (nreverse results))
+        (when (eq result-type 'output)
+          (setq results (list (cons nil (mapconcat #'identity results "\n")))))
+        (let ((render-param (caar results))
+              (result (cdar results)))
+          (org-babel-jupyter--inject-render-params render-param params)
+          (prog1 result
+            ;; Insert remaining results after the first one has been inserted.
+            (when (cdr results)
+              (run-at-time
+               0.01 nil
+               (lambda ()
+                 (org-babel-jupyter--clear-render-params render-param params)
+                 (org-babel-jupyter-insert-results
+                  (cdr results) params block-info kernel-lang))))))))))
 
 (defun org-babel-jupyter-make-language-alias (lang)
   "Simimilar to `org-babel-make-language-alias' except do not
@@ -501,19 +551,16 @@ jupyter."
 (cl-loop
  for (kernel . (_dir . spec)) in (jupyter-available-kernelspecs)
  for lang = (plist-get spec :language)
- for jupyter-lang = (concat "jupyter-" lang)
- do
- (org-babel-jupyter-make-language-alias jupyter-lang)
- (add-to-list 'org-src-lang-modes
-              (cons jupyter-lang
-                    (intern (or (cdr (assoc lang org-src-lang-modes))
-                                (replace-regexp-in-string
-                                 "[0-9]*" "" lang)))))
+ ;; Only make aliases the first time a new language appears
+ unless (functionp (intern (concat "org-babel-execute:jupyter-" lang)))
+ do (org-babel-jupyter-make-language-alias kernel lang)
  ;; (add-to-list 'org-babel-tangle-lang-exts
  ;;              (cons (concat "jupyter-" lang) file_extension))
- (set (intern (concat "org-babel-default-header-args:" jupyter-lang))
-      `((:kernel . ,kernel)
-        (:async . "no"))))
+ (add-to-list 'org-src-lang-modes
+              (cons (concat "jupyter-" lang)
+                    (intern (or (cdr (assoc lang org-src-lang-modes))
+                                (replace-regexp-in-string
+                                 "[0-9]*" "" lang))))))
 
 (provide 'ob-jupyter)
 
