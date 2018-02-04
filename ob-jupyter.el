@@ -368,7 +368,7 @@ removal."
     (delq render-param l)))
 
 (defun org-babel-jupyter--clear-request-id (req)
-  "Delete the request id when prepending or appending results"
+  "Delete the request id of REQ when prepending or appending results."
   (save-excursion
     (let ((start (org-babel-where-is-src-block-result)))
       (when start
@@ -377,6 +377,8 @@ removal."
         (when (search-forward (jupyter-request-id req) nil t)
           (delete-region (line-beginning-position)
                          (1+ (line-end-position)))
+          ;; Delete the entire drawer when there was nothing inside of it
+          ;; except for the id.
           (when (and (org-at-drawer-p)
                      (progn
                        (forward-line -1)
@@ -461,6 +463,14 @@ PARAMS."
            (results nil)
            (add-result
             (lambda (result)
+              ;; TODO: Figure out how to handle result-type output in the async
+              ;; case. Should the output be pooled and displayed when finished?
+              ;; No I don't think so. It should be appended to the current
+              ;; output but for multiline output that is received this will end
+              ;; up either putting it in an example block and you would have
+              ;; multiple example blocks for a single output. The best bet
+              ;; would be to insert it as raw text in a drawer.
+              (or (consp result) (setq result (cons "scalar" result)))
               (if async
                   (org-with-point-at block-beginning
                     (unless id-cleared
