@@ -518,6 +518,16 @@ in CLIENT."
     (jupyter-stop-channel (oref client hb-channel))
     (oset client ioloop nil))))
 
+(defun jupyter--get-channel (client ctype)
+  "Get CLIENT's channel based on CTYPE."
+  (cl-find-if
+   (lambda (channel) (eq (oref channel type) ctype))
+   (mapcar (lambda (sym) (slot-value client sym))
+      '(hb-channel
+        stdin-channel
+        shell-channel
+        iopub-channel))))
+
 (defun jupyter--ioloop-filter (client event)
   "The process filter for CLIENT's ioloop subprocess.
 EVENT will be an s-expression emitted from the function returned
@@ -539,33 +549,15 @@ by `jupyter--ioloop'."
                 (jupyter-message-type msg)
                 (jupyter-message-parent-id msg)
                 (jupyter-message-content msg)))
-     (let ((channel (cl-loop
-                     for c in '(stdin-channel
-                                shell-channel
-                                iopub-channel)
-                     for channel = (slot-value client c)
-                     when (eq (oref channel type) ctype)
-                     return channel)))
+     (let ((channel (jupyter--get-channel client ctype)))
        (if (not channel) (warn "No handler for channel type (%s)" ctype)
          (jupyter-queue-message channel (cons idents msg))
          (run-with-timer 0.0001 nil #'jupyter-handle-message client channel))))
     (`(start-channel ,ctype)
-     (let ((channel (cl-loop
-                     for c in '(stdin-channel
-                                shell-channel
-                                iopub-channel)
-                     for channel = (slot-value client c)
-                     when (eq (oref channel type) ctype)
-                     return channel)))
+     (let ((channel (jupyter--get-channel client ctype)))
        (oset channel status 'running)))
     (`(stop-channel ,ctype)
-     (let ((channel (cl-loop
-                     for c in '(stdin-channel
-                                shell-channel
-                                iopub-channel)
-                     for channel = (slot-value client c)
-                     when (eq (oref channel type) ctype)
-                     return channel)))
+     (let ((channel (jupyter--get-channel client ctype)))
        (oset channel status 'stopped)))
     ('(quit)
      ;; Cleanup handled in sentinel
@@ -598,7 +590,7 @@ would have to pass a nil value for the channel's key. As an
 example, to prevent the control channel from starting you would
 call this function like so
 
-    (jupyter-start-channels client :control nil)
+    (jupyter-start-channels client :stdin nil)
 
 In addition to calling `jupyter-start-channel', a subprocess is
 created for each channel which monitors the channel's socket for
