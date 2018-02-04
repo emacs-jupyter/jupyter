@@ -162,20 +162,49 @@ from the kernel.")
                 jupyter-session
                 (&key (id (jupyter-new-uuid))
                       (key nil))))
+  "A `jupyter-session' holds the information needed to
+authenticate messages. Each `jupyter-session' should have a
+unique ID which is used as the `zmq-ROUTING-ID' for every
+`jupyter-channel' socket that utilizes the session object. The
+KEY of a `jupyter-session' is used for message signing. Message
+signing is not done if the KEY of a `jupyter-session' is empty."
   (id nil :read-only t)
   (key nil :read-only t))
 
 ;;; Request object definition
 
-;; A `jupyter-request' object represents the status of a request to the kernel
-;; and holds all the information required to process the messages associated
-;; with the request. Whenever a message arrives that is associated with a
-;; request's `jupyter-request-id', any callbacks associated with the message
-;; type are run (see `jupyter-add-callback'). When a request's
-;; `jupyter-idle-received-p' property is non-nil, then it signifies that the
-;; request has been handled by the kernel.
 (cl-defstruct jupyter-request
-  ;; NOTE Use `jupyter-request-id' instead of `jupyter-request--id'
+  "A `jupyter-request' encapsulates the current status of a
+request to a kernel. A `jupyter-request' consists of the
+following fields:
+
+- -ID :: A UUID to match a `jupyter-request' to the received
+        messages of a kernel. Note that this is an internal
+        field, to access the ID of a request use
+        `jupyter-request-id'. Note that `jupyter-request-id'
+        blocks until there is a guarantee that the request was
+        sent off to the kernel.
+
+- TIME :: The time at which the request was made.
+
+- IDLE-RECEIVED-P :: A flag variable that is set to t when a
+                    `jupyter-kernel-client' has received the
+                    status: idle message for the request.
+
+- LAST-MESSAGE-TIME :: The last time a message was received for
+                       the request.
+
+- RUN-HANDLERS-P :: A flag variable that, if set to t, lets a
+                   `jupyter-kernel-client' know that it should
+                   run the handler methods for the request. Note
+                   you can either set this to nil, to disable
+                   handlers for a request or you can set
+                   `jupyter-inhibit-handlers' before making the
+                   request.
+
+- CALLBACKS :: An alist mapping message types to their
+               corresponding callbacks. This alist is modified
+               through calls to `jupyter-add-callback' on the request."
   (-id)
   (time (current-time))
   (idle-received-p nil)
