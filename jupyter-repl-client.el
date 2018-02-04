@@ -1684,7 +1684,7 @@ in the appropriate direction, to the saved element."
       (setq-local jupyter-repl-lang-buffer
                   (get-buffer-create
                    (format " *jupyter-repl-lang-%s*"
-                           (plist-get langauge-info :language))))
+                           (plist-get language-info :language))))
       (set-syntax-table syntax)
       (with-jupyter-repl-lang-buffer
         (unless (eq major-mode mode)
