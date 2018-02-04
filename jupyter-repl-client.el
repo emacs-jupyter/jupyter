@@ -726,6 +726,25 @@ is responsible for adding the text properties which cause
 `jupyter-repl-cell-end-p' to return non-nil."
   (jupyter-repl-cell-end-p (jupyter-repl-cell-end-position)))
 
+(defun jupyter-repl-client-has-manager-p ()
+  "Does the `jupyter-repl-current-client' have a `jupyter-kernel-manager'?
+Checks to see if the REPL client of the `current-buffer' has a
+kernel manager as its parent-instance slot."
+  (and jupyter-repl-current-client
+       (slot-boundp jupyter-repl-current-client 'parent-instance)
+       (obj-of-class-p (oref jupyter-repl-current-client parent-instance)
+                       'jupyter-kernel-manager)))
+
+(defun jupyter-repl-connected-p ()
+  "Determine if the `jupyter-repl-current-client' is connected to its kernel."
+  (or (and (jupyter-repl-client-has-manager-p)
+           ;; Check if the kernel is local
+           (jupyter-kernel-alive-p
+            (oref jupyter-repl-current-client parent-instance)))
+      (let ((hb (oref jupyter-repl-current-client hb-channel)))
+        (and (jupyter-channel-alive-p hb)
+             (jupyter-hb-beating-p hb)))))
+
 ;;; Buffer text manipulation
 
 (defun jupyter-repl-cell-code ()
@@ -1500,15 +1519,6 @@ If the current region is active send the current region using
 
 ;;; Kernel management
 
-(defun jupyter-repl-client-has-manager-p ()
-  "Does the `jupyter-repl-current-client' have a `jupyter-kernel-manager'?
-Checks to see if the REPL client of the `current-buffer' has a
-kernel manager as its parent-instance slot."
-  (and jupyter-repl-current-client
-       (slot-boundp jupyter-repl-current-client 'parent-instance)
-       (obj-of-class-p (oref jupyter-repl-current-client parent-instance)
-                       'jupyter-kernel-manager)))
-
 (defun jupyter-repl-interrupt-kernel ()
   "Interrupt the kernel if possible.
 A kernel can be interrupted if it was started using a
@@ -1770,13 +1780,7 @@ one of the Jupyter kernel languages."
         (with-current-buffer b
           (and (eq major-mode 'jupyter-repl-mode)
                (if mode (eq mode jupyter-repl-lang-mode) t)
-               (or (and (jupyter-repl-client-has-manager-p)
-                        ;; Check if the kernel is local
-                        (jupyter-kernel-alive-p
-                         (oref jupyter-repl-current-client parent-instance)))
-                   (let ((hb (oref jupyter-repl-current-client hb-channel)))
-                     (and (and (jupyter-channel-alive-p hb))
-                          (jupyter-hb-beating-p hb))))
+               (jupyter-repl-connected-p)
                (buffer-name b))))
       (buffer-list))))
 
