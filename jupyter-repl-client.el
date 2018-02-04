@@ -1449,15 +1449,15 @@ displayed without anything showing up in the REPL buffer."
     (unless (= (save-excursion (jupyter-repl-previous-cell)) 0)
       (jupyter-repl-insert-prompt 'in))
     (setq str (string-trim str))
-    (let* ((code (if silently (string-trim str)
-                   (prog1 nil
-                     (jupyter-repl-replace-cell-code str))))
+    (let* ((jupyter-inhibit-handlers silently)
            (req (jupyter-execute-request jupyter-repl-current-client
-                  :code code)))
-      (setf (jupyter-request-run-handlers-p req) (not silently))
+                  :code (if silently (string-trim str)
+                          (prog1 nil
+                            (jupyter-repl-replace-cell-code str))))))
       (jupyter-add-callback req
         :execute-reply (lambda (msg)
-                         (cl-destructuring-bind (&key status ename evalue &allow-other-keys)
+                         (cl-destructuring-bind (&key status ename evalue
+                                                      &allow-other-keys)
                              (jupyter-message-content msg)
                            (unless (equal status "ok")
                              (message "jupyter (%s): %s" ename
