@@ -339,7 +339,7 @@ In this case a file name is automatically generated, see
      (t (warn "No supported mimetype found %s" mimetypes)))
     (cons param result)))
 
-(defun org-babel-jupyter--inject-render-params (render-param params)
+(defun org-babel-jupyter--inject-render-param (render-param params)
   "Destructively modify result parameters for `org-babel-insert-result'.
 RENDER-PARAM is the first element of the list returned by
 `org-babel-jupyter-prepare-result', PARAMS are the paramters
@@ -348,19 +348,24 @@ passed to `org-babel-execute:jupyter'.
 Append RENDER-PARAM to RESULT-PARAMS if it is a string, otherwise
 if RENDER-PARAM is a cons cell, (KEYWORD . STRING), append
 RENDER-PARAM to the PARAMS."
-  (nconc
-   (cond
-    ((consp render-param) params)
-    ((stringp render-param) (alist-get :result-params params)))
-   (list render-param)))
+  (let ((l (cond
+            ((consp render-param) params)
+            ((stringp render-param) (alist-get :result-params params))
+            (t (error "Render parameter unsupported (%s)" render-param)))))
+    (nconc l (list render-param))))
 
-(defun org-babel-jupyter--clear-render-params (render-param params)
-  (cond
-   ((consp render-param)
-    (setcar (nthcdr (1- (length params)) params) nil))
-   ((stringp render-param)
-    (let ((rparams (alist-get :result-params params)))
-      (setcar (nthcdr (1- (length rparams)) rparams) nil)))))
+(defun org-babel-jupyter--clear-render-param (render-param params)
+  "Destructively modify result parameters.
+Remove RENDER-PARAM from PARAMS or from the result parameters
+found in PARAMS. If RENDER-PARAM is a cons cell, remove it from
+the PARAMS list. If RENDER-PARAM is a string, remove it from the
+`:result-params' of PARAMS. In all cases, `delq' is used for
+removal."
+  (let ((l (cond
+            ((consp render-param) params)
+            ((stringp render-param) (alist-get :result-params params))
+            (t (error "Render parameter unsupported (%s)" render-param)))))
+    (delq render-param l)))
 
 (defun org-babel-jupyter--clear-request-id (req)
   "Delete the request id when prepending or appending results"
@@ -383,16 +388,31 @@ RENDER-PARAM to the PARAMS."
                (1+ (line-end-position))))))))))
 
 (defun org-babel-jupyter-insert-results (results params kernel-lang)
-  (when (listp results)
-    (org-babel-jupyter--inject-render-params "append" params))
+  "Insert RESULTS at the current source block location.
+RESULTS is either a a single pair or a list of pairs with the form
+
+    (RENDER-PARAM . RESULT)
+
+i.e. the pairs returned by `org-babel-jupyter-prepare-result'.
+PARAMS should be the parameters passed to
+`org-babel-execute:jupyter'. KERNEL-LANG is the language of the
+kernel for the current source block. If optional argument APPEND
+is non-nil, then append RESULTS to the current results. The
+results will also be appended, regardless of the value of APPEND,
+if RESULTS is a list."
+  ;; Unless this is a list of results
+  (unless (car-safe (car results))
+    (setq results (list results)))
   (cl-loop
+   ;; FIXME: This is a hack that relies on `org-babel-insert-result' only caring
+   ;; about the parameters of the info and not anything else.
+   with info = (list nil nil params)
    with result-params = (alist-get :result-params params)
    for (render-param . result) in results
-   do (org-babel-jupyter--inject-render-params render-param params)
+   do (org-babel-jupyter--inject-render-param render-param params)
    (cl-letf (((symbol-function 'message) #'ignore))
-     (org-babel-insert-result
-      result result-params nil nil kernel-lang))
-   (org-babel-jupyter--clear-render-params render-param params)))
+     (org-babel-insert-result result result-params info nil kernel-lang))
+   (org-babel-jupyter--clear-render-param render-param params)))
 
 ;; TODO: Properly handle the execution-state and execution-count of the REPL
 ;; buffer. I don't think ob-jupyter should be responsible for updating the
@@ -443,9 +463,9 @@ PARAMS."
                     (unless id-cleared
                       (setq id-cleared t)
                       (org-babel-jupyter--clear-request-id req)
-                      (org-babel-jupyter--inject-render-params "append" params))
+                      (org-babel-jupyter--inject-render-param "append" params))
                     (org-babel-jupyter-insert-results result params kernel-lang))
-                (push (if (consp result) result (cons "scalar" result)) results)))))
+                (push result results)))))
       (jupyter-add-callback req
         :stream
         (lambda (msg)
