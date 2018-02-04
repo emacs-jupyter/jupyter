@@ -480,22 +480,20 @@ PARAMS."
         :display-data
         (lambda (msg)
           (unless (eq result-type 'output)
-            (funcall add-result (org-babel-jupyter-prepare-result
-                                 (jupyter-message-get msg :data)
-                                 (jupyter-message-get msg :metadata)
-                                 params))))
+            (cl-destructuring-bind (&key data metadata &allow-other-keys)
+                (jupyter-message-content msg)
+              (funcall add-result (org-babel-jupyter-prepare-result
+                                   data metadata params)))))
         :execute-result
         (lambda (msg)
           (unless (eq result-type 'output)
-            (funcall add-result (org-babel-jupyter-prepare-result
-                                 (jupyter-message-get msg :data)
-                                 (jupyter-message-get msg :metadata)
-                                 params)))))
-      (if async (format "%s%s"
-                        (if (member "raw" (alist-get :result-params params))
-                            ": "
-                          "")
-                        (jupyter-request-id req))
+            (cl-destructuring-bind (&key data metadata &allow-other-keys)
+                (jupyter-message-content msg)
+              (funcall add-result (org-babel-jupyter-prepare-result
+                                   data metadata params))))))
+      (if async
+          (concat (when (member "raw" (alist-get :result-params params)) ": ")
+                  (jupyter-request-id req))
         (jupyter-wait-until-idle req most-positive-fixnum)
         ;; Finalize the list of results
         (setq results (nreverse results))
