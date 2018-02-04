@@ -825,6 +825,7 @@ are taken:
 PROMPT is the prompt the kernel would like to show the user. If
 PASSWORD is non-nil, then `read-passwd' is used to get input from
 the user. Otherwise `read-from-minibuffer' is used."
+  (declare (indent 1))
   (let* ((channel (oref client stdin-channel))
          (value nil)
          (msg (jupyter-message-input-reply
@@ -868,21 +869,20 @@ the user. Otherwise `read-from-minibuffer' is used."
                                         payload
                                         &allow-other-keys)
                content
-             (jupyter-handle-execute-reply
-              client req execution_count user_expressions payload)))
+             (jupyter-handle-execute-reply client
+               req execution_count user_expressions payload)))
           ("shutdown_reply"
            (cl-destructuring-bind (&key restart &allow-other-keys)
                content
-             (jupyter-handle-shutdown-reply
-              client req restart)))
+             (jupyter-handle-shutdown-reply client req restart)))
           ("inspect_reply"
            (cl-destructuring-bind (&key found
                                         data
                                         metadata
                                         &allow-other-keys)
                content
-             (jupyter-handle-inspect-reply
-              client req found data metadata)))
+             (jupyter-handle-inspect-reply client
+               req found data metadata)))
           ("complete_reply"
            (cl-destructuring-bind (&key matches
                                         cursor_start
@@ -890,8 +890,8 @@ the user. Otherwise `read-from-minibuffer' is used."
                                         metadata
                                         &allow-other-keys)
                content
-             (jupyter-handle-complete-reply
-              client req matches cursor_start cursor_end metadata)))
+             (jupyter-handle-complete-reply client
+               req matches cursor_start cursor_end metadata)))
           ("history_reply"
            (cl-destructuring-bind (&key history &allow-other-keys)
                content
@@ -913,9 +913,9 @@ the user. Otherwise `read-from-minibuffer' is used."
                                         help_links
                                         &allow-other-keys)
                content
-             (jupyter-handle-kernel-info-reply
-              client req protocol_version implementation
-              implementation_version language_info banner help_links)))
+             (jupyter-handle-kernel-info-reply client
+               req protocol_version implementation
+               implementation_version language_info banner help_links)))
           (_
            (warn "Message type not handled (%s)" (jupyter-message-type msg))))))))
 
@@ -1099,51 +1099,45 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
       ("shutdown_reply"
        (cl-destructuring-bind (&key restart &allow-other-keys)
            content
-         (jupyter-handle-shutdown-reply
-          client req restart)))
+         (jupyter-handle-shutdown-reply client req restart)))
       ("stream"
        (cl-destructuring-bind (&key name text &allow-other-keys)
            content
-         (jupyter-handle-stream
-          client req name text)))
+         (jupyter-handle-stream client req name text)))
       ("execute_input"
        (cl-destructuring-bind (&key code execution_count &allow-other-keys)
            content
-         (jupyter-handle-execute-input
-          client req code execution_count)))
+         (jupyter-handle-execute-input client req code execution_count)))
       ("execute_result"
        (cl-destructuring-bind (&key execution_count
                                     data
                                     metadata
                                     &allow-other-keys)
            content
-         (jupyter-handle-execute-result
-          client req execution_count data metadata)))
+         (jupyter-handle-execute-result client
+           req execution_count data metadata)))
       ("error"
        (cl-destructuring-bind (&key ename evalue traceback &allow-other-keys)
            content
          (jupyter-handle-error
-          client req ename evalue traceback)))
+             client req ename evalue traceback)))
       ("status"
        (cl-destructuring-bind (&key execution_state &allow-other-keys)
            content
-         (jupyter-handle-status
-          client req execution_state)))
+         (jupyter-handle-status client req execution_state)))
       ("clear_output"
        (cl-destructuring-bind (&key wait &allow-other-keys)
            content
-         (jupyter-handle-clear-output
-          client req wait)))
+         (jupyter-handle-clear-output client req wait)))
       ("display_data"
        (cl-destructuring-bind (&key data metadata transient &allow-other-keys)
            content
-         (jupyter-handle-display-data
-          client req data metadata transient)))
+         (jupyter-handle-display-data client req data metadata transient)))
       ("update_display_data"
        (cl-destructuring-bind (&key data metadata transient &allow-other-keys)
            content
-         (jupyter-handle-update-display-data
-          client req data metadata transient)))
+         (jupyter-handle-update-display-data client
+           req data metadata transient)))
       (_ (warn "Message type not handled (%s)" (jupyter-message-type msg))))))
 
 (cl-defgeneric jupyter-handle-stream ((_client jupyter-kernel-client)
@@ -1151,6 +1145,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                       _name
                                       _text)
   "Default stream handler."
+  (declare (indent 1))
   nil)
 
 (cl-defgeneric jupyter-handle-execute-input ((_client jupyter-kernel-client)
@@ -1158,6 +1153,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                              _code
                                              _execution-count)
   "Default execute input handler."
+  (declare (indent 1))
   nil)
 
 (cl-defgeneric jupyter-handle-execute-result ((_client jupyter-kernel-client)
@@ -1166,6 +1162,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                               _data
                                               _metadata)
   "Default execute result handler."
+  (declare (indent 1))
   nil)
 
 (cl-defgeneric jupyter-handle-error ((_client jupyter-kernel-client)
@@ -1174,18 +1171,21 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                      _evalue
                                      _traceback)
   "Default error handler."
+  (declare (indent 1))
   nil)
 
 (cl-defgeneric jupyter-handle-status ((_client jupyter-kernel-client)
                                       _req
                                       _execution-state)
   "Default status handler."
+  (declare (indent 1))
   nil)
 
 (cl-defgeneric jupyter-handle-clear-output ((_client jupyter-kernel-client)
                                             _req
                                             _wait)
   "Default clear output handler."
+  (declare (indent 1))
   nil)
 
 (cl-defgeneric jupyter-handle-display-data ((_client jupyter-kernel-client)
@@ -1194,6 +1194,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                             _metadata
                                             _transient)
   "Default display data handler."
+  (declare (indent 1))
   nil)
 
 (cl-defgeneric jupyter-handle-display-data ((_client jupyter-kernel-client)
@@ -1202,6 +1203,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                             _metadata
                                             _transient)
   "Default display data handler."
+  (declare (indent 1))
   nil)
 
 (cl-defgeneric jupyter-handle-update-display-data ((_client jupyter-kernel-client)
@@ -1210,6 +1212,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                                    _metadata
                                                    _transient)
   "Default update display handler"
+  (declare (indent 1))
   nil)
 
 (provide 'jupyter-client)
