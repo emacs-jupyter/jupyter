@@ -396,7 +396,7 @@ RENDER-PARAM to the PARAMS."
                (forward-line 1)
                (1+ (line-end-position))))))))))
 
-(defun org-babel-jupyter-insert-results (results params block-info kernel-lang)
+(defun org-babel-jupyter-insert-results (results params kernel-lang)
   (when (listp results)
     (org-babel-jupyter--inject-render-params "append" params))
   (cl-loop
@@ -405,7 +405,7 @@ RENDER-PARAM to the PARAMS."
    do (org-babel-jupyter--inject-render-params render-param params)
    (cl-letf (((symbol-function 'message) #'ignore))
      (org-babel-insert-result
-      result result-params block-info nil kernel-lang))
+      result result-params nil nil kernel-lang))
    (org-babel-jupyter--clear-render-params render-param params)))
 
 ;; TODO: Properly handle the execution-state and execution-count of the REPL
@@ -461,7 +461,7 @@ PARAMS."
                       (setq id-cleared t)
                       (org-babel-jupyter--clear-request-id req)
                       (org-babel-jupyter--inject-render-params "append" params))
-                    (org-babel-jupyter-insert-results result params block-info kernel-lang))
+                    (org-babel-jupyter-insert-results result params kernel-lang))
                 (push (if (consp result) result (cons "scalar" result)) results)))))
       (jupyter-add-callback req
         :stream
@@ -529,7 +529,7 @@ PARAMS."
                (lambda ()
                  (org-babel-jupyter--clear-render-params render-param params)
                  (org-babel-jupyter-insert-results
-                  (cdr results) params block-info kernel-lang))))))))))
+                  (cdr results) params kernel-lang))))))))))
 
 (defun org-babel-jupyter-make-language-alias (lang)
   "Simimilar to `org-babel-make-language-alias' except do not
