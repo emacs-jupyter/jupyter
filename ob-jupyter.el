@@ -261,31 +261,24 @@ returned by `jupyter-find-kernelspecs' will be used."
   (if (equal session "none") (error "Need a session to run")
     (org-babel-jupyter-initiate-session-by-key session params)))
 
-(defun org-babel-jupyter-file-name (info ext)
-  "Return a file name based on src-block INFO.
-INFO should be the full list returned by
-`org-babel-get-src-block-info', i.e. the list returned when the
-LIGHT argument is nil. If the src-block that corresponds to INFO
-has a `:file' argument, then just return that. Otherwise, when no
-`:file' argument exists, generate a file name by concatenating
-the following:
+(defun org-babel-jupyter-file-name (data ext)
+  "Return a file name based on DATA.
+DATA is usually the contents of an image to create a file name
+for. The generated absolute file name is based on the following:
 
-1. `org-babel-jupyter-resource-directory'
-2. The hash returned by `org-babel-sha1-hash' on INFO
+1. The value of `org-babel-jupyter-resource-directory'
+2. The `sha1' hash of DATA
 3. .EXT
 
 Where EXT should be the file extension to give the
 file (excluding the dot)."
-  (let ((file (alist-get :file (nth 2 info))))
-    (or file
-        (let ((dir (prog1 org-babel-jupyter-resource-directory
-                     (unless (file-directory-p
-                              org-babel-jupyter-resource-directory)
-                       (make-directory org-babel-jupyter-resource-directory)))))
-          (concat (file-name-as-directory dir)
-                  (org-babel-sha1-hash info) "." ext)))))
+  (let ((dir (prog1 org-babel-jupyter-resource-directory
+               (unless (file-directory-p
+                        org-babel-jupyter-resource-directory)
+                 (make-directory org-babel-jupyter-resource-directory)))))
+    (concat (file-name-as-directory dir) (sha1 data) "." ext)))
 
-(defun org-babel-jupyter-prepare-result (data _metadata info)
+(defun org-babel-jupyter-prepare-result (data _metadata params)
   "Return the rendered DATA.
 DATA is a plist, (:mimetype1 value1 ...), which is used to render
 a result which can be passed to `org-babel-insert-result'.
@@ -314,7 +307,7 @@ ends up being an image and no `:file' argument is found in INFO.
 In this case a file name is automatically generated, see
 `org-babel-jupyter-file-name'."
   (let ((mimetypes (seq-filter #'keywordp data))
-        (result-params (alist-get :result-params (nth 2 info)))
+        (result-params (alist-get :result-params params))
         param result)
     (cond
      ((memq :text/org mimetypes)
@@ -325,7 +318,7 @@ In this case a file name is automatically generated, see
         (if (string-match "^<img src=\"data:\\(.+\\);base64,\\(.+\\)\"" html)
             (let ((mimetype (intern (concat ":" (match-string 1 html)))))
               (org-babel-jupyter-prepare-result
-               (list mimetype (match-string 2 html)) info))
+               (list mimetype (match-string 2 html)) params))
           (setq param "html"
                 result (plist-get data :text/html)))))
      ((memq :text/markdown mimetypes)
@@ -336,7 +329,9 @@ In this case a file name is automatically generated, see
       (setq param (unless (member "raw" result-params) "latex")
             result (plist-get data :text/latex)))
      ((memq :image/png mimetypes)
-      (let ((file (org-babel-jupyter-file-name info "png")))
+      (let ((file (or (alist-get :file params)
+                      (org-babel-jupyter-file-name
+                       (plist-get data :image/png) "png"))))
         (setq param "file"
               result (with-temp-file file
                        (let ((buffer-file-coding-system 'binary)
@@ -345,7 +340,9 @@ In this case a file name is automatically generated, see
                          (base64-decode-region (point-min) (point-max)))
                        file))))
      ((memq :image/svg+xml mimetypes)
-      (let ((file (org-babel-jupyter-file-name info "svg")))
+      (let ((file (or (alist-get :file params)
+                      (org-babel-jupyter-file-name
+                       (plist-get data :image/svg+xml) "svg"))))
         (setq param "file"
               result (with-temp-file file
                        (let ((require-final-newline nil))
@@ -503,14 +500,14 @@ PARAMS."
             (funcall add-result (org-babel-jupyter-prepare-result
                                  (jupyter-message-get msg :data)
                                  (jupyter-message-get msg :metadata)
-                                 block-info))))
+                                 params))))
         :execute-result
         (lambda (msg)
           (unless (eq result-type 'output)
             (funcall add-result (org-babel-jupyter-prepare-result
                                  (jupyter-message-get msg :data)
                                  (jupyter-message-get msg :metadata)
-                                 block-info)))))
+                                 params)))))
       (if async (format "%s%s"
                         (if (member "raw" (alist-get :result-params params))
                             ": "
