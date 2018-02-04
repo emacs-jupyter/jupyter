@@ -269,9 +269,8 @@ sent message, see `jupyter-add-callback' and
     ;; Anything sent to stdin is a reply not a request so don't add it to
     ;; `:pending-requests'.
     (unless (eq (oref channel type) :stdin)
-      (let ((req (make-jupyter-request)))
-        (setf (jupyter-request-run-handlers-p req)
-              (not jupyter-inhibit-handlers))
+      (let ((req (make-jupyter-request
+                  :run-handlers-p (not jupyter-inhibit-handlers))))
         (jupyter--ioloop-push-request client req)
         req))))
 
