@@ -347,13 +347,12 @@ Or you could have interactivity between =org-mode= and a =Jupyter= kernel:
 
 * Known problems
 
-- IOLoop subprocess will sometimes eat up 100% CPU, maybe because of the zmq
-  emacs exit hook?
-- When the parent Emacs crashes, the subprocess used to communicate with a
-  kernel may still be left alive. (only tested on OS X)
+- Reading messages from the IOLoop is a bottleneck. If many messages are coming
+  in, it seems its hard to get messages sent.
 
 * TODO Wish list
 
-- Integration with =org-mode=, should be fairly simple by sending requests to a
-  =jupyter-repl-client= and capturing results/errors with callbacks.
 - Notebook interface
+- Integration with Jupyter widgets
+  - One solution would be to show a browser and inject the necessary javascript
+    using ~skewer-mode~. Look
