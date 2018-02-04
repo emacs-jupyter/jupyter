@@ -426,6 +426,7 @@ message that has a channel type with the lower priority."
              (with-zmq-poller poller
                ;; Poll for stdin messages
                (zmq-poller-register poller 0 zmq-POLLIN)
+               (zmq-prin1 '(start))
                (while t
                  (let ((events
                         (condition-case nil
@@ -557,12 +558,23 @@ by `jupyter--ioloop'."
     (`(stop-channel ,ctype)
      (let ((channel (jupyter--get-channel client ctype)))
        (oset channel status 'stopped)))
+    ('(start)
+     ;; TODO: Generalize setting flag variables for IOLoop events and having
+     ;; event callbacks.
+     (process-put (oref client ioloop) :start t))
     ('(quit)
      ;; Cleanup handled in sentinel
      (when jupyter--debug
        (message "CLIENT CLOSED")))))
 
 ;;; Starting the channel subprocess
+
+(defun jupyter-ioloop-wait-until (event ioloop &optional timeout)
+  (or timeout (setq timeout 1))
+  (with-timeout (timeout nil)
+    (while (null (process-get ioloop event))
+      (sleep-for 0.01))
+    t))
 
 (defun jupyter--start-ioloop (client)
   (unless (oref client ioloop)
@@ -572,8 +584,7 @@ by `jupyter--ioloop'."
            (apply-partially #'jupyter--ioloop-filter client)
            (apply-partially #'jupyter--ioloop-sentinel client)
            (oref client -buffer)))
-    ;; Allow the subprocess to start
-    (sleep-for 0.1)))
+    (jupyter-ioloop-wait-until :start (oref client ioloop))))
 
 (cl-defmethod jupyter-start-channels ((client jupyter-kernel-client)
                                       &key (shell t)
