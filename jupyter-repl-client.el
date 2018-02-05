@@ -5,8 +5,6 @@
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 08 Jan 2018
 ;; Version: 0.0.1
-;; Keywords:
-;; X-URL: https://github.com/nathan/jupyter-repl-client
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -25,7 +23,11 @@
 
 ;;; Commentary:
 
+;; A Jupyter REPL for Emacs.
 ;;
+;; The main entry points are `run-jupyter-repl' and `connect-jupyter-repl'.
+;; `run-jupyter-repl' starts a new kernel, connects a `jupyter-repl-client' to
+;; it, and pops up a REPL buffer when called interactively. Whereas `connect-jupyter-repl'
 
 ;;; Code:
 
@@ -49,6 +51,8 @@
 
 ;; TODO: Fallbacks for when the language doesn't have a major mode installed.
 
+;; TODO: Define `jupyter-kernel-manager-after-restart-hook' to update the
+;; execution count after a restart.
 
 ;;; User variables
 
@@ -105,6 +109,7 @@
 (defvar jupyter-repl-history nil
   "The history of the current Jupyter REPL.")
 
+;; TODO: Proper cleanup of these buffers when done with a client
 (defvar jupyter-repl-fontify-buffers nil
   "An alist of (MODE . BUFFER) pairs used for fontification.
 See `jupyter-repl-fontify-according-to-mode'.")
@@ -1172,6 +1177,8 @@ kernel that the REPL buffer is connected to."
                  (format "Jupyter REPL (%s) still connected. Kill it? "
                          (buffer-name (current-buffer))))
                 (prog1 nil
+                  ;; TODO: Better cleanup of buffers. Should they even be
+                  ;; killed?
                   (kill-buffer jupyter-repl-lang-buffer)
                   (jupyter-stop-channels jupyter-repl-current-client)
                   (cl-loop
@@ -1298,7 +1305,6 @@ START and END are relative to the
 takes."
   (let ((types (plist-get metadata :_jupyter_types_experimental)))
     (let ((matches matches)
-          ;; TODO: This may not be the most general way to use start and end
           (prefix (seq-subseq prefix 0 (- (length prefix)
                                           (- end start))))
           match)
@@ -1613,8 +1619,8 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
              (progn
                (while (not found)
                  (cond (isearch-forward
-                        ;; See the comment in
-                        ;; `jupyter-repl-history-isearch-wrap'
+                        ;; `jupyter-repl-history-next' clears the cell if the
+                        ;; last element is the sentinel, prevent that.
                         (if (eq (ring-ref jupyter-repl-history -1)
                                 'jupyter-repl-history)
                             (error "End of history")
@@ -1675,6 +1681,7 @@ in the appropriate direction, to the saved element."
     (define-key map (kbd "M-p") #'jupyter-repl-history-previous)
     map))
 
+;; TODO: Gaurd against a major mode change
 (put 'jupyter-repl-mode 'mode-class 'special)
 (define-derived-mode jupyter-repl-mode fundamental-mode
   "Jupyter-REPL"
@@ -1741,9 +1748,10 @@ it."
      (add-text-properties start (point) '(font-lock-face shadow fontified t)))))
 
 (defun jupyter-repl-sync-execution-state ()
-  "Synchronize the execution count of `jupyter-repl-current-client'.
+  "Synchronize the state of the kernel in `jupyter-repl-current-client'.
 Set the execution-count slot of `jupyter-repl-current-client' to
-1+ the execution count of the client's kernel."
+1+ the execution count of the client's kernel. Block until the
+kernel goes idle for our request."
   (let* ((client jupyter-repl-current-client)
          (req (jupyter-execute-request client :code "" :silent t)))
     (setf (jupyter-request-run-handlers-p req) nil)
@@ -1771,9 +1779,9 @@ for the `current-buffer'."
 
 (defun jupyter-repl-available-repl-buffers (&optional mode)
   "Get a list of REPL buffers that are connected to live kernels.
-If MODE is non-nil, return REPL buffers connected to MODE's
-language. MODE should be the `major-mode' used to edit files of
-one of the Jupyter kernel languages."
+If MODE is non-nil, return all REPL buffers whose
+`jupyter-repl-lang-mode' is MODE. MODE should be the `major-mode'
+used to edit files of one of the Jupyter kernel languages."
   (delq
    nil
    (mapcar (lambda (b)
@@ -1817,6 +1825,8 @@ enabling `jupyter-repl-interaction-mode'."
     (define-key map (kbd "C-c C-f") #'jupyter-repl-inspect-at-point)
     (define-key map (kbd "C-c C-r") #'jupyter-repl-restart-kernel)
     (define-key map (kbd "C-c R") #'jupyter-repl-restart-channels)
+    ;; TODO: Change this keybinding since C-i is actually TAB and there may be
+    ;; a more conventional command to place here.
     (define-key map (kbd "C-c C-i") #'jupyter-repl-interrupt-kernel)
     (define-key map (kbd "C-c C-z") #'jupyter-repl-pop-to-buffer)
     map))
