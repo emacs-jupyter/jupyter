@@ -181,6 +181,12 @@ call `jupyter-get-message'.")
     :documentation "The time in seconds to wait for a response
  from the kernel until the connection is assumed to be dead. Note
  that this slot only takes effect when starting the channel.")
+   (kernel-died-cb
+    :type function
+    :initform #'ignore
+    :documentation "A callback function that takes 0 arguments
+and is called when the kernel has not responded for 5
+`time-to-dead' periods.")
    (beating
     :type (or boolean symbol)
     :initform t
@@ -233,6 +239,14 @@ Stop the timer of the heartbeat channel."
     (oset channel socket nil)
     (oset channel timer nil)))
 
+(defun jupyter-hb-on-kernel-dead (hb-channel fun)
+  "When the kernel connected to HB-CHANNEL dies call FUN.
+A kernel is considered dead when the HB-CHANNEL does not receive
+a response after 5 `time-to-dead' periods."
+  (declare (indent 1))
+  (cl-check-type hb-channel jupyter-hb-channel)
+  (oset hb-channel kernel-died-cb fun))
+
 (cl-defmethod jupyter-start-channel ((channel jupyter-hb-channel) &key identity)
   "Start a heartbeat CHANNEL.
 IDENTITY has the same meaning as in `jupyter-connect-channel'. A
@@ -248,7 +262,8 @@ channel, starts the timer."
     (oset channel timer
           (run-with-timer
            0 (oref channel time-to-dead)
-           (let ((sent nil))
+           (let ((sent nil)
+                 (no-response-count 0))
              (lambda (channel)
                (let ((sock (oref channel socket)))
                  (when sent
@@ -256,13 +271,20 @@ channel, starts the timer."
                    (if (condition-case nil
                            (zmq-recv sock zmq-NOBLOCK)
                          ((zmq-EINTR zmq-EAGAIN) nil))
-                       (oset channel beating t)
+                       (progn
+                         (setq no-response-count 0)
+                         (oset channel beating t))
                      (oset channel beating nil)
                      (zmq-socket-set sock zmq-LINGER 0)
                      (zmq-close sock)
                      (setq sock (jupyter-connect-channel
                                  :hb (oref channel endpoint) identity))
-                     (oset channel socket sock)))
+                     (oset channel socket sock)
+                     (if (< no-response-count 5)
+                         (setq no-response-count (1+ no-response-count))
+                       (oset channel paused t)
+                       (when (oref channel kernel-died-cb)
+                         (funcall (oref channel kernel-died-cb))))))
                  (unless (oref channel paused)
                    (zmq-send sock "ping")
                    (setq sent t)))))
