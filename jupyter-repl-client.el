@@ -913,9 +913,17 @@ lines then truncate it to something less than
                                            req
                                            data
                                            _metadata
-                                           _transient)
+                                           transient)
   (jupyter-repl-do-at-request client req
-    (jupyter-repl-insert-data data)))
+    (cl-destructuring-bind (&key display_id &allow-other-keys)
+        transient
+      (if display_id
+          ;; TODO: More general display of output types. Follow the notebook
+          ;; convention, and have buffers or regions of the REPL dedicated to
+          ;; errors. Use an overlay to display errors in the REPL buffer.
+          (with-jupyter-repl-doc-buffer (format "display-%d" display_id)
+            (jupyter-repl-insert-data data))
+        (jupyter-repl-insert-data data)))))
 
 (cl-defmethod jupyter-handle-status ((client jupyter-repl-client) _req execution-state)
   (oset client execution-state execution-state))
