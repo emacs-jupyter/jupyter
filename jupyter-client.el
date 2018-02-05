@@ -389,6 +389,11 @@ message that has a channel type with the lower priority."
 ;; This may not happen if the parent emacs crashes. One solution is to send the
 ;; process id of the parent emacs and periodically check if the process is
 ;; still alive, then exit the subprocess if the parent process is dead.
+;;
+;; TODO: Fix the problem where lots of display_data messages are coming in, we
+;; send a request, and wait for the request id to come back with
+;; `jupyter-request-id'. `jupyter-request-id' will time out. it looks like the
+;; poller is not noticing the stdin event in this case.
 (defun jupyter--ioloop (client)
   "Return the function used for communicating with CLIENT's kernel."
   (let* ((sid (jupyter-session-id (oref client session)))
@@ -444,14 +449,11 @@ message that has a channel type with the lower priority."
                                   channels))))
                        (jupyter--ioloop-queue-message messages priorities
                          (cons (oref channel type) (jupyter-recv channel)))))
-                   ;; Possibly send queued messages to parent process
                    (if events
                        ;; When messages have been received, reset idle counter
                        ;; and shorten polling timeout
                        (setq idle-count 0 timeout 20)
                      (setq idle-count (1+ idle-count))
-                     ;; When no messages have been received during this polling
-                     ;; period
                      (when (= idle-count 100)
                        ;; If no messages have been received for 100 polling
                        ;; periods, lengthen timeout so as to not waste CPU
@@ -845,7 +847,7 @@ the user. Otherwise `read-from-minibuffer' is used."
           ;; the julia kernel will emit the error both as an IOPub message and
           ;; in an execute reply.
           ;;
-          ;; TODO: Since there will likely be differences in messaging between
+          ;; Since there will likely be differences in messaging between
           ;; kernels, the easiest solution to this would be to allow users to
           ;; configure the client handling on a much more granular level than
           ;; just inhibiting the handlers. For example inhibiting only error
