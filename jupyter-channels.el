@@ -166,7 +166,8 @@ call `jupyter-get-message'.")
   (not (null (oref channel socket))))
 
 (cl-defmethod jupyter-channel-alive-p ((channel jupyter-async-channel))
-  (and (oref channel ioloop) (not (eq (oref channel status) 'stopped))))
+  (and (process-live-p (oref channel ioloop))
+       (not (eq (oref channel status) 'stopped))))
 
 ;;; Heartbeat channel
 
