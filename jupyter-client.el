@@ -1114,8 +1114,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
       ("error"
        (cl-destructuring-bind (&key ename evalue traceback &allow-other-keys)
            content
-         (jupyter-handle-error
-             client req ename evalue traceback)))
+         (jupyter-handle-error client req ename evalue traceback)))
       ("status"
        (cl-destructuring-bind (&key execution_state &allow-other-keys)
            content

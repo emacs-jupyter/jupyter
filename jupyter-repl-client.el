@@ -91,7 +91,7 @@
 ;;; Implementation
 
 (defclass jupyter-repl-client (jupyter-kernel-client)
-  ((buffer :type buffer :initarg :buffer)
+  ((buffer :type buffer)
    (execution-state :type string :initform "idle")
    (execution-count :type integer :initform 1)))
 
@@ -1453,7 +1453,7 @@ contents of the last cell and do not run any of the
 `jupyter-repl-client' handlers. All that occurs is that STR is
 sent to the kernel for execution and the results of the execution
 displayed without anything showing up in the REPL buffer."
-  (interactive)
+  (interactive (list (read-string "Jupyter Eval: ") current-prefix-arg))
   (unless (buffer-local-value
            'jupyter-repl-current-client (current-buffer))
     (user-error "No `jupyter-repl-current-client' set, see `jupyter-repl-associate-buffer'"))
@@ -1517,7 +1517,7 @@ displayed without anything showing up in the REPL buffer."
   "Evaluate a region with the `jupyter-repl-current-client'.
 BEG and END are the beginning and end of the region to evaluate.
 SILENTLY has the same meaning as in `jupyter-repl-eval-string'."
-  (interactive "r")
+  (interactive "rP")
   (jupyter-repl-eval-string
    (buffer-substring-no-properties beg end) silently))
 
