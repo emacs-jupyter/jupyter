@@ -677,19 +677,17 @@ run when MSG-TYPE is received for REQ."
 (defun jupyter-add-callback (req msg-type cb &rest callbacks)
   "Add a callback to run when a message is received for a request.
 REQ is a `jupyter-request' returned by one of the request methods
-of a `jupyter-kernel-client'. MSG-TYPE is a keyword corresponding
-to one of the keys in `jupyter-message-types'. CB is the callback
-function which will run with a single argument, a message whose
-`jupyter-message-parent-id' is `equal' to the
-`jupyter-request-id' of REQ and whose `jupyter-message-type'
-corresponds to the value of MSG-TYPE in `jupyter-message-types'.
+of a `jupyter-kernel-client'. MSG-TYPE is one of the keys in
+`jupyter-message-types'. CB is the callback function to run when
+a message with MSG-TYPE is received for REQ.
+
 MSG-TYPE can also be a list, in which case run CB for every
-MSG-TYPE in the list. If MSG-TYPE is t, then run CB for every
-message received for REQ.
+MSG-TYPE in the list. If MSG-TYPE is t, run CB for every message
+received for REQ.
 
 Any additional arguments to `jupyter-add-callback' are
 interpreted as additional CALLBACKS to add to REQ. So to add
-multiple callbacks to a request you would do
+multiple callbacks you would do
 
     (jupyter-add-callback
         (jupyter-execute-request client :code \"1 + 2\")
