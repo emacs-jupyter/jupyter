@@ -953,8 +953,7 @@ buffer to display TEXT."
 (cl-defmethod jupyter-handle-stream ((client jupyter-repl-client) req name text)
   (if req
       (jupyter-repl-do-at-request client req
-        (jupyter-repl-insert-ansi-coded-text text)
-        (jupyter-repl-newline))
+        (jupyter-repl-insert-ansi-coded-text text))
     ;; Otherwise the stream request is due to someone else, pop up a buffer.
     ;; TODO: Make this configurable so that we can just ignore output.
     (jupyter-repl-display-other-output client name text)))
