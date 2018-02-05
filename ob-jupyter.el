@@ -510,14 +510,7 @@ PARAMS."
               (if (eq result-type 'output)
                   (funcall add-result (mapconcat #'ansi-color-apply traceback "\n"))
                 (funcall add-result (format "%s: %s" ename (ansi-color-apply evalue)))))))
-        :display-data
-        (lambda (msg)
-          (unless (eq result-type 'output)
-            (cl-destructuring-bind (&key data metadata &allow-other-keys)
-                (jupyter-message-content msg)
-              (funcall add-result (org-babel-jupyter-prepare-result
-                                   data metadata params)))))
-        :execute-result
+        '(:display-data :execute-result)
         (lambda (msg)
           (unless (eq result-type 'output)
             (cl-destructuring-bind (&key data metadata &allow-other-keys)
