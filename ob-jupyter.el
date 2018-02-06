@@ -36,6 +36,7 @@
 
 (declare-function cddar "cl" (x))
 (declare-function org-element-at-point "org-element")
+(declare-function org-at-drawer-p "org")
 (declare-function org-element-property "org-element" (property element))
 (declare-function org-element-type "org-element" (element))
 (declare-function org-element-context "org-element" (&optional element))
