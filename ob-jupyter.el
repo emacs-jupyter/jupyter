@@ -263,81 +263,95 @@ file (excluding the dot)."
                  (make-directory org-babel-jupyter-resource-directory)))))
     (concat (file-name-as-directory dir) (sha1 data) "." ext)))
 
-(defun org-babel-jupyter-prepare-result (data _metadata params)
+(defun org-babel-jupyter--image-result (data file &optional overwrite base64-encoded)
+  "Possibly write DATA to FILE.
+If OVERWRITE is non-nil, overwrite FILE if it already exists.
+Otherwise if FILE already exists, DATA is not written to FILE.
+
+If BASE64-ENCODED is non-nil, the DATA is assumed to be encoded
+with the base64 encoding and is first decoded before writing to
+FILE.
+
+Return the cons cell (\"file\" . FILE), see
+`org-babel-jupyter-prepare-result'."
+  (cons "file" (prog1 file
+                 (when (or overwrite (not (file-exists-p file)))
+                   (let ((buffer-file-coding-system
+                          (if base64-encoded 'binary
+                            buffer-file-coding-system))
+                         (require-final-newline nil))
+                     (with-temp-file file
+                       (insert data)
+                       (when base64-encoded
+                         (base64-decode-region (point-min) (point-max)))))))))
+
+(defun org-babel-jupyter-prepare-result (data metadata params)
   "Return the rendered DATA.
 DATA is a plist, (:mimetype1 value1 ...), which is used to render
 a result which can be passed to `org-babel-insert-result'.
 
-INFO is the list returned by `org-babel-get-src-block-info' for
-the src-block whose results are contained in DATA. Note that INFO
-should be the full src-block info, i.e. the LIGHT argument of
-`org-babel-get-src-block-info' should be nil when obtaining INFO.
+METADATA is the metadata plist used to render DATA with, as
+returned by the Jupyter kernel. This plist typically contains
+information such as the size of an image to be rendered. The
+metadata plist is currently unused.
 
-Return a cons cell (RESULT-PARAM . RESULTS) where RESULT-PARAM is
-either a result parameter, i.e. one of the RESULT-PARAMS of
-`org-babel-insert-result', or a key value pair which should be
-added to the ARGUMENTS list of INFO before calling
-`org-babel-insert-result'.
+PARAMS is the source block parameter list as passed to
+`org-babel-execute:jupyter'. Currently this is only used to
+extract the file name of an image file when DATA can be rendered
+as an image type (either `:image/png' or `:image/svg+xml') when a
+file name is passed to the code block. If no file name is given
+one is generated based on DATA and the mimetype, see
+`org-babel-jupyter-file-name'.
+
+This function returns a cons cell (RESULT-PARAM . RESULT) where
+RESULT-PARAM is either a result parameter, i.e. one of the result
+paramters of `org-babel-insert-result', or a key value pair which
+should be appended to the PARAMS list when to render RESULT.
 
 For example, if DATA only contains the mimetype `:text/markdown',
 the RESULT-PARAM will be
 
     (:wrap . \"EXPORT markdown\")
 
-and RESULTS will be the markdown text which should be wrapped in
-an \"EXPORT markdown\" block. See `org-babel-insert-result'.
-
-Note that INFO is only relevant if the resulting rendered DATA
-ends up being an image and no `:file' argument is found in INFO.
-In this case a file name is automatically generated, see
-`org-babel-jupyter-file-name'."
+and RESULT will be the markdown text which should be wrapped in
+an \"EXPORT markdown\" block. See `org-babel-insert-result'."
   (let ((mimetypes (seq-filter #'keywordp data))
-        (result-params (alist-get :result-params params))
-        param result)
+        (result-params (alist-get :result-params params)))
     (cond
      ((memq :text/org mimetypes)
-      (setq param "org"
-            result (plist-get data :text/org)))
+      (cons (unless (member "raw" result-params) "org")
+            (plist-get data :text/org)))
      ((memq :text/html mimetypes)
       (let ((html (plist-get data :text/html)))
         (save-match-data
+          ;; FIXME: This regex does not match all possibilities of the DATA URL
+          ;; scheme.
           (if (string-match "^<img src=\"data:\\(.+\\);base64,\\(.+\\)\"" html)
               (let ((mimetype (intern (concat ":" (match-string 1 html)))))
                 (org-babel-jupyter-prepare-result
-                 (list mimetype (match-string 2 html)) params))
-            (setq param "html"
-                  result (plist-get data :text/html))))))
+                 (list mimetype (match-string 2 html)) metadata params))
+            (cons "html" (plist-get data :text/html))))))
      ((memq :text/markdown mimetypes)
-      (setq param '(:wrap . "EXPORT markdown")
-            result (plist-get data :text/markdown)))
+      (cons '(:wrap . "EXPORT markdown") (plist-get data :text/markdown)))
      ((memq :text/latex mimetypes)
       ;; TODO: Handle other cases like this for other mimetypes
-      (setq param (unless (member "raw" result-params) "latex")
-            result (plist-get data :text/latex)))
+      (cons (unless (member "raw" result-params) "latex")
+            (plist-get data :text/latex)))
      ((memq :image/png mimetypes)
-      (let ((file (or (alist-get :file params)
-                      (org-babel-jupyter-file-name
-                       (plist-get data :image/png) "png"))))
-        (setq param "file"
-              result (let ((buffer-file-coding-system 'binary)
-                           (require-final-newline nil))
-                       (with-temp-file file
-                         (insert (plist-get data :image/png))
-                         (base64-decode-region (point-min) (point-max))
-                         file)))))
+      (let* ((data (plist-get data :image/png))
+             (overwrite (not (null (alist-get :file params))))
+             (file (or (alist-get :file params)
+                       (org-babel-jupyter-file-name data "png"))))
+        (org-babel-jupyter--image-result data file overwrite 'b64-encoded)))
      ((memq :image/svg+xml mimetypes)
-      (let ((file (or (alist-get :file params)
-                      (org-babel-jupyter-file-name
-                       (plist-get data :image/svg+xml) "svg"))))
-        (setq param "file"
-              result (let ((require-final-newline nil))
-                       (with-temp-file file
-                         (insert (plist-get data :image/svg+xml))
-                         file)))))
+      (let* ((data (plist-get data :image/svg+xml))
+             (overwrite (not (null (alist-get :file params))))
+             (file (or (alist-get :file params)
+                       (org-babel-jupyter-file-name data "svg"))))
+        (org-babel-jupyter--image-result data file overwrite)))
      ((memq :text/plain mimetypes)
-      (setq result (plist-get data :text/plain)))
-     (t (warn "No supported mimetype found %s" mimetypes)))
-    (cons param result)))
+      (cons "scalar" (plist-get data :text/plain)))
+     (t (warn "No supported mimetype found %s" mimetypes)))))
 
 (defun org-babel-jupyter--inject-render-param (render-param params)
   "Destructively modify result parameters for `org-babel-insert-result'.
