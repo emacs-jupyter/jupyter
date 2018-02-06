@@ -300,8 +300,9 @@ RENDER-PARAM to the PARAMS."
   (let ((l (cond
             ((consp render-param) params)
             ((stringp render-param) (alist-get :result-params params))
-            (t (error "Render parameter unsupported (%s)" render-param)))))
-    (nconc l (list render-param))))
+            ((not (null render-param))
+             (error "Render parameter unsupported (%s)" render-param)))))
+    (when l (nconc l (list render-param)))))
 
 (defun org-babel-jupyter--clear-render-param (render-param params)
   "Destructively modify result parameters.
@@ -313,8 +314,9 @@ removal."
   (let ((l (cond
             ((consp render-param) params)
             ((stringp render-param) (alist-get :result-params params))
-            (t (error "Render parameter unsupported (%s)" render-param)))))
-    (delq render-param l)))
+            ((not (null render-param))
+             (error "Render parameter unsupported (%s)" render-param)))))
+    (when l (delq render-param l))))
 
 (defun org-babel-jupyter--clear-request-id (req)
   "Delete the request id of REQ when prepending or appending results."
