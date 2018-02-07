@@ -388,19 +388,18 @@ if RESULTS is a list."
   "Execute BODY according to PARAMS.
 BODY is the code to execute for the current Jupyter `:session' of
 PARAMS."
-  (let* ((session (alist-get :session params))
-         (repl-buffer (org-babel-jupyter-initiate-session session params))
-         (kernel-lang (cl-destructuring-bind (&key language_info
-                                                   &allow-other-keys)
-                          (oref (with-current-buffer repl-buffer
-                                  jupyter-repl-current-client)
-                                kernel-info)
-                        (plist-get language_info :language)))
+  (let* ((repl-buffer (org-babel-jupyter-initiate-session
+                       (alist-get :session params) params))
+         (client (with-current-buffer repl-buffer
+                   jupyter-repl-current-client))
+         (kernel-lang (plist-get (plist-get (oref client kernel-info)
+                                            :language_info)
+                                 :name))
          (code (org-babel-expand-body:jupyter
                 body params (org-babel-variable-assignments:jupyter
                              params kernel-lang)
                 kernel-lang))
-         (req (with-current-buffer repl-buffer
+         (req (with-jupyter-repl-buffer client
                 (goto-char (point-max))
                 (jupyter-repl-replace-cell-code code)
                 ;; TODO: Should handlers be inhbited? They are inhibited to
@@ -408,10 +407,8 @@ PARAMS."
                 ;; redirected to the output of a Jupyter src block. It
                 ;; doesn't seem to make sense to insert output in the REPL
                 ;; buffer when it is redirected somewhere else.
-                (prog1 (let ((jupyter-inhibit-handlers t))
-                         (jupyter-execute-request jupyter-repl-current-client))
-                  (when (get-buffer-window)
-                    (set-window-point (get-buffer-window) (point)))))))
+                (let ((jupyter-inhibit-handlers t))
+                  (jupyter-execute-request jupyter-repl-current-client)))))
     ;; Setup callbacks for the request
     (let* ((result-type (alist-get :result-type params))
            (async (equal (alist-get :async params) "yes"))
