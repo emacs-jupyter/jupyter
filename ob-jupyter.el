@@ -259,12 +259,19 @@ an \"EXPORT markdown\" block. See `org-babel-insert-result'."
      ((memq :text/html mimetypes)
       (let ((html (plist-get data :text/html)))
         (save-match-data
-          ;; FIXME: This regex does not match all possibilities of the DATA URL
-          ;; scheme.
-          (if (string-match "^<img src=\"data:\\(.+\\);base64,\\(.+\\)\"" html)
-              (let ((mimetype (intern (concat ":" (match-string 1 html)))))
-                (org-babel-jupyter-prepare-result
-                 (list mimetype (match-string 2 html)) metadata params))
+          (if (string-match "^<img" html)
+              (let* ((dom (with-temp-buffer
+                            (insert html)
+                            (libxml-parse-html-region (point-min) (point-max))))
+                     (img (car (dom-by-tag dom 'img)))
+                     (src (dom-attr img 'src)))
+                ;; Regex adapted from `shr-get-image-data'
+                (when (string-match
+                       "\\`data:\\(\\([^/;,]+\\(/[^;,]+\\)?\\)\\(;[^;,]+\\)*\\)?,\\(.*\\)" src)
+                  (let ((mimetype (intern (concat ":" (match-string 2 src))))
+                        (data (url-unhex-string (match-string 5 src))))
+                    (org-babel-jupyter-prepare-result
+                     (list mimetype data) metadata params))))
             (cons "html" (plist-get data :text/html))))))
      ((memq :text/markdown mimetypes)
       (cons '(:wrap . "EXPORT markdown") (plist-get data :text/markdown)))
