@@ -323,6 +323,10 @@ Any other command sent to the subprocess will be ignored."
             (jupyter-start-channel
              channel :identity (jupyter-session-id (oref channel session)))
             (zmq-poller-register ,poller (oref channel socket) zmq-POLLIN)
+            ;; Let the channel start. This avoids problems with the initial
+            ;; startup message for the python kernel. Sometimes we arent fast
+            ;; enough to get this message.
+            (sleep-for 0.1)
             (zmq-prin1 (list 'start-channel ctype)))))
        (stop-channel
         (cl-destructuring-bind (ctype) args

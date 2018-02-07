@@ -331,29 +331,6 @@ subprocess."
   (when (oref manager kernel)
     (process-live-p (oref manager kernel))))
 
-(defun jupyter--wait-until-startup (client &optional timeout)
-  "Wait until CLIENT receives a status: starting message.
-Return non-nil if the startup message was received by CLIENT
-within TIMEOUT seconds otherwise return nil. TIMEOUT defaults to
-1 s. Note that there are no checks to determine if the kernel
-CLIENT is connected to has already been started."
-  (let* ((started nil)
-         (reporter (make-progress-reporter "Kernel starting up..."))
-         (cb (lambda (msg)
-               (setq started
-                     (equal (jupyter-message-get msg :execution_state)
-                            "starting"))))
-         (jupyter-include-other-output t))
-    (jupyter-add-hook client 'jupyter-iopub-message-hook cb)
-    (prog1
-        (with-timeout ((or timeout 1) nil)
-          (while (not started)
-            (progress-reporter-update reporter)
-            (sleep-for 0.02))
-          (progress-reporter-done reporter)
-          t)
-      (jupyter-remove-hook client 'jupyter-iopub-message-hook cb))))
-
 (defun jupyter-start-new-kernel (kernel-name &optional client-class)
   "Start a managed Jupyter kernel.
 KERNEL-NAME is the name of the kernel to start. It can also be
@@ -382,9 +359,26 @@ be set to the kernel manager instance, see
         (let (reporter)
           (jupyter-start-channels client)
           (jupyter-hb-unpause (oref client hb-channel))
-          (jupyter-start-kernel manager 10)
-          (unless (jupyter--wait-until-startup client 10)
-            (error "Kernel did not send startup message"))
+          ;; Ensure that the necessary hooks to catch the startup message are
+          ;; in place before starting the kernel.
+          ;;
+          ;; NOTE: Startup messages have no parent header, hence the need for
+          ;; `jupyter-include-other-output'.
+          (let* ((jupyter-include-other-output t)
+                 (started nil)
+                 (cb (lambda (msg)
+                       (setq started
+                             (equal (jupyter-message-get msg :execution_state)
+                                    "starting")))))
+            (jupyter-add-hook client 'jupyter-iopub-message-hook cb)
+            (jupyter-start-kernel manager 10)
+            (setq reporter (make-progress-reporter "Kernel starting up..."))
+            (with-timeout (10 (error "Kernel did not send startup message"))
+              (while (not started)
+                (progress-reporter-update reporter)
+                (sleep-for 0.02))
+              (progress-reporter-done reporter))
+            (jupyter-remove-hook client 'jupyter-iopub-message-hook cb))
           (setq reporter (make-progress-reporter "Requesting kernel info..."))
           (let* ((jupyter-inhibit-handlers t)
                  (info (jupyter-wait-until-received :kernel-info-reply
