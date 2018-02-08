@@ -194,13 +194,13 @@ following fields:
 - LAST-MESSAGE-TIME :: The last time a message was received for
                        the request.
 
-- RUN-HANDLERS-P :: A flag variable that, if set to t, lets a
-                   `jupyter-kernel-client' know that it should
-                   run the handler methods for the request. Note
-                   you can either set this to nil, to disable
-                   handlers for a request or you can set
-                   `jupyter-inhibit-handlers' before making the
-                   request.
+- INHIBITED-HANDLERS :: A list of handler message types to
+                        prevent the running of that particular
+                        handler. If set to t, disable all
+                        handlers for this request. Note this
+                        should not be set directly, dynamically
+                        bind `jupyter-inhibit-handlers' before
+                        making the request.
 
 - CALLBACKS :: An alist mapping message types to their
                corresponding callbacks. This alist is modified
@@ -209,7 +209,7 @@ following fields:
   (time (current-time))
   (idle-received-p nil)
   (last-message-time nil)
-  (run-handlers-p t)
+  (inhibited-handlers nil)
   (callbacks))
 
 (defun jupyter-request-id (req)

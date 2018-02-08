@@ -45,11 +45,17 @@
   "The default timeout in seconds for `jupyter-wait-until'.")
 
 (defvar jupyter-inhibit-handlers nil
-  "Whether or not new requests inhibit client handlers.
-Do not set this variable directly, locally bind it to t if you
-would like to inhibit handlers for any new requests. If this is
-set to t globally, all new requests will have message handlers
-inhibited.")
+  "Whether or not new requests inhibit some client handlers.
+Do not set this variable directly, locally bind it to either t or
+a list of some of the keywords in `jupyter-message-types' to
+prevent the client from calling some of the handlers. For example
+to prevent a client from calling its execute-reply handler, you
+would do
+
+    (let ((jupyter-inhibit-handlers '(:execute-reply)))
+      (jupyter-execute-request client ...))
+
+If set to t, disable all client handlers.")
 
 ;; Define channel classes for method dispatching based on the channel type
 
@@ -258,7 +264,7 @@ is one of the channel's of CLIENT. TYPE is one of the values in
 is non-nil, it has the same meaning as FLAGS in `zmq-send'. You
 can manipulate how to handle messages received in response to the
 sent message, see `jupyter-add-callback' and
-`jupyter-request-inhibit-handlers'."
+`jupyter-request-inhibited-handlers'."
   (declare (indent 1))
   (let ((ioloop (oref client ioloop)))
     (unless ioloop
@@ -270,7 +276,12 @@ sent message, see `jupyter-add-callback' and
     ;; `:pending-requests'.
     (unless (eq (oref channel type) :stdin)
       (let ((req (make-jupyter-request
-                  :run-handlers-p (not jupyter-inhibit-handlers))))
+                  :inhibited-handlers
+                  (or (eq jupyter-inhibit-handlers t)
+                      (mapcar (lambda (msg-type)
+                           (or (plist-get jupyter-message-types msg-type)
+                               (error "Not a valid message type (`%s')" msg-type)))
+                         jupyter-inhibit-handlers)))))
         (jupyter--ioloop-push-request client req)
         req))))
 
@@ -764,6 +775,12 @@ received for it."
         (message "DROPPING-REQ: %s" id))
    (remhash id requests)))
 
+(defun jupyter--run-handler-maybe (client channel req msg)
+  (let ((inhibited-handlers (jupyter-request-inhibited-handlers req)))
+    (unless (or (eq inhibited-handlers t)
+                (member (jupyter-message-type msg) inhibited-handlers))
+      (jupyter-handle-message channel client req msg))))
+
 (cl-defmethod jupyter-handle-message ((client jupyter-kernel-client) channel)
   "Process a message on CLIENT's CHANNEL.
 When a message is received from the kernel, the
@@ -792,13 +809,12 @@ are taken:
              (req (gethash pmsg-id requests)))
         (if (not req)
             (when (jupyter-get client 'jupyter-include-other-output)
-              (jupyter-handle-message channel client nil msg))
+              (jupyter--run-handler-maybe client channel req msg))
           (setf (jupyter-request-last-message-time req) (current-time))
           (unwind-protect
               (jupyter--run-callbacks req msg)
             (unwind-protect
-                (when (jupyter-request-run-handlers-p req)
-                  (jupyter-handle-message channel client req msg))
+                (jupyter--run-handler-maybe client channel req msg)
               (when (jupyter-message-status-idle-p msg)
                 (setf (jupyter-request-idle-received-p req) t))
               (jupyter--drop-idle-requests client))))))))
