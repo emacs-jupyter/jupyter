@@ -1031,18 +1031,18 @@ REPL buffer."
   (or n (setq n 1))
   (if (< n 0) (jupyter-repl-history-next (- n) no-replace)
     (goto-char (point-max))
-    (if (not (equal (jupyter-repl-cell-code)
-                    (ring-ref jupyter-repl-history 0)))
-        (jupyter-repl-replace-cell-code (ring-ref jupyter-repl-history 0))
-      (if (cl-loop
-           repeat n
-           thereis (eq (ring-ref jupyter-repl-history 1) 'jupyter-repl-history)
-           do (ring-insert-at-beginning
-               jupyter-repl-history (ring-remove jupyter-repl-history 0)))
-          (error "Beginning of history")
-        (unless no-replace
-          (jupyter-repl-replace-cell-code
-           (ring-ref jupyter-repl-history 0)))))))
+    (when (not (equal (jupyter-repl-cell-code)
+                      (ring-ref jupyter-repl-history 0)))
+      (setq n (1- n)))
+    (if (cl-loop
+         repeat n
+         thereis (eq (ring-ref jupyter-repl-history 1) 'jupyter-repl-history)
+         do (ring-insert-at-beginning
+             jupyter-repl-history (ring-remove jupyter-repl-history 0)))
+        (error "Beginning of history")
+      (unless no-replace
+        (jupyter-repl-replace-cell-code
+         (ring-ref jupyter-repl-history 0))))))
 
 (cl-defmethod jupyter-handle-history-reply ((client jupyter-repl-client) _req history)
   (with-jupyter-repl-buffer client
