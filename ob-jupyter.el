@@ -41,6 +41,7 @@
 (declare-function org-element-type "org-element" (element))
 (declare-function org-element-context "org-element" (&optional element))
 (declare-function org-babel-variable-assignments:python "ob-python" (params))
+(declare-function org-babel-python-table-or-string "ob-python" (results))
 (declare-function org-babel-expand-body:generic "ob-core" (body params &optional var-lines))
 
 (defcustom org-babel-jupyter-resource-directory "./.ob-jupyter/"
@@ -347,6 +348,20 @@ removal."
                (forward-line 1)
                (1+ (line-end-position))))))))))
 
+(defun org-babel-jupyter--transform-result (render-result kernel-lang)
+  "Do some final transformations of RENDER-RESULT based on KERNEL-LANG.
+For example, call `org-babel-python-table-or-string' on the
+results when rendering scalar data for a python code block.
+
+RENDER-RESULT should be the cons cell returned by
+`org-babel-jupyter-prepare-result' and KERNEL-LANG is the kernel
+language."
+  (cl-destructuring-bind (render-param . result) render-result
+    (cond
+     ((and (equal render-param "scalar") (equal kernel-lang "python"))
+      (cons "scalar" (org-babel-python-table-or-string result)))
+     (t render-result))))
+
 (defun org-babel-jupyter-insert-results (results params kernel-lang)
   "Insert RESULTS at the current source block location.
 RESULTS is either a a single pair or a list of pairs with the form
@@ -368,7 +383,9 @@ if RESULTS is a list."
    ;; about the parameters of the info and not anything else.
    with info = (list nil nil params)
    with result-params = (alist-get :result-params params)
-   for (render-param . result) in results
+   for (render-param . result) in
+   (mapcar (lambda (r) (org-babel-jupyter--transform-result r kernel-lang))
+      results)
    do (org-babel-jupyter--inject-render-param render-param params)
    (cl-letf (((symbol-function 'message) #'ignore))
      (org-babel-insert-result result result-params info nil kernel-lang))
@@ -458,8 +475,10 @@ PARAMS."
         ;; Finalize the list of results
         (setq results (nreverse results))
         (if (eq result-type 'output) (mapconcat #'identity results "\n")
-          (let ((render-param (caar results))
-                (result (cdar results)))
+          (let* ((result (org-babel-jupyter--transform-result
+                          (car results) kernel-lang))
+                 (render-param (car result))
+                 (result (cdr result)))
             (org-babel-jupyter--inject-render-param render-param params)
             (prog1 result
               ;; Insert remaining results after the first one has been
