@@ -881,17 +881,14 @@ lines then truncate it to something less than
          (jupyter-repl-replace-cell-code (plist-get pl :text))))))
 
 (cl-defmethod jupyter-handle-execute-reply ((client jupyter-repl-client)
-                                            req
+                                            _req
                                             execution-count
                                             _user-expressions
                                             payload)
   (oset client execution-count (1+ execution-count))
   (with-jupyter-repl-buffer client
-    (save-excursion
-      (jupyter-repl-goto-cell req)
-      (jupyter-repl-cell-unmark-busy)
-      (when payload
-        (jupyter-repl--handle-payload payload)))))
+    (when payload
+      (jupyter-repl--handle-payload payload))))
 
 (cl-defmethod jupyter-handle-execute-input ((client jupyter-repl-client)
                                             _req
@@ -926,8 +923,13 @@ lines then truncate it to something less than
             (jupyter-repl-insert-data data))
         (jupyter-repl-insert-data data)))))
 
-(cl-defmethod jupyter-handle-status ((client jupyter-repl-client) _req execution-state)
-  (oset client execution-state execution-state))
+(cl-defmethod jupyter-handle-status ((client jupyter-repl-client) req execution-state)
+  (oset client execution-state execution-state)
+  (when (and req (equal execution-state "idle"))
+    (with-jupyter-repl-buffer client
+      (save-excursion
+        (jupyter-repl-goto-cell req)
+        (jupyter-repl-cell-unmark-busy)))))
 
 (defvar jupyter-repl--output-marker nil)
 
@@ -964,12 +966,6 @@ buffer to display TEXT."
   ;; When the request is from us
   (if req
       (jupyter-repl-do-at-request client req
-        (save-excursion
-          ;; `point' is at the cell beginning of the next cell after REQ,
-          ;; `jupyter-repl-previous-cell' will take us back to the start of the
-          ;; cell corresponding to REQ.
-          (jupyter-repl-previous-cell)
-          (jupyter-repl-cell-unmark-busy))
         (when traceback
           (let ((pos (point)))
             (jupyter-repl-insert-ansi-coded-text
