@@ -771,7 +771,7 @@ kernel manager as its parent-instance slot."
 The first character of the cell code corresponds to position 1."
   (unless (jupyter-repl-cell-line-p)
     (error "Not in code of cell"))
-  (- (point) (jupyter-repl-cell-beginning-position)))
+  (- (point) (jupyter-repl-cell-code-beginning-position)))
 
 (defun jupyter-repl-finalize-cell (req)
   "Finalize the current cell.
