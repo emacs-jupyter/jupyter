@@ -116,14 +116,13 @@ will have MANAGER set as its parent-instance slot, see
     (jupyter-initialize-connection client)
     client))
 
-(defun jupyter--kernel-sentinel (manager kernel event)
+(defun jupyter--kernel-sentinel (manager kernel _event)
   "Cleanup resources after kernel shutdown.
 If MANAGER's KERNEL process terminates, i.e. when EVENT describes
 an event in which the KERNEL process was killed: kill the process
 buffer and delete MANAGER's conn-file."
   (cond
-   ((cl-loop for type in '("exited" "failed" "finished" "killed" "deleted")
-             thereis (string-prefix-p type event))
+   ((not (process-live-p kernel))
     (and (buffer-live-p (process-buffer kernel))
          (kill-buffer (process-buffer kernel)))
     (when (file-exists-p (oref manager conn-file))

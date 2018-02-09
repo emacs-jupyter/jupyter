@@ -523,14 +523,13 @@ added as the newest element in this ring."
 
 ;;; Channel subprocess filter/sentinel
 
-(defun jupyter--ioloop-sentinel (client _ioloop event)
+(defun jupyter--ioloop-sentinel (client ioloop _event)
   "The process sentinel for CLIENT's IOLOOP subprocess.
 When EVENT is one of the events signifying that the process is
 dead, stop the heartbeat channel and set the IOLOOP slot to nil
 in CLIENT."
   (cond
-   ((cl-loop for type in '("exited" "failed" "finished" "killed" "deleted")
-             thereis (string-prefix-p type event))
+   ((not (process-live-p ioloop))
     (jupyter-stop-channel (oref client hb-channel))
     (oset client ioloop nil))))
 
