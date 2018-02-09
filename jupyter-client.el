@@ -776,7 +776,7 @@ received for it."
    (remhash id requests)))
 
 (defun jupyter--run-handler-maybe (client channel req msg)
-  (let ((inhibited-handlers (jupyter-request-inhibited-handlers req)))
+  (let ((inhibited-handlers (and req (jupyter-request-inhibited-handlers req))))
     (unless (or (eq inhibited-handlers t)
                 (member (jupyter-message-type msg) inhibited-handlers))
       (jupyter-handle-message channel client req msg))))
