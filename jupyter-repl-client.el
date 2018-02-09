@@ -1744,8 +1744,8 @@ Set the execution-count slot of `jupyter-repl-current-client' to
 1+ the execution count of the client's kernel. Block until the
 kernel goes idle for our request."
   (let* ((client jupyter-repl-current-client)
-         (req (jupyter-execute-request client :code "" :silent t)))
-    (setf (jupyter-request-run-handlers-p req) nil)
+         (req (let ((jupyter-inhibit-handlers t))
+                (jupyter-execute-request client :code "" :silent t))))
     (jupyter-add-callback req
       :status (lambda (msg)
                 (oset client execution-state
