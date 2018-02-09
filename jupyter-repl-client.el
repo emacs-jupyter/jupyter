@@ -591,7 +591,9 @@ buffer is found before the beginning of a cell, raise a
       (setq pos (previous-single-property-change pos 'jupyter-cell))
       (if pos (when (jupyter-repl-cell-end-p pos)
                 (error "Found end of previous cell"))
-        (signal 'beginning-of-buffer nil)))
+        (if (jupyter-repl-cell-beginning-p (point-min))
+            (setq pos (point-min))
+          (signal 'beginning-of-buffer nil))))
     pos))
 
 (defun jupyter-repl-cell-end-position ()
@@ -661,6 +663,10 @@ to the previous cell. N defaults to 1."
           (setq pos (previous-single-property-change pos 'jupyter-cell)))
         (unless (when pos (goto-char pos) (setq N (1- N)))
           (goto-char (point-min))
+          ;; Handle edge case when the first cell is at the beginning of the
+          ;; buffer. This happens, for example, when erasing the buffer.
+          (when (jupyter-repl-cell-beginning-p (point))
+            (setq N (1- N)))
           (throw 'done t)))))
   N)
 
@@ -671,12 +677,10 @@ REQ should be a `jupyter-request' that corresponds to one of the
 `current-buffer'. Note that the `current-buffer' is assumed to be
 a Jupyter REPL buffer."
   (goto-char (point-max))
-  (jupyter-repl-previous-cell)
-  (when (catch 'not-found
-          (while (not (eq (jupyter-repl-cell-request) req))
-            (jupyter-repl-previous-cell)
-            (when (= (point) (point-min))
-              (throw 'not-found t))))
+  (unless (catch 'done
+            (while (= (jupyter-repl-previous-cell) 0)
+              (when (eq (jupyter-repl-cell-request) req)
+                (throw 'done t))))
     (error "Cell for request not found")))
 
 (defun jupyter-repl-forward-cell (&optional arg)
