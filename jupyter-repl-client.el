@@ -1569,13 +1569,6 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
         (display-buffer (process-buffer (oref manager kernel))))
     (user-error "Kernel not a subprocess")))
 
-(defun jupyter-repl-restart-channels ()
-  "Restart the subprocess which talks to the kernel."
-  (interactive)
-  (message "Restarting client channels...")
-  (jupyter-stop-channels jupyter-repl-current-client)
-  (jupyter-start-channels jupyter-repl-current-client))
-
 ;;; Isearch
 ;; Adapted from isearch in `comint', see `comint-history-isearch-search' for
 ;; details
@@ -1815,7 +1808,6 @@ enabling `jupyter-repl-interaction-mode'."
     (define-key map (kbd "C-c C-l") #'jupyter-repl-eval-file)
     (define-key map (kbd "C-c C-f") #'jupyter-repl-inspect-at-point)
     (define-key map (kbd "C-c C-r") #'jupyter-repl-restart-kernel)
-    (define-key map (kbd "C-c R") #'jupyter-repl-restart-channels)
     ;; TODO: Change this keybinding since C-i is actually TAB and there may be
     ;; a more conventional command to place here.
     (define-key map (kbd "C-c C-i") #'jupyter-repl-interrupt-kernel)
