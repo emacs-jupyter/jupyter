@@ -66,11 +66,10 @@ REFRESH."
                         ;; (kernel-name . (dir . spec))
                         (cons (car s) (cons (cadr s)
                                             (jupyter-read-kernelspec (cadr s))))))
-               (seq-subseq
+               (cdr
                 (split-string
                  (shell-command-to-string "jupyter kernelspec list")
-                 "\n" 'omitnull "[ \t]+")
-                1)))))
+                 "\n" 'omitnull "[ \t]+"))))))
 
 (defun jupyter-get-kernelspec (name &optional refresh)
   "Get the kernelspec for a kernel named NAME.

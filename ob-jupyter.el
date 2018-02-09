@@ -251,7 +251,7 @@ the RESULT-PARAM will be
 
 and RESULT will be the markdown text which should be wrapped in
 an \"EXPORT markdown\" block. See `org-babel-insert-result'."
-  (let ((mimetypes (seq-filter #'keywordp data))
+  (let ((mimetypes (cl-loop for elem in data if (keywordp elem) collect elem))
         (result-params (alist-get :result-params params)))
     (cond
      ((memq :text/org mimetypes)

@@ -133,12 +133,11 @@
     (error "Malformed message. Minimum length of parts is 5"))
   (when (jupyter-session-key session)
     (let ((signature (car parts)))
-      (when (seq-empty-p signature)
+      (when (string= signature "")
         (error "Unsigned message"))
       ;; TODO: digest_history
       ;; https://github.com/jupyter/jupyter_client/blob/7a0278af7c1652ac32356d6f00ae29d24d78e61c/jupyter_client/session.py#L915
-      (unless (string= (jupyter--sign-message session (seq-subseq parts 1 5))
-                       signature)
+      (unless (string= (jupyter--sign-message session (cdr parts)) signature)
         (error "Invalid signature: %s" signature))))
   (cl-destructuring-bind
       (header parent-header metadata content &optional buffers)

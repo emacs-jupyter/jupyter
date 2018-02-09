@@ -1288,8 +1288,8 @@ START and END are relative to the
 takes."
   (let ((types (plist-get metadata :_jupyter_types_experimental)))
     (let ((matches matches)
-          (prefix (seq-subseq prefix 0 (- (length prefix)
-                                          (- end start))))
+          (prefix (substring prefix 0 (- (length prefix)
+                                         (- end start))))
           match)
       (while (setq match (car matches))
         ;; TODO: Maybe set the match property when it doesn't have the prefix,
