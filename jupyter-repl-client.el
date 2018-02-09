@@ -1215,15 +1215,7 @@ value."
 
 ;;; Completion
 
-(defun jupyter-repl-company-normalize-position (pos)
-  "Normalize POS based on the length of PREFIX for the current context.
-If the `major-mode' is `jupyter-repl-mode' then POS is relative
-to the contents of the current code cell."
-  (if (eq major-mode 'jupyter-repl-mode)
-      (cl-decf pos (- (point) (jupyter-repl-cell-code-beginning-position)))
-    pos))
-
-(defun jupyter-repl-code-context-at-point (type &optional prefix)
+(defun jupyter-repl-code-context-at-point (type)
   "Return a cons cell, (CODE . POS), for the context around `point'.
 Returns the required context depending on TYPE which can be
 either `inspect' or `complete'. If TYPE is `inspect' return an
@@ -1236,35 +1228,22 @@ The context also depends on the `major-mode' of the
 `current-buffer'. If the `current-buffer' is a
 `jupyter-repl-mode' buffer, CODE is the contents of the entire
 code cell. Otherwise its either the line up to `point' if TYPE is
-`complete' or the entire line TYPE is `inspect'."
-  ;; FIXME: Remove the need for PREFIX it is currently used because the Julia
-  ;; kernel doesn't return the right completions in the following scenario
-  ;;
-  ;;     readline(ST|)
-  ;;
-  ;; If the entire line is sent with the code position at |, then the kernel
-  ;; just dumps all available completions without a prefix when clearly we want
-  ;; the ones that start with ST.
+`complete' or the entire line if TYPE is `inspect'."
   (unless (memq type '(complete inspect))
     (error "Type not `complete' or `inspect' (%s)" type))
-  (if (eq major-mode 'jupyter-repl-mode)
-      (if (and prefix (eq jupyter-repl-lang-mode 'julia-mode))
-          (cons prefix (length prefix))
-        (let ((code (jupyter-repl-cell-code))
-              (pos (jupyter-repl-cell-code-position)))
-          ;; Consider the case when completing
-          ;;
-          ;;     In [1]: foo|
-          ;;
-          ;; The cell code position will be at position 4, i.e. where the
-          ;; cursor is at, but the cell code will only be 3 characters long.
-          ;; This is the reason for the check on pos.
-          (cons code (if (> pos (length code)) (length code) pos))))
-    (cons (buffer-substring (line-beginning-position)
-                            (cl-case type
-                              (inspect (line-end-position))
-                              (otherwise (point))))
-          (- (point) (line-beginning-position)))))
+  (let (code pos)
+    (cl-case type
+      (inspect
+       (setq code (buffer-substring (line-beginning-position)
+                                    (line-end-position))
+             pos (- (point) (line-beginning-position))))
+      (complete
+       (if (eq major-mode 'jupyter-repl-mode)
+           (setq code (jupyter-repl-cell-code)
+                 pos (jupyter-repl-cell-code-position))
+         (setq code (buffer-substring (line-beginning-position) (point))
+               pos (- (point) (line-beginning-position))))))
+    (cons code pos)))
 
 (defun jupyter-repl-completion-prefix ()
   "Return the prefix for the current completion context.
@@ -1347,9 +1326,8 @@ COMMAND and ARG have the same meaning as the elements of
      (cons
       :async
       (lambda (cb)
-        (let* ((ctx (jupyter-repl-code-context-at-point 'complete arg))
-               (code (car ctx))
-               (pos (cdr ctx)))
+        (cl-destructuring-bind (code . pos)
+            (jupyter-repl-code-context-at-point 'complete)
           (jupyter-add-callback
               ;; Ignore errors during completion
               (let ((jupyter-inhibit-handlers t))
