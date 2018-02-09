@@ -231,6 +231,13 @@ erased."
            (setq other-window-scroll-buffer (current-buffer))
            ,@body)))))
 
+;;; Convenience functions
+
+(defsubst jupyter-repl-language-mode (client)
+  "Get the `major-mode' of CLIENT's kernel language."
+  (with-jupyter-repl-buffer client
+    jupyter-repl-lang-mode))
+
 ;;; Text insertion
 
 (defun jupyter-repl-add-font-lock-properties (start end &optional object)
@@ -1256,9 +1263,7 @@ kernel. The prefix is the symbol (including punctuation) just
 before `point'. See `jupyter-repl-code-context-at-point' for what
 is actually sent to the kernel."
   (when jupyter-repl-current-client
-    (let ((lang-mode (with-jupyter-repl-buffer
-                         jupyter-repl-current-client
-                       jupyter-repl-lang-mode)))
+    (let ((lang-mode (jupyter-repl-language-mode jupyter-repl-current-client)))
       (and (memq major-mode `(,lang-mode jupyter-repl-mode))
            ;; No completion in finalized cells
            (not (get-text-property (point) 'read-only))
@@ -1915,8 +1920,7 @@ Otherwise, in a non-interactive call, return the
       (jupyter-start-new-kernel kernel-name 'jupyter-repl-client)
     (jupyter-repl--new-repl client)
     (when (and associate-buffer
-               (eq major-mode (with-jupyter-repl-buffer client
-                                jupyter-repl-lang-mode)))
+               (eq major-mode (jupyter-repl-language-mode client)))
       (jupyter-repl-associate-buffer client))
     (if (called-interactively-p 'interactive)
         (pop-to-buffer (oref client buffer))
@@ -1947,8 +1951,7 @@ Otherwise, in a non-interactive call return the
       (oset client kernel-info (jupyter-message-content info))
       (jupyter-repl--new-repl client)
       (when (and associate-buffer
-                 (eq major-mode (with-jupyter-repl-buffer client
-                                  jupyter-repl-lang-mode)))
+                 (eq major-mode (jupyter-repl-language-mode client)))
         (jupyter-repl-associate-buffer client))
       (if (called-interactively-p 'interactive)
           (pop-to-buffer (oref client buffer))
