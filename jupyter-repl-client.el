@@ -1096,48 +1096,57 @@ If `point' is before the last cell in the REPL buffer move to
 `point-max', i.e. move to the last cell. Otherwise if `point' is
 at some position within the last cell of the REPL buffer, either
 insert a newline or ask the kernel to execute the cell code
-depending on the kernel's response to an is_complete_request. If
-FORCE is non-nil, force the kernel to execute the current cell
-code without sending the is_complete_request. See
+depending on the kernel's response to an `:is-complete-request'.
+If FORCE is non-nil, force the kernel to execute the current cell
+code without sending the `:is-complete-request'. See
 `jupyter-repl-use-builtin-is-complete' for yet another way to
 execute the current cell."
   (interactive "P")
-  (if (< (point) (save-excursion
-                   (goto-char (point-max))
-                   (jupyter-repl-cell-beginning-position)))
-      (goto-char (point-max))
-    (unless (or (and (jupyter-repl-client-has-manager-p)
-                     (jupyter-kernel-alive-p
-                      (oref jupyter-repl-current-client parent-instance)))
-                (jupyter-hb-beating-p
-                 (oref jupyter-repl-current-client hb-channel)))
-      (error "Kernel not alive"))
-    ;; NOTE: kernels allow execution requests to queue up, but we prevent
-    ;; sending a request when the kernel is busy because of the is-complete
-    ;; request. Some kernels don't respond to this request when the kernel is
-    ;; busy.
-    (unless (member (oref jupyter-repl-current-client execution-state)
-                    '("starting" "idle"))
-      (error "Kernel busy"))
-    (if force (jupyter-execute-request jupyter-repl-current-client)
-      (if (not jupyter-repl-use-builtin-is-complete)
-          (let ((res (jupyter-wait-until-received
-                         :is-complete-reply
-                       (jupyter-is-complete-request
-                           jupyter-repl-current-client
-                         :code (jupyter-repl-cell-code))
-                       jupyter-repl-maximum-is-complete-timeout)))
-            (unless res
-              (message "Kernel did not respond to is-complete-request, using built-in is-complete")
-              (setq-local jupyter-repl-use-builtin-is-complete t)
-              (jupyter-repl-ret force)))
-        (goto-char (point-max))
-        (let ((complete-p (equal (buffer-substring
-                                  (line-beginning-position) (point))
-                                 "")))
-          (jupyter-handle-is-complete-reply
-              jupyter-repl-current-client
-            nil (if complete-p "complete" "incomplete") ""))))))
+  (let ((cell-beginning
+         (condition-case nil
+             (save-excursion
+               (goto-char (point-max))
+               (jupyter-repl-cell-beginning-position))
+           (beginning-of-buffer
+            ;; No cell's in the current buffer, just insert one
+            (prog1 nil
+              (jupyter-repl-insert-prompt 'in))))))
+    (when cell-beginning
+      (if (< (point) cell-beginning)
+          (goto-char (point-max))
+        (unless (or (and (jupyter-repl-client-has-manager-p)
+                         (jupyter-kernel-alive-p
+                          (oref jupyter-repl-current-client parent-instance)))
+                    (jupyter-hb-beating-p
+                     (oref jupyter-repl-current-client hb-channel)))
+          (error "Kernel not alive"))
+        ;; NOTE: kernels allow execution requests to queue up, but we prevent
+        ;; sending a request when the kernel is busy because of the is-complete
+        ;; request. Some kernels don't respond to this request when the kernel
+        ;; is busy.
+        (unless (member (oref jupyter-repl-current-client execution-state)
+                        '("starting" "idle"))
+          (error "Kernel busy"))
+        (if force (jupyter-execute-request jupyter-repl-current-client)
+          (if (not jupyter-repl-use-builtin-is-complete)
+              (let ((res (jupyter-wait-until-received
+                             :is-complete-reply
+                           (let ((jupyter-inhibit-handlers '(:status)))
+                             (jupyter-is-complete-request
+                                 jupyter-repl-current-client
+                               :code (jupyter-repl-cell-code)))
+                           jupyter-repl-maximum-is-complete-timeout)))
+                (unless res
+                  (message "Kernel did not respond to is-complete-request, using built-in is-complete")
+                  (setq-local jupyter-repl-use-builtin-is-complete t)
+                  (jupyter-repl-ret force)))
+            (goto-char (point-max))
+            (let ((complete-p (equal (buffer-substring
+                                      (line-beginning-position) (point))
+                                     "")))
+              (jupyter-handle-is-complete-reply
+                  jupyter-repl-current-client
+                nil (if complete-p "complete" "incomplete") ""))))))))
 
 (defun jupyter-repl-indent-line ()
   "Indent the line according to the language of the REPL."
