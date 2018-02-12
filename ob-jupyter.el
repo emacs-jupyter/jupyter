@@ -65,16 +65,13 @@ See `org-babel-jupyter-file-name'."
 
 (defun org-babel-variable-assignments:jupyter (params &optional lang)
   "Assign variables in PARAMS according to the Jupyter kernel language.
-Use `org-babel-jupyter-src-block-lang' to get the kernel language
-of the src-block ELEMENT and call the variable assignment
-function for the language. ELEMENT defaults to the
-`org-element-at-point'. So if LANG is the kernel language, then
-call
+LANG is the kernel language of the source block. If LANG is nil,
+get the kernel language from the current source block.
 
-    org-babel-variable-assignments:LANG
-
-If the above function doesn't exist or if no kernel langauge can
-be found, fall back to `org-babel-variable-assignments:python'."
+The variables are assigned by looking for the function
+`org-babel-variable-assignments:LANG'. If this function does not
+exist or if LANG cannot be determined, assign variables using
+`org-babel-variable-assignments:python'."
   (let* ((lang (or lang
                    (save-excursion
                      (when (re-search-backward
@@ -91,18 +88,16 @@ be found, fall back to `org-babel-variable-assignments:python'."
 BODY is the code to expand, PARAMS should be the header arguments
 of the src block with BODY as its code, and VAR-LINES should be
 the list of strings containing the variables to evaluate before
-executing body.
+executing body. LANG is the kernel language of the source block.
 
 This function is similar to
-`org-babel-variable-assignments:jupyter' in that it finds the
-kernel language of the src-block ELEMENT, defaulting to the
-`org-element-at-point', to find get the kernel language of BODY.
-So if LANG is the kernel language, call the function
+`org-babel-variable-assignments:jupyter' in that it attempts to
+find the kernel language of the source block if LANG is not
+provided.
 
-    org-babel-expand-body:LANG
-
-to expand BODY. If the above function doesn't exist or if no
-kernel langauge can be found fall back to
+BODY is expanded by calling the function
+`org-babel-expand-body:LANG'. If this function doesn't exist or
+if LANG cannot be determined, fall back to
 `org-babel-expand-body:generic'."
   (let* ((lang (or lang
                    (save-excursion
@@ -132,7 +127,8 @@ the header variables in PARAMS."
       (when var-lines
         (jupyter-repl-replace-cell-code
          (mapconcat #'identity var-lines "\n"))
-        ;; For `org-babel-load-session:jupyter'
+        ;; For `org-babel-load-session:jupyter', ensure that the loaded code
+        ;; starts on a new line.
         (when no-execute
           (insert "\n")))
       (unless no-execute
@@ -353,7 +349,7 @@ removal."
 For example, call `org-babel-python-table-or-string' on the
 results when rendering scalar data for a python code block.
 
-RENDER-RESULT should be the cons cell returned by
+RENDER-RESULT is the cons cell returned by
 `org-babel-jupyter-prepare-result' and KERNEL-LANG is the kernel
 language."
   (cl-destructuring-bind (render-param . result) render-result
@@ -364,23 +360,26 @@ language."
 
 (defun org-babel-jupyter-insert-results (results params kernel-lang)
   "Insert RESULTS at the current source block location.
-RESULTS is either a a single pair or a list of pairs with the form
+RESULTS is either a single pair or a list of pairs, each pair
+having the form
 
     (RENDER-PARAM . RESULT)
 
 i.e. the pairs returned by `org-babel-jupyter-prepare-result'.
-PARAMS should be the parameters passed to
-`org-babel-execute:jupyter'. KERNEL-LANG is the language of the
-kernel for the current source block. If optional argument APPEND
-is non-nil, then append RESULTS to the current results. The
-results will also be appended, regardless of the value of APPEND,
-if RESULTS is a list."
+PARAMS are the parameters passed to `org-babel-execute:jupyter'.
+KERNEL-LANG is the language of the kernel that produced RESULTS.
+
+Note that for a list of results, the result which will appear
+will be the last one in the list unless the source block has an
+\"append\" or \"prepend\" parameter or some other way that
+prevents `org-babel-insert-result' from clearing a result when
+inserting a new one."
   ;; Unless this is a list of results
   (unless (car-safe (car results))
     (setq results (list results)))
   (cl-loop
-   ;; FIXME: This is a hack that relies on `org-babel-insert-result' only caring
-   ;; about the parameters of the info and not anything else.
+   ;; FIXME: This is a hack that relies on `org-babel-insert-result' only
+   ;; caring about the parameters of the info and not anything else.
    with info = (list nil nil params)
    with result-params = (alist-get :result-params params)
    for (render-param . result) in
@@ -439,6 +438,7 @@ PARAMS."
                       (org-babel-jupyter--inject-render-param "append" params))
                     (org-babel-jupyter-insert-results result params kernel-lang))
                 (push result results)))))
+      ;; TODO: Handle stream output and errors similar to ob-ipython
       (jupyter-add-callback req
         :stream
         (lambda (msg)
@@ -494,10 +494,9 @@ PARAMS."
 
 (defun org-babel-jupyter-make-language-alias (kernel lang)
   "Simimilar to `org-babel-make-language-alias' but for Jupyter src-blocks.
-KERNEL should be the name of a the default kernel using for the
-kernel LANG. All necessary org-babel functions for a language
-with the name jupyter-LANG will be aliased to the jupyter
-functions."
+KERNEL should be the name of the default kernel to use for kernel
+LANG. All necessary org-babel functions for a language with the
+name jupyter-LANG will be aliased to the jupyter functions."
   (dolist (fn '("execute" "expand-body" "prep-session" "edit-prep"
                 "variable-assignments" "load-session"))
     (let ((sym (intern-soft (concat "org-babel-" fn ":jupyter"))))
@@ -523,8 +522,7 @@ Optional argument REFRESH has the same meaning as in
   (cl-loop
    for (kernel . (_dir . spec)) in (jupyter-available-kernelspecs refresh)
    for lang = (plist-get spec :language)
-   ;; Only make aliases the first time a new language appears
-   unless (functionp (intern (concat "org-babel-execute:jupyter-" lang)))
+   unless (member lang languages) collect lang into languages and
    do (org-babel-jupyter-make-language-alias kernel lang)
    ;; (add-to-list 'org-babel-tangle-lang-exts
    ;;              (cons (concat "jupyter-" lang) file_extension))

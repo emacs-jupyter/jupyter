@@ -77,7 +77,9 @@
   :group 'jupyter-repl)
 
 (defcustom jupyter-repl-maximum-is-complete-timeout 2
-  "Maximum number of seconds to wait for a is-complete reply."
+  "Maximum number of seconds to wait for an is-complete reply.
+When no is-complete reply is received from the kernel within this
+timeout, the built-in is-complete handler is used."
   :group 'jupyter-repl)
 
 (defcustom jupyter-repl-history-maximum-length 100
@@ -1194,7 +1196,7 @@ kernel that the REPL buffer is connected to."
   (not (and (eq major-mode 'jupyter-repl-mode)
             ;; TODO: Handle case when multiple clients are connected, i.e. do
             ;; we want to also delete a kernel if this is the last client
-            ;; connected. See eieio instance tracker.
+            ;; connected. See `eieio-instance-tracker'.
             (or (and (jupyter-repl-client-has-manager-p)
                      (jupyter-kernel-alive-p
                       (oref jupyter-repl-current-client parent-instance)))
@@ -1381,9 +1383,9 @@ CODE and POS are the code to send and the position within the
 code, respectively.
 
 If BUFFER is non-nil then it should be the buffer in which to
-insert the inspection text returned from kernel. After the
-inspection text is inserted into BUFFER, BUFFER is returned. If
-BUFFER is nil, then return the inspection text. In both cases the
+insert the inspection text returned from the kernel. After the
+inserting the text into BUFFER, BUFFER is returned. If BUFFER is
+nil, just return the inspection text. In both cases the
 inspection text is already in a form suitable for display.
 
 TIMEOUT is how long to wait (in seconds) for the kernel to

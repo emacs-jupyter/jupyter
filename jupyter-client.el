@@ -139,17 +139,16 @@ buffer.")
 
 (defun jupyter-initialize-connection (client &optional file-or-plist)
   "Initialize CLIENT with a connection FILE-OR-PLIST.
-When FILE-OR-PLIST is a file name, read the JSON connection
-information from the file and initialize CLIENT's connection and
-channels from the file's contents. When FILE-OR-PLIST is a plist,
-initialize CLIENT's connection and channels from the plist. When
-FILE-OR-PLIST is nil, then the `conn-info' slot of CLIENT is used
-to initialize the connection. The necessary keys to initialize a
-connection can be found at
+If FILE-OR-PLIST is the name of a file, assume the file to be a
+kernel connection file and initialize CLIENT from its contents.
+If FILE-OR-PLIST is a property list, initialize CLIENT using its
+properties. If FILE-OR-PLIST is nil, initialize CLIENT's
+connection using CLIENT's `conn-info' slot. The necessary keys
+and values to initialize a connection can be found at
 http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files.
 
 As a side effect, if CLIENT is already connected to a kernel its
-connection is terminated before initializing."
+connection is terminated before initializing a new one."
   (cl-check-type client jupyter-kernel-client)
   (let ((conn-info (if file-or-plist
                        (oset client conn-info

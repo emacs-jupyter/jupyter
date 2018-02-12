@@ -107,7 +107,7 @@ SLOTS are the slots used to initialize the client with.")
 CLASS should be a subclass of `jupyter-kernel-client', a new
 instance of CLASS initialized with SLOTS and configured to
 connect to MANAGER's kernel. The returned `jupyter-kernel-client'
-will have MANAGER set as its parent-instance slot, see
+will have MANAGER set as its `parent-instance' slot, see
 `jupyter-connection'."
   (unless (child-of-class-p class 'jupyter-kernel-client)
     (signal 'wrong-type-argument (list '(subclass jupyter-kernel-client) class)))
@@ -242,7 +242,10 @@ kernel. Starting a kernel involves the following steps:
             (oset manager conn-file (expand-file-name
                                      (format "kernel-%d.json" (process-id proc))
                                      jupyter-runtime-directory))
-            (rename-file conn-file (oref manager conn-file))
+            ;; Gaurd against a kernel that dies after starting. For example,
+            ;; the Julia kernel JuliaLang/IJulia.jl/issues/596 on Julia 0.6.0
+            (when (process-live-p proc)
+              (rename-file conn-file (oref manager conn-file)))
             (jupyter-start-channels manager)
             (progress-reporter-done reporter)
             manager))))))
@@ -334,19 +337,19 @@ subprocess."
   "Start a managed Jupyter kernel.
 KERNEL-NAME is the name of the kernel to start. It can also be
 the prefix of a valid kernel name, in which case the first kernel
-in `jupyter-available-kernelspecs' that has a kernel name with
-KERNEL-NAME as prefix will be used. Optional argument
-CLIENT-CLASS should be a subclass of `jupyer-kernel-client' which
-will be used to initialize a new client connected to the new
-kernel. CLIENT-CLASS defaults to `jupyter-kernel-client'.
+in `jupyter-available-kernelspecs' that has KERNEL-NAME as a
+prefix will be used. Optional argument CLIENT-CLASS is a subclass
+of `jupyer-kernel-client' and will be used to initialize a new
+client connected to the kernel. CLIENT-CLASS defaults to
+`jupyter-kernel-client'.
 
 Return a cons cell (KM . KC) where KM is the
 `jupyter-kernel-manager' that manages the lifetime of the kernel
-subprocess. KC is a new client connected to the kernel and whose
+subprocess. KC is a new client connected to the kernel whose
 class is CLIENT-CLASS. The client is connected to the kernel with
 all channels listening for messages and the heartbeat channel
-un-paused. Note that the client's parent-instance slot will also
-be set to the kernel manager instance, see
+un-paused. Note that the client's `parent-instance' slot will
+also be set to the kernel manager instance, see
 `jupyter-make-client'."
   (setq client-class (or client-class 'jupyter-kernel-client))
   (unless (child-of-class-p client-class 'jupyter-kernel-client)
