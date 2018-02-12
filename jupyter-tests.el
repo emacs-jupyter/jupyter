@@ -52,10 +52,11 @@ testing the callback functionality of a
 `jupyter-kernel-client'.")
 
 (defun jupyter-test-message (req type content)
-  (list :msg_id (jupyter-new-uuid)
-        :msg_type type
-        :parent_header (list :msg_id (jupyter-request-id req))
-        :content content))
+  ;; `jupyter-queue-message' expects a cons cell of the form (idents . msg)
+  (cons "" (list :msg_id (jupyter-new-uuid)
+                 :msg_type type
+                 :parent_header (list :msg_id (jupyter-request-id req))
+                 :content content)))
 
 (cl-defmethod initialize-instance ((client jupyter-echo-client) &rest _slots)
   (cl-call-next-method)
@@ -82,19 +83,20 @@ testing the callback functionality of a
     (if (string-match "request" type)
         (setq type (replace-match "reply" nil nil type))
       (error "Not a request message type (%s)" type))
-    (jupyter-queue-message (oref client iopub-channel)
-                           ;; `jupyter-push-message' expects a cons cell of the
-                           ;; form (idents . msg)
-                           (cons ""
-                                 (jupyter-test-message
-                                  req "status"
-                                  (list :execution_state "busy"))))
-    (jupyter-queue-message channel
-                           (cons "" (jupyter-test-message req type message)))
-    (jupyter-queue-message (oref client iopub-channel)
-                           (cons "" (jupyter-test-message
-                                     req "status"
-                                     (list :execution_state "idle"))))
+    ;; Message flow
+    ;; - status: busy
+    ;; - reply message
+    ;; - status: idle
+    (jupyter-queue-message
+     (oref client iopub-channel)
+     (jupyter-test-message
+      req "status" (list :execution_state "busy")))
+    (jupyter-queue-message
+     channel (jupyter-test-message req type message))
+    (jupyter-queue-message
+     (oref client iopub-channel)
+     (jupyter-test-message
+      req "status" (list :execution_state "idle")))
     (run-at-time
      0.01 nil
      (lambda (client channel)
@@ -102,6 +104,8 @@ testing the callback functionality of a
        (jupyter-handle-message client channel)
        (jupyter-handle-message client (oref client iopub-channel)))
      client channel)
+    ;; Needed internally by a `jupyter-kernel-client', this is mainly handled
+    ;; by the eventloop.
     (puthash (jupyter-request-id req) req (oref client requests))
     req))
 
@@ -411,13 +415,10 @@ testing the callback functionality of a
                 (should-not (null res))
                 (should (json-plist-p res))
                 (should (equal (jupyter-message-type res) "execute_result"))
-                (cl-destructuring-bind (&key data &allow-other-keys)
-                    (plist-get res :content)
-                  (should (equal (plist-get data :text/plain) "'foo'"))))))
+                (should (equal (jupyter-message-data data :text/plain) "'foo'")))))
           (ert-info ("Inspect")
             (let ((res (jupyter-wait-until-received :inspect-reply
-                         (jupyter-inspect-request
-                             client
+                         (jupyter-inspect-request client
                            :code "list((1, 2, 3))"
                            :pos 2
                            :detail 0))))
@@ -426,8 +427,7 @@ testing the callback functionality of a
               (should (equal (jupyter-message-type res) "inspect_reply"))))
           (ert-info ("Complete")
             (let ((res (jupyter-wait-until-received :complete-reply
-                         (jupyter-complete-request
-                             client
+                         (jupyter-complete-request client
                            :code "foo = lis"
                            :pos 8))))
               (should-not (null res))
@@ -435,15 +435,15 @@ testing the callback functionality of a
               (should (equal (jupyter-message-type res) "complete_reply"))))
           (ert-info ("History")
             (let ((res (jupyter-wait-until-received :history-reply
-                         (jupyter-history-request
-                             client :hist-access-type "tail" :n 2))))
+                         (jupyter-history-request client
+                           :hist-access-type "tail" :n 2))))
               (should-not (null res))
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "history_reply"))))
           (ert-info ("Is Complete")
             (let ((res (jupyter-wait-until-received :is-complete-reply
-                         (jupyter-is-complete-request
-                             client :code "for i in range(5):"))))
+                         (jupyter-is-complete-request client
+                           :code "for i in range(5):"))))
               (should-not (null res))
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "is_complete_reply"))))
