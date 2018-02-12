@@ -456,6 +456,71 @@ testing the callback functionality of a
       (jupyter-stop-channels client)
       (jupyter-stop-kernel client))))
 
+(defun jupyter-test-src-block (session code test-result)
+  (let ((pos (point)))
+    (insert
+     "#+BEGIN_SRC jupyter-python " ":session " session "\n"
+     code "\n"
+     "#+END_SRC")
+    (let* ((info (org-babel-get-src-block-info)))
+      (org-babel-execute-src-block nil info)
+      (org-with-point-at (org-babel-where-is-src-block-result nil info)
+        (forward-line 1)
+        (let ((result
+               (string-trim-right
+                (buffer-substring-no-properties
+                 (point) (goto-char (org-babel-result-end))))))
+          (should (equal result test-result))
+          (delete-region pos (point)))))))
+
+(ert-deftest org-babel-jupyter ()
+  (ert-info ("Dynamic result types")
+    (let ((session (make-temp-name "ob-jupyter-test")) repl-buffer)
+      (unwind-protect
+          (with-temp-buffer
+            (org-mode)
+            (insert
+             "#+BEGIN_SRC jupyter-python " ":session " session "\n"
+             "#+END_SRC")
+            (setq repl-buffer (org-babel-initiate-session))
+            (erase-buffer)
+            (ert-info ("Scalar results")
+              (jupyter-test-src-block session "1 + 1" ": 2"))
+            (ert-info ("HTML results")
+              (let ((code "\
+from IPython.core.display import HTML\n\
+HTML('<a href=\"http://foo.com\">link</a>')"))
+                (jupyter-test-src-block session code "\
+#+BEGIN_EXPORT html
+<a href=\"http://foo.com\">link</a>
+#+END_EXPORT")))
+            (ert-info ("Image results")
+              (let* ((default-directory (file-name-directory
+                                         (locate-library "jupyter")))
+                     (org-babel-jupyter-resource-directory "./")
+                     (file (expand-file-name "jupyter.png"))
+                     (data (let ((buffer-file-coding-system 'binary))
+                             (with-temp-buffer
+                               (set-buffer-multibyte nil)
+                               (insert-file-contents-literally file)
+                               (base64-encode-region (point-min) (point-max) t)
+                               (goto-char (point-max))
+                               (insert "\n")
+                               (buffer-substring-no-properties (point-min) (point-max)))))
+                     (image-file-name (org-babel-jupyter-file-name data "png"))
+                     (code (format "\
+from IPython.display import Image
+Image(filename='%s')" file)))
+                (unwind-protect
+                    (jupyter-test-src-block session code (format "[[file:%s]]" image-file-name))
+                  (when (file-exists-p image-file-name)
+                    (delete-file image-file-name))))))
+        (cl-letf (((symbol-function 'yes-or-no-p)
+                   (lambda (_prompt) t))
+                  ((symbol-function 'y-or-n-p)
+                   (lambda (_prompt) t)))
+          (when repl-buffer (kill-buffer repl-buffer)))))))
+
 ;;; jupyter-tests.el ends here
 
 ;; Local Variables:
