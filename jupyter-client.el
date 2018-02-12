@@ -346,58 +346,6 @@ Any other command sent to the subprocess will be ignored."
         (signal 'quit nil))
        (otherwise (error "Unhandled command (%s)" cmd)))))
 
-(defmacro jupyter--ioloop-queue-message (messages priorities elem)
-  "Add a single message to MESSAGES.
-MESSAGES should be a variable name which is bound to a list or
-nil, PRIORITIES should be a variable name which is bound to an
-alist of (CTYPE . PRIORITY) pairs where CTYPE is a
-`jupyter-channel' type and PRIORITY is a number representing the
-priority of the channel. ELEM should be a cons cell
-
-    (CTYPE . IDENTS-MSG)
-
-where CTYPE is the `jupyter-channel' type that IDENTS-MSG was
-received on. Note that IDENTS-MSG should be the cons cell
-returned by `jupyter-recv'.
-
-Multiple calls to the expansion of
-`jupyter--ioloop-queue-message' with the same MESSAGES list will
-place ELEM on the list at a position that depends on the
-`jupyter-message-time' of MSG and the priority of CTYPE. MESSAGES
-will sorted by increasing `jupyter-message-time' of its messages
-and in case two messages have `equal' message times, the message
-whose channel type has a higher priority will come before the
-message that has a channel type with the lower priority."
-  (declare (indent 2))
-  `(let ((elem ,elem))
-     (if (null ,messages) (push elem ,messages)
-       ;; Put elem in its sorted position
-       (let ((ctype (car elem))
-             (mt (jupyter-message-time (cddr elem)))
-             (head ,messages)
-             (tail ,messages))
-         (while (and
-                 tail
-                 ;; Non-nil if msg should come after tail
-                 (let ((tctype (caar tail))
-                       (tmt (jupyter-message-time (cddar tail))))
-                   (or (time-less-p tmt mt)
-                       (when (equal mt tmt)
-                         (< (alist-get ctype ,priorities)
-                            (alist-get tctype ,priorities))))))
-           (setq
-            head tail
-            tail (cdr tail)))
-         (if (eq head tail) (setq ,messages (cons elem head))
-           (setcdr head (cons elem tail)))))))
-
-;; TODO: Make this more debuggable, I've spent hours wondering why I wasn't
-;; receiving messages only to find out (caar elem) should have been (car elem)
-;; in `jupyter--ioloop-queue-message'. For some reason the `condition-case' in
-;; `zmq--init-subprocess' is not sending back the error. Or more specifically,
-;; in the subprocess errors are being turned into warnings.
-;;
-;; TODO: Ensure that the subprocess gets killed when the parent emacs exits.
 ;; This may not happen if the parent emacs crashes. One solution is to send the
 ;; process id of the parent emacs and periodically check if the process is
 ;; still alive, then exit the subprocess if the parent process is dead.
@@ -430,9 +378,6 @@ message that has a channel type with the lower priority."
                       :type :stdin
                       :session session
                       :endpoint ,stdin-ep))
-              (priorities '((:shell . 4)
-                            (:iopub . 2)
-                            (:stdin . 2)))
               (channels `((:stdin . ,stdin)
                           (:shell . ,shell)
                           (:iopub . ,iopub)))
@@ -459,8 +404,7 @@ message that has a channel type with the lower priority."
                             (cdr (cl-find-if
                                   (lambda (c) (eq (oref (cdr c) socket) sock))
                                   channels))))
-                       (jupyter--ioloop-queue-message messages priorities
-                         (cons (oref channel type) (jupyter-recv channel)))))
+                       (push (cons (oref channel type) (jupyter-recv channel)) messages)))
                    (if events
                        ;; When messages have been received, reset idle counter
                        ;; and shorten polling timeout
@@ -483,6 +427,7 @@ message that has a channel type with the lower priority."
                      ;; spending too much time handling messages.
                      (when (and messages (or (= idle-count 5)
                                              (> (length messages) 10)))
+                       (setq messages (nreverse messages))
                        (while messages
                          (prin1 (cons 'recvd (pop messages))))
                        (zmq-flush 'stdout))))))
@@ -764,9 +709,17 @@ A request is deemed complete when an idle message has been
 received for it."
   (cl-loop
    with requests = (oref client requests)
+   with ctime = (current-time)
+   ;; Drop idle requests when the last received message time is longer than 1 s
+   ;; ago and after the idle message has been received. Sometimes reply
+   ;; messages are received after an idle message.
+   with secs = '(0 1)
    for req in (hash-table-values requests)
    for id = (jupyter-request-id req)
-   when (jupyter-request-idle-received-p req)
+   when (and (jupyter-request-idle-received-p req)
+             (time-less-p
+              secs (time-subtract
+                    ctime (jupyter-request-last-message-time req))))
    do (when jupyter--debug
         (message "DROPPING-REQ: %s" id))
    (remhash id requests)))
