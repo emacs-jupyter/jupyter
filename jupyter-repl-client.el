@@ -728,12 +728,13 @@ POS defaults to `point'."
 (defun jupyter-repl-cell-line-p ()
   "Is the current line a cell input line?"
   (let ((pos (point)))
-    (save-excursion
-      (unless (= pos (jupyter-repl-cell-beginning-position))
-        (jupyter-repl-previous-cell))
-      (<= (jupyter-repl-cell-code-beginning-position)
-          pos
-          (jupyter-repl-cell-code-end-position)))))
+    (ignore-errors
+      (save-excursion
+        (unless (= pos (jupyter-repl-cell-beginning-position))
+          (jupyter-repl-previous-cell))
+        (<= (jupyter-repl-cell-code-beginning-position)
+            pos
+            (jupyter-repl-cell-code-end-position))))))
 
 (defun jupyter-repl-cell-finalized-p ()
   "Has the current cell been finalized?
@@ -754,13 +755,14 @@ kernel manager as its parent-instance slot."
 
 (defun jupyter-repl-connected-p ()
   "Determine if the `jupyter-repl-current-client' is connected to its kernel."
-  (or (and (jupyter-repl-client-has-manager-p)
-           ;; Check if the kernel is local
-           (jupyter-kernel-alive-p
-            (oref jupyter-repl-current-client parent-instance)))
-      (let ((hb (oref jupyter-repl-current-client hb-channel)))
-        (and (jupyter-channel-alive-p hb)
-             (jupyter-hb-beating-p hb)))))
+  (when jupyter-repl-current-client
+    (or (and (jupyter-repl-client-has-manager-p)
+             ;; Check if the kernel is local
+             (jupyter-kernel-alive-p
+              (oref jupyter-repl-current-client parent-instance)))
+        (let ((hb (oref jupyter-repl-current-client hb-channel)))
+          (and (jupyter-channel-alive-p hb)
+               (jupyter-hb-beating-p hb))))))
 
 ;;; Buffer text manipulation
 
