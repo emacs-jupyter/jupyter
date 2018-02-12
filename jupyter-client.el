@@ -318,9 +318,6 @@ commands that an ioloop subprocess can perform are:
   `jupyter-send' call.
 
 Any other command sent to the subprocess will be ignored."
-  ;; TODO: Would like to convert this to `pcase' but there seems to be issues
-  ;; with `pcase', it never matches the pattern correctly in the subprocess
-  ;; even though it matches perfectly well in the parent emacs
   `(cl-destructuring-bind (cmd . args)
        (zmq-subprocess-read)
      (cl-case cmd

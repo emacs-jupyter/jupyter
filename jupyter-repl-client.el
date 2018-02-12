@@ -1192,9 +1192,6 @@ kernel that the REPL buffer is connected to."
                  (format "Jupyter REPL (%s) still connected. Kill it? "
                          (buffer-name (current-buffer))))
                 (prog1 nil
-                  ;; TODO: Better cleanup of buffers. Should they even be
-                  ;; killed?
-                  (kill-buffer jupyter-repl-lang-buffer)
                   (jupyter-stop-channels jupyter-repl-current-client)
                   (cl-loop
                    with client = jupyter-repl-current-client
@@ -1207,8 +1204,7 @@ kernel that the REPL buffer is connected to."
                      (oref jupyter-repl-current-client parent-instance))))
               t))))
 
-;; FIXME: This is necessary due to some interaction with other packages (I
-;; think). Sometimes the margins will disappear after the window configuration
+;; FIXME: Sometimes the margins will disappear after the window configuration
 ;; changes which is why `window-configuration-change-hook' is not used.
 (defun jupyter-repl-preserve-window-margins (&optional window)
   "Ensure that the margins of a REPL window are present.

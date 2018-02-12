@@ -132,8 +132,6 @@ from the kernel.")
 
 (define-hmac-function hmac-sha256 sha256 64 32)
 
-;; TODO: Better UUID randomness, `cl-random' seeds the random state with the
-;; current time but only to second resolution.
 (defun jupyter-new-uuid ()
   "Make a version 4 UUID."
   (format "%04x%04x-%04x-%04x-%04x-%06x%06x"

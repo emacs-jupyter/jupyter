@@ -98,10 +98,6 @@ testing the callback functionality of a
     (run-at-time
      0.01 nil
      (lambda (client channel)
-       ;; TODO: `jupyter-handle-message' kicks off a chain of message handling
-       ;; if there is more than one message on the channel. so no need to call
-       ;; it twice for a channel. This seems fishy, should it really continue
-       ;; to handle messages or just handle every message when it is received.
        (jupyter-handle-message client (oref client iopub-channel))
        (jupyter-handle-message client channel)
        (jupyter-handle-message client (oref client iopub-channel)))

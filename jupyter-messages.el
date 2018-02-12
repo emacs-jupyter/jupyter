@@ -170,7 +170,6 @@
   (declare (indent 1))
   (cl-destructuring-bind (msg-id . msg)
       (jupyter--encode-message session type :content message)
-    ;; TODO: Check for EAGAIN and reschedule the message for sending
     (zmq-send-multipart socket msg flags)
     msg-id))
 
