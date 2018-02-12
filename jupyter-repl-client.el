@@ -988,7 +988,7 @@ buffer to display TEXT."
               (save-excursion
                 (goto-char pos)
                 (when (search-forward ename nil t)
-                  (let ((len (- (length jupyter-repl-error-prefix)
+                  (let ((len (- fill-column
                                 (- (point) (line-beginning-position))
                                 (- (line-end-position) (point)))))
                     (jupyter-repl-insert
