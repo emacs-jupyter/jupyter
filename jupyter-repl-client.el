@@ -1388,7 +1388,7 @@ inspection text is already in a form suitable for display.
 
 TIMEOUT is how long to wait (in seconds) for the kernel to
 respond before returning nil."
-  (let* ((jupyter-inhibit-handlers t)
+  (let* ((jupyter-inhibit-handlers '(:status))
          (msg (jupyter-wait-until-received :inspect-reply
                 (jupyter-inspect-request jupyter-repl-current-client
                   :code code :pos pos)
@@ -1703,8 +1703,9 @@ in the appropriate direction, to the saved element."
   ;; history since next/previous navigation is implemented by rotations on the
   ;; ring.
   (ring-insert jupyter-repl-history 'jupyter-repl-history)
-  (jupyter-history-request jupyter-repl-current-client
-    :n jupyter-repl-history-maximum-length :raw nil :unique t)
+  (let ((jupyter-inhibit-handlers '(:status)))
+    (jupyter-history-request jupyter-repl-current-client
+      :n jupyter-repl-history-maximum-length :raw nil :unique t))
   (erase-buffer)
   ;; Add local hooks
   (add-hook 'kill-buffer-query-functions #'jupyter-repl-kill-buffer-query-function nil t)
