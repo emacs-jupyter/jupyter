@@ -415,6 +415,7 @@ PARAMS."
                   (jupyter-execute-request jupyter-repl-current-client)))))
     ;; Setup callbacks for the request
     (let* ((result-type (alist-get :result-type params))
+           (no-results (member "none" (alist-get :result-params params)))
            (async (equal (alist-get :async params) "yes"))
            (block-beginning
             (copy-marker org-babel-current-src-block-location))
@@ -430,14 +431,15 @@ PARAMS."
               ;; multiple example blocks for a single output. The best bet
               ;; would be to insert it as raw text in a drawer.
               (or (consp result) (setq result (cons "scalar" result)))
-              (if async
-                  (org-with-point-at block-beginning
-                    (unless id-cleared
-                      (setq id-cleared t)
-                      (org-babel-jupyter--clear-request-id req)
-                      (org-babel-jupyter--inject-render-param "append" params))
-                    (org-babel-jupyter-insert-results result params kernel-lang))
-                (push result results)))))
+              (unless no-results
+                (if async
+                    (org-with-point-at block-beginning
+                      (when first-async-insertion
+                        (setq first-async-insertion nil)
+                        (org-babel-jupyter--clear-request-id req)
+                        (org-babel-jupyter--inject-render-param "append" params))
+                      (org-babel-jupyter-insert-results result params kernel-lang))
+                  (push result results))))))
       ;; TODO: Handle stream output and errors similar to ob-ipython
       (jupyter-add-callback req
         :stream
