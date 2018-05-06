@@ -495,8 +495,26 @@ PARAMS."
               (funcall add-result (org-babel-jupyter-prepare-result
                                    data metadata params))))))
       (if async
-          (concat (when (member "raw" (alist-get :result-params params)) ": ")
-                  (jupyter-request-id req))
+          (let ((fresult (member "file" (alist-get :result-params params)))
+                (fparam (assoc :file params)))
+            ;; HACK: Prevent insertion of a file while getting results. If the
+            ;; :file parameter is specified, it takes precedence over the
+            ;; returned value specified below. But we want to show the request
+            ;; ID so we temporarily modify the src block parameters and restore
+            ;; them after execution, but before the async results are obtained.
+            (when fresult
+              (setcar fresult "scalar")
+              (when fparam (delq fparam params))
+              (cl-labels ((reset-file-param
+                           ()
+                           (setcar fresult "file")
+                           (when fparam (nconc params (list fparam)))
+                           (remove-hook
+                            'org-babel-after-execute-hook #'reset-file-param t)))
+                (add-hook
+                 'org-babel-after-execute-hook #'reset-file-param nil t)))
+            (concat (when (member "raw" (alist-get :result-params params)) ": ")
+                    (jupyter-request-id req)))
         (jupyter-wait-until-idle req most-positive-fixnum)
         ;; Finalize the list of results
         (setq results (nreverse results))
