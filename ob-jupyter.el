@@ -441,9 +441,8 @@ PARAMS."
     (let* ((result-type (alist-get :result-type params))
            (no-results (member "none" (alist-get :result-params params)))
            (async (equal (alist-get :async params) "yes"))
-           (block-beginning
-            (copy-marker org-babel-current-src-block-location))
-           (id-cleared nil)
+           (block-beginning (copy-marker org-babel-current-src-block-location))
+           (first-async-insertion t)
            (results nil)
            (add-result
             (lambda (result)
@@ -475,9 +474,10 @@ PARAMS."
         :status
         (lambda (msg)
           (when (jupyter-message-status-idle-p msg)
-            (when (and async (not id-cleared))
-              (org-babel-jupyter--clear-request-id req))
-            (set-marker block-beginning nil)))
+            (when async
+              (set-marker block-beginning nil)
+              (when first-async-insertion
+                (org-babel-jupyter--clear-request-id req)))))
         :execute-reply
         (lambda (msg)
           (cl-destructuring-bind (&key status ename evalue traceback
