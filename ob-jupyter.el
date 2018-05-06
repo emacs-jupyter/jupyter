@@ -484,9 +484,12 @@ PARAMS."
                                        &allow-other-keys)
               (jupyter-message-content msg)
             (unless (equal status "ok")
+              ;; HACK: Prevent insertion of a file when an error happens
+              (let ((params (member "file" (alist-get :result-params params))))
+                (and params (setcar params "scalar")))
               (if (eq result-type 'output)
                   (funcall add-result (mapconcat #'ansi-color-apply traceback "\n"))
-                (funcall add-result (format "%s: %s" ename (ansi-color-apply evalue)))))))
+                (funcall add-result (format "%s: %s" ename (ansi-color-apply evalue)))))
         '(:display-data :execute-result)
         (lambda (msg)
           (unless (eq result-type 'output)
