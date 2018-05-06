@@ -307,18 +307,29 @@ an \"EXPORT markdown\" block. See `org-babel-insert-result'."
 (defun org-babel-jupyter--inject-render-param (render-param params)
   "Destructively modify result parameters for `org-babel-insert-result'.
 RENDER-PARAM is the first element of the list returned by
-`org-babel-jupyter-prepare-result', PARAMS are the paramters
+`org-babel-jupyter-prepare-result', PARAMS are the parameters
 passed to `org-babel-execute:jupyter'.
 
 Append RENDER-PARAM to RESULT-PARAMS if it is a string, otherwise
 if RENDER-PARAM is a cons cell, (KEYWORD . STRING), append
 RENDER-PARAM to the PARAMS."
-  (let ((l (cond
-            ((consp render-param) params)
-            ((stringp render-param) (alist-get :result-params params))
-            ((not (null render-param))
-             (error "Render parameter unsupported (%s)" render-param)))))
-    (when l (nconc l (list render-param)))))
+  (cond
+   ((consp render-param)
+    (nconc params (list render-param)))
+   ((stringp render-param)
+    (let ((rparams (alist-get :result-params params)))
+      ;; `org-babel-insert-result' looks for replace first, thus we have to
+      ;; remove it if we are injecting append or prepend.
+      ;;
+      ;; TODO: Do the inverse operation in
+      ;; `org-babel-jupyter--clear-render-param'. This may not really be
+      ;; necessary since this will only be injected for async results.
+      (if (and (member render-param '("append" "prepend"))
+               (member "replace" rparams))
+          (setcar (member "replace" rparams) render-param)
+        (nconc rparams (list render-param)))))
+   ((not (null render-param))
+    (error "Render parameter unsupported (%s)" render-param))))
 
 (defun org-babel-jupyter--clear-render-param (render-param params)
   "Destructively modify result parameters.
@@ -327,12 +338,13 @@ found in PARAMS. If RENDER-PARAM is a cons cell, remove it from
 the PARAMS list. If RENDER-PARAM is a string, remove it from the
 `:result-params' of PARAMS. In all cases, `delq' is used for
 removal."
-  (let ((l (cond
-            ((consp render-param) params)
-            ((stringp render-param) (alist-get :result-params params))
-            ((not (null render-param))
-             (error "Render parameter unsupported (%s)" render-param)))))
-    (when l (delq render-param l))))
+  (cond
+   ((consp render-param)
+    (delq render-param params))
+   ((stringp render-param)
+    (delq render-param (alist-get :result-params params)))
+   ((not (null render-param))
+    (error "Render parameter unsupported (%s)" render-param))))
 
 (defun org-babel-jupyter--clear-request-id (req)
   "Delete the request id of REQ when prepending or appending results."
