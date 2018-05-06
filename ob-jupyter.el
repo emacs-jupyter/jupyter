@@ -257,7 +257,8 @@ the RESULT-PARAM will be
 and RESULT will be the markdown text which should be wrapped in
 an \"EXPORT markdown\" block. See `org-babel-insert-result'."
   (let ((mimetypes (cl-loop for elem in data if (keywordp elem) collect elem))
-        (result-params (alist-get :result-params params)))
+        (result-params (alist-get :result-params params))
+        itype)
     (cond
      ((memq :text/org mimetypes)
       (cons (unless (member "raw" result-params) "org")
@@ -285,18 +286,20 @@ an \"EXPORT markdown\" block. See `org-babel-insert-result'."
       ;; TODO: Handle other cases like this for other mimetypes
       (cons (unless (member "raw" result-params) "latex")
             (plist-get data :text/latex)))
-     ((memq :image/png mimetypes)
-      (let* ((data (plist-get data :image/png))
+     ((setq itype (cl-find-if (lambda (x) (memq x '(:image/png
+                                               :image/jpg
+                                               :image/svg+xml)))
+                              mimetypes))
+      (let* ((data (plist-get data itype))
              (overwrite (not (null (alist-get :file params))))
+             (encoded (memq itype '(:image/png :image/jpg)))
              (file (or (alist-get :file params)
-                       (org-babel-jupyter-file-name data "png"))))
-        (org-babel-jupyter--image-result data file overwrite 'b64-encoded)))
-     ((memq :image/svg+xml mimetypes)
-      (let* ((data (plist-get data :image/svg+xml))
-             (overwrite (not (null (alist-get :file params))))
-             (file (or (alist-get :file params)
-                       (org-babel-jupyter-file-name data "svg"))))
-        (org-babel-jupyter--image-result data file overwrite)))
+                       (org-babel-jupyter-file-name
+                        data (cl-case itype
+                               (:image/png "png")
+                               (:image/jpg "jpg")
+                               (:image/svg+xml "svg"))))))
+        (org-babel-jupyter--image-result data file overwrite encoded)))
      ((memq :text/plain mimetypes)
       (cons "scalar" (plist-get data :text/plain)))
      (t (warn "No supported mimetype found %s" mimetypes)))))
