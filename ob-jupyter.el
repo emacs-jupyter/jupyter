@@ -490,6 +490,11 @@ PARAMS."
               (if (eq result-type 'output)
                   (funcall add-result (mapconcat #'ansi-color-apply traceback "\n"))
                 (funcall add-result (format "%s: %s" ename (ansi-color-apply evalue)))))
+            (when async
+              ;; Run the hooks here instead of in the status message to prevent
+              ;; any delays
+              (org-with-point-at block-beginning
+                (run-hooks 'org-babel-after-execute-hook)))))
         '(:display-data :execute-result)
         (lambda (msg)
           (unless (eq result-type 'output)
