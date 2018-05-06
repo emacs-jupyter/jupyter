@@ -248,7 +248,7 @@ should be appended to the PARAMS list when to render RESULT.
 For example, if DATA only contains the mimetype `:text/markdown',
 the RESULT-PARAM will be
 
-    (:wrap . \"EXPORT markdown\")
+    (:wrap . \"SRC markdown\")
 
 and RESULT will be the markdown text which should be wrapped in
 an \"EXPORT markdown\" block. See `org-babel-insert-result'."
@@ -262,7 +262,9 @@ an \"EXPORT markdown\" block. See `org-babel-insert-result'."
      ((memq :text/html mimetypes)
       (let ((html (plist-get data :text/html)))
         (save-match-data
-          (if (string-match "^<img" html)
+          ;; Allow handling of non-string data but with an html mimetype at a
+          ;; higher level
+          (if (and (stringp html) (string-match "^<img" html))
               (let* ((dom (with-temp-buffer
                             (insert html)
                             (libxml-parse-html-region (point-min) (point-max))))
@@ -277,9 +279,9 @@ an \"EXPORT markdown\" block. See `org-babel-insert-result'."
                      (list mimetype data) metadata params))))
             (cons "html" (plist-get data :text/html))))))
      ((memq :text/markdown mimetypes)
-      (cons '(:wrap . "EXPORT markdown") (plist-get data :text/markdown)))
+      (cons '(:wrap . "SRC markdown") (plist-get data :text/markdown)))
      ((memq :text/latex mimetypes)
-      ;; TODO: Handle other cases like this for other mimetypes
+      ;; TODO: Take into account result-params for other mimetypes
       (cons (unless (member "raw" result-params) "latex")
             (plist-get data :text/latex)))
      ((setq itype (cl-find-if (lambda (x) (memq x '(:image/png
