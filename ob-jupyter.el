@@ -189,21 +189,16 @@ returned by `jupyter-find-kernelspecs' will be used."
       (user-error "No source block at point"))))
 
 (defun org-babel-jupyter-file-name (data ext)
-  "Return a file name based on DATA.
-DATA is usually the contents of an image to create a file name
-for. The generated absolute file name is based on the following:
-
-1. The value of `org-babel-jupyter-resource-directory'
-2. The `sha1' hash of DATA
-3. .EXT
-
-Where EXT should be the file extension to give the
-file (excluding the dot)."
+  "Return a file name based on DATA and EXT.
+`org-babel-jupyter-default-directory' is used as the directory
+name, the `sha1' hash of DATA is used as the base name, and EXT
+is used as the extension."
   (let ((dir (prog1 org-babel-jupyter-resource-directory
-               (unless (file-directory-p
-                        org-babel-jupyter-resource-directory)
-                 (make-directory org-babel-jupyter-resource-directory)))))
-    (concat (file-name-as-directory dir) (sha1 data) "." ext)))
+               (unless (file-directory-p org-babel-jupyter-resource-directory)
+                 (make-directory org-babel-jupyter-resource-directory))))
+        (ext (if (= (aref ext 0) ?.) ext
+               (concat "." ext))))
+    (concat (file-name-as-directory dir) (sha1 data) ext)))
 
 (defun org-babel-jupyter--image-result (data file &optional overwrite base64-encoded)
   "Possibly write DATA to FILE.
