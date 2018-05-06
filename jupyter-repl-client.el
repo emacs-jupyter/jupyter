@@ -582,9 +582,11 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
          (setq ov (jupyter-repl--insert-prompt
                    (format "Out [%d]:" count) 'jupyter-repl-output-prompt)
                props (list 'jupyter-cell (list 'out count))))
-       ;; Prevent the overlay from inheriting text properties
+       ;; Prevent the overlay from inheriting text properties. Front sticky to
+       ;; prevent inserting text at the beginning of the output cell before the
+       ;; insivible character.
        (jupyter-repl-insert
-        :properties '(invisible t) " "))
+        :properties '(invisible t front-sticky t) " "))
       ((eq type 'continuation)
        (setq ov (jupyter-repl--insert-prompt
                  ":" 'jupyter-repl-input-prompt)
@@ -842,15 +844,17 @@ Finalizing a cell involves the following steps:
 - Make the cell read-only"
   (let ((beg (jupyter-repl-cell-beginning-position))
         (count (jupyter-repl-cell-count)))
-    ;; Remove this property at the start of a cell so that text can't be
-    ;; inserted there when a cell is finalized.
-    (remove-text-properties beg (1+ beg) '(rear-nonsticky))
     (goto-char (point-max))
     (jupyter-repl-newline)
     (put-text-property (1- (point)) (point) 'jupyter-cell `(end ,count))
     (put-text-property beg (1+ beg) 'jupyter-request req)
+    ;; Remove this property so that text can't be inserted at the start of the
+    ;; cell or after any continuation prompts. See
+    ;; `jupyter-repl-insert-prompt'.
+    (remove-text-properties beg (point) '(rear-nonsticky))
     ;; font-lock-multiline to avoid improper syntactic elements from
     ;; spilling over to the rest of the buffer.
+    ;; TODO: I don't think this is a proper use of this text property
     (add-text-properties beg (point) '(read-only t font-lock-multiline t))))
 
 (defun jupyter-repl-replace-cell-code (new-code)
