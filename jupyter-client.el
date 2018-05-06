@@ -329,7 +329,7 @@ Any other command sent to the subprocess will be ignored."
           (let ((channel (cdr (assoc ctype ,channels))))
             (jupyter-start-channel
              channel :identity (jupyter-session-id (oref channel session)))
-            (zmq-poller-register ,poller (oref channel socket) zmq-POLLIN)
+            (zmq-poller-add ,poller (oref channel socket) zmq-POLLIN)
             ;; Let the channel start. This avoids problems with the initial
             ;; startup message for the python kernel. Sometimes we arent fast
             ;; enough to get this message.
@@ -338,7 +338,7 @@ Any other command sent to the subprocess will be ignored."
        (stop-channel
         (cl-destructuring-bind (ctype) args
           (let ((channel (cdr (assoc ctype ,channels))))
-            (zmq-poller-unregister ,poller (oref channel socket))
+            (zmq-poller-remove ,poller (oref channel socket))
             (jupyter-stop-channel channel)
             (zmq-prin1 (list 'stop-channel ctype)))))
        (quit
@@ -384,9 +384,9 @@ Any other command sent to the subprocess will be ignored."
               (timeout 20)
               (messages nil))
          (condition-case nil
-             (with-zmq-poller poller
+             (let ((poller (zmq-poller)))
                ;; Poll for stdin messages
-               (zmq-poller-register poller 0 zmq-POLLIN)
+               (zmq-poller-add poller 0 zmq-POLLIN)
                (zmq-prin1 '(start))
                (while t
                  (let ((events
@@ -398,12 +398,10 @@ Any other command sent to the subprocess will be ignored."
                      (setf (alist-get 0 events nil 'remove) nil)
                      (jupyter--ioloop-do-command poller channels))
                    ;; Queue received messages
-                   (dolist (sock (mapcar #'car events))
-                     (let ((channel
-                            (cdr (cl-find-if
-                                  (lambda (c) (eq (oref (cdr c) socket) sock))
-                                  channels))))
-                       (push (cons (oref channel type) (jupyter-recv channel)) messages)))
+                   (dolist (type-channel channels)
+                     (cl-destructuring-bind (type . channel) type-channel
+                       (when (zmq-assoc (oref channel socket) events)
+                         (push (cons type (jupyter-recv channel)) messages))))
                    (if events
                        ;; When messages have been received, reset idle counter
                        ;; and shorten polling timeout

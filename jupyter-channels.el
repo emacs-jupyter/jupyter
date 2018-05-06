@@ -97,9 +97,8 @@ receiving messages on this channel.")
 
 (cl-defmethod jupyter-stop-channel ((channel jupyter-sync-channel))
   (when (jupyter-channel-alive-p channel)
-    (condition-case nil
-        (zmq-close (oref channel socket))
-      (zmq-ENOENT nil))
+    (zmq-socket-set (oref channel socket) zmq-LINGER 0)
+    (zmq-close (oref channel socket))
     (oset channel socket nil)))
 
 (cl-defmethod jupyter-stop-channel ((channel jupyter-async-channel))
@@ -279,7 +278,7 @@ channel, starts the timer."
                          (setq no-response-count 0)
                          (oset channel beating t))
                      (oset channel beating nil)
-                     (zmq-socket-set sock zmq-LINGER 0)
+                     ;; Reset the connection
                      (zmq-close sock)
                      (setq sock (jupyter-connect-channel
                                  :hb (oref channel endpoint) identity))
