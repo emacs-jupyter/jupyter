@@ -87,10 +87,19 @@
      (if (stringp object) object (json-encode-plist object)) 'utf-8)))
 
 (defun jupyter--decode (str)
-  (let ((json-object-type 'plist)
-        (json-array-type 'list)
-        (json-false nil))
-    (json-read-from-string (decode-coding-string str 'utf-8))))
+  (setq str (decode-coding-string str 'utf-8))
+  (let* ((json-object-type 'plist)
+         (json-array-type 'list)
+         (json-false nil)
+         (val (condition-case nil
+                  (json-read-from-string str)
+                ;; If it can't be read as JSON, assume its just a regular
+                ;; string
+                (json-unknown-keyword str))))
+    (prog1 val
+      (let ((date (plist-get val :date)))
+        (when date
+          (plist-put val :date (jupyter--decode-time date)))))))
 
 (defun jupyter--decode-time (str)
   (let* ((time (date-to-time str)))
@@ -142,23 +151,15 @@
   (cl-destructuring-bind
       (header parent-header metadata content &optional buffers)
       (cdr parts)
-    (let ((header (jupyter--decode header))
-          (parent-header (jupyter--decode parent-header)))
-      ;; Decode dates to time objects as returned by `current-time'
-      (mapc (lambda (plist)
-           (let ((date (plist-get plist :date)))
-             (when date
-               (plist-put
-                plist :date (jupyter--decode-time date)))))
-         (list header parent-header))
-      (list
-       :header header
-       :msg_id (plist-get header :msg_id)
-       :msg_type (plist-get header :msg_type)
-       :parent_header parent-header
-       :metadata (jupyter--decode metadata)
-       :content (jupyter--decode content)
-       :buffers buffers))))
+    (setq header (jupyter--decode header))
+    (list
+     :header header
+     :msg_id (plist-get header :msg_id)
+     :msg_type (plist-get header :msg_type)
+     :parent_header (jupyter--decode parent-header)
+     :metadata (jupyter--decode metadata)
+     :content (jupyter--decode content)
+     :buffers buffers)))
 
 ;;; Sending/receiving
 
