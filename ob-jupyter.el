@@ -144,7 +144,7 @@ the header variables in PARAMS."
         (current-buffer)))))
 
 (defun org-babel-jupyter-initiate-session-by-key (session params)
-  "Return the `jupyter-repl-client' for SESSION.
+  "Return the `jupyter-repl-client' buffer for SESSION.
 If SESSION does not have a client already, one is created based
 on SESSION and PARAMS. If SESSION ends with \".json\" then
 SESSION is interpreted as a kernel connection file and a new
@@ -153,8 +153,9 @@ based on the `:kernel' parameter in PARAMS which should be either
 a valid kernel name or a prefix of one. The first kernel that is
 returned by `jupyter-find-kernelspecs' will be used."
   (let* ((kernel (alist-get :kernel params))
-         (key (concat session "-" kernel)))
-    (oref (or (gethash key org-babel-jupyter-session-clients)
+         (key (concat session "-" kernel))
+         (client
+          (or (gethash key org-babel-jupyter-session-clients)
               (let ((client (if (string-suffix-p ".json" session)
                                 (connect-jupyter-repl session)
                               (run-jupyter-repl kernel))))
@@ -170,8 +171,8 @@ returned by `jupyter-find-kernelspecs' will be used."
                    (lambda ()
                      (remhash key org-babel-jupyter-session-clients))
                    nil t))
-                (puthash key client org-babel-jupyter-session-clients)))
-          buffer)))
+                (puthash key client org-babel-jupyter-session-clients)))))
+    (oref client buffer)))
 
 (defun org-babel-jupyter-initiate-session (&optional session params)
   "Initialize a Jupyter SESSION according to PARAMS."
