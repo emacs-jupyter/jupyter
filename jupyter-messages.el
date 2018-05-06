@@ -46,9 +46,14 @@
 (defun jupyter--sign-message (session parts)
   (if (> (length (jupyter-session-key session)) 0)
       (cl-loop
-       for b across (hmac-sha256 (mapconcat #'identity parts "")
-                                 (jupyter-session-key session))
-       concat (format "%02x" b))
+       for byte across (hmac-sha256
+                        ;; NOTE: Encoding to a unibyte representation due to an
+                        ;; "Attempt to change byte length of a string" error.
+                        (encode-coding-string
+                         (mapconcat #'identity parts "") 'utf-8 t)
+                        (encode-coding-string
+                         (jupyter-session-key session) 'utf-8 t))
+       concat (format "%02x" byte))
     ""))
 
 (defun jupyter--split-identities (parts)
@@ -84,7 +89,7 @@
                      ((eq keyword json-false) "false")
                      ((eq keyword json-null)  "{}")))))
     (encode-coding-string
-     (if (stringp object) object (json-encode-plist object)) 'utf-8)))
+     (if (stringp object) object (json-encode-plist object)) 'utf-8 t)))
 
 (defun jupyter--decode (str)
   (setq str (decode-coding-string str 'utf-8))
