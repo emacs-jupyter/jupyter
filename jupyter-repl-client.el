@@ -1522,21 +1522,29 @@ displayed without anything showing up in the REPL buffer."
                                       (xterm-color-filter evalue)))))
         :execute-result
         (lambda (msg)
-          (let ((res (jupyter-message-data msg :text/plain)))
-            (when res
-              (if (and (jupyter-repl-multiline-p res)
-                       (cl-loop
-                        with nlines = 0
-                        for c across res when (eq c ?\n) do (cl-incf nlines)
-                        thereis (> nlines 10)))
-                  (with-current-buffer
-                      (get-buffer-create "*jupyter-repl-result*")
-                    (erase-buffer)
-                    (insert res)
-                    (goto-char (point-min))
-                    (display-buffer (current-buffer)))
-                (if (equal res "") (message "jupyter: eval done")
-                  (message res)))))))
+          (let ((res (jupyter-message-data msg :text/plain))
+                (inhibit-read-only t))
+            ;; Prioritize the text representation
+            (if res
+                (if (and (jupyter-repl-multiline-p res)
+                         (cl-loop
+                          with nlines = 0
+                          for c across res when (eq c ?\n) do (cl-incf nlines)
+                          thereis (> nlines 10)))
+                    (with-current-buffer
+                        (get-buffer-create "*jupyter-repl-result*")
+                      (erase-buffer)
+                      (insert res)
+                      (goto-char (point-min))
+                      (switch-to-buffer-other-window (current-buffer)))
+                  (if (equal res "") (message "jupyter: eval done")
+                    (message res)))
+              (with-current-buffer
+                  (get-buffer-create "*jupyter-repl-result*")
+                (erase-buffer)
+                (jupyter-repl-insert-data (jupyter-message-get msg :data))
+                (goto-char (point-min))
+                (switch-to-buffer-other-window (current-buffer)))))))
       req)))
 
 (defun jupyter-repl-eval-file (file)
