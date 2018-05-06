@@ -411,7 +411,7 @@ Any other command sent to the subprocess will be ignored."
                        ;; If no messages have been received for 100 polling
                        ;; periods, lengthen timeout so as to not waste CPU
                        ;; cycles
-                       (setq timeout 100))
+                       (setq timeout 5000))
                      ;; Send queued messages.
                      ;;
                      ;; Pool at least some messages, but not at the cost of

@@ -271,18 +271,19 @@ channel, starts the timer."
                (let ((sock (oref channel socket)))
                  (when sent
                    (setq sent nil)
-                   (if (condition-case nil
-                           (zmq-recv sock zmq-NOBLOCK)
-                         ((zmq-EINTR zmq-EAGAIN) nil))
-                       (progn
-                         (setq no-response-count 0)
-                         (oset channel beating t))
-                     (oset channel beating nil)
+                   (oset channel beating
+                         (condition-case nil
+                             (and (zmq-recv sock zmq-NOBLOCK) t)
+                           ((zmq-EINTR zmq-EAGAIN) nil)))
+                   (if (oref channel beating)
+                       (setq no-response-count 0)
                      ;; Reset the connection
                      (zmq-close sock)
                      (setq sock (jupyter-connect-channel
                                  :hb (oref channel endpoint) identity))
                      (oset channel socket sock)
+                     ;; Pause the channel when it has been unresponsive after a
+                     ;; cetain number of time-to-dead periods
                      (if (< no-response-count 5)
                          (setq no-response-count (1+ no-response-count))
                        (oset channel paused t)

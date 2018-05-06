@@ -414,14 +414,14 @@ PARAMS."
                 body params (org-babel-variable-assignments:jupyter
                              params kernel-lang)
                 kernel-lang))
-         (req (with-jupyter-repl-buffer client
+         (req (with-current-buffer repl-buffer
                 (goto-char (point-max))
                 (jupyter-repl-replace-cell-code code)
                 (let ((jupyter-inhibit-handlers
                        '(:stream
                          :execute-reply :execute-result
                          :display-data :error)))
-                  (jupyter-execute-request jupyter-repl-current-client)))))
+                  (jupyter-execute-request client)))))
     ;; Setup callbacks for the request
     (let* ((result-type (alist-get :result-type params))
            (no-results (member "none" (alist-get :result-params params)))

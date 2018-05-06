@@ -351,7 +351,7 @@ all channels listening for messages and the heartbeat channel
 un-paused. Note that the client's `parent-instance' slot will
 also be set to the kernel manager instance, see
 `jupyter-make-client'."
-  (setq client-class (or client-class 'jupyter-kernel-client))
+  (or client-class (setq client-class 'jupyter-kernel-client))
   (unless (child-of-class-p client-class 'jupyter-kernel-client)
     (signal 'wrong-type-argument
             (list '(subclass jupyter-kernel-client) client-class)))
@@ -385,7 +385,10 @@ also be set to the kernel manager instance, see
           (let* ((jupyter-inhibit-handlers t)
                  (info (jupyter-wait-until-received :kernel-info-reply
                          (jupyter-kernel-info-request client)
-                         2)))
+                         ;; TODO: Make this timeout configurable? The python
+                         ;; kernel starts up fast, but the Julia kernel not so
+                         ;; much.
+                         5)))
             (if info (oset manager kernel-info (jupyter-message-content info))
               (error "Kernel did not respond to kernel-info request"))
             (progress-reporter-done reporter))

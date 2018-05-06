@@ -317,7 +317,7 @@ In addition to fontifying STR, if MODE has a non-default
     (jupyter-repl-add-font-lock-properties (point-min) (point-max))
     (when (not (memq fill-forward-paragraph-function
                      '(forward-paragraph)))
-      (fill-region (point-min) (point-max)))
+      (fill-region (point-min) (point-max) t 'nosqueeze))
     (buffer-string)))
 
 (defun jupyter-repl-insert (&rest args)
@@ -378,6 +378,9 @@ can contain the following keywords along with their values:
        (jupyter-repl-fixup-font-lock-properties)
        (string-trim (buffer-string))))))
 
+(defvar markdown-hide-markup)
+(defvar markdown-hide-urls)
+(defvar markdown-fontify-code-blocks-natively)
 (defun jupyter-repl-insert-markdown (text)
   "Insert TEXT, fontifying it using `markdown-mode' first."
   (jupyter-repl-insert
@@ -385,6 +388,8 @@ can contain the following keywords along with their values:
          (markdown-hide-urls t)
          (markdown-fontify-code-blocks-natively t))
      (jupyter-repl-fontify-according-to-mode 'markdown-mode text))))
+
+(defvar org-format-latex-options)
 
 (defun jupyter-repl-insert-latex (tex)
   "Generate and insert a LaTeX image based on TEX.
@@ -1399,9 +1404,10 @@ respond before returning nil."
       (cl-destructuring-bind (&key status found data &allow-other-keys)
           (jupyter-message-content msg)
         (when (and (equal status "ok") found)
-          (if buffer (with-current-buffer buffer
-                       (jupyter-repl-insert-data data)
-                       buffer)
+          (if buffer
+              (with-current-buffer buffer
+                (prog1 buffer
+                  (jupyter-repl-insert-data data)))
             (with-temp-buffer
               (jupyter-repl-insert-data data)
               (buffer-string))))))))
