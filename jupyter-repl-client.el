@@ -753,7 +753,9 @@ ARG is the number of cells to move and defaults to 1."
 ARG is the number of cells to move and defaults to 1."
   (interactive "^p")
   (or arg (setq arg 1))
-  (goto-char (jupyter-repl-cell-beginning-position))
+  ;; Ignore the case when `point' is in the output of a cell, in this case
+  ;; `jupyter-repl-previous-cell' will go to the previous cell.
+  (ignore-errors (goto-char (jupyter-repl-cell-beginning-position)))
   (jupyter-repl-previous-cell arg)
   (goto-char (jupyter-repl-cell-code-beginning-position)))
 
