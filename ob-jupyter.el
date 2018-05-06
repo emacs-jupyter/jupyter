@@ -376,11 +376,15 @@ results when rendering scalar data for a python code block.
 RENDER-RESULT is the cons cell returned by
 `org-babel-jupyter-prepare-result' and KERNEL-LANG is the kernel
 language."
-  (cl-destructuring-bind (render-param . result) render-result
+  (let ((render-param (or (car render-result) "scalar"))
+        (result (cdr render-result)))
     (cond
      ((and (equal render-param "scalar") (equal kernel-lang "python"))
-      (cons "scalar" (org-babel-python-table-or-string result)))
-     (t render-result))))
+      (cons "scalar" (when result (org-babel-python-table-or-string result))))
+     (t
+      (if (equal render-param "scalar")
+          (cons "scalar" (when result (org-babel-script-escape result)))
+        render-result)))))
 
 (defun org-babel-jupyter-insert-results (results params kernel-lang)
   "Insert RESULTS at the current source block location.
