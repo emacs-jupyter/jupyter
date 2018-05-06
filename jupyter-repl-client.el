@@ -378,16 +378,53 @@ can contain the following keywords along with their values:
        (jupyter-repl-fixup-font-lock-properties)
        (string-trim (buffer-string))))))
 
+;; Markdown integration
+
 (defvar markdown-hide-markup)
 (defvar markdown-hide-urls)
 (defvar markdown-fontify-code-blocks-natively)
+
+(defvar jupyter-repl-markdown-mouse-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map [return] 'jupyter-repl-markdown-follow-link-at-point)
+    (define-key map [follow-link] 'mouse-face)
+    (define-key map [mouse-2] 'jupyter-repl-markdown-follow-link-at-point)
+    map))
+
+(defun jupyter-repl-markdown-follow-link-at-point ()
+  "Handle markdown links specially."
+  (interactive)
+  (let ((link (markdown-link-at-pos (point))))
+    ;; TODO: How to generalize this to kernels which do not utilize markdown in
+    ;; their docstrings? Maybe if you do M-RET on a symbol it will call the
+    ;; help function on it. For example in the python kernel, you can pull up
+    ;; help on a symbol by calling the help function on it or appending a
+    ;; question mark at the end of the symbol.
+    (if (and (string= (nth 3 link) "@ref")
+             (eq jupyter-repl-lang-mode 'julia-mode))
+        ;; Links have the form `fun`
+        (let ((fun (substring (nth 2 link) 1 -1)))
+          (goto-char (point-max))
+          (jupyter-repl-replace-cell-code (concat "?" fun))
+          (jupyter-repl-ret))
+      (markdown-follow-link-at-point))))
+
 (defun jupyter-repl-insert-markdown (text)
   "Insert TEXT, fontifying it using `markdown-mode' first."
-  (jupyter-repl-insert
-   (let ((markdown-hide-markup t)
-         (markdown-hide-urls t)
-         (markdown-fontify-code-blocks-natively t))
-     (jupyter-repl-fontify-according-to-mode 'markdown-mode text))))
+  (let ((pos (point)))
+    (jupyter-repl-insert
+     (let ((markdown-hide-markup t)
+           (markdown-hide-urls t)
+           (markdown-fontify-code-blocks-natively t))
+       (jupyter-repl-fontify-according-to-mode 'markdown-mode text)))
+    ;; Update keymaps
+    (let ((limit (point)) next)
+      (setq pos (next-single-property-change pos 'keymap nil limit))
+      (while (/= pos limit)
+        (setq next (next-single-property-change pos 'keymap nil limit))
+        (when (eq (get-text-property pos 'keymap) markdown-mode-mouse-map)
+          (put-text-property pos next 'keymap jupyter-repl-markdown-mouse-map))
+        (setq pos next)))))
 
 (defvar org-format-latex-options)
 
