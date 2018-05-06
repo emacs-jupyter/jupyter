@@ -1506,7 +1506,8 @@ displayed without anything showing up in the REPL buffer."
     (unless (= (save-excursion (jupyter-repl-previous-cell)) 0)
       (jupyter-repl-insert-prompt 'in))
     (setq str (string-trim str))
-    (let* ((jupyter-inhibit-handlers silently)
+    (let* ((jupyter-inhibit-handlers
+            (or silently '(:execute-reply :execute-result)))
            (req (jupyter-execute-request jupyter-repl-current-client
                   :code (if silently (string-trim str)
                           (prog1 nil
