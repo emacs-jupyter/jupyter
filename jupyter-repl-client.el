@@ -461,6 +461,10 @@ image."
   "Insert TEXT, converting ANSI color codes to font lock faces."
   (setq text (xterm-color-filter text))
   (jupyter-repl-add-font-lock-properties 0 (length text) text)
+  ;; NOTE: Mark text with a specific syntax class so that string characters do
+  ;; not get registered as strings. This requires
+  ;; `parse-sexp-lookup-properties' to be non-nil.
+  (add-text-properties 0 (length text) '(syntax-table (3)) text)
   (jupyter-repl-insert text))
 
 (defun jupyter-repl-insert-data (data)
@@ -1784,10 +1788,23 @@ in the appropriate direction, to the saved element."
 Extract `font-lock-defaults' from the `jupyter-repl-lang-buffer',
 set it as the `font-lock-defaults' of the `current-buffer' and
 call the function `font-lock-mode'."
-  (let (fld)
+  (let (fld sff)
     (with-jupyter-repl-lang-buffer
-      (setq fld font-lock-defaults))
-    (setq font-lock-defaults fld)
+      (setq fld font-lock-defaults
+            sff font-lock-syntactic-face-function))
+    (setq
+     font-lock-defaults
+     (apply #'list (nth 0 fld) (nth 1 fld) (nth 2 fld) (nth 3 fld) (nth 4 fld)
+            (append
+             (nthcdr 5 fld)
+             (list
+              (cons 'font-lock-syntactic-face-function
+                    ;; Only fontify syntactically when the text does
+                    ;; not have a font-lock-face property
+                    (lambda (state)
+                      (unless (get-text-property
+                               (nth 8 state) 'font-lock-face)
+                        (when sff (funcall sff state)))))))))
     (font-lock-mode)))
 
 (defun jupyter-repl-insert-banner (banner)
