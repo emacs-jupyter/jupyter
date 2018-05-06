@@ -1662,6 +1662,18 @@ in the appropriate direction, to the saved element."
 
 ;;; `jupyter-repl-mode'
 
+(defun jupyter-repl-scratch-buffer ()
+  "Display a scratch buffer associated with the current REPL buffer."
+  (interactive)
+  (if (jupyter-repl-connected-p)
+      (let ((client jupyter-repl-current-client))
+        (with-current-buffer (get-buffer-create
+                              (concat "*jupyter-scratch*"))
+          (funcall (jupyter-repl-language-mode client))
+          (jupyter-repl-associate-buffer client)
+          (pop-to-buffer (current-buffer))))
+    (error "Not in a valid REPL buffer")))
+
 (defvar jupyter-repl-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map "q" nil)
