@@ -756,11 +756,11 @@ are taken:
         (if (not req)
             (when (jupyter-get client 'jupyter-include-other-output)
               (jupyter--run-handler-maybe client channel req msg))
-          (setf (jupyter-request-last-message-time req) (current-time))
           (unwind-protect
               (jupyter--run-callbacks req msg)
             (unwind-protect
                 (jupyter--run-handler-maybe client channel req msg)
+              (setf (jupyter-request-last-message-time req) (current-time))
               (when (jupyter-message-status-idle-p msg)
                 (setf (jupyter-request-idle-received-p req) t))
               (jupyter--drop-idle-requests client))))))))
