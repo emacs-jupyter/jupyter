@@ -33,7 +33,6 @@
   :group 'processes)
 
 (require 'jupyter-base)
-(require 'jupyter-connection)
 (require 'jupyter-client)
 (require 'jupyter-kernelspec)
 (require 'jupyter-repl-client)

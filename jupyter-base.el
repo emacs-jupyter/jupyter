@@ -158,14 +158,17 @@ from the kernel.")
                (:constructor nil)
                (:constructor
                 jupyter-session
-                (&key (id (jupyter-new-uuid))
-                      (key nil))))
+                (&key
+                 (conn-info nil)
+                 (id (jupyter-new-uuid))
+                 (key nil))))
   "A `jupyter-session' holds the information needed to
 authenticate messages. Each `jupyter-session' should have a
 unique ID which is used as the `zmq-ROUTING-ID' for every
 `jupyter-channel' socket that utilizes the session object. The
 KEY of a `jupyter-session' is used for message signing. Message
 signing is not done if the KEY of a `jupyter-session' is empty."
+  (conn-info nil :read-only t)
   (id nil :read-only t)
   (key nil :read-only t))
 
@@ -217,6 +220,72 @@ following fields:
         (while (null (jupyter-request--id req))
           (sleep-for 0 10))
         (jupyter-request--id req))))
+
+;;; Connecting to a kernel's channels
+
+(cl-defun jupyter-create-connection-info (&key
+                                          (kernel-name "python")
+                                          (transport "tcp")
+                                          (ip "127.0.0.1")
+                                          (signature-scheme "hmac-sha256")
+                                          (key (jupyter-new-uuid))
+                                          (hb-port 0)
+                                          (stdin-port 0)
+                                          (control-port 0)
+                                          (shell-port 0)
+                                          (iopub-port 0))
+  "Create a connection info plist used to connect to a kernel.
+
+The plist has the standard keys found in the jupyter spec. See
+http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files.
+A port number of 0 for a channel means to use a randomly assigned
+port for that channel."
+  (unless (or (= (length key) 0)
+              (equal signature-scheme "hmac-sha256"))
+    (error "Only hmac-sha256 signing is currently supported"))
+  (append
+   (list :kernel_name kernel-name
+         :transport transport
+         :ip ip)
+   (when (> (length key) 0)
+     (list :signature_scheme signature-scheme
+           :key key))
+   (cl-loop
+    with sock = (zmq-socket (zmq-current-context) zmq-REP)
+    with addr = (concat transport "://" ip)
+    for (channel . port) in `((:hb_port . ,hb-port)
+                              (:stdin_port . ,stdin-port)
+                              (:control_port . ,control-port)
+                              (:shell_port . ,shell-port)
+                              (:iopub_port . ,iopub-port))
+    collect channel and
+    if (= port 0) do (setq port (zmq-bind-to-random-port sock addr))
+    and collect port and
+    do (zmq-unbind sock (zmq-socket-get sock zmq-LAST-ENDPOINT)) else
+    collect port
+    finally (zmq-close sock))))
+
+(defun jupyter-connect-endpoint (type endpoint &optional identity)
+  "Create socket with TYPE and connect to ENDPOINT.
+If IDENTITY is non-nil, it will be set as the ROUTING-ID of the
+socket. Return the created socket."
+  (let ((sock (zmq-socket (zmq-current-context) type)))
+    (prog1 sock
+      (zmq-socket-set sock zmq-LINGER 1000)
+      (when identity
+        (zmq-socket-set sock zmq-ROUTING-ID identity))
+      (zmq-connect sock endpoint))))
+
+(defun jupyter-connect-channel (ctype endpoint &optional identity)
+  "Create a socket based on a Jupyter channel type.
+CTYPE is one of the symbols `:hb', `:stdin', `:shell',
+`:control', or `:iopub' and represents the type of channel to
+connect to ENDPOINT. If IDENTITY is non-nil, it will be set as
+the ROUTING-ID of the socket. Return the created socket."
+  (let ((sock-type (plist-get jupyter-socket-types ctype)))
+    (unless sock-type
+      (error "Invalid channel type (%s)" ctype))
+    (jupyter-connect-endpoint sock-type endpoint identity)))
 
 (provide 'jupyter-base)
 

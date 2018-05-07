@@ -30,7 +30,6 @@
 ;;; Code:
 
 (require 'jupyter-base)
-(require 'jupyter-connection)
 (require 'jupyter-messages)
 (require 'jupyter-client)
 
@@ -40,11 +39,16 @@
   "Jupyter kernel manager"
   :group 'jupyter)
 
-(defclass jupyter-kernel-manager (jupyter-connection)
+(defclass jupyter-kernel-manager ()
   ((name
     :initarg :name
     :type string
     :documentation "The name of the kernel that is being managed.")
+   (session
+    :type jupyter-session
+    :initarg :session
+    :documentation "The session object used to sign and
+send/receive messages.")
    (conn-file
     :type (or null string)
     :documentation "The absolute path of the connection file when
@@ -61,6 +65,7 @@ alive.")
 interrupt requests to the kernel.")
    (spec
     :type (or null json-plist)
+    :initarg :spec
     :initform nil
     :documentation "The kernelspec used to start/restart the kernel.")))
 
@@ -80,24 +85,6 @@ default kernel is a python kernel."
     (delete-process (oref manager kernel)))
   (jupyter-stop-channels manager))
 
-(cl-defmethod slot-unbound ((manager jupyter-kernel-manager) _class slot-name _fn)
-  "Set default values for the SESSION and CONN-INFO slots of MANAGER.
-When a MANAGER's `jupyter-connection' slots are missing set them
-to their default values. For the `session' slot, set it to a new
-`jupyter-session' with `:key' set to a new UUID. For the
-`conn-info' slot, set it to the plist returned by a call to
-`jupyter-create-connection-info' with `:kernel-name' being the
-MANAGER's name slot and `:key' being the key of MANAGER's
-session."
-  (cond
-   ((eq slot-name 'session)
-    (oset manager session (jupyter-session :key (jupyter-new-uuid))))
-   ((eq slot-name 'conn-info)
-    (oset manager conn-info (jupyter-create-connection-info
-                             :kernel-name (oref manager name)
-                             :key (jupyter-session-key (oref manager session)))))
-   (t (cl-call-next-method))))
-
 (cl-defgeneric jupyter-make-client ((manager jupyter-kernel-manager) class &rest slots)
   "Make a new client from CLASS connected to MANAGER's kernel.
 SLOTS are the slots used to initialize the client with.")
@@ -106,15 +93,13 @@ SLOTS are the slots used to initialize the client with.")
   "Make a new client from CLASS connected to MANAGER's kernel.
 CLASS should be a subclass of `jupyter-kernel-client', a new
 instance of CLASS initialized with SLOTS and configured to
-connect to MANAGER's kernel. The returned `jupyter-kernel-client'
-will have MANAGER set as its `parent-instance' slot, see
-`jupyter-connection'."
+connect to MANAGER's kernel."
   (unless (child-of-class-p class 'jupyter-kernel-client)
     (signal 'wrong-type-argument (list '(subclass jupyter-kernel-client) class)))
   (let ((client (apply #'make-instance class slots)))
-    (oset client parent-instance manager)
-    (jupyter-initialize-connection client)
-    client))
+    (prog1 client
+      (jupyter-initialize-connection client (oref manager session))
+      (oset client manager manager))))
 
 (defun jupyter--kernel-sentinel (manager kernel _event)
   "Cleanup resources after kernel shutdown.
@@ -196,71 +181,67 @@ kernel. Starting a kernel involves the following steps:
    the {connection_file} argument in the kernelspec argument
    vector of the kernel."
   (unless (jupyter-kernel-alive-p manager)
-    (let ((kname-spec (jupyter-find-kernelspecs (oref manager name))))
-      (unless kname-spec
-        (error "No kernel found that starts with name (%s)" (oref manager name)))
-      (cl-destructuring-bind (kernel-name . (resource-dir . spec)) (car kname-spec)
-        ;; Ensure we use the full name of the kernel since
-        ;; `jupyter-find-kernelspec' accepts a prefix of a kernel
-        (oset manager name kernel-name)
-        (oset manager spec spec)
-        ;; NOTE: `jupyter-connection' fields are shared between other
-        ;; `jupyter-connection' objects. The `jupyter-kernel-manager' sets
-        ;; defaults for these when their slots are unbound, see `slot-unbound'.
-        (let* ((reporter (make-progress-reporter
-                          (format "Starting %s kernel..." kernel-name)))
-               ;; session is set in the `slot-unbound' the method
-               (key (jupyter-session-key (oref manager session)))
-               (conn-file (expand-file-name
-                           (concat "kernel-" key ".json")
-                           jupyter-runtime-directory)))
-          ;; Write the connection info file
-          (with-temp-file (oset manager conn-file conn-file)
-            (let ((json-encoding-pretty-print t))
-              ;; conn-info is set in `slot-unbound' the method
-              (insert (json-encode-plist (oref manager conn-info)))))
-          ;; Start the process
-          (let ((atime (nth 4 (file-attributes conn-file)))
-                (proc (jupyter--start-kernel
-                       manager kernel-name (plist-get spec :env)
-                       (cl-loop
-                        for arg in (plist-get spec :argv)
-                        if (equal arg "{connection_file}")
-                        collect conn-file
-                        else if (equal arg "{resource_dir}")
-                        collect resource-dir
-                        else collect arg))))
-            ;; Block until the kernel reads the connection file
-            (with-timeout
-                ((or timeout 5)
-                 (delete-process proc)
-                 (error "Kernel did not read connection file within timeout"))
-              (while (equal atime (nth 4 (file-attributes conn-file)))
-                (progress-reporter-update reporter)
-                (sleep-for 0 200)))
-            (oset manager kernel proc)
-            (oset manager conn-file (expand-file-name
-                                     (format "kernel-%d.json" (process-id proc))
-                                     jupyter-runtime-directory))
-            ;; Gaurd against a kernel that dies after starting. For example,
-            ;; the Julia kernel JuliaLang/IJulia.jl/issues/596 on Julia 0.6.0
-            (when (process-live-p proc)
-              (rename-file conn-file (oref manager conn-file)))
-            (jupyter-start-channels manager)
-            (progress-reporter-done reporter)
-            manager))))))
+    (cl-destructuring-bind (kernel-name . (resource-dir . spec))
+        (car (jupyter-find-kernelspecs (oref manager name)))
+      (let* ((session (oref manager session))
+             (key (jupyter-session-key session))
+             (conn-info (jupyter-session-conn-info session))
+             (conn-file (expand-file-name
+                         (concat "kernel-" key ".json")
+                         jupyter-runtime-directory))
+             (reporter (make-progress-reporter
+                        (format "Starting %s kernel..." kernel-name))))
+        ;; Write the connection info file
+        (with-temp-file conn-file
+          (let ((json-encoding-pretty-print t))
+            (insert (json-encode-plist conn-info))))
+        ;; Start the process
+        (let ((atime (nth 4 (file-attributes conn-file)))
+              (proc (jupyter--start-kernel
+                     manager kernel-name (plist-get spec :env)
+                     (cl-loop
+                      for arg in (plist-get spec :argv)
+                      if (equal arg "{connection_file}")
+                      collect conn-file
+                      else if (equal arg "{resource_dir}")
+                      collect resource-dir
+                      else collect arg))))
+          ;; TODO: This is not reliable.
+          ;;
+          ;; Block until the kernel reads the connection file
+          (with-timeout
+              ((or timeout 5)
+               (delete-process proc)
+               (delete-file conn-file)
+               (error "Kernel did not read connection file within timeout"))
+            ;; TODO: This may fail on some systems see `file-attributes'
+            (while (equal atime (nth 4 (file-attributes conn-file)))
+              (progress-reporter-update reporter)
+              (sleep-for 0 200)))
+          (oset manager kernel proc)
+          (oset manager conn-file (expand-file-name
+                                   (format "kernel-%d.json" (process-id proc))
+                                   jupyter-runtime-directory))
+          ;; Gaurd against a kernel that dies after starting. For example,
+          ;; the Julia kernel JuliaLang/IJulia.jl/issues/596 on Julia 0.6.0
+          (when (process-live-p proc)
+            (rename-file conn-file (oref manager conn-file)))
+          (jupyter-start-channels manager)
+          (progress-reporter-done reporter)
+          manager)))))
 
 (cl-defmethod jupyter-start-channels ((manager jupyter-kernel-manager))
   "Start a control channel on MANAGER."
-  (let ((channel (oref manager control-channel)))
+  (let ((session (oref manager session))
+        (channel (oref manager control-channel)))
     (if channel
         (unless (jupyter-channel-alive-p channel)
-          (jupyter-start-channel
-           channel :identity (jupyter-session-id (oref manager session))))
-      (let ((conn-info (oref manager conn-info)))
+          (jupyter-start-channel channel :identity (jupyter-session-id session)))
+      (let ((conn-info (jupyter-session-conn-info session)))
         (oset manager control-channel
               (jupyter-sync-channel
                :type :control
+               :session session
                :endpoint (format "%s://%s:%d"
                                  (plist-get conn-info :transport)
                                  (plist-get conn-info :ip)
@@ -343,60 +324,76 @@ of `jupyer-kernel-client' and will be used to initialize a new
 client connected to the kernel. CLIENT-CLASS defaults to
 `jupyter-kernel-client'.
 
-Return a cons cell (KM . KC) where KM is the
+Return a list (KM KC INFO) where KM is the
 `jupyter-kernel-manager' that manages the lifetime of the kernel
 subprocess. KC is a new client connected to the kernel whose
 class is CLIENT-CLASS. The client is connected to the kernel with
 all channels listening for messages and the heartbeat channel
-un-paused. Note that the client's `parent-instance' slot will
-also be set to the kernel manager instance, see
-`jupyter-make-client'."
+unpaused. Note that the client's `manager' slot will also be set
+to the kernel manager instance, see `jupyter-make-client'.
+Finally, INFO is the kernel info plist obtained from a
+`:kernel-info-request'."
   (or client-class (setq client-class 'jupyter-kernel-client))
   (unless (child-of-class-p client-class 'jupyter-kernel-client)
     (signal 'wrong-type-argument
             (list '(subclass jupyter-kernel-client) client-class)))
-  (let* ((manager (jupyter-kernel-manager :name kernel-name))
-         (client (jupyter-make-client manager client-class)))
-    (unwind-protect
-        (let (reporter)
-          (jupyter-start-channels client)
-          (jupyter-hb-unpause (oref client hb-channel))
-          ;; Ensure that the necessary hooks to catch the startup message are
-          ;; in place before starting the kernel.
-          ;;
-          ;; NOTE: Startup messages have no parent header, hence the need for
-          ;; `jupyter-include-other-output'.
-          (let* ((jupyter-include-other-output t)
-                 (started nil)
-                 (cb (lambda (msg)
-                       (setq started
-                             (equal (jupyter-message-get msg :execution_state)
-                                    "starting")))))
-            (jupyter-add-hook client 'jupyter-iopub-message-hook cb)
-            (jupyter-start-kernel manager 10)
-            (setq reporter (make-progress-reporter "Kernel starting up..."))
-            (with-timeout (10 (error "Kernel did not send startup message"))
-              (while (not started)
-                (progress-reporter-update reporter)
-                (sleep-for 0.02))
+
+  (let ((match (car (jupyter-find-kernelspecs kernel-name))))
+    (unless match
+      (error "No kernel found that starts with name (%s)" kernel-name))
+    (setq kernel-name (car match))
+
+    (let* ((key (jupyter-new-uuid))
+           (conn-info (jupyter-create-connection-info
+                       :kernel-name kernel-name :key key))
+           (session (jupyter-session :key key :conn-info conn-info))
+           (manager (jupyter-kernel-manager
+                     :name kernel-name
+                     :spec (cddr match)
+                     :session session))
+           (client (jupyter-make-client manager client-class))
+           kernel-info)
+      (unwind-protect
+          (let (reporter)
+            (jupyter-start-channels client)
+            (jupyter-hb-unpause client)
+            ;; Ensure that the necessary hooks to catch the startup message are
+            ;; in place before starting the kernel.
+            ;;
+            ;; NOTE: Startup messages have no parent header, hence the need for
+            ;; `jupyter-include-other-output'.
+            (let* ((jupyter-include-other-output t)
+                   (started nil)
+                   (cb (lambda (msg)
+                         (setq started
+                               (equal (jupyter-message-get msg :execution_state)
+                                      "starting")))))
+              (jupyter-add-hook client 'jupyter-iopub-message-hook cb)
+              (jupyter-start-kernel manager 10)
+              (setq reporter (make-progress-reporter "Kernel starting up..."))
+              (with-timeout (10 (error "Kernel did not send startup message"))
+                (while (not started)
+                  (progress-reporter-update reporter)
+                  (sleep-for 0.02))
+                (progress-reporter-done reporter))
+              (jupyter-remove-hook client 'jupyter-iopub-message-hook cb))
+            (setq reporter (make-progress-reporter "Requesting kernel info..."))
+            (let ((jupyter-inhibit-handlers t))
+              (setq kernel-info
+                    (jupyter-message-content
+                     (jupyter-wait-until-received :kernel-info-reply
+                       (jupyter-kernel-info-request client)
+                       ;; TODO: Make this timeout configurable? The
+                       ;; python kernel starts up fast, but the Julia
+                       ;; kernel not so much.
+                       5)))
+              (unless kernel-info
+                (error "Kernel did not respond to kernel-info request"))
               (progress-reporter-done reporter))
-            (jupyter-remove-hook client 'jupyter-iopub-message-hook cb))
-          (setq reporter (make-progress-reporter "Requesting kernel info..."))
-          (let* ((jupyter-inhibit-handlers t)
-                 (info (jupyter-wait-until-received :kernel-info-reply
-                         (jupyter-kernel-info-request client)
-                         ;; TODO: Make this timeout configurable? The python
-                         ;; kernel starts up fast, but the Julia kernel not so
-                         ;; much.
-                         5)))
-            (if info (oset manager kernel-info (jupyter-message-content info))
-              (error "Kernel did not respond to kernel-info request"))
-            (progress-reporter-done reporter))
-          (cons manager client))
-      (unless (and (slot-boundp manager 'kernel-info)
-                   (oref manager kernel-info))
-        (destructor client)
-        (destructor manager)))))
+            (list manager client kernel-info))
+        (unless kernel-info
+          (destructor client)
+          (destructor manager))))))
 
 (provide 'jupyter-kernel-manager)
 

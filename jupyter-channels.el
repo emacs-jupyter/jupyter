@@ -25,7 +25,7 @@
 
 ;;; Code:
 
-(require 'jupyter-connection)
+(require 'jupyter-base)
 (require 'ring)
 
 (defgroup jupyter-channels nil
@@ -34,12 +34,17 @@
 
 ;;; Basic channel types
 
-(defclass jupyter-channel (jupyter-connection)
+(defclass jupyter-channel ()
   ((type
     :type keyword
     :initarg :type
     :documentation "The type of this channel. Should be one of
  the keys in `jupyter-channel-socket-types'.")
+   (session
+    :type jupyter-session
+    :initarg :session
+    :documentation "The session object used to sign and
+send/receive messages.")
    (endpoint
     :type string
     :initarg :endpoint

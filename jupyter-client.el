@@ -32,7 +32,6 @@
   :group 'jupyter)
 
 (require 'jupyter-base)
-(require 'jupyter-connection)
 (require 'jupyter-channels)
 (require 'jupyter-messages)
 
@@ -71,7 +70,7 @@ If set to t, disable all client handlers.")
   ((type
     :initform :stdin)))
 
-(defclass jupyter-kernel-client (jupyter-connection)
+(defclass jupyter-kernel-client ()
   ((requests
     :type hash-table
     :initform (make-hash-table :test 'equal)
@@ -90,6 +89,14 @@ reply from the kernel.")
     :initform nil
     :documentation "The process which polls for events on all
 live channels of the client.")
+   (session
+    :type jupyter-session
+    :documentation "The session for this client.")
+   (manager
+    :initform nil
+    :documentation "If this client was initialized using a
+`jupyter-kernel-manager' this slot will hold the manager which
+initialized the client.")
    ;; TODO: Periodically cleanup these buffers when the object they point to
    ;; are no longer in use. How can we determine if an object has no more
    ;; references? Maybe do something with `post-gc-hook'? Or require explicit
@@ -137,31 +144,44 @@ buffer.")
   (when (buffer-live-p (oref client -buffer))
     (kill-buffer (oref client -buffer))))
 
-(defun jupyter-initialize-connection (client &optional file-or-plist)
-  "Initialize CLIENT with a connection FILE-OR-PLIST.
-If FILE-OR-PLIST is the name of a file, assume the file to be a
-kernel connection file and initialize CLIENT from its contents.
-If FILE-OR-PLIST is a property list, initialize CLIENT using its
-properties. If FILE-OR-PLIST is nil, initialize CLIENT's
-connection using CLIENT's `conn-info' slot. The necessary keys
-and values to initialize a connection can be found at
+(defun jupyter-initialize-connection (client info-or-session)
+  "Initialize CLIENT with a connection INFO-OR-SESSION.
+If INFO-OR-SESSION is the name of a file, assume the file to be a
+kernel connection file, read the contents as a plist, and create
+a new `jupyter-session' using the plist as the conn-info slot of
+the session. INFO-OR-SESSION can also be a plist with the same
+meaning as if the plist had been read from a connection file.
+Otherwise, INFO-OR-SESSION must be a `jupyter-session' and the
+connection is initialized using its conn-info slot.
+
+The session object is then set as the session for each
+`jupyter-channel' created for the CLIENT.
+
+The necessary keys and values to initialize a connection can be
+found at
 http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files.
 
 As a side effect, if CLIENT is already connected to a kernel its
 connection is terminated before initializing a new one."
   (cl-check-type client jupyter-kernel-client)
-  (let ((conn-info (if file-or-plist
-                       (oset client conn-info
-                             (if (json-plist-p file-or-plist) file-or-plist
-                               (let ((json-array-type 'list)
-                                     (json-object-type 'plist)
-                                     (json-false nil))
-                                 (json-read-file file-or-plist))))
-                     ;; The conn-info slot is shared with a client's
-                     ;; parent-instance, see if the parent instance has it
-                     (or (ignore-errors (oref client conn-info))
-                         (signal 'unbound-slot
-                                 (list 'conn-info client))))))
+  (let* ((session nil)
+         (conn-info
+          (cond
+           ((jupyter-session-p info-or-session)
+            (setq session info-or-session)
+            (jupyter-session-conn-info session))
+           ((json-plist-p info-or-session)
+            info-or-session)
+           ((stringp info-or-session)
+            (unless (file-exists-p info-or-session)
+              (error "File does not exist (%s)" info-or-session))
+            (let ((json-array-type 'list)
+                  (json-object-type 'plist)
+                  (json-false nil))
+              (json-read-file info-or-session)))
+           (t (signal 'wrong-type-argument
+                      (list info-or-session
+                            '(or jupyter-session-p json-plist-p stringp)))))))
     (cl-destructuring-bind
         (&key shell_port iopub_port stdin_port hb_port ip
               key transport signature_scheme
@@ -172,15 +192,14 @@ connection is terminated before initializing a new one."
         (error "Unsupported signature scheme: %s" signature_scheme))
       ;; Stop the channels if connected to some other kernel
       (jupyter-stop-channels client)
-      ;; A kernel manager may have already initialized the session, see
-      ;; `jupyter-make-client'
-      (unless (and (ignore-errors (oref client session))
-                   (equal (jupyter-session-key (oref client session)) key))
-        (oset client session (jupyter-session :key key)))
+      ;; Initialize the channels
+      (unless session
+        (setq session (jupyter-session :key key :conn-info conn-info)))
+      (oset client session session)
       (let ((addr (lambda (port) (format "%s://%s:%d" transport ip port))))
         (oset client hb-channel (make-instance
                                  'jupyter-hb-channel
-                                 :parent-instance client
+                                 :session session
                                  :endpoint (funcall addr hb_port)))
         (cl-loop
          for (channel . port) in `((stdin-channel . ,stdin_port)
@@ -197,7 +216,7 @@ connection is terminated before initializing a new one."
                    ;;
                    ;; See `jupyter-start-channels' for when the :ioloop slot is
                    ;; set
-                   :parent-instance client
+                   :session session
                    :endpoint (funcall addr port))))))))
 
 ;;; Client local variables
