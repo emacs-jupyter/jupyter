@@ -74,21 +74,22 @@ receiving messages on this channel.")
 (cl-defgeneric jupyter-start-channel ((channel jupyter-channel) &key identity)
   "Start a Jupyter CHANNEL using IDENTITY as the routing ID.")
 
-(cl-defmethod jupyter-start-channel ((channel jupyter-async-channel) &key identity)
-  ;; TODO: In an IOLoop actually start the channel by sending it the endpoint
-  ;; and identity. Currently the IOLoop is assumed to have this information.
-  ;;
+(cl-defmethod jupyter-start-channel ((channel jupyter-async-channel)
+                                     &key (identity (jupyter-session-id
+                                                     (oref channel session))))
   ;; TODO: Define a mechanism to attach a callback for each type of command in
   ;; an IOLoop so that the IOLoop filter is not responsible for setting the
-  ;; status slot of a channel. Look how python implements event loops.
+  ;; status slot of a channel.
   (unless (jupyter-channel-alive-p channel)
     (zmq-subprocess-send (oref channel ioloop)
-      (list 'start-channel (oref channel type)))
+      (list 'start-channel (oref channel type) (oref channel endpoint) identity))
     (with-timeout (0.5 (error "Channel not started in ioloop subprocess"))
       (while (not (jupyter-channel-alive-p channel))
         (accept-process-output (oref channel ioloop) 0.1 nil 0)))))
 
-(cl-defmethod jupyter-start-channel ((channel jupyter-sync-channel) &key identity)
+(cl-defmethod jupyter-start-channel ((channel jupyter-sync-channel)
+                                     &key (identity (jupyter-session-id
+                                                     (oref channel session))))
   (unless (jupyter-channel-alive-p channel)
     (let ((socket (jupyter-connect-channel
                    (oref channel type) (oref channel endpoint) identity)))

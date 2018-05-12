@@ -107,12 +107,6 @@ initialized the client.")
 variables and intermediate ioloop process output. When the ioloop
 slot is non-nil, its `process-buffer' will be `eq' to this
 buffer.")
-   ;; NOTE: With the current implementation all channels except the heartbeat
-   ;;       channel actually communicate with the kernel through the ioloop
-   ;;       subprocess. This means that the socket field of the channels are
-   ;;       not actually used. They are mainly used to dispatch received
-   ;;       messages from the IOLoop subprocess and to hold the endpoint
-   ;;       information of the connection.
    (shell-channel
     :type (or null jupyter-shell-channel)
     :initform nil
@@ -344,10 +338,10 @@ Any other command sent to the subprocess will be ignored."
           (let ((channel (cdr (assoc ctype ,channels))))
             (zmq-prin1 (list 'sent ctype (apply #'jupyter-send channel args))))))
        (start-channel
-        (cl-destructuring-bind (ctype) args
+        (cl-destructuring-bind (ctype endpoint identity) args
           (let ((channel (cdr (assoc ctype ,channels))))
-            (jupyter-start-channel
-             channel :identity (jupyter-session-id (oref channel session)))
+            (oset channel endpoint endpoint)
+            (jupyter-start-channel channel :identity identity)
             (zmq-poller-add ,poller (oref channel socket) zmq-POLLIN)
             ;; Let the channel start. This avoids problems with the initial
             ;; startup message for the python kernel. Sometimes we arent fast
@@ -374,28 +368,17 @@ Any other command sent to the subprocess will be ignored."
 ;; poller is not noticing the stdin event in this case.
 (defun jupyter--ioloop (client)
   "Return the function used for communicating with CLIENT's kernel."
-  (let* ((sid (jupyter-session-id (oref client session)))
-         (skey (jupyter-session-key (oref client session)))
-         (iopub-ep (oref (oref client iopub-channel) endpoint))
-         (shell-ep (oref (oref client shell-channel) endpoint))
-         (stdin-ep (oref (oref client stdin-channel) endpoint)))
+  (let ((sid (jupyter-session-id (oref client session)))
+        (skey (jupyter-session-key (oref client session))))
     `(lambda (ctx)
        (push ,(file-name-directory (locate-library "jupyter-base")) load-path)
+       (require 'jupyter-base)
        (require 'jupyter-channels)
        (require 'jupyter-messages)
        (let* ((session (jupyter-session :id ,sid :key ,skey))
-              (iopub (jupyter-sync-channel
-                      :type :iopub
-                      :session session
-                      :endpoint ,iopub-ep))
-              (shell (jupyter-sync-channel
-                      :type :shell
-                      :session session
-                      :endpoint ,shell-ep))
-              (stdin (jupyter-sync-channel
-                      :type :stdin
-                      :session session
-                      :endpoint ,stdin-ep))
+              (iopub (jupyter-sync-channel :type :iopub :session session))
+              (shell (jupyter-sync-channel :type :shell :session session))
+              (stdin (jupyter-sync-channel :type :stdin :session session))
               (channels `((:stdin . ,stdin)
                           (:shell . ,shell)
                           (:iopub . ,iopub)))
