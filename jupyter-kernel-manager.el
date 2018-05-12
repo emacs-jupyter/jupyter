@@ -92,7 +92,7 @@ SLOTS are the slots used to initialize the client with.")
 (cl-defmethod jupyter-make-client ((manager jupyter-kernel-manager) class &rest slots)
   "Make a new client from CLASS connected to MANAGER's kernel.
 CLASS should be a subclass of `jupyter-kernel-client', a new
-instance of CLASS initialized with SLOTS and configured to
+instance of CLASS is initialized with SLOTS and configured to
 connect to MANAGER's kernel."
   (unless (child-of-class-p class 'jupyter-kernel-client)
     (signal 'wrong-type-argument (list '(subclass jupyter-kernel-client) class)))
@@ -105,7 +105,8 @@ connect to MANAGER's kernel."
   "Cleanup resources after kernel shutdown.
 If MANAGER's KERNEL process terminates, i.e. when EVENT describes
 an event in which the KERNEL process was killed: kill the process
-buffer and delete MANAGER's conn-file."
+buffer and delete MANAGER's connection file from the
+`jupyter-runtime-directory'."
   (cond
    ((not (process-live-p kernel))
     (and (buffer-live-p (process-buffer kernel))

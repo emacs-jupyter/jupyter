@@ -26,8 +26,28 @@
 ;; A Jupyter REPL for Emacs.
 ;;
 ;; The main entry points are `run-jupyter-repl' and `connect-jupyter-repl'.
-;; `run-jupyter-repl' starts a new kernel, connects a `jupyter-repl-client' to
-;; it, and pops up a REPL buffer when called interactively. Whereas `connect-jupyter-repl'
+;;
+;; When called interactively, `run-jupyter-repl' asks for a kernel to start
+;; (based on the kernels found using `jupyter-available-kernelspecs'), connects
+;; a `jupyter-repl-client' to the selected kernel, and pops up a REPL buffer.
+;; On the other hand, if `connect-jupyter-repl' is called interactively, it
+;; will ask for the JSON file that contains the kernel's connection info.
+;;
+;; Additionally, `jupyter-repl-associate-buffer' associates the
+;; `current-buffer' with a REPL client appropriate for the buffer's
+;; `major-mode'. Associating a buffer with a REPL client enables the minor mode
+;; `jupyter-repl-interaction-mode' and, if `company-mode' is installed, enables
+;; auto-completion using the associated REPL client.
+;;
+;; `jupyter-repl-interaction-mode' adds the following keybindings for
+;; interacing a REPL client:
+;;
+;;     C-c C-c `jupyter-repl-eval-line-or-region'
+;;     C-c C-l `jupyter-repl-eval-file'
+;;     C-c C-f `jupyter-repl-inspect-at-point'
+;;     C-c C-r `jupyter-repl-restart-kernel'
+;;     C-c C-i `jupyter-repl-interrupt-kernel'
+;;     C-c C-z `jupyter-repl-pop-to-buffer'
 
 ;;; Code:
 
@@ -451,7 +471,8 @@ image."
     (jupyter-repl-insert tex)
     (setq end (point))
     (org-format-latex
-     "jupyter-repl" beg end "jupyter-repl"
+     ;; FIXME: Possibly make a resource directory for the REPL
+     "ltx" beg end org-babel-jupyter-resource-directory
      'overlays "Creating LaTeX image...%s"
      'forbuffer
      ;; Use the default method for creating image files
@@ -1035,6 +1056,9 @@ buffer to display TEXT."
           (let ((pos (point)))
             (jupyter-repl-insert-ansi-coded-text
              (mapconcat #'identity traceback "\n"))
+            ;; TODO: Better way of accessing client kernel's properties
+            ;;
+            ;;    (jupyter-client-property client :kernel-language)
             (when (eq jupyter-repl-lang-mode 'python-mode)
               ;; Fix spacing between error name and Traceback
               (save-excursion
@@ -1046,6 +1070,7 @@ buffer to display TEXT."
                     (jupyter-repl-insert
                      (make-string (if (> len 4) len 4) ? )))))))
           (jupyter-repl-newline)))
+    ;; TODO: Probably this shouldn't be here.
     (jupyter-repl-display-other-output
      client "stderr" (format "(other client) %s: %s" ename evalue))))
 
@@ -1073,9 +1098,11 @@ REPL buffer."
            thereis (eq (ring-ref jupyter-repl-history -1) 'jupyter-repl-history)
            do (ring-insert
                jupyter-repl-history (ring-remove jupyter-repl-history -1)))
+      ;; When the next history element is the sentinel, handle some edge cases
       (cond
        ((equal (jupyter-repl-cell-code)
                (ring-ref jupyter-repl-history 0))
+        ;; If the cell code is the last history item, erase it
         (jupyter-repl-replace-cell-code "")
         (setq no-replace t))
        ((equal (jupyter-repl-cell-code) "")
@@ -1272,8 +1299,9 @@ kernel that the REPL buffer is connected to."
 (defun jupyter-repl-preserve-window-margins (&optional window)
   "Ensure that the margins of a REPL window are present.
 This function is added as a hook to `pre-redisplay-functions' to
-ensure that a REPL windows margins are present. If WINDOW is
-showing a REPL buffer and the margins are not set to
+ensure that a REPL windows margins are present.
+
+If WINDOW is showing a REPL buffer and the margins are not set to
 `jupyter-repl-prompt-margin-width', set them to the proper
 value."
   (when (and (eq major-mode 'jupyter-repl-mode)
@@ -1287,18 +1315,13 @@ value."
 
 (defun jupyter-repl-code-context-at-point (type)
   "Return a cons cell, (CODE . POS), for the context around `point'.
-Returns the required context depending on TYPE which can be
-either `inspect' or `complete'. If TYPE is `inspect' return an
-appropriate context for an inspect request. If TYPE is `complete'
-return an appropriate context for a completion request. PREFIX
-should be the prefix of the completion when TYPE is `complete'.
-PREFIX is unused when TYPE is `inspect'.
-
-The context also depends on the `major-mode' of the
-`current-buffer'. If the `current-buffer' is a
-`jupyter-repl-mode' buffer, CODE is the contents of the entire
-code cell. Otherwise its either the line up to `point' if TYPE is
-`complete' or the entire line if TYPE is `inspect'."
+CODE is the required context for TYPE (either `inspect' or
+`complete') and POS is the relative position of `point' within
+CODE. The context also depends on the `major-mode' of the
+`current-buffer'. If the `major-mode' is `jupyter-repl-mode',
+CODE is the contents of the entire code cell. Otherwise its
+either the line up to `point' if TYPE is `complete' or the entire
+line if TYPE is `inspect'."
   (unless (memq type '(complete inspect))
     (error "Type not `complete' or `inspect' (%s)" type))
   (let (code pos)
@@ -1597,7 +1620,6 @@ A kernel can be interrupted if it was started using a
      (oref jupyter-repl-current-client manager))))
 
 ;; TODO: Make timeouts configurable
-;; TODO: Handle all consequences of a shutdown
 (defun jupyter-repl-restart-kernel (shutdown)
   "Restart the kernel.
 With a prefix argument, SHUTDOWN the kernel completely instead."
@@ -2001,7 +2023,7 @@ Otherwise, in a non-interactive call, return the
     (setq kernel-name (caar (jupyter-find-kernelspecs kernel-name))))
   (unless kernel-name
     (error "No kernel found for prefix (%s)" kernel-name))
-  ;; The manager is set as the client's parent-instance in
+  ;; The manager is set as the client's manager slot in
   ;; `jupyter-start-new-kernel'
   (cl-destructuring-bind (_manager client info)
       (jupyter-start-new-kernel kernel-name 'jupyter-repl-client)

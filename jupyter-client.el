@@ -208,8 +208,8 @@ connection is terminated before initializing a new one."
                      (otherwise (error "Wrong channel type")))
                    ;; So channels have access to the client's session
                    ;;
-                   ;; See `jupyter-start-channels' for when the :ioloop slot is
-                   ;; set
+                   ;; See `jupyter-start-channels' for when the :ioloop slot of
+                   ;; a channel is set
                    :session session
                    :endpoint (funcall addr port))))))))
 
@@ -271,11 +271,11 @@ this is called."
                             message)
   "Send a message on CLIENT's CHANNEL.
 Return a `jupyter-request' representing the sent message. CHANNEL
-is one of the channel's of CLIENT. TYPE is one of the values in
-`jupyter-message-types' and is the type of the MESSAGE. If FLAGS
-is non-nil, it has the same meaning as FLAGS in `zmq-send'. You
-can manipulate how to handle messages received in response to the
-sent message, see `jupyter-add-callback' and
+is one of the channel's of CLIENT. TYPE is one of the
+`jupyter-message-types'. MESSAGE is the message sent on CHANNEL.
+
+Note that you can manipulate how to handle messages received in
+response to the sent message, see `jupyter-add-callback' and
 `jupyter-request-inhibited-handlers'."
   (declare (indent 1))
   (let ((ioloop (oref client ioloop)))
@@ -358,12 +358,13 @@ Any other command sent to the subprocess will be ignored."
         (signal 'quit nil))
        (otherwise (error "Unhandled command (%s)" cmd)))))
 
-;; This may not happen if the parent emacs crashes. One solution is to send the
-;; process id of the parent emacs and periodically check if the process is
-;; still alive, then exit the subprocess if the parent process is dead.
+;; FIXME: The subprocess may not get killed if the parent emacs crashes. One
+;; solution to this is to send the process id of the parent emacs and
+;; periodically check if the process is still alive, then exit the subprocess
+;; if the parent process is dead.
 ;;
-;; TODO: Fix the problem where lots of display_data messages are coming in, we
-;; send a request, and wait for the request id to come back with
+;; FIXME: Fix the problem where lots of display_data messages are coming in,
+;; then we send a request, and wait for the request id to come back with
 ;; `jupyter-request-id'. `jupyter-request-id' will time out. it looks like the
 ;; poller is not noticing the stdin event in this case.
 (defun jupyter--ioloop (client)
@@ -423,7 +424,9 @@ Any other command sent to the subprocess will be ignored."
                      ;;
                      ;; TODO: Drop messages if they are comming too frequently
                      ;; to the point where the parent Emacs process would be
-                     ;; spending too much time handling messages.
+                     ;; spending too much time handling messages. Or better
+                     ;; yet, reduce the rate at which messages are being sent
+                     ;; to the parent process.
                      (when (and messages (or (= idle-count 5)
                                              (> (length messages) 10)))
                        (setq messages (nreverse messages))
@@ -527,6 +530,10 @@ by `jupyter--ioloop'."
 ;;; Starting the channel subprocess
 
 (defun jupyter-ioloop-wait-until (event ioloop &optional timeout)
+  "Wait until EVENT occurs in IOLOOP.
+Currently EVENT can be :start or :quit and this function will
+blocks for TIMEOUT seconds until IOLOOP starts or quits depending
+on EVENT. If TIMEOUT is nil it defaults to 1 s."
   (or timeout (setq timeout 1))
   (with-timeout (timeout nil)
     (while (null (process-get ioloop event))
@@ -534,6 +541,7 @@ by `jupyter--ioloop'."
     t))
 
 (defun jupyter--start-ioloop (client)
+  "Start CLIENT's channels."
   (unless (oref client ioloop)
     (oset client ioloop
           (zmq-start-process
@@ -608,10 +616,10 @@ See `jupyter-add-callback'."
 
 (defun jupyter--add-callback (req msg-type cb)
   "Helper function for `jupyter-add-callback'.
-REQ is a `jupyter-request' object, MSG-TYPE should be one of the
+REQ is a `jupyter-request' object, MSG-TYPE is one of the
 keywords corresponding to a received message type in
-`jupyter-message-types', and CB will be the callback that will be
-run when MSG-TYPE is received for REQ."
+`jupyter-message-types', and CB is the callback that will be run
+when MSG-TYPE is received for REQ."
   (setq msg-type (or (plist-get jupyter-message-types msg-type)
                      ;; A msg-type of t means that FUNCTION is run for all
                      ;; messages associated with a request.
@@ -691,8 +699,8 @@ within TIMEOUT. Note that if no TIMEOUT is given, it defaults to
 
 (defun jupyter-wait-until-received (msg-type req &optional timeout)
   "Wait until a message of a certain type is received for a request.
-MSG-TYPE and REQ has the same meaning as their corresponding
-argument in `jupyter-add-callback'. If no message that matches
+MSG-TYPE and REQ have the same meaning as their corresponding
+arguments in `jupyter-add-callback'. If no message that matches
 MSG-TYPE is received for REQ within TIMEOUT seconds, return nil.
 Otherwise return the first message that matched MSG-TYPE. Note
 that if no TIMEOUT is given, it defaults to

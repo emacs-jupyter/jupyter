@@ -201,7 +201,7 @@ is used as the extension."
     (concat (file-name-as-directory dir) (sha1 data) ext)))
 
 (defun org-babel-jupyter--image-result (data file &optional overwrite base64-encoded)
-  "Possibly write DATA to FILE.
+  "Possibly write image DATA to FILE.
 If OVERWRITE is non-nil, overwrite FILE if it already exists.
 Otherwise if FILE already exists, DATA is not written to FILE.
 
@@ -224,7 +224,14 @@ Return the cons cell (\"file\" . FILE), see
 
 (defun org-babel-jupyter-prepare-result (data metadata params)
   "Return the rendered DATA.
-DATA is a plist, (:mimetype1 value1 ...), which is used to render
+DATA is converted into a representation suitable for display in
+an `org-mode' buffer depending on
+
+DATA is a plist, (:mimetype1 value1 ...), containing the
+different representations of a result returned by a kernel.
+Preparing a result
+
+which is used to render
 a result which can be passed to `org-babel-insert-result'.
 
 METADATA is the metadata plist used to render DATA with, as
@@ -233,17 +240,18 @@ information such as the size of an image to be rendered. The
 metadata plist is currently unused.
 
 PARAMS is the source block parameter list as passed to
-`org-babel-execute:jupyter'. Currently this is only used to
-extract the file name of an image file when DATA can be rendered
-as an image type (either `:image/png' or `:image/svg+xml') when a
-file name is passed to the code block. If no file name is given
-one is generated based on DATA and the mimetype, see
-`org-babel-jupyter-file-name'.
+`org-babel-execute:jupyter'. Currently this is used to extract
+the file name of an image file when DATA can be rendered as an
+image. If no file name is given, one is generated based on the
+image data and mimetype, see `org-babel-jupyter-file-name'.
+PARAMS is also used to intelligently choose the rendering
+parameter used for result insertion.
 
-This function returns a cons cell (RESULT-PARAM . RESULT) where
-RESULT-PARAM is either a result parameter, i.e. one of the result
-paramters of `org-babel-insert-result', or a key value pair which
-should be appended to the PARAMS list when to render RESULT.
+This function returns a cons cell (RENDER-PARAM . RESULT) where
+RENDER-PARAM is either a result parameter, i.e. one of the result
+parameters of `org-babel-insert-result', or a key value pair
+which should be appended to the PARAMS list when rendering
+RESULT.
 
 For example, if DATA only contains the mimetype `:text/markdown',
 the RESULT-PARAM will be
@@ -386,20 +394,26 @@ language."
 
 (defun org-babel-jupyter-insert-results (results params kernel-lang)
   "Insert RESULTS at the current source block location.
-RESULTS is either a single pair or a list of pairs, each pair
-having the form
+RESULTS is either a single cons cell or a list of such cells,
+each cell having the form
 
     (RENDER-PARAM . RESULT)
 
-i.e. the pairs returned by `org-babel-jupyter-prepare-result'.
-PARAMS are the parameters passed to `org-babel-execute:jupyter'.
-KERNEL-LANG is the language of the kernel that produced RESULTS.
+They should have been collected by previous calls to
+`org-babel-jupyter-prepare-result'. PARAMS are the parameters
+passed to `org-babel-execute:jupyter'. KERNEL-LANG is the
+language of the kernel that produced RESULTS.
 
-Note that for a list of results, the result which will appear
-will be the last one in the list unless the source block has an
-\"append\" or \"prepend\" parameter or some other way that
-prevents `org-babel-insert-result' from clearing a result when
-inserting a new one."
+Note that if RESULTS is a list, the last result in the list will
+be the one that eventually is shown in the org document. This is
+due to how `org-babel-insert-result' works. This behavior can be
+modified if the source block has an \"append\" or \"prepend\"
+parameter; in this case results will either be appended or
+prepended.
+
+The current implementation of `org-babel-execute:jupyter' will
+automatically add this parameter internally so under normal use
+it does not need to be added by the user."
   ;; Unless this is a list of results
   (unless (car-safe (car results))
     (setq results (list results)))
@@ -418,8 +432,8 @@ inserting a new one."
 
 (defun org-babel-execute:jupyter (body params)
   "Execute BODY according to PARAMS.
-BODY is the code to execute for the current Jupyter `:session' of
-PARAMS."
+BODY is the code to execute for the current Jupyter `:session' in
+the PARAMS alist."
   (let* ((repl-buffer (org-babel-jupyter-initiate-session
                        (alist-get :session params) params))
          (client (with-current-buffer repl-buffer
