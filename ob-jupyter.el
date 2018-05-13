@@ -178,6 +178,15 @@ returned by `jupyter-find-kernelspecs' will be used."
   (if (equal session "none") (error "Need a session to run")
     (org-babel-jupyter-initiate-session-by-key session params)))
 
+(defun org-babel-jupyter-scratch-buffer ()
+  "Display a scratch buffer connected to the current block's session."
+  (interactive)
+  (let (buffer)
+    (org-babel-do-in-edit-buffer
+     (setq buffer (jupyter-repl-scratch-buffer)))
+    (if buffer (pop-to-buffer buffer)
+      (user-error "No source block at point"))))
+
 (defun org-babel-jupyter-file-name (data ext)
   "Return a file name based on DATA.
 DATA is usually the contents of an image to create a file name
