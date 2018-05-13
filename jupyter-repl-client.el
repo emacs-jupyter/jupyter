@@ -1612,6 +1612,25 @@ If the current region is active send the current region using
 
 ;;; Kernel management
 
+(defun jupyter-repl-on-kernel-restart (client msg)
+  "Update the REPL buffer after CLIENT restarts.
+If MSG is a startup message, insert the banner of the kernel,
+syncrhronize the execution state, and insert a new input prompt."
+  (with-jupyter-repl-buffer client
+    (when (jupyter-message-status-starting-p msg)
+      ;; FIXME: Don't assume `jupyter-include-other-output' was previously nil
+      (jupyter-set jupyter-repl-current-client 'jupyter-include-other-output nil)
+      (jupyter-repl-without-continuation-prompts
+       (goto-char (point-max))
+       (jupyter-repl-previous-cell)
+       (unless (jupyter-repl-cell-finalized-p)
+         (jupyter-repl-finalize-cell nil)
+         (jupyter-repl-newline)
+         (jupyter-repl-insert-banner
+          (plist-get (oref client kernel-info) :banner))
+         (jupyter-repl-sync-execution-state)
+         (jupyter-repl-insert-prompt 'in))))))
+
 (defun jupyter-repl-interrupt-kernel ()
   "Interrupt the kernel if possible.
 A kernel can be interrupted if it was started using a
@@ -1629,19 +1648,10 @@ A kernel can be interrupted if it was started using a
 With a prefix argument, SHUTDOWN the kernel completely instead."
   (interactive "P")
   (unless shutdown
-    ;; Gets reset to default value in
-    ;; `jupyter-repl-insert-prompt-when-starting'
-    (jupyter-set
-     jupyter-repl-current-client
-     'jupyter-include-other-output
-     (list (jupyter-get
-            jupyter-repl-current-client
-            'jupyter-include-other-output)))
-    (setq-local jupyter-include-other-output
-                (list jupyter-include-other-output))
     ;; This may have been set to t due to a non-responsive kernel so make sure
     ;; that we try again when restarting.
-    (setq-local jupyter-repl-use-builtin-is-complete nil))
+    (setq-local jupyter-repl-use-builtin-is-complete nil)
+    (jupyter-set jupyter-repl-current-client 'jupyter-include-other-output t))
   (if (jupyter-repl-client-has-manager-p)
       (let ((manager (oref jupyter-repl-current-client manager)))
         (if (jupyter-kernel-alive-p manager)
@@ -1813,11 +1823,21 @@ in the appropriate direction, to the saved element."
   (add-hook 'after-change-functions 'jupyter-repl-after-buffer-change nil t)
   (add-hook 'pre-redisplay-functions 'jupyter-repl-preserve-window-margins nil t)
   ;; Initialize the REPL
-  (jupyter-set jupyter-repl-current-client 'jupyter-include-other-output t)
+  ;; TODO: Rename to initialize-jupyter-hooks
+  (jupyter-repl-initialize-hooks)
   (jupyter-repl-initialize-fontification)
   (jupyter-repl-isearch-setup)
   (jupyter-repl-sync-execution-state)
   (jupyter-repl-interaction-mode))
+
+(defun jupyter-repl-initialize-hooks ()
+  "Initialize startup hooks.
+When the kernel restarts, insert a new prompt."
+  ;; NOTE: This hook will only run if `jupyter-include-other-output' is non-nil
+  ;; during the restart.
+  (jupyter-add-hook jupyter-repl-current-client 'jupyter-iopub-message-hook
+    (apply-partially
+     #'jupyter-repl-on-kernel-restart jupyter-repl-current-client)))
 
 (defun jupyter-repl-initialize-fontification ()
   "Initialize fontification for the current REPL buffer.
