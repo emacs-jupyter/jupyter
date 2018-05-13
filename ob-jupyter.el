@@ -34,7 +34,6 @@
 (require 'jupyter)
 (require 'ob)
 
-(declare-function cddar "cl" (x))
 (declare-function org-element-at-point "org-element")
 (declare-function org-at-drawer-p "org")
 (declare-function org-element-property "org-element" (property element))
@@ -557,8 +556,8 @@ the PARAMS alist."
                  (lambda ()
                    (org-babel-jupyter--clear-render-param render-param params)
                    (org-babel-jupyter--inject-render-param "append" params)
-                   (org-babel-jupyter-insert-results
-                    (cdr results) params kernel-lang)))))))))))
+                   (org-babel-jupyter-insert-results (cdr results) params kernel-lang)
+                   (set-marker block-beginning nil)))))))))))
 
 (defun org-babel-jupyter-make-language-alias (kernel lang)
   "Simimilar to `org-babel-make-language-alias' but for Jupyter src-blocks.

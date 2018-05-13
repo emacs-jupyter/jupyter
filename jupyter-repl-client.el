@@ -1393,14 +1393,12 @@ takes."
         (setq matches (cdr matches))))
     (when types
       (let ((max-len (apply #'max (mapcar #'length matches))))
-        (cl-mapcar
+        (cl-mapc
          (lambda (match meta)
-           (put-text-property
-            0 1 'annot
-            (concat (make-string (1+ (- max-len (length match))) ? )
-                    (plist-get meta :type))
-            match)
-           match)
+           (let ((prefix (make-string (1+ (- max-len (length match))) ? )))
+             (put-text-property
+              0 1 'annot (concat prefix (plist-get meta :type))
+              match)))
          matches types)))
     matches))
 
@@ -1620,7 +1618,7 @@ A kernel can be interrupted if it was started using a
      (oref jupyter-repl-current-client manager))))
 
 ;; TODO: Make timeouts configurable
-(defun jupyter-repl-restart-kernel (shutdown)
+(defun jupyter-repl-restart-kernel (&optional shutdown)
   "Restart the kernel.
 With a prefix argument, SHUTDOWN the kernel completely instead."
   (interactive "P")
@@ -1647,9 +1645,10 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
               (jupyter-shutdown-kernel manager (not shutdown)))
           (message "Starting dead kernel...")
           (jupyter-start-kernel manager)))
-    (when (null (jupyter-wait-until-received :shutdown-reply
-                  (jupyter-shutdown-request jupyter-repl-current-client
-                    :restart (not shutdown))))
+    (unless (jupyter-wait-until-received :shutdown-reply
+              (jupyter-shutdown-request jupyter-repl-current-client
+                :restart (not shutdown)))
+      (jupyter-set jupyter-repl-current-client 'jupyter-include-other-output nil)
       (message "Kernel did not respond to shutdown request"))))
 
 (defun jupyter-repl-display-kernel-buffer ()
@@ -2041,12 +2040,10 @@ Otherwise, in a non-interactive call, return the
   "Run a Jupyter REPL using a kernel's connection FILE-OR-PLIST.
 FILE-OR-PLIST can be either a file holding the connection
 information or a property list of connection information.
-
 ASSOCIATE-BUFFER has the same meaning as in `run-jupyter-repl'.
 
-When called interactively, display the new REPL buffer.
-Otherwise, in a non-interactive call return the
-`jupyter-repl-client' connected to the kernel."
+Return the `jupyter-repl-client' connected to the kernel. When
+called interactively, display the new REPL buffer as well."
   (interactive (list (read-file-name "Connection file: ") t))
   (let ((client (make-instance 'jupyter-repl-client)))
     (jupyter-initialize-connection client file-or-plist)
@@ -2063,9 +2060,9 @@ Otherwise, in a non-interactive call return the
       (when (and associate-buffer
                  (eq major-mode (jupyter-repl-language-mode client)))
         (jupyter-repl-associate-buffer client))
-      (if (called-interactively-p 'interactive)
-          (pop-to-buffer (oref client buffer))
-        client))))
+      (when (called-interactively-p 'interactive)
+        (pop-to-buffer (oref client buffer)))
+      client)))
 
 (provide 'jupyter-repl-client)
 

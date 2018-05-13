@@ -723,10 +723,9 @@ received for it."
    with secs = '(0 1)
    for req in (hash-table-values requests)
    for id = (jupyter-request-id req)
+   for ltime = (jupyter-request-last-message-time req)
    when (and (jupyter-request-idle-received-p req)
-             (time-less-p
-              secs (time-subtract
-                    ctime (jupyter-request-last-message-time req))))
+             (time-less-p secs (time-subtract ctime ltime)))
    do (when jupyter--debug
         (message "DROPPING-REQ: %s" id))
    (remhash id requests)))

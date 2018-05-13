@@ -176,8 +176,8 @@
   (declare (indent 1))
   (cl-destructuring-bind (msg-id . msg)
       (jupyter--encode-message session type :content message)
-    (zmq-send-multipart socket msg flags)
-    msg-id))
+    (prog1 msg-id
+      (zmq-send-multipart socket msg flags))))
 
 (cl-defmethod jupyter-recv ((session jupyter-session) socket &optional flags)
   (let ((msg (zmq-recv-multipart socket flags)))
