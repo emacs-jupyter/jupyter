@@ -58,7 +58,6 @@
 (require 'jupyter-base)
 (require 'jupyter-client)
 (require 'jupyter-kernel-manager)
-(require 'xterm-color)
 (require 'shr)
 (require 'ring)
 
@@ -482,7 +481,7 @@ image."
 
 (defun jupyter-repl-insert-ansi-coded-text (text)
   "Insert TEXT, converting ANSI color codes to font lock faces."
-  (setq text (xterm-color-filter text))
+  (setq text (ansi-color-apply text))
   (jupyter-repl-add-font-lock-properties 0 (length text) text)
   ;; NOTE: Mark text with a specific syntax class so that string characters do
   ;; not get registered as strings. This requires
@@ -1546,7 +1545,7 @@ displayed without anything showing up in the REPL buffer."
                              (jupyter-message-content msg)
                            (unless (equal status "ok")
                              (message "jupyter (%s): %s" ename
-                                      (xterm-color-filter evalue)))))
+                                      (ansi-color-apply evalue)))))
         :execute-result
         (lambda (msg)
           (let ((res (jupyter-message-data msg :text/plain))
