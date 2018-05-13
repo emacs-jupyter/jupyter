@@ -384,6 +384,8 @@ can contain the following keywords along with their values:
   "Insert a read-only newline into the `current-buffer'."
   (jupyter-repl-insert "\n"))
 
+;;; Handling rich output
+
 (defun jupyter-repl-insert-html (html)
   "Parse and insert the HTML string using `shr-insert-document'."
   (jupyter-repl-insert
@@ -454,7 +456,6 @@ can contain the following keywords along with their values:
 
 Note that this uses `org-format-latex' to generate the LaTeX
 image."
-  (require 'org)
   ;; FIXME: Getting a weird error when killing the temp buffers created by
   ;; `org-format-latex'. When generating the image, it seems that the temp
   ;; buffers created have the same major mode and local variables as the REPL
@@ -511,15 +512,18 @@ When no valid mimetype is present in DATA, a warning is shown."
                                   (not (memq k graphic-types))))
                     collect k)))
     (cond
-     ((memq :text/html mimetypes)
+     ((and (memq :text/html mimetypes)
+           (functionp 'libxml-parse-html-region))
       (let ((html (plist-get data :text/html)))
         (when (string-match-p "^<img" html)
           (jupyter-repl-newline))
         (jupyter-repl-insert-html html)
         (jupyter-repl-newline)))
-     ((and (memq :text/markdown mimetypes) (require 'markdown-mode nil t))
+     ((and (memq :text/markdown mimetypes)
+           (require 'markdown-mode nil t))
       (jupyter-repl-insert-markdown (plist-get data :text/markdown)))
-     ((memq :text/latex mimetypes)
+     ((and (memq :text/latex mimetypes)
+           (require 'org nil t))
       (jupyter-repl-insert-latex (plist-get data :text/latex))
       (jupyter-repl-newline))
      ((memq :image/png mimetypes)
@@ -529,7 +533,8 @@ When no valid mimetype is present in DATA, a warning is shown."
          (plist-get data :image/png))
         nil 'data)
        (propertize " " 'read-only t)))
-     ((and (memq :image/svg+xml mimetypes) (image-type-available-p 'svg))
+     ((and (memq :image/svg+xml mimetypes)
+           (image-type-available-p 'svg))
       (insert-image
        (create-image
         (plist-get data :image/svg+xml) 'svg)
