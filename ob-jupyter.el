@@ -23,7 +23,17 @@
 
 ;;; Commentary:
 
+;; TODO: Properly replace the source block results when multiple results are
+;; appended. Currently what happens is that only the first result is removed
+;; when re-execution the src block due to the behavior of
+;; `org-babel-result-end'. The solution is to keep calling
+;; `org-babel-result-end' moving point to the end of the results until
+;; `org-babel-result-end' returns the same position twice. We may need to
+;; advise this function to implement this behavior for jupyter blocks.
 ;;
+;; An alternative is to collect all results in both async and sync cases before
+;; insertion. Then if there are multiple types of data, for example images and
+;; text, we can insert them all into a single RESULTS drawer.
 
 ;;; Code:
 
@@ -482,6 +492,7 @@ the PARAMS alist."
                       (org-babel-jupyter-insert-results result params kernel-lang))
                   (push result results))))))
       ;; TODO: Handle stream output and errors similar to ob-ipython
+      ;; TODO: Don't process results if no-results is non-nil
       (jupyter-add-callback req
         :stream
         (lambda (msg)
@@ -538,24 +549,27 @@ the PARAMS alist."
                             'org-babel-after-execute-hook #'reset-file-param t)))
                 (add-hook
                  'org-babel-after-execute-hook #'reset-file-param nil t)))
+            ;; TODO: Use `org-babel-after-execute-hook' to make the id
+            ;; read-only.
             (concat (when (member "raw" (alist-get :result-params params)) ": ")
                     (jupyter-request-id req)))
         (jupyter-wait-until-idle req most-positive-fixnum)
         ;; Finalize the list of results
         (setq results (nreverse results))
-        (if (eq result-type 'output) (mapconcat #'identity results "\n")
-          (let* ((result (org-babel-jupyter--transform-result
-                          (car results) kernel-lang))
-                 (render-param (car result))
-                 (result (cdr result)))
-            (org-babel-jupyter--inject-render-param render-param params)
-            (prog1 result
-              ;; Insert remaining results after the first one has been
-              ;; inserted.
-              (when (cdr results)
-                (run-at-time
-                 0.01 nil
-                 (lambda ()
+        (cl-destructuring-bind (result . render-param)
+            (org-babel-jupyter--transform-result (car results) kernel-lang)
+          (org-babel-jupyter--inject-render-param render-param params)
+          (prog1 result
+            ;; Insert remaining results after the first one has been
+            ;; inserted.
+            (when (cdr results)
+              ;; TODO: Prevent running the hooks until all results have been
+              ;; inserted. Think harder about how to insert a list of
+              ;; results.
+              (run-at-time
+               0.01 nil
+               (lambda ()
+                 (org-with-point-at block-beginning
                    (org-babel-jupyter--clear-render-param render-param params)
                    (org-babel-jupyter--inject-render-param "append" params)
                    (org-babel-jupyter-insert-results (cdr results) params kernel-lang)
