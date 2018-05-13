@@ -1373,32 +1373,30 @@ is actually sent to the kernel."
                                 '(?w ?_ ?.)))
                ""))))))
 
-(defun jupyter-repl-construct-completion-candidates (prefix matches metadata start end)
-  "Construct candidates for `company-mode' completion.
+(defun jupyter-repl-construct-completion-candidates
+    (prefix matches metadata start end)
+  "Construct candidates for completion.
 PREFIX is the prefix used to start the current completion.
 MATCHES are the completion matches returned by the kernel,
-METADATA is any extra data associated with MATCHES and is
-currently used for adding annotations to each candidate. START
-and END are the start and end of text that the elements of
-MATCHES should be replace as reported by the kernel. Note that
-START and END are relative to the
-`jupyter-repl-code-context-at-point' and not to PREFIX. See
-`jupyter-repl-completion-prefix' for the value that PREFIX
-takes."
-  (let ((types (plist-get metadata :_jupyter_types_experimental)))
-    (let ((matches matches)
-          (prefix (substring prefix 0 (- (length prefix)
-                                         (- end start))))
-          match)
-      (while (setq match (car matches))
-        ;; TODO: Maybe set the match property when it doesn't have the prefix,
-        ;; indicating that it should replace part of the prefix?
-        (unless (string-prefix-p prefix match)
-          ;; FIXME: Note that prefix is not the code sent to the kernel in some
-          ;; cases, but the symbol behind point
-          (setcar matches (concat prefix (car matches))))
-        ;; (put-text-property 0 1 'match match-start (car matches))
-        (setq matches (cdr matches))))
+METADATA is any extra data associated with MATCHES that was
+supplied by the kernel. START and END are the start and end of
+text that the elements of MATCHES will replace. Note that START
+and END are relative to the `jupyter-repl-code-context-at-point'
+and not to PREFIX. See `jupyter-repl-completion-prefix' for the
+value that PREFIX takes.
+
+This function constructs candidates assuming that `company-mode'
+is used for completion."
+  (let ((types (plist-get metadata :_jupyter_types_experimental))
+        (tail matches)
+        (prefix (substring prefix 0 (- (length prefix) (- end start))))
+        (match nil))
+    ;; Set the prefix on the match if needed
+    (while (setq match (car tail))
+      (unless (string-prefix-p prefix match)
+        (setcar matches (concat prefix (car matches))))
+      (setq tail (cdr tail)))
+    ;; When a type is supplied add it as an annotation
     (when types
       (let ((max-len (apply #'max (mapcar #'length matches))))
         (cl-mapc
