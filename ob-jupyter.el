@@ -73,8 +73,11 @@ exist or if LANG cannot be determined, assign variables using
 `org-babel-variable-assignments:python'."
   (let* ((lang (or lang
                    (save-excursion
-                     (when (re-search-backward
-                            org-babel-jupyter-language-regex nil t)
+                     ;; TODO: This is not the most general case since we have
+                     ;; to consider inline calls.
+                     (when (and (org-in-src-block-p)
+                                (re-search-backward
+                                 org-babel-jupyter-language-regex nil t))
                        (match-string 1)))))
          (fun (when lang
                 (intern (concat "org-babel-variable-assignments:" lang)))))
@@ -468,8 +471,8 @@ the PARAMS alist."
               ;; up either putting it in an example block and you would have
               ;; multiple example blocks for a single output. The best bet
               ;; would be to insert it as raw text in a drawer.
-              (or (consp result) (setq result (cons "scalar" result)))
               (unless no-results
+                (or (consp result) (setq result (cons "scalar" result)))
                 (if async
                     (org-with-point-at block-beginning
                       (when first-async-insertion
@@ -488,11 +491,10 @@ the PARAMS alist."
                                     (jupyter-message-get msg :text)))))
         :status
         (lambda (msg)
-          (when (jupyter-message-status-idle-p msg)
-            (when async
-              (set-marker block-beginning nil)
-              (when first-async-insertion
-                (org-babel-jupyter--clear-request-id req)))))
+          (when (and async (jupyter-message-status-idle-p msg))
+            (set-marker block-beginning nil)
+            (when first-async-insertion
+              (org-babel-jupyter--clear-request-id req))))
         :execute-reply
         (lambda (msg)
           (cl-destructuring-bind (&key status ename evalue traceback

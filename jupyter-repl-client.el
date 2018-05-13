@@ -1302,8 +1302,6 @@ kernel that the REPL buffer is connected to."
                      (oref jupyter-repl-current-client manager))))
               t))))
 
-;; FIXME: Sometimes the margins will disappear after the window configuration
-;; changes which is why `window-configuration-change-hook' is not used.
 (defun jupyter-repl-preserve-window-margins (&optional window)
   "Ensure that the margins of a REPL window are present.
 This function is added as a hook to `pre-redisplay-functions' to
@@ -1312,6 +1310,8 @@ ensure that a REPL windows margins are present.
 If WINDOW is showing a REPL buffer and the margins are not set to
 `jupyter-repl-prompt-margin-width', set them to the proper
 value."
+  ;; NOTE: Sometimes the margins will disappear after the window configuration
+  ;; changes which is why `window-configuration-change-hook' is not used.
   (when (and (eq major-mode 'jupyter-repl-mode)
              (let ((margins (window-margins window)))
                (not (and (consp margins)
@@ -1888,7 +1888,10 @@ kernel goes idle for our request."
       :execute-reply (lambda (msg)
                        (oset client execution-count
                              (1+ (jupyter-message-get msg :execution_count)))))
-    (jupyter-wait-until-idle req)))
+    ;; FIXME: Waiting longer here to account for initial startup of the Jupyter
+    ;; kernel. Sometimes the idle message won't be received if another long
+    ;; running execute request is sent right after.
+    (jupyter-wait-until-idle req 2)))
 
 ;;; `jupyter-repl-interaction-mode'
 

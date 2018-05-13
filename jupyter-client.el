@@ -248,6 +248,7 @@ APPEND has the same meaning as in `add-hook' and FUNCTION is
 added to HOOK using `add-hook', but local only to CLIENT. Note
 that the CLIENT should have its channels already started before
 this is called."
+  (declare (indent 2))
   (with-jupyter-client-buffer client
     (add-hook hook function append t)))
 
