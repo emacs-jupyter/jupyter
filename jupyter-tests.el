@@ -214,8 +214,7 @@ testing the callback functionality of a
       (let ((json-object-type 'plist)
             (obj nil))
         (should-not (multibyte-string-p (jupyter--encode "foîji")))
-        ;; TODO: Only decodes json plists, what to do instead?
-        (should-error (jupyter--decode (jupyter--encode "foîji")))
+        (should (equal "foîji" (jupyter--decode (jupyter--encode "foîji"))))
         (setq obj '(:msg_id 12342 :msg_type "stdin_reply" :session "foîji"))
         (should (json-plist-p obj))
         (should-not (multibyte-string-p (jupyter--encode obj)))
@@ -227,9 +226,8 @@ testing the callback functionality of a
     (should (eq (oref (jupyter-shell-channel) type) :shell))
     (should (eq (oref (jupyter-stdin-channel) type) :stdin))
     (should (eq (oref (jupyter-iopub-channel) type) :iopub))
-    (should (eq (oref (jupyter-control-channel) type) :control))
     (should (eq (oref (jupyter-hb-channel) type) :hb)))
-  (let ((channel (jupyter-shell-channel :endpoint "tcp://127.0.0.1:5555")))
+  (let ((channel (jupyter-sync-channel :endpoint "tcp://127.0.0.1:5555")))
     (ert-info ("Starting a channel")
       (oset channel socket nil)
       (should-not (oref channel socket))
@@ -244,14 +242,13 @@ testing the callback functionality of a
       (let ((sock (oref channel socket)))
         (jupyter-stop-channel channel)
         (should-not (oref channel socket))
-        (should-error (zmq-close sock) :type 'zmq-ENOTSOCK)
         ;; All pending messages are droped when a channel is stopped
         (should (= (ring-length (oref channel recv-queue)) 0))
         (should-not (jupyter-channel-alive-p channel))))
     (ert-info ("Heartbeat channel")
       (cl-flet ((start-hb () (zmq-start-process
-                              (lambda (_ctx)
-                                (with-zmq-socket sock zmq-REP
+                              (lambda (ctx)
+                                (let ((sock (zmq-socket ctx zmq-REP)))
                                   (zmq-bind sock "tcp://127.0.0.1:5556")
                                   (while t
                                     (zmq-send sock (zmq-recv sock))))))))
@@ -304,39 +301,36 @@ testing the callback functionality of a
            for sock in socks
            collect (cons sock (format "%s:%d" addr (zmq-bind-to-random-port
                                                     sock addr))))))
-    (unwind-protect
-        (progn
-          (setq client (jupyter-kernel-client
-                        :session (jupyter-session
-                                  :key "58e05d24-7600e037194e78bde23108de")
-                        :shell-channel (jupyter-shell-channel
-                                        :endpoint (cdr (nth 0 sock-endpoint)))
-                        :iopub-channel (jupyter-iopub-channel
-                                        :endpoint (cdr (nth 1 sock-endpoint)))
-                        :stdin-channel (jupyter-stdin-channel
-                                        :endpoint (cdr (nth 2 sock-endpoint)))
-                        :hb-channel (jupyter-hb-channel
-                                     :endpoint (cdr (nth 3 sock-endpoint)))))
-          (cl-loop
-           for cname in (list 'shell-channel 'iopub-channel
-                              'hb-channel 'stdin-channel)
-           do (should (slot-boundp client cname))
-           (if (eq cname 'hb-channel) (cl-check-type (eieio-oref client cname)
-                                                     jupyter-hb-channel)
-             (cl-check-type (eieio-oref client cname) jupyter-channel))
-           (should-not (jupyter-channel-alive-p (eieio-oref client cname))))
+    (setq client (jupyter-kernel-client
+                  :session (jupyter-session
+                            :key "58e05d24-7600e037194e78bde23108de")
+                  :shell-channel (jupyter-shell-channel
+                                  :endpoint (cdr (nth 0 sock-endpoint)))
+                  :iopub-channel (jupyter-iopub-channel
+                                  :endpoint (cdr (nth 1 sock-endpoint)))
+                  :stdin-channel (jupyter-stdin-channel
+                                  :endpoint (cdr (nth 2 sock-endpoint)))
+                  :hb-channel (jupyter-hb-channel
+                               :endpoint (cdr (nth 3 sock-endpoint)))))
+    (cl-loop
+     for cname in (list 'shell-channel 'iopub-channel
+                        'hb-channel 'stdin-channel)
+     do (should (slot-boundp client cname))
+     (if (eq cname 'hb-channel) (cl-check-type (eieio-oref client cname)
+                                               jupyter-hb-channel)
+       (cl-check-type (eieio-oref client cname) jupyter-channel))
+     (should-not (jupyter-channel-alive-p (eieio-oref client cname))))
 
-          (jupyter-start-channels client)
+    (jupyter-start-channels client)
 
-          (cl-loop
-           for cname in (list 'shell-channel 'iopub-channel
-                              'hb-channel 'stdin-channel)
-           for channel = (eieio-oref client cname)
-           unless (eq cname 'hb-channel) do
-           (should (slot-boundp channel 'socket))
-           (cl-check-type (oref channel socket) zmq-socket)
-           and do (should (jupyter-channel-alive-p (eieio-oref client cname)))))
-      (mapc (lambda (se) (zmq-close (car se))) sock-endpoint))))
+    (cl-loop
+     for cname in (list 'shell-channel 'iopub-channel
+                        'hb-channel 'stdin-channel)
+     for channel = (eieio-oref client cname)
+     unless (eq cname 'hb-channel) do
+     (should (slot-boundp channel 'socket))
+     (cl-check-type (oref channel socket) zmq-socket)
+     and do (should (jupyter-channel-alive-p (eieio-oref client cname))))))
 
 (ert-deftest jupyter-channel-subprocess ()
   (ert-info ("Queuing messages preserves sort order")
@@ -392,7 +386,7 @@ testing the callback functionality of a
           (ert-info ("Kernel info")
             (let ((res (jupyter-wait-until-received :kernel-info-reply
                          (jupyter-kernel-info-request client))))
-              (should-not (null res))
+              (should res)
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "kernel_info_reply"))))
           (ert-info ("Comm info")
@@ -453,8 +447,7 @@ testing the callback functionality of a
               (should-not (null res))
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "shutdown_reply")))))
-      (jupyter-stop-channels client)
-      (jupyter-stop-kernel client))))
+      (destructor client))))
 
 (defun jupyter-test-src-block (session code test-result)
   (let ((pos (point)))
