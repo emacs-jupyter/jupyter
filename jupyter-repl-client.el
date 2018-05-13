@@ -1126,11 +1126,12 @@ REPL buffer."
     (when (not (equal (jupyter-repl-cell-code)
                       (ring-ref jupyter-repl-history 0)))
       (setq n (1- n)))
-    (if (cl-loop
-         repeat n
-         thereis (eq (ring-ref jupyter-repl-history 1) 'jupyter-repl-history)
-         do (ring-insert-at-beginning
-             jupyter-repl-history (ring-remove jupyter-repl-history 0)))
+    (if (or (= n 0)
+            (cl-loop
+             repeat n
+             thereis (eq (ring-ref jupyter-repl-history 1) 'jupyter-repl-history)
+             do (ring-insert-at-beginning
+                 jupyter-repl-history (ring-remove jupyter-repl-history 0))))
         (error "Beginning of history")
       (unless no-replace
         (jupyter-repl-replace-cell-code
