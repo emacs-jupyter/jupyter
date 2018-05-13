@@ -465,6 +465,20 @@ added as the newest element in this ring."
                     ring))))
     (ring-insert+extend ring req 'grow)))
 
+;;; HB channel methods
+
+(cl-defmethod jupyter-hb-pause ((client jupyter-kernel-client))
+  "Pause CLIENT's heartbeeat channel."
+  (jupyter-hb-pause (oref client hb-channel)))
+
+(cl-defmethod jupyter-hb-unpause ((client jupyter-kernel-client))
+  "Unpause CLIENT's heartbeat channel."
+  (jupyter-hb-unpause (oref client hb-channel)))
+
+(cl-defmethod jupyter-hb-beating-p ((client jupyter-kernel-client))
+  "Is CLIENT still connected to its kernel?"
+  (jupyter-hb-beating-p (oref client hb-channel)))
+
 ;;; Channel subprocess filter/sentinel
 
 (defun jupyter--ioloop-sentinel (client ioloop _event)
