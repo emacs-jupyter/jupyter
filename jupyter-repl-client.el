@@ -1225,7 +1225,8 @@ execute the current cell."
                                :code (jupyter-repl-cell-code)))
                            jupyter-repl-maximum-is-complete-timeout)))
                 (unless res
-                  (message "Kernel did not respond to is-complete-request, using built-in is-complete")
+                  (message "Kernel did not respond to is-complete-request, using built-in is-complete.
+Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
                   (setq-local jupyter-repl-use-builtin-is-complete t)
                   (jupyter-repl-ret force)))
             (goto-char (point-max))

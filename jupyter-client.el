@@ -527,17 +527,24 @@ by `jupyter--ioloop'."
          (jupyter-queue-message channel (cons idents msg))
          (run-with-timer 0.0001 nil #'jupyter-handle-message client channel))))
     (`(start-channel ,ctype)
+     (when jupyter--debug
+       (message "STARTING-CHANNEL: %s" ctype))
      (let ((channel (jupyter--get-channel client ctype)))
        (oset channel status 'running)))
     (`(stop-channel ,ctype)
+     (when jupyter--debug
+       (message "STOPPING-CHANNEL: %s" ctype))
      (let ((channel (jupyter--get-channel client ctype)))
        (oset channel status 'stopped)))
     ('(start)
+     (when jupyter--debug
+       (message "CLIENT STARTING"))
      ;; TODO: Generalize setting flag variables for IOLoop events and having
      ;; event callbacks.
      (process-put (oref client ioloop) :start t))
     ('(quit)
      ;; Cleanup handled in sentinel
+     (process-put (oref client ioloop) :quit t)
      (when jupyter--debug
        (message "CLIENT CLOSED")))))
 
