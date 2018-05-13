@@ -826,7 +826,8 @@ is responsible for adding the text properties which cause
   "Does the `jupyter-repl-current-client' have a `jupyter-kernel-manager'?
 Checks to see if the REPL client of the `current-buffer' has a
 kernel manager as its manager slot."
-  (and jupyter-repl-current-client (oref client manager)))
+  (and jupyter-repl-current-client
+       (oref jupyter-repl-current-client manager)))
 
 (defun jupyter-repl-connected-p ()
   "Determine if the `jupyter-repl-current-client' is connected to its kernel."
