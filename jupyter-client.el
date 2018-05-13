@@ -602,10 +602,10 @@ for the heartbeat channel."
    for channel = (slot-value client sym)
    when channel do (jupyter-stop-channel channel))
   (let ((ioloop (oref client ioloop)))
-    (when ioloop
+    (when (process-live-p ioloop)
       (zmq-subprocess-send ioloop (cons 'quit nil))
       (with-timeout (1 (delete-process ioloop)
-                       (warn "IOloop process not killed by request"))
+                       (message "IOloop process not killed by request"))
         (while (oref client ioloop)
           (sleep-for 0 100))))))
 
