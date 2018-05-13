@@ -1212,6 +1212,7 @@ execute the current cell."
         ;; is busy.
         (unless (member (oref jupyter-repl-current-client execution-state)
                         '("starting" "idle"))
+          (jupyter-repl-sync-execution-state)
           (error "Kernel busy"))
         (if force (jupyter-execute-request jupyter-repl-current-client)
           (if (not jupyter-repl-use-builtin-is-complete)
