@@ -40,12 +40,9 @@
   "Return the kernelspec found in DIR.
 If DIR contains a \"kernel.json\" file, assume that it is the
 kernelspec of a kernel and return the plist created by a call to
-`json-read-file'."
-  (let ((json-object-type 'plist)
-        (json-array-type 'list)
-        (json-false nil)
-        (file (expand-file-name "kernel.json" dir)))
-    (if (file-exists-p file) (json-read-file file)
+`jupyter-read-plist'."
+  (let ((file (expand-file-name "kernel.json" dir)))
+    (if (file-exists-p file) (jupyter-read-plist file)
       (error "No kernel.json file found in %s" dir))))
 
 (defun jupyter-available-kernelspecs (&optional refresh)

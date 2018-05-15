@@ -169,10 +169,7 @@ connection is terminated before initializing a new one."
            ((stringp info-or-session)
             (unless (file-exists-p info-or-session)
               (error "File does not exist (%s)" info-or-session))
-            (let ((json-array-type 'list)
-                  (json-object-type 'plist)
-                  (json-false nil))
-              (json-read-file info-or-session)))
+            (jupyter-read-plist info-or-session))
            (t (signal 'wrong-type-argument
                       (list info-or-session
                             '(or jupyter-session-p json-plist-p stringp)))))))

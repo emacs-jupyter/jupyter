@@ -287,6 +287,15 @@ the ROUTING-ID of the socket. Return the created socket."
       (error "Invalid channel type (%s)" ctype))
     (jupyter-connect-endpoint sock-type endpoint identity)))
 
+;;; Helper functions
+
+(defun jupyter-read-plist (file)
+  "Read a JSON encoded FILE as a property list."
+  (let ((json-object-type 'plist)
+        (json-array-type 'list)
+        (json-false nil))
+    (json-read-file file)))
+
 (provide 'jupyter-base)
 
 ;;; jupyter-base.el ends here
