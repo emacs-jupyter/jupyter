@@ -1337,7 +1337,12 @@ line if TYPE is `inspect'."
       (inspect
        (setq code (buffer-substring (line-beginning-position)
                                     (line-end-position))
-             pos (- (point) (line-beginning-position))))
+             ;; NOTE: The +1 is because normally, when inspecting code, `point'
+             ;; is on a character of the symbol being inspected, this is in
+             ;; contrast to completing code where `point' is after the last
+             ;; character of the prefix. This fixes an edge case where `point'
+             ;; is at the first character of a symbol.
+             pos (1+ (- (point) (line-beginning-position)))))
       (complete
        (if (eq major-mode 'jupyter-repl-mode)
            (setq code (jupyter-repl-cell-code)
