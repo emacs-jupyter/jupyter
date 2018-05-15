@@ -71,7 +71,8 @@
 ;; TODO: Fallbacks for when the language doesn't have a major mode installed.
 
 ;; TODO: Define `jupyter-kernel-manager-after-restart-hook' to update the
-;; execution count after a restart.
+;; execution count after a restart. More generally, define more ways to hook
+;; into differnt events of the client/kernel interaction.
 
 ;;; User variables
 
@@ -116,7 +117,6 @@ timeout, the built-in is-complete handler is used."
    (kernel-info :type json-plist :initform nil)
    (execution-state :type string :initform "idle")
    (execution-count :type integer :initform 1)))
-
 
 (defvar jupyter-repl-lang-buffer nil
   "A buffer with the `major-mode' set to the REPL language's `major-mode'.")
@@ -1420,6 +1420,7 @@ COMMAND and ARG have the same meaning as the elements of
   (cl-case command
     (interactive (company-begin-backend 'company-jupyter-repl))
     (sorted t)
+    (no-cache t)
     (prefix (jupyter-repl-completion-prefix))
     (candidates
      (cons
@@ -1445,6 +1446,7 @@ COMMAND and ARG have the same meaning as the elements of
                       (jupyter-repl-construct-completion-candidates
                        arg matches metadata cursor_start cursor_end))))))))))
     (ignore-case t)
+    (match (get-text-property 0 'match arg))
     (annotation (get-text-property 0 'annot arg))
     (doc-buffer (let* ((inhibit-read-only t)
                        (buf (jupyter-repl--inspect
@@ -1483,7 +1485,8 @@ respond before returning nil."
           (if buffer
               (with-current-buffer buffer
                 (prog1 buffer
-                  (jupyter-repl-insert-data data)))
+                  (jupyter-repl-insert-data data)
+                  (goto-char (point-min))))
             (with-temp-buffer
               (jupyter-repl-insert-data data)
               (buffer-string))))))))
@@ -1496,6 +1499,7 @@ the `current-buffer' and display the results in a buffer."
   (cl-destructuring-bind (code . pos)
       (jupyter-repl-code-context-at-point 'inspect)
     (let ((buf (current-buffer)))
+      ;; TODO: Reset this to nil when the inspect buffer is closed.
       (with-jupyter-repl-doc-buffer "inspect"
         (let ((jupyter-repl-current-client
                (buffer-local-value 'jupyter-repl-current-client buf)))
@@ -1510,7 +1514,8 @@ the `current-buffer' and display the results in a buffer."
               (message "Inspect timed out")
             ;; TODO: Customizable action
             (display-buffer (current-buffer))
-            (set-window-start (get-buffer-window) (point-min))))))))
+            (set-window-start (get-buffer-window) (point-min)))))
+      (setq other-window-scroll-buffer (get-buffer "*jupyter-repl-inspect*")))))
 
 ;;; Evaluation
 
@@ -1567,7 +1572,7 @@ displayed without anything showing up in the REPL buffer."
                       (erase-buffer)
                       (insert res)
                       (goto-char (point-min))
-                      (switch-to-buffer-other-window (current-buffer)))
+                      (display-buffer (current-buffer)))
                   (if (equal res "") (message "jupyter: eval done")
                     (message res)))
               (with-current-buffer
@@ -2108,6 +2113,7 @@ called interactively, display the new REPL buffer as well."
   (let ((client (make-instance 'jupyter-repl-client)))
     (jupyter-initialize-connection client file-or-plist)
     (jupyter-start-channels client)
+    (message "Requesting kernel info...")
     (let* ((jupyter-inhibit-handlers t)
            (info (jupyter-wait-until-received :kernel-info-reply
                    (jupyter-kernel-info-request client)
