@@ -860,7 +860,7 @@ kernel manager as its manager slot."
 The first character of the cell code corresponds to position 1."
   (unless (jupyter-repl-cell-line-p)
     (error "Not in code of cell"))
-  (- (point) (jupyter-repl-cell-code-beginning-position)))
+  (1+ (- (point) (jupyter-repl-cell-code-beginning-position))))
 
 (defun jupyter-repl-finalize-cell (req)
   "Finalize the current cell.
@@ -1341,7 +1341,7 @@ line if TYPE is `inspect'."
       (complete
        (if (eq major-mode 'jupyter-repl-mode)
            (setq code (jupyter-repl-cell-code)
-                 pos (jupyter-repl-cell-code-position))
+                 pos (1- (jupyter-repl-cell-code-position)))
          (setq code (buffer-substring (line-beginning-position) (point))
                pos (- (point) (line-beginning-position))))))
     (cons code pos)))
