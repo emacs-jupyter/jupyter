@@ -260,10 +260,10 @@ port for that channel."
                               (:iopub_port . ,iopub-port))
     collect channel and
     if (= port 0) do (setq port (zmq-bind-to-random-port sock addr))
-    and collect port and
-    do (zmq-unbind sock (zmq-socket-get sock zmq-LAST-ENDPOINT)) else
-    collect port
-    finally (zmq-close sock))))
+    and collect port else collect port
+    finally
+    (zmq-socket-set sock zmq-LINGER 0)
+    (zmq-close sock))))
 
 (defun jupyter-connect-endpoint (type endpoint &optional identity)
   "Create socket with TYPE and connect to ENDPOINT.
