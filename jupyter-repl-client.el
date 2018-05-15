@@ -1131,7 +1131,7 @@ REPL buffer."
     (when (not (equal (jupyter-repl-cell-code)
                       (ring-ref jupyter-repl-history 0)))
       (setq n (1- n)))
-    (if (or (= n 0)
+    (if (or (and (= n 0) (eq (ring-ref jupyter-repl-history 0) 'jupyter-repl-history))
             (cl-loop
              repeat n
              thereis (eq (ring-ref jupyter-repl-history 1) 'jupyter-repl-history)
