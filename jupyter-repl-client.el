@@ -1349,29 +1349,24 @@ line if TYPE is `inspect'."
 (defun jupyter-repl-completion-prefix ()
   "Return the prefix for the current completion context.
 Note that the prefix returned is not the content sent to the
-kernel. The prefix is the symbol (including punctuation) just
-before `point'. See `jupyter-repl-code-context-at-point' for what
-is actually sent to the kernel."
+kernel. See `jupyter-repl-code-context-at-point' for what is
+actually sent to the kernel."
   (when jupyter-repl-current-client
     (let ((lang-mode (jupyter-repl-language-mode jupyter-repl-current-client)))
       (and (memq major-mode `(,lang-mode jupyter-repl-mode))
            ;; No completion in finalized cells
            (not (get-text-property (point) 'read-only))
-           (if (or (looking-at "\\_>")
-                   ;; TODO: What about other operators like :: and ->, this
-                   ;; most likely will depend on the kernel in use.
-                   ;; `jupyter-repl-lang-mode' can be used here with some alist
-                   ;; mapping modes to operators.
-                   (looking-back "\\." 1))
-               (buffer-substring
-                (save-excursion
-                  (skip-syntax-backward "w_.")
-                  (point))
-                (point))
-             (unless (and (char-after)
-                          (memq (char-syntax (char-after))
-                                '(?w ?_ ?.)))
-               ""))))))
+           (or (when (looking-at "\\_>")
+                 (let* ((beg (save-excursion
+                               (+ (point) (skip-syntax-backward "w_"))))
+                        (char (char-before beg)))
+                   ;; Handle LaTeX in the Julia kernel.
+                   ;;
+                   ;; TODO: Generalize this. Note that in julia-mode \ has
+                   ;; a punctuation syntax class.
+                   (and char (= char ?\\)
+                        (buffer-substring (1- beg) (point)))))
+               (company-grab-symbol-cons "\\.\\|::\\|->" 2))))))
 
 (defun jupyter-repl-construct-completion-candidates
     (prefix matches metadata start end)
