@@ -1389,13 +1389,17 @@ This function constructs candidates assuming that `company-mode'
 is used for completion."
   (let ((types (plist-get metadata :_jupyter_types_experimental))
         (tail matches)
-        (prefix (substring prefix 0 (- (length prefix) (- end start))))
+        ;; TODO: Handle the case when the matches are method signatures in the
+        ;; Julia kernel. This information would be useful for doing some kind
+        ;; of eldoc like feature.
+        (prefix (ignore-errors  (substring prefix 0 (- (length prefix) (- end start)))))
         (match nil))
     ;; Set the prefix on the match if needed
-    (while (setq match (car tail))
-      (unless (string-prefix-p prefix match)
-        (setcar matches (concat prefix (car matches))))
-      (setq tail (cdr tail)))
+    (when prefix
+      (while (setq match (car tail))
+        (unless (string-prefix-p prefix match)
+          (setcar tail (concat prefix (car tail))))
+        (setq tail (cdr tail))))
     ;; When a type is supplied add it as an annotation
     (when types
       (let ((max-len (apply #'max (mapcar #'length matches))))
@@ -1802,7 +1806,7 @@ in the appropriate direction, to the saved element."
       (setq-local jupyter-repl-lang-buffer
                   (get-buffer-create
                    (format " *jupyter-repl-lang-%s*"
-                           (plist-get language-info :language))))
+                           (plist-get language-info :name))))
       (set-syntax-table syntax)
       (with-jupyter-repl-lang-buffer
         (unless (eq major-mode mode)
@@ -2079,7 +2083,7 @@ called interactively, display the new REPL buffer as well."
     (jupyter-start-channels client)
     (let* ((jupyter-inhibit-handlers t)
            (info (jupyter-wait-until-received :kernel-info-reply
-                   (jupyter-kernel-info-request kc)
+                   (jupyter-kernel-info-request client)
                    5)))
       (unless info
         (destructor client)
