@@ -1964,8 +1964,26 @@ enabling `jupyter-repl-interaction-mode'."
     (define-key map (kbd "C-c C-z") #'jupyter-repl-pop-to-buffer)
     map))
 
+(defun jupyter-repl-propagate-client (orig-fun buffer-or-name &rest args)
+  "Propgate the `jupyter-repl-current-client' to other buffers."
+  (when jupyter-repl-interaction-mode
+    (let ((client jupyter-repl-current-client)
+          (buf (get-buffer buffer-or-name))
+          (mode major-mode))
+      (when buf
+        (with-current-buffer buf
+          (when (and (eq mode major-mode)
+                     (not jupyter-repl-interaction-mode))
+            (jupyter-repl-associate-buffer client))))))
+  (apply orig-fun buffer-or-name args))
+
+(advice-add 'switch-to-buffer :around #'jupyter-repl-propagate-client)
+
 (define-minor-mode jupyter-repl-interaction-mode
-  "Minor mode for interacting with a Jupyter REPL."
+  "Minor mode for interacting with a Jupyter REPL.
+Note that for buffers with `jupyter-repl-interaction-mode'
+enabled, any new buffer opened with the same `major-mode' will
+automatically have its buffer associated with the REPL."
   :group 'jupyter-repl
   :lighter " JuPy"
   :init-value nil
