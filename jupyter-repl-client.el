@@ -1822,6 +1822,7 @@ in the appropriate direction, to the saved element."
   (add-hook 'after-change-functions 'jupyter-repl-after-buffer-change nil t)
   (add-hook 'pre-redisplay-functions 'jupyter-repl-preserve-window-margins nil t)
   ;; Initialize the REPL
+  (buffer-disable-undo)
   ;; TODO: Rename to initialize-jupyter-hooks
   (jupyter-repl-initialize-hooks)
   (jupyter-repl-initialize-fontification)
