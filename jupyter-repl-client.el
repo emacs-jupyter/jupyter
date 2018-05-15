@@ -1977,7 +1977,15 @@ enabling `jupyter-repl-interaction-mode'."
                             (eq x 'company-jupyter-repl)))
                  company-backends)
           (setq-local company-backends
-                      (cons 'company-jupyter-repl company-backends))))
+                      (cons '(company-jupyter-repl
+                              ;; FIXME: These are too useful to give up but
+                              ;; seems more like a personal preference.
+                              :with
+                              company-dabbrev-code
+                              company-gtags
+                              company-etags
+                              company-keywords)
+                            company-backends))))
     (unless (eq major-mode 'jupyter-repl-mode)
       (kill-local-variable 'jupyter-repl-current-client))
     (when (boundp 'company-mode)
