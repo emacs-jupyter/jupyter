@@ -33,6 +33,8 @@
 
 (require 'json)
 
+(declare-function jupyter-read-plist "jupyter-base" (file))
+
 (defvar jupyter--kernelspecs nil
   "An alist matching kernel names to their kernelspec directories.")
 
@@ -59,14 +61,18 @@ update of the cached kernelspecs, give a non-nil value to
 REFRESH."
   (or (and (not refresh) jupyter--kernelspecs)
       (setq jupyter--kernelspecs
-            (mapcar (lambda (s) (let ((s (split-string s " " 'omitnull)))
-                        ;; (kernel-name . (dir . spec))
-                        (cons (car s) (cons (cadr s)
-                                            (jupyter-read-kernelspec (cadr s))))))
-               (cdr
-                (split-string
-                 (shell-command-to-string "jupyter kernelspec list")
-                 "\n" 'omitnull "[ \t]+"))))))
+            (delq nil
+                  (mapcar (lambda (s)
+                       (let ((s (split-string s " " 'omitnull)))
+                         (when (file-directory-p (cadr s))
+                           (let* ((kernel-name (car s))
+                                  (dir (cadr s))
+                                  (spec (jupyter-read-kernelspec dir)))
+                             (cons kernel-name (cons dir spec))))))
+                     (cdr
+                      (split-string
+                       (shell-command-to-string "jupyter kernelspec list")
+                       "\n" 'omitnull "[ \t]+")))))))
 
 (defun jupyter-get-kernelspec (name &optional refresh)
   "Get the kernelspec for a kernel named NAME.
