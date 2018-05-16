@@ -756,7 +756,7 @@ to the previous cell. N defaults to 1."
 (defun jupyter-repl-goto-cell (req)
   "Go to the cell beginning position of REQ.
 REQ should be a `jupyter-request' that corresponds to one of the
-`jupyter-execute-request's created by a cell in the
+`jupyter-send-execute-request's created by a cell in the
 `current-buffer'. Note that the `current-buffer' is assumed to be
 a Jupyter REPL buffer."
   (goto-char (point-max))
@@ -921,13 +921,13 @@ lines then truncate it to something less than
     (ring-remove jupyter-repl-history -2))
   (ring-remove+insert+extend jupyter-repl-history code))
 
-(cl-defmethod jupyter-execute-request ((client jupyter-repl-client)
-                                       &key code
-                                       (silent nil)
-                                       (store-history t)
-                                       (user-expressions nil)
-                                       (allow-stdin t)
-                                       (stop-on-error nil))
+(cl-defmethod jupyter-send-execute-request ((client jupyter-repl-client)
+                                            &key code
+                                            (silent nil)
+                                            (store-history t)
+                                            (user-expressions nil)
+                                            (allow-stdin t)
+                                            (stop-on-error nil))
   (with-jupyter-repl-buffer client
     (jupyter-repl-truncate-buffer)
     (if code (cl-call-next-method)
@@ -1151,14 +1151,14 @@ REPL buffer."
   (with-jupyter-repl-buffer client
     (pcase status
       ("complete"
-       (jupyter-execute-request client))
+       (jupyter-send-execute-request client))
       ("incomplete"
        (jupyter-repl-newline)
        (if (= (length indent) 0) (jupyter-repl-indent-line)
          (jupyter-repl-insert :read-only nil indent)))
       ("invalid"
        ;; Force an execute to produce a traceback
-       (jupyter-execute-request client))
+       (jupyter-send-execute-request client))
       ("unknown"))))
 
 (cl-defmethod jupyter-handle-shutdown-reply ((client jupyter-repl-client) _req restart)
@@ -1215,12 +1215,12 @@ execute the current cell."
                         '("starting" "idle"))
           (jupyter-repl-sync-execution-state)
           (error "Kernel busy"))
-        (if force (jupyter-execute-request jupyter-repl-current-client)
+        (if force (jupyter-send-execute-request jupyter-repl-current-client)
           (if (not jupyter-repl-use-builtin-is-complete)
               (let ((res (jupyter-wait-until-received
                              :is-complete-reply
                            (let ((jupyter-inhibit-handlers '(:status)))
-                             (jupyter-is-complete-request
+                             (jupyter-send-is-complete-request
                                  jupyter-repl-current-client
                                :code (jupyter-repl-cell-code)))
                            jupyter-repl-maximum-is-complete-timeout)))
@@ -1431,7 +1431,7 @@ COMMAND and ARG have the same meaning as the elements of
           (jupyter-add-callback
               ;; Ignore errors during completion
               (let ((jupyter-inhibit-handlers t))
-                (jupyter-complete-request
+                (jupyter-send-complete-request
                     jupyter-repl-current-client
                   :code code :pos pos))
             :complete-reply
@@ -1475,7 +1475,7 @@ TIMEOUT is how long to wait (in seconds) for the kernel to
 respond before returning nil."
   (let* ((jupyter-inhibit-handlers '(:status))
          (msg (jupyter-wait-until-received :inspect-reply
-                (jupyter-inspect-request jupyter-repl-current-client
+                (jupyter-send-inspect-request jupyter-repl-current-client
                   :code code :pos pos)
                 timeout)))
     (when msg
@@ -1544,7 +1544,7 @@ displayed without anything showing up in the REPL buffer."
     (setq str (string-trim str))
     (let* ((jupyter-inhibit-handlers
             (or silently '(:execute-reply :execute-result)))
-           (req (jupyter-execute-request jupyter-repl-current-client
+           (req (jupyter-send-execute-request jupyter-repl-current-client
                   :code (if silently (string-trim str)
                           (prog1 nil
                             (jupyter-repl-replace-cell-code str))))))
@@ -1671,7 +1671,7 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
           (message "Starting dead kernel...")
           (jupyter-start-kernel manager)))
     (unless (jupyter-wait-until-received :shutdown-reply
-              (jupyter-shutdown-request jupyter-repl-current-client
+              (jupyter-send-shutdown-request jupyter-repl-current-client
                 :restart (not shutdown)))
       (jupyter-set jupyter-repl-current-client 'jupyter-include-other-output nil)
       (message "Kernel did not respond to shutdown request"))))
@@ -1824,7 +1824,7 @@ in the appropriate direction, to the saved element."
   ;; ring.
   (ring-insert jupyter-repl-history 'jupyter-repl-history)
   (let ((jupyter-inhibit-handlers '(:status)))
-    (jupyter-history-request jupyter-repl-current-client
+    (jupyter-send-history-request jupyter-repl-current-client
       :n jupyter-repl-history-maximum-length :raw nil :unique t))
   (erase-buffer)
   ;; Add local hooks
@@ -1890,7 +1890,7 @@ Set the execution-count slot of `jupyter-repl-current-client' to
 kernel goes idle for our request."
   (let* ((client jupyter-repl-current-client)
          (req (let ((jupyter-inhibit-handlers t))
-                (jupyter-execute-request client :code "" :silent t))))
+                (jupyter-send-execute-request client :code "" :silent t))))
     (jupyter-add-callback req
       :status (lambda (msg)
                 (oset client execution-state
@@ -2116,7 +2116,7 @@ called interactively, display the new REPL buffer as well."
     (message "Requesting kernel info...")
     (let* ((jupyter-inhibit-handlers t)
            (info (jupyter-wait-until-received :kernel-info-reply
-                   (jupyter-kernel-info-request client)
+                   (jupyter-send-kernel-info-request client)
                    5)))
       (unless info
         (destructor client)

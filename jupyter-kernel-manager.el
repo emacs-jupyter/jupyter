@@ -383,7 +383,7 @@ Finally, INFO is the kernel info plist obtained from a
               (setq kernel-info
                     (jupyter-message-content
                      (jupyter-wait-until-received :kernel-info-reply
-                       (jupyter-kernel-info-request client)
+                       (jupyter-send-kernel-info-request client)
                        ;; TODO: Make this timeout configurable? The
                        ;; python kernel starts up fast, but the Julia
                        ;; kernel not so much.

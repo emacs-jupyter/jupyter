@@ -52,7 +52,7 @@ to prevent a client from calling its execute-reply handler, you
 would do
 
     (let ((jupyter-inhibit-handlers '(:execute-reply)))
-      (jupyter-execute-request client ...))
+      (jupyter-send-execute-request client ...))
 
 If set to t, disable all client handlers.")
 
@@ -681,7 +681,7 @@ interpreted as additional CALLBACKS to add to REQ. So to add
 multiple callbacks you would do
 
     (jupyter-add-callback
-        (jupyter-execute-request client :code \"1 + 2\")
+        (jupyter-send-execute-request client :code \"1 + 2\")
       :status (lambda (msg) ...)
       :execute-reply (lambda (msg) ...)
       :execute-result (lambda (msg) ...))"
@@ -906,15 +906,15 @@ the user. Otherwise `read-from-minibuffer' is used."
                           implementation_version language_info
                           banner help_links)))))
 
-(cl-defgeneric jupyter-execute-request ((client jupyter-kernel-client)
-                                        &key code
-                                        (silent nil)
-                                        (store-history t)
-                                        (user-expressions nil)
-                                        (allow-stdin
-                                         (jupyter-channel-alive-p
-                                          (oref client stdin-channel)))
-                                        (stop-on-error nil))
+(cl-defgeneric jupyter-send-execute-request ((client jupyter-kernel-client)
+                                             &key code
+                                             (silent nil)
+                                             (store-history t)
+                                             (user-expressions nil)
+                                             (allow-stdin
+                                              (jupyter-channel-alive-p
+                                               (oref client stdin-channel)))
+                                             (stop-on-error nil))
   "Send an execute request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
@@ -936,10 +936,10 @@ the user. Otherwise `read-from-minibuffer' is used."
   (declare (indent 1))
   nil)
 
-(cl-defgeneric jupyter-inspect-request ((client jupyter-kernel-client)
-                                        &key code
-                                        (pos 0)
-                                        (detail 0))
+(cl-defgeneric jupyter-send-inspect-request ((client jupyter-kernel-client)
+                                             &key code
+                                             (pos 0)
+                                             (detail 0))
   "Send an inspect request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
@@ -956,9 +956,9 @@ the user. Otherwise `read-from-minibuffer' is used."
   (declare (indent 1))
   nil)
 
-(cl-defgeneric jupyter-complete-request ((client jupyter-kernel-client)
-                                         &key code
-                                         (pos 0))
+(cl-defgeneric jupyter-send-complete-request ((client jupyter-kernel-client)
+                                              &key code
+                                              (pos 0))
   "Send a complete request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
@@ -976,17 +976,17 @@ the user. Otherwise `read-from-minibuffer' is used."
   (declare (indent 1))
   nil)
 
-(cl-defgeneric jupyter-history-request ((client jupyter-kernel-client)
-                                        &key
-                                        output
-                                        raw
-                                        (hist-access-type "tail")
-                                        session
-                                        start
-                                        stop
-                                        (n 10)
-                                        pattern
-                                        unique)
+(cl-defgeneric jupyter-send-history-request ((client jupyter-kernel-client)
+                                             &key
+                                             output
+                                             raw
+                                             (hist-access-type "tail")
+                                             session
+                                             start
+                                             stop
+                                             (n 10)
+                                             pattern
+                                             unique)
   "Send a history request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
@@ -1009,8 +1009,8 @@ the user. Otherwise `read-from-minibuffer' is used."
   (declare (indent 1))
   nil)
 
-(cl-defgeneric jupyter-is-complete-request ((client jupyter-kernel-client)
-                                            &key code)
+(cl-defgeneric jupyter-send-is-complete-request ((client jupyter-kernel-client)
+                                                 &key code)
   "Send an is-complete request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
@@ -1026,8 +1026,8 @@ the user. Otherwise `read-from-minibuffer' is used."
   (declare (indent 1))
   nil)
 
-(cl-defgeneric jupyter-comm-info-request ((client jupyter-kernel-client)
-                                          &key target-name)
+(cl-defgeneric jupyter-send-comm-info-request ((client jupyter-kernel-client)
+                                               &key target-name)
   "Send a comm-info request."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
@@ -1042,7 +1042,7 @@ the user. Otherwise `read-from-minibuffer' is used."
   (declare (indent 1))
   nil)
 
-(cl-defgeneric jupyter-kernel-info-request ((client jupyter-kernel-client))
+(cl-defgeneric jupyter-send-kernel-info-request ((client jupyter-kernel-client))
   "Send a kernel-info request."
   (let ((channel (oref client shell-channel))
         (msg (jupyter-message-kernel-info-request)))
@@ -1060,8 +1060,8 @@ the user. Otherwise `read-from-minibuffer' is used."
   (declare (indent 1))
   nil)
 
-(cl-defgeneric jupyter-shutdown-request ((client jupyter-kernel-client)
-                                         &key restart)
+(cl-defgeneric jupyter-send-shutdown-request ((client jupyter-kernel-client)
+                                              &key restart)
   "Request a shutdown of CLIENT's kernel.
 If RESTART is non-nil, request a restart instead of a complete shutdown."
   (declare (indent 1))

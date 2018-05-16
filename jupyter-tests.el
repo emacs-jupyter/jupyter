@@ -152,14 +152,14 @@ testing the callback functionality of a
   (with-jupyter-echo-client client
     (ert-info ("Request callbacks")
       (ert-info ("Blocking callbacks")
-        (let ((req (jupyter-execute-request client :code "foo")))
+        (let ((req (jupyter-send-execute-request client :code "foo")))
           (should (jupyter-wait-until-idle req))
           (should (jupyter-request-idle-received-p req))
           ;; Can't add callbacks after an idle message has been received
           (should-error (jupyter-add-callback req :status #'identity))))
       (ert-info ("Callback runs for the right message")
-        (let ((req1 (jupyter-execute-request client :code "foo"))
-              (req2 (jupyter-kernel-info-request client))
+        (let ((req1 (jupyter-send-execute-request client :code "foo"))
+              (req2 (jupyter-send-kernel-info-request client))
               ran-callbacks)
           ;; callback for all message types received from a request
           (jupyter-add-callback req1
@@ -181,7 +181,7 @@ testing the callback functionality of a
           (should (equal ran-callbacks '(1 1 1 2 2 2)))))
       (ert-info ("Multiple callbacks for a single message type")
         (let* ((ran-callbacks nil)
-               (req (jupyter-execute-request client :code "foo")))
+               (req (jupyter-send-execute-request client :code "foo")))
           (jupyter-add-callback req
             :execute-reply (lambda (_msg) (push 1 ran-callbacks)))
           (jupyter-add-callback req
@@ -385,19 +385,19 @@ testing the callback functionality of a
         (progn
           (ert-info ("Kernel info")
             (let ((res (jupyter-wait-until-received :kernel-info-reply
-                         (jupyter-kernel-info-request client))))
+                         (jupyter-send-kernel-info-request client))))
               (should res)
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "kernel_info_reply"))))
           (ert-info ("Comm info")
             (let ((res (jupyter-wait-until-received :comm-info-reply
-                         (jupyter-comm-info-request client))))
+                         (jupyter-send-comm-info-request client))))
               (should-not (null res))
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "comm_info_reply"))))
           (ert-info ("Execute")
             (let ((res (jupyter-wait-until-received :execute-reply
-                         (jupyter-execute-request client :code "y = 1 + 2"))))
+                         (jupyter-send-execute-request client :code "y = 1 + 2"))))
               (should-not (null res))
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "execute_reply"))))
@@ -405,14 +405,14 @@ testing the callback functionality of a
             (cl-letf (((symbol-function 'read-from-minibuffer)
                        (lambda (_prompt &rest _args) "foo")))
               (let ((res (jupyter-wait-until-received :execute-result
-                           (jupyter-execute-request client :code "input('')"))))
+                           (jupyter-send-execute-request client :code "input('')"))))
                 (should-not (null res))
                 (should (json-plist-p res))
                 (should (equal (jupyter-message-type res) "execute_result"))
                 (should (equal (jupyter-message-data data :text/plain) "'foo'")))))
           (ert-info ("Inspect")
             (let ((res (jupyter-wait-until-received :inspect-reply
-                         (jupyter-inspect-request client
+                         (jupyter-send-inspect-request client
                            :code "list((1, 2, 3))"
                            :pos 2
                            :detail 0))))
@@ -421,7 +421,7 @@ testing the callback functionality of a
               (should (equal (jupyter-message-type res) "inspect_reply"))))
           (ert-info ("Complete")
             (let ((res (jupyter-wait-until-received :complete-reply
-                         (jupyter-complete-request client
+                         (jupyter-send-complete-request client
                            :code "foo = lis"
                            :pos 8))))
               (should-not (null res))
@@ -429,21 +429,21 @@ testing the callback functionality of a
               (should (equal (jupyter-message-type res) "complete_reply"))))
           (ert-info ("History")
             (let ((res (jupyter-wait-until-received :history-reply
-                         (jupyter-history-request client
+                         (jupyter-send-history-request client
                            :hist-access-type "tail" :n 2))))
               (should-not (null res))
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "history_reply"))))
           (ert-info ("Is Complete")
             (let ((res (jupyter-wait-until-received :is-complete-reply
-                         (jupyter-is-complete-request client
+                         (jupyter-send-is-complete-request client
                            :code "for i in range(5):"))))
               (should-not (null res))
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "is_complete_reply"))))
           (ert-info ("Shutdown")
             (let ((res (jupyter-wait-until-received :shutdown-reply
-                         (jupyter-shutdown-request client))))
+                         (jupyter-send-shutdown-request client))))
               (should-not (null res))
               (should (json-plist-p res))
               (should (equal (jupyter-message-type res) "shutdown_reply")))))

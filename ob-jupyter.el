@@ -144,7 +144,7 @@ the header variables in PARAMS."
         (when no-execute
           (insert "\n")))
       (unless no-execute
-        (jupyter-execute-request jupyter-repl-current-client))
+        (jupyter-send-execute-request jupyter-repl-current-client))
       (current-buffer))))
 
 (defun org-babel-load-session:jupyter (session body params)
@@ -464,7 +464,7 @@ the PARAMS alist."
                        '(:stream
                          :execute-reply :execute-result
                          :display-data :error)))
-                  (jupyter-execute-request client)))))
+                  (jupyter-send-execute-request client)))))
     ;; Setup callbacks for the request
     (let* ((result-type (alist-get :result-type params))
            (no-results (member "none" (alist-get :result-params params)))
