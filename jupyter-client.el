@@ -370,6 +370,9 @@ Any other command sent to the subprocess will be ignored."
 ;; then we send a request, and wait for the request id to come back with
 ;; `jupyter-request-id'. `jupyter-request-id' will time out. it looks like the
 ;; poller is not noticing the stdin event in this case.
+;;
+;; One option would be to have two separate poll commands, one for STDIN and
+;; the other for the channels. But first write a test case for this scenario.
 (defun jupyter--ioloop (client)
   "Return the function used for communicating with CLIENT's kernel."
   (let ((sid (jupyter-session-id (oref client session)))
@@ -453,11 +456,14 @@ subprocess."
   "Insert a request into CLIENT's pending requests.
 Pending requests are `jupyter-request's that have a nil
 `jupyter-request--id'. The `jupyter-send' method for a
-`jupyter-kernel-client' sends message data to the ioloop
-subprocess to encode and send off to the kernel. When the
-subprocess sends a message to the kernel, it sends the message ID
-associated with the request back to the parent Emacs process
-which is when the `jupyter-request--id' field becomes non-nil.
+`jupyter-kernel-client' sends a message to the ioloop subprocess
+which encodes the message and sends it off to the kernel.
+
+When the subprocess sends the message to the kernel, it sends the
+message ID associated with the request back to the parent Emacs
+process which is when the `jupyter-request--id' field becomes
+non-nil. This acts as a synchronization method so that the parent
+Emacs process can guarantee a message has been sent.
 
 Pending requests are stored in a ring located in the
 `:pending-requests' property of an ioloop subprocess. REQ is
@@ -766,8 +772,8 @@ When a message is received from the kernel, the
 client method runs any callbacks for the message and possibly
 runs the client handler for the channel the message was received
 on. The channel's `jupyter-handle-message' method will then pass
-the message to the appropriate message handler based on message
-type which terminates the execution path.
+the message to the appropriate message handler based on the
+message type.
 
 So when a message is received from the kernel the following steps
 are taken:
