@@ -556,7 +556,7 @@ the PARAMS alist."
         (jupyter-wait-until-idle req most-positive-fixnum)
         ;; Finalize the list of results
         (setq results (nreverse results))
-        (cl-destructuring-bind (result . render-param)
+        (cl-destructuring-bind (render-param . result)
             (org-babel-jupyter--transform-result (car results) kernel-lang)
           (org-babel-jupyter--inject-render-param render-param params)
           (prog1 result
