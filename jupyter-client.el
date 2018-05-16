@@ -139,14 +139,18 @@ buffer.")
     (kill-buffer (oref client -buffer))))
 
 (defun jupyter-initialize-connection (client info-or-session)
-  "Initialize CLIENT with a connection INFO-OR-SESSION.
+  "Initialize CLIENT with connection INFO-OR-SESSION.
 If INFO-OR-SESSION is the name of a file, assume the file to be a
 kernel connection file, read the contents as a plist, and create
 a new `jupyter-session' using the plist as the conn-info slot of
-the session. INFO-OR-SESSION can also be a plist with the same
-meaning as if the plist had been read from a connection file.
-Otherwise, INFO-OR-SESSION must be a `jupyter-session' and the
-connection is initialized using its conn-info slot.
+the session. If it is a remote file, create a new
+`jupyter-session' on the plist retured by
+`jupyter-tunnel-connection'.
+
+INFO-OR-SESSION can also be a plist with the same meaning as if
+the plist had been read from a connection file. Otherwise,
+INFO-OR-SESSION must be a `jupyter-session' and the connection is
+initialized using its conn-info slot.
 
 The session object is then set as the session for each
 `jupyter-channel' created for the CLIENT.
@@ -167,9 +171,12 @@ connection is terminated before initializing a new one."
            ((json-plist-p info-or-session)
             info-or-session)
            ((stringp info-or-session)
-            (unless (file-exists-p info-or-session)
-              (error "File does not exist (%s)" info-or-session))
-            (jupyter-read-plist info-or-session))
+            (if (file-remote-p info-or-session)
+                ;; TODO: Don't tunnel if a tunnel already exists
+                (jupyter-tunnel-connection info-or-session)
+              (unless (file-exists-p info-or-session)
+                (error "File does not exist (%s)" info-or-session))
+              (jupyter-read-plist info-or-session)))
            (t (signal 'wrong-type-argument
                       (list info-or-session
                             '(or jupyter-session-p json-plist-p stringp)))))))

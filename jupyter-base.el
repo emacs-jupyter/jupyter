@@ -223,6 +223,39 @@ following fields:
 
 ;;; Connecting to a kernel's channels
 
+(defun jupyter-tunnel-connection (conn-file &optional server)
+  "Forward local ports to the remote ports in CONN-FILE.
+CONN-FILE is the path to a Jupyter connection file, SERVER is the
+host that the kernel connection in CONN-FILE is located. Return a
+copy of the connection plist in CONN-FILE, but with the ports
+replaced by the local ports used for the forwarding.
+
+If CONN-FILE is a `tramp' file name, the SERVER arguments will be
+ignored and the host will be extracted from the information
+contained in the file name.
+
+Note that `zmq-make-tunnel' is used to create the tunnels."
+  (let ((conn-info (jupyter-read-plist conn-file))
+        (sock (zmq-socket (zmq-current-context) zmq-REP)))
+    (when (tramp-tramp-file-p conn-file)
+      (let* ((vec (tramp-dissect-file-name conn-file))
+             (user (tramp-file-name-real-user vec)))
+        (setq server (if user (concat user "@" (tramp-file-name-host vec))
+                       (tramp-file-name-host vec)))))
+    (unwind-protect
+        (cl-loop
+         with remoteip = (plist-get conn-info :ip)
+         for (key maybe-rport) on conn-info by #'cddr
+         collect key and if (memq key '(:hb_port :shell_port :control_port
+                                                 :stdin_port :iopub_port))
+         collect (let ((lport (zmq-bind-to-random-port sock "tcp://127.0.0.1")))
+                   (zmq-unbind sock (zmq-socket-get sock zmq-LAST-ENDPOINT))
+                   (prog1 lport
+                     (zmq-make-tunnel lport maybe-rport server remoteip)))
+         else collect maybe-rport)
+      (zmq-socket-set sock zmq-LINGER 0)
+      (zmq-close sock))))
+
 (cl-defun jupyter-create-connection-info (&key
                                           (kernel-name "python")
                                           (transport "tcp")
