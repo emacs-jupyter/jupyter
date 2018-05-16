@@ -1278,29 +1278,26 @@ the inserted text is multi-line."
   "Ask before killing a Jupyter REPL buffer.
 If the REPL buffer is killed, stop the client and possibly the
 kernel that the REPL buffer is connected to."
-  (not (and (eq major-mode 'jupyter-repl-mode)
-            ;; TODO: Handle case when multiple clients are connected, i.e. do
-            ;; we want to also delete a kernel if this is the last client
-            ;; connected. See `eieio-instance-tracker'.
-            (or (and (jupyter-repl-client-has-manager-p)
-                     (jupyter-kernel-alive-p
-                      (oref jupyter-repl-current-client manager)))
-                (jupyter-channels-running-p jupyter-repl-current-client))
-            (if (y-or-n-p
-                 (format "Jupyter REPL (%s) still connected. Kill it? "
-                         (buffer-name (current-buffer))))
-                (prog1 nil
-                  (jupyter-stop-channels jupyter-repl-current-client)
-                  (cl-loop
-                   with client = jupyter-repl-current-client
-                   for buffer in (buffer-list)
-                   do (with-current-buffer buffer
-                        (when (eq jupyter-repl-current-client client)
-                          (jupyter-repl-interaction-mode -1))))
-                  (when (jupyter-repl-client-has-manager-p)
-                    (jupyter-shutdown-kernel
-                     (oref jupyter-repl-current-client manager))))
-              t))))
+  (when (and (eq major-mode 'jupyter-repl-mode)
+             (jupyter-channels-running-p jupyter-repl-current-client))
+    (when (y-or-n-p
+           (format "Jupyter REPL (%s) still connected. Kill it? "
+                   (buffer-name (current-buffer))))
+      ;; TODO: Handle case when multiple clients are connected, i.e. do we want
+      ;; to also delete a kernel if this is the last client connected. See
+      ;; `eieio-instance-tracker'.
+      (prog1 t
+        (jupyter-stop-channels jupyter-repl-current-client)
+        (when (and (jupyter-repl-client-has-manager-p)
+                   (jupyter-kernel-alive-p
+                    (oref jupyter-repl-current-client manager)))
+          (jupyter-shutdown-kernel (oref jupyter-repl-current-client manager)))
+        (cl-loop
+         with client = jupyter-repl-current-client
+         for buffer in (buffer-list)
+         do (with-current-buffer buffer
+              (when (eq jupyter-repl-current-client client)
+                (jupyter-repl-interaction-mode -1))))))))
 
 (defun jupyter-repl-preserve-window-margins (&optional window)
   "Ensure that the margins of a REPL window are present.
