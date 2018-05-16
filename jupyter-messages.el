@@ -82,14 +82,27 @@
 ;;; Encode/decoding messages
 
 (defun jupyter--encode (object)
-  ;; Fix encoding recursive objects so that nil will get turned into "{}"
   (cl-letf (((symbol-function 'json-encode-keyword)
              (lambda (keyword)
-               (cond ((eq keyword t)          "true")
-                     ((eq keyword json-false) "false")
-                     ((eq keyword json-null)  "{}")))))
+               (cond
+                ((eq keyword t)          "true")
+                ((eq keyword json-false) "false")
+                ;; Fix encoding recursive objects so that nil will get
+                ;; turned into "{}"
+                ((eq keyword json-null)  "{}")))))
     (encode-coding-string
-     (if (stringp object) object (json-encode-plist object)) 'utf-8 t)))
+     (if (stringp object) object
+       (let ((msg-type-prop (plist-member object :msg_type)))
+         (if msg-type-prop
+             (let* ((type-sym (cadr msg-type-prop))
+                    (msg-type (plist-get jupyter-message-types type-sym)))
+               (unless msg-type
+                 (error "Invalid message type (`%s')" msg-type))
+               (setcar (cdr msg-type-prop) msg-type)
+               (prog1 (json-encode-plist object)
+                 (setcar (cdr msg-type-prop) type-sym)))
+           (json-encode-plist object))))
+     'utf-8 t)))
 
 (defun jupyter--decode (str)
   (setq str (decode-coding-string str 'utf-8))
@@ -102,9 +115,20 @@
                 ;; string
                 (json-unknown-keyword str))))
     (prog1 val
-      (let ((date (plist-get val :date)))
+      (let ((date (plist-get val :date))
+            (msg-type (plist-get val :msg_type)))
         (when date
-          (plist-put val :date (jupyter--decode-time date)))))))
+          (plist-put val :date (jupyter--decode-time date)))
+        (when msg-type
+          ;; Convert the message type string to a message type symbol
+          (let ((head jupyter-message-types)
+                (tail (cdr jupyter-message-types)))
+            (while (and head (not (string= msg-type (car tail))))
+              (setq head (cdr tail)
+                    tail (cddr tail)))
+            (unless head
+              (error "Invalid message type (`%s')" msg-type))
+            (plist-put val :msg_type (car head))))))))
 
 (defun jupyter--decode-time (str)
   (let* ((time (date-to-time str)))
@@ -286,7 +310,7 @@
   (jupyter-message-id (plist-get msg :parent_header)))
 
 (defsubst jupyter-message-type (msg)
-  "Get the MSG type."
+  "Get the type of MSG."
   (plist-get msg :msg_type))
 
 (defsubst jupyter-message-content (msg)
@@ -314,12 +338,12 @@ return nil."
 
 (defun jupyter-message-status-idle-p (msg)
   "Determine if MSG is a status: idle message."
-  (and (equal (jupyter-message-type msg) "status")
+  (and (equal (jupyter-message-type msg) :status)
        (equal (jupyter-message-get msg :execution_state) "idle")))
 
 (defun jupyter-message-status-starting-p (msg)
   "Determine if MSG is a status: starting message."
-  (and (equal (jupyter-message-type msg) "status")
+  (and (equal (jupyter-message-type msg) :status)
        (equal (jupyter-message-get msg :execution_state) "starting")))
 
 (provide 'jupyter-messages)

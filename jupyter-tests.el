@@ -388,19 +388,19 @@ testing the callback functionality of a
                          (jupyter-send-kernel-info-request client))))
               (should res)
               (should (json-plist-p res))
-              (should (equal (jupyter-message-type res) "kernel_info_reply"))))
+              (should (eq (jupyter-message-type res) :kernel-info-reply))))
           (ert-info ("Comm info")
             (let ((res (jupyter-wait-until-received :comm-info-reply
                          (jupyter-send-comm-info-request client))))
               (should-not (null res))
               (should (json-plist-p res))
-              (should (equal (jupyter-message-type res) "comm_info_reply"))))
+              (should (eq (jupyter-message-type res) :comm-info-reply))))
           (ert-info ("Execute")
             (let ((res (jupyter-wait-until-received :execute-reply
                          (jupyter-send-execute-request client :code "y = 1 + 2"))))
               (should-not (null res))
               (should (json-plist-p res))
-              (should (equal (jupyter-message-type res) "execute_reply"))))
+              (should (eq (jupyter-message-type res) :execute-reply))))
           (ert-info ("Input")
             (cl-letf (((symbol-function 'read-from-minibuffer)
                        (lambda (_prompt &rest _args) "foo")))
@@ -408,7 +408,7 @@ testing the callback functionality of a
                            (jupyter-send-execute-request client :code "input('')"))))
                 (should-not (null res))
                 (should (json-plist-p res))
-                (should (equal (jupyter-message-type res) "execute_result"))
+                (should (eq (jupyter-message-type res) :execute-result))
                 (should (equal (jupyter-message-data data :text/plain) "'foo'")))))
           (ert-info ("Inspect")
             (let ((res (jupyter-wait-until-received :inspect-reply
@@ -418,7 +418,7 @@ testing the callback functionality of a
                            :detail 0))))
               (should-not (null res))
               (should (json-plist-p res))
-              (should (equal (jupyter-message-type res) "inspect_reply"))))
+              (should (eq (jupyter-message-type res) :inspect-reply))))
           (ert-info ("Complete")
             (let ((res (jupyter-wait-until-received :complete-reply
                          (jupyter-send-complete-request client
@@ -426,27 +426,27 @@ testing the callback functionality of a
                            :pos 8))))
               (should-not (null res))
               (should (json-plist-p res))
-              (should (equal (jupyter-message-type res) "complete_reply"))))
+              (should (eq (jupyter-message-type res) :complete-reply))))
           (ert-info ("History")
             (let ((res (jupyter-wait-until-received :history-reply
                          (jupyter-send-history-request client
                            :hist-access-type "tail" :n 2))))
               (should-not (null res))
               (should (json-plist-p res))
-              (should (equal (jupyter-message-type res) "history_reply"))))
+              (should (eq (jupyter-message-type res) :history-reply))))
           (ert-info ("Is Complete")
             (let ((res (jupyter-wait-until-received :is-complete-reply
                          (jupyter-send-is-complete-request client
                            :code "for i in range(5):"))))
               (should-not (null res))
               (should (json-plist-p res))
-              (should (equal (jupyter-message-type res) "is_complete_reply"))))
+              (should (eq (jupyter-message-type res) :is-complete-reply))))
           (ert-info ("Shutdown")
             (let ((res (jupyter-wait-until-received :shutdown-reply
                          (jupyter-send-shutdown-request client))))
               (should-not (null res))
               (should (json-plist-p res))
-              (should (equal (jupyter-message-type res) "shutdown_reply")))))
+              (should (eq (jupyter-message-type res) :shutdown-reply)))))
       (destructor client))))
 
 (defun jupyter-test-src-block (session code test-result)

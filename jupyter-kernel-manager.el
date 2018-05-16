@@ -271,7 +271,7 @@ channel is stopped unless RESTART is non-nil."
     (let ((session (oref manager session))
           (sock (oref (oref manager control-channel) socket))
           (msg (jupyter-message-shutdown-request :restart restart)))
-      (jupyter-send session sock "shutdown_request" msg)
+      (jupyter-send session sock :shutdown-request msg)
       (with-timeout ((or timeout 1)
                      (delete-process (oref manager kernel))
                      (message "Kernel did not shutdown by request (%s)" (oref manager name)))
@@ -298,7 +298,7 @@ subprocess."
      (let ((session (oref manager session))
            (sock (oref (oref manager control-channel) socket))
            (msg (jupyter-message-interrupt-request)))
-       (jupyter-send session sock "interrupt_request" msg)
+       (jupyter-send session sock :interrupt-request msg)
        (with-timeout ((or timeout 1)
                       (message "No interrupt reply from kernel (%s)" (oref manager name)))
          (while (condition-case nil

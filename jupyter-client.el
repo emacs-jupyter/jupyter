@@ -292,13 +292,11 @@ response to the sent message, see `jupyter-add-callback' and
     ;; Anything sent to stdin is a reply not a request so don't add it to
     ;; `:pending-requests'.
     (unless (eq (oref channel type) :stdin)
+      (cl-loop for msg-type in jupyter-inhibit-handlers
+               unless (plist-member jupyter-message-types msg-type)
+               do (error "Not a valid message type (`%s')" msg-type))
       (let ((req (make-jupyter-request
-                  :inhibited-handlers
-                  (or (eq jupyter-inhibit-handlers t)
-                      (mapcar (lambda (msg-type)
-                           (or (plist-get jupyter-message-types msg-type)
-                               (error "Not a valid message type (`%s')" msg-type)))
-                         jupyter-inhibit-handlers)))))
+                  :inhibited-handlers jupyter-inhibit-handlers)))
         (jupyter--ioloop-push-request client req)
         req))))
 
@@ -646,11 +644,10 @@ REQ is a `jupyter-request' object, MSG-TYPE is one of the
 keywords corresponding to a received message type in
 `jupyter-message-types', and CB is the callback that will be run
 when MSG-TYPE is received for REQ."
-  (setq msg-type (or (plist-get jupyter-message-types msg-type)
-                     ;; A msg-type of t means that FUNCTION is run for all
-                     ;; messages associated with a request.
-                     (eq msg-type t)))
-  (unless msg-type
+  (unless (or (plist-member jupyter-message-types msg-type)
+              ;; A msg-type of t means that FUNCTION is run for all messages
+              ;; associated with a request.
+              (eq msg-type t))
     (error "Not a valid message type (`%s')" msg-type))
   (let ((callbacks (jupyter-request-callbacks req)))
     (if (null callbacks)
@@ -759,7 +756,7 @@ received for it."
 (defun jupyter--run-handler-maybe (client channel req msg)
   (let ((inhibited-handlers (and req (jupyter-request-inhibited-handlers req))))
     (unless (or (eq inhibited-handlers t)
-                (member (jupyter-message-type msg) inhibited-handlers))
+                (memq (jupyter-message-type msg) inhibited-handlers))
       (jupyter-handle-message channel client req msg))))
 
 (cl-defmethod jupyter-handle-message ((client jupyter-kernel-client) channel)
@@ -820,11 +817,11 @@ will be transformed to
 
     (let ((content (jupyter-message-content msg)))
       (pcase (jupyter-message-type msg)
-        (\"shutdown_reply\"
+        (:shutdown-reply
           (cl-destructuring-bind (&key restart @allow-other-keys)
               content
             (jupyter-handle-shutdown-reply client req restart)))
-        (\"stream\"
+        (:stream
           (cl-destructuring-bind (&key name text @allow-other-keys)
               content
             (jupyter-handle-stream client req name text)))
@@ -838,10 +835,9 @@ will be transformed to
         (jmsg (make-symbol "msgvar")))
     (dolist (case cases)
       (cl-destructuring-bind (msg-type . keys) case
-        (let ((msg-str (replace-regexp-in-string
-                        "-" "_" (symbol-name msg-type)))
-              (handler (intern (format "jupyter-handle-%s" msg-type))))
-          (push `(,msg-str
+        (let ((handler (intern (format "jupyter-handle-%s" msg-type)))
+              (msg-type (intern (concat ":" (symbol-name msg-type)))))
+          (push `(,msg-type
                   (cl-destructuring-bind (&key ,@keys &allow-other-keys)
                       ,content
                     (,handler ,jclient ,jreq ,@keys)))
@@ -881,7 +877,7 @@ the user. Otherwise `read-from-minibuffer' is used."
                           (if password (read-passwd prompt)
                             (setq value (read-from-minibuffer prompt)))
                         (quit "")))))
-    (jupyter-send client channel "input_reply" msg)
+    (jupyter-send client channel :input-reply msg)
     (or value "")))
 
 ;;; SHELL handlers
@@ -925,7 +921,7 @@ the user. Otherwise `read-from-minibuffer' is used."
               :user-expressions user-expressions
               :allow-stdin allow-stdin
               :stop-on-error stop-on-error)))
-    (jupyter-send client channel "execute_request" msg)))
+    (jupyter-send client channel :execute-request msg)))
 
 (cl-defgeneric jupyter-handle-execute-reply ((_client jupyter-kernel-client)
                                              _req
@@ -945,7 +941,7 @@ the user. Otherwise `read-from-minibuffer' is used."
   (let ((channel (oref client shell-channel))
         (msg (jupyter-message-inspect-request
               :code code :pos pos :detail detail)))
-    (jupyter-send client channel "inspect_request" msg)))
+    (jupyter-send client channel :inspect-request msg)))
 
 (cl-defgeneric jupyter-handle-inspect-reply ((_client jupyter-kernel-client)
                                              _req
@@ -964,7 +960,7 @@ the user. Otherwise `read-from-minibuffer' is used."
   (let ((channel (oref client shell-channel))
         (msg (jupyter-message-complete-request
               :code code :pos pos)))
-    (jupyter-send client channel "complete_request" msg)))
+    (jupyter-send client channel :complete-request msg)))
 
 (cl-defgeneric jupyter-handle-complete-reply ((_client jupyter-kernel-client)
                                               _req
@@ -1000,7 +996,7 @@ the user. Otherwise `read-from-minibuffer' is used."
               :n n
               :pattern pattern
               :unique unique)))
-    (jupyter-send client channel "history_request" msg)))
+    (jupyter-send client channel :history-request msg)))
 
 (cl-defgeneric jupyter-handle-history-reply ((_client jupyter-kernel-client)
                                              _req
@@ -1016,7 +1012,7 @@ the user. Otherwise `read-from-minibuffer' is used."
   (let ((channel (oref client shell-channel))
         (msg (jupyter-message-is-complete-request
               :code code)))
-    (jupyter-send client channel "is_complete_request" msg)))
+    (jupyter-send client channel :is-complete-request msg)))
 
 (cl-defgeneric jupyter-handle-is-complete-reply ((_client jupyter-kernel-client)
                                                  _req
@@ -1033,7 +1029,7 @@ the user. Otherwise `read-from-minibuffer' is used."
   (let ((channel (oref client shell-channel))
         (msg (jupyter-message-comm-info-request
               :target-name target-name)))
-    (jupyter-send client channel "comm_info_request" msg)))
+    (jupyter-send client channel :comm-info-request msg)))
 
 (cl-defgeneric jupyter-handle-comm-info-reply ((_client jupyter-kernel-client)
                                                _req
@@ -1046,7 +1042,7 @@ the user. Otherwise `read-from-minibuffer' is used."
   "Send a kernel-info request."
   (let ((channel (oref client shell-channel))
         (msg (jupyter-message-kernel-info-request)))
-    (jupyter-send client channel "kernel_info_request" msg)))
+    (jupyter-send client channel :kernel-info-request msg)))
 
 (cl-defgeneric jupyter-handle-kernel-info-reply ((_client jupyter-kernel-client)
                                                  _req
@@ -1067,7 +1063,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
   (declare (indent 1))
   (let ((channel (oref client shell-channel))
         (msg (jupyter-message-shutdown-request :restart restart)))
-    (jupyter-send client channel "shutdown_request" msg)))
+    (jupyter-send client channel :shutdown-request msg)))
 
 (cl-defgeneric jupyter-handle-shutdown-reply ((_client jupyter-kernel-client)
                                               _req
