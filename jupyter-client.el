@@ -286,15 +286,17 @@ response to the sent message, see `jupyter-add-callback' and
   (let ((ioloop (oref client ioloop)))
     (unless ioloop
       (signal 'wrong-type-argument (list 'process ioloop 'ioloop)))
+    (or (eq jupyter-inhibit-handlers t)
+        (cl-loop
+         for msg-type in jupyter-inhibit-handlers
+         unless (plist-member jupyter-message-types msg-type)
+         do (error "Not a valid message type (`%s')" msg-type)))
     (when jupyter--debug
       (message "SENDING: %s %s" type message))
     (jupyter-send channel type message)
     ;; Anything sent to stdin is a reply not a request so don't add it to
     ;; `:pending-requests'.
     (unless (eq (oref channel type) :stdin)
-      (cl-loop for msg-type in jupyter-inhibit-handlers
-               unless (plist-member jupyter-message-types msg-type)
-               do (error "Not a valid message type (`%s')" msg-type))
       (let ((req (make-jupyter-request
                   :inhibited-handlers jupyter-inhibit-handlers)))
         (jupyter--ioloop-push-request client req)
