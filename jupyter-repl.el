@@ -2127,9 +2127,9 @@ called interactively, display the new REPL buffer as well."
         (pop-to-buffer (oref client buffer)))
       client)))
 
-(provide 'jupyter-repl-client)
+(provide 'jupyter-repl)
 
 ;; Local Variables:
 ;; byte-compile-warnings: (not free-vars)
 ;; End:
-;;; jupyter-repl-client.el ends here
+;;; jupyter-repl.el ends here
