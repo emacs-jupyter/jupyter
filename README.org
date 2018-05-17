@@ -80,10 +80,12 @@ one of the kernel languages that were found on your system by
 that the =:session= parameter be specified. So for example to interact with a
 =python= kernel you would create a new source block like so
 
-#+BEGIN_SRC jupyter-python :session py
-x = 'foo'
-y = 'bar'
-x + ' ' + y
+#+BEGIN_SRC org
+,#+BEGIN_SRC jupyter-python :session py
+,x = 'foo'
+,y = 'bar'
+,x + ' ' + y
+,#+END_SRC
 #+END_SRC
 
 This will first look for a Jupyter REPL based on the session name and if one is
@@ -92,10 +94,12 @@ block to the REPL's kernel for execution. By default, the code is executed
 synchronously. To execute a code block asynchronously set the =:async=
 parameter to =yes=.
 
-#+BEGIN_SRC jupyter-python :session py :async yes
-x = 'foo'
-y = 'bar'
-x + ' ' + y
+#+BEGIN_SRC org
+,#+BEGIN_SRC jupyter-python :session py :async yes
+,x = 'foo'
+,y = 'bar'
+,x + ' ' + y
+,#+END_SRC
 #+END_SRC
 
 Since a particular language may have multiple kernels available, the default
@@ -103,10 +107,12 @@ kernel used for a language is the first kernelspec found by
 =jupyter-available-kernelspecs= that has language. To change the kernel, set
 the =:kernel= parameter
 
-#+BEGIN_SRC jupyter-python :session py :async yes :kernel python2
-x = 'foo'
-y = 'bar'
-x + ' ' + y
+#+BEGIN_SRC org
+,#+BEGIN_SRC jupyter-python :session py :async yes :kernel python2
+,x = 'foo'
+,y = 'bar'
+,x + ' ' + y
+,#+END_SRC
 #+END_SRC
 
 Any of the defaults for a language can be changed by setting
@@ -152,8 +158,10 @@ created. So if you had a remote kernel on a host named =ec2= whose connection
 file is =/run/user/1000/jupyter/kernel-julia-0.6.json= on that host, you would
 specify the =:session= as
 
-#+BEGIN_SRC jupyter-julia :session /ec2:/run/user/1000/jupyter/kernel-julia-0.6.json
-...
+#+BEGIN_SRC org
+,#+BEGIN_SRC jupyter-julia :session /ec2:/run/user/1000/jupyter/kernel-julia-0.6.json
+,...
+,#+END_SRC
 #+END_SRC
 
 Currently there is no password handling, so if your =ssh= connection requires a
