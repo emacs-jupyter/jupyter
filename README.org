@@ -73,12 +73,16 @@ keybindings for interacting with the REPL:
 * Integration with =org-mode=
 
 For users of =org-mode=, integration with =org-babel= is provided through the
-=ob-jupyter= library. After =ob-jupyter= has been required, new source code
-blocks with the language =jupyter-LANG= will be available. =LANG= can be any
-one of the kernel languages that were found on your system by
-=jupyter-available-kernelspecs=. Every =ob-jupyter= source code block requires
-that the =:session= parameter be specified. So for example to interact with a
-=python= kernel you would create a new source block like so
+=ob-jupyter= library. To enable Jupyter support for source code blocks add
+=jupyter= to =org-babel-load-languages=. After =ob-jupyter= has been loaded,
+new source code blocks with names of the form =jupyter-LANG= will be available.
+=LANG= can be any one of the kernel languages that were found on your system by
+=jupyter-available-kernelspecs=.
+
+Every Jupyter source code block requires that the =:session= parameter be
+specified since all interaction with a Jupyter kernel is through a REPL
+connected to the kernel. So for example to interact with a =python= kernel you
+would create a new source block like so
 
 #+BEGIN_SRC org
 ,#+BEGIN_SRC jupyter-python :session py
@@ -88,11 +92,8 @@ x + ' ' + y
 ,#+END_SRC
 #+END_SRC
 
-This will first look for a Jupyter REPL based on the session name and if one is
-not found, a new REPL will be created. It will then send the code of the source
-block to the REPL's kernel for execution. By default, the code is executed
-synchronously. To execute a code block asynchronously set the =:async=
-parameter to =yes=.
+By default, source blocks are executed synchronously. To execute a source block
+asynchronously set the =:async= parameter to =yes=.
 
 #+BEGIN_SRC org
 ,#+BEGIN_SRC jupyter-python :session py :async yes
@@ -104,8 +105,8 @@ x + ' ' + y
 
 Since a particular language may have multiple kernels available, the default
 kernel used for a language is the first kernelspec found by
-=jupyter-available-kernelspecs= that has language. To change the kernel, set
-the =:kernel= parameter
+=jupyter-available-kernelspecs= that has the corresponding language. To change
+the kernel, set the =:kernel= parameter
 
 #+BEGIN_SRC org
 ,#+BEGIN_SRC jupyter-python :session py :async yes :kernel python2
@@ -117,8 +118,8 @@ x + ' ' + y
 
 Any of the defaults for a language can be changed by setting
 =org-babel-default-header-args:jupyter-LANG= to an appropriate value. For
-example to have asynchronous execution, a default session name of =jl=, and use
-the =julia-0.6= kernel you would set it to
+example to change the default header arguments of the =julia= kernel, you can
+set =org-babel-default-header-args:jupyter-julia= to something like
 
 #+BEGIN_SRC elisp
 (setq org-babel-default-header-args:jupyter-julia '((:async . "yes")
@@ -128,12 +129,16 @@ the =julia-0.6= kernel you would set it to
 ** Rich kernel output
 
 All of the mimetypes available when using the REPL are also available using
-=ob-jupyter=. Whenever a kernel sends image data and no =:file= parameter is
-provided to the source code block, a file name is automatically generated and
-the image data written to file in =org-babel-jupyter-resource-directory=.
-Otherwise, if a =:file= parameter is given, the image data is written to the
-file specified. For =text/latex=, =text/markdown=, =text/org=, =text/html=, the
-results are wrapped in a source block with the appropriate language.
+=ob-jupyter=. If image data is received from the kernel, the image will be
+saved to file and an image link will be the result of the source block, for
+=text/latex=, =text/markdown=, =text/org=, =text/html=, the results are wrapped
+in a source block with the appropriate language. For =text/plain= the results
+are inserted as scalar data.
+
+For images sent by the kernel, if no =:file= parameter is provided to the
+source block, a file name is automatically generated and the image data written
+to file in =org-babel-jupyter-resource-directory=. Otherwise, if a =:file=
+parameter is given, the image data is written to the file specified.
 ** Editing the contents of a code block
 
 When editing the code of a Jupyter source block, i.e. by pressing =C-c '= when
