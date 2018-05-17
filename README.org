@@ -82,9 +82,9 @@ that the =:session= parameter be specified. So for example to interact with a
 
 #+BEGIN_SRC org
 ,#+BEGIN_SRC jupyter-python :session py
-,x = 'foo'
-,y = 'bar'
-,x + ' ' + y
+x = 'foo'
+y = 'bar'
+x + ' ' + y
 ,#+END_SRC
 #+END_SRC
 
@@ -96,9 +96,9 @@ parameter to =yes=.
 
 #+BEGIN_SRC org
 ,#+BEGIN_SRC jupyter-python :session py :async yes
-,x = 'foo'
-,y = 'bar'
-,x + ' ' + y
+x = 'foo'
+y = 'bar'
+x + ' ' + y
 ,#+END_SRC
 #+END_SRC
 
@@ -109,9 +109,9 @@ the =:kernel= parameter
 
 #+BEGIN_SRC org
 ,#+BEGIN_SRC jupyter-python :session py :async yes :kernel python2
-,x = 'foo'
-,y = 'bar'
-,x + ' ' + y
+x = 'foo'
+y = 'bar'
+x + ' ' + y
 ,#+END_SRC
 #+END_SRC
 
@@ -160,7 +160,7 @@ specify the =:session= as
 
 #+BEGIN_SRC org
 ,#+BEGIN_SRC jupyter-julia :session /ec2:/run/user/1000/jupyter/kernel-julia-0.6.json
-,...
+...
 ,#+END_SRC
 #+END_SRC
 
