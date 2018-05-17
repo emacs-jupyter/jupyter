@@ -80,8 +80,8 @@ testing the callback functionality of a
                             message
                             &optional _flags)
   (let ((req (make-jupyter-request :-id (jupyter-new-uuid))))
-    (if (string-match "request" type)
-        (setq type (replace-match "reply" nil nil type))
+    (if (string-match "request" (symbol-name type))
+        (setq type (intern (replace-match "reply" nil nil (symbol-name type))))
       (error "Not a request message type (%s)" type))
     ;; Message flow
     ;; - status: busy
@@ -89,14 +89,12 @@ testing the callback functionality of a
     ;; - status: idle
     (jupyter-queue-message
      (oref client iopub-channel)
-     (jupyter-test-message
-      req "status" (list :execution_state "busy")))
+     (jupyter-test-message req :status (list :execution_state "busy")))
     (jupyter-queue-message
      channel (jupyter-test-message req type message))
     (jupyter-queue-message
      (oref client iopub-channel)
-     (jupyter-test-message
-      req "status" (list :execution_state "idle")))
+     (jupyter-test-message req :status (list :execution_state "idle")))
     (run-at-time
      0.01 nil
      (lambda (client channel)
@@ -116,7 +114,7 @@ testing the callback functionality of a
   (cl-call-next-method))
 
 (defmacro with-jupyter-echo-client (client &rest body)
-  (declare (indent 1))
+  (declare (indent 1) (debug (symbolp &rest form)))
   `(let ((,client (jupyter-echo-client)))
      ,@body))
 
@@ -124,36 +122,30 @@ testing the callback functionality of a
   (with-jupyter-echo-client client
     (ert-info ("Mock echo client echo's messages back to channel.")
       (let* ((msg (jupyter-message-execute-request :code "foo"))
-             (req (jupyter-send client (oref client shell-channel)
-                                "execute_request" msg)))
+             (req (jupyter-send client
+                                (oref client shell-channel) :execute-request msg)))
         (sleep-for 0.5)
         (setq msgs (nreverse (ring-elements (oref client messages))))
         (should (= (length msgs) 3))
-        (should (equal (jupyter-message-type (first msgs))
-                       "status"))
+        (should (equal (jupyter-message-type (first msgs)) :status))
         (should (equal (jupyter-message-parent-id (first msgs))
                        (jupyter-request-id req)))
-        (should (equal (jupyter-message-get (first msgs) :execution_state)
-                       "busy"))
-        (should (equal (jupyter-message-type (second msgs))
-                       "execute_reply"))
+        (should (equal (jupyter-message-get (first msgs) :execution_state) "busy"))
+        (should (equal (jupyter-message-type (second msgs)) :execute-reply))
         (should (equal (jupyter-message-parent-id (second msgs))
                        (jupyter-request-id req)))
-        (should (equal (jupyter-message-content (second msgs))
-                       msg))
-        (should (equal (jupyter-message-type (third msgs))
-                       "status"))
+        (should (equal (jupyter-message-content (second msgs)) msg))
+        (should (equal (jupyter-message-type (third msgs)) :status))
         (should (equal (jupyter-message-parent-id (third msgs))
                        (jupyter-request-id req)))
-        (should (equal (jupyter-message-get (third msgs) :execution_state)
-                       "idle"))))))
+        (should (equal (jupyter-message-get (third msgs) :execution_state) "idle"))))))
 
 (ert-deftest jupyter-callbacks ()
   (with-jupyter-echo-client client
     (ert-info ("Request callbacks")
       (ert-info ("Blocking callbacks")
         (let ((req (jupyter-send-execute-request client :code "foo")))
-          (should (jupyter-wait-until-idle req))
+          (jupyter-wait-until-idle req)
           (should (jupyter-request-idle-received-p req))
           ;; Can't add callbacks after an idle message has been received
           (should-error (jupyter-add-callback req :status #'identity))))
@@ -165,15 +157,15 @@ testing the callback functionality of a
           (jupyter-add-callback req1
             t (lambda (msg)
                 (push 1 ran-callbacks)
-                (should (member (jupyter-message-type msg)
-                                '("execute_reply" "status")))
+                (should (memq (jupyter-message-type msg)
+                              '(:execute-reply :status)))
                 (should (equal (jupyter-message-parent-id msg)
                                (jupyter-request-id req1)))))
           (jupyter-add-callback req2
             t (lambda (msg)
                 (push 2 ran-callbacks)
                 (should (member (jupyter-message-type msg)
-                                '("kernel_info_reply" "status")))
+                                '(:kernel-info-reply :status)))
                 (should (equal (jupyter-message-parent-id msg)
                                (jupyter-request-id req2)))))
           (should (jupyter-wait-until-idle req2))
@@ -201,25 +193,15 @@ testing the callback functionality of a
       (should-error (jupyter--split-identities msg))))
   (ert-info ("Creating message headers")
     (let* ((session (jupyter-session :key (jupyter-new-uuid)))
-           (header (jupyter--message-header session "stdin_reply")))
-      ;; TODO: Check fields
+           (header (jupyter--message-header session :input-reply)))
       (should (plist-get header :msg_id))
       (should (plist-get header :date))
-      (should (string= (plist-get header :msg_type) "stdin_reply"))
+      (should (eq (plist-get header :msg_type) :input-reply))
       (should (string= (plist-get header :version) jupyter-protocol-version))
       (should (string= (plist-get header :username) user-login-name))
-      (should (string= (plist-get header :session) (jupyter-session-id session))))
-    ;; TODO: Handle other kinds of encoding
-    (ert-info ("Encoding/decoding objects")
-      (let ((json-object-type 'plist)
-            (obj nil))
-        (should-not (multibyte-string-p (jupyter--encode "foîji")))
-        (should (equal "foîji" (jupyter--decode (jupyter--encode "foîji"))))
-        (setq obj '(:msg_id 12342 :msg_type "stdin_reply" :session "foîji"))
-        (should (json-plist-p obj))
-        (should-not (multibyte-string-p (jupyter--encode obj)))
-        (should (equal (jupyter--decode (jupyter--encode obj))
-                       obj))))))
+      (should (string= (plist-get header :session) (jupyter-session-id session)))))
+  ;; TODO: Tests for encoding/decoding time
+  )
 
 (ert-deftest jupyter-channels ()
   (ert-info ("Channel types should match their class")
@@ -229,8 +211,6 @@ testing the callback functionality of a
     (should (eq (oref (jupyter-hb-channel) type) :hb)))
   (let ((channel (jupyter-sync-channel :endpoint "tcp://127.0.0.1:5555")))
     (ert-info ("Starting a channel")
-      (oset channel socket nil)
-      (should-not (oref channel socket))
       (should-not (jupyter-channel-alive-p channel))
       (jupyter-start-channel channel :identity "foo")
       (should (oref channel socket))
@@ -293,94 +273,68 @@ testing the callback functionality of a
               (jupyter-stop-channel channel))))))))
 
 (ert-deftest jupyter-client ()
-  (let* ((socks (cl-loop repeat 4
-                         collect (zmq-socket (zmq-current-context) zmq-REQ)))
-         (sock-endpoint
-          (cl-loop
-           with addr = "tcp://127.0.0.1"
-           for sock in socks
-           collect (cons sock (format "%s:%d" addr (zmq-bind-to-random-port
-                                                    sock addr))))))
-    (setq client (jupyter-kernel-client
-                  :session (jupyter-session
-                            :key "58e05d24-7600e037194e78bde23108de")
-                  :shell-channel (jupyter-shell-channel
-                                  :endpoint (cdr (nth 0 sock-endpoint)))
-                  :iopub-channel (jupyter-iopub-channel
-                                  :endpoint (cdr (nth 1 sock-endpoint)))
-                  :stdin-channel (jupyter-stdin-channel
-                                  :endpoint (cdr (nth 2 sock-endpoint)))
-                  :hb-channel (jupyter-hb-channel
-                               :endpoint (cdr (nth 3 sock-endpoint)))))
-    (cl-loop
-     for cname in (list 'shell-channel 'iopub-channel
-                        'hb-channel 'stdin-channel)
-     do (should (slot-boundp client cname))
-     (if (eq cname 'hb-channel) (cl-check-type (eieio-oref client cname)
-                                               jupyter-hb-channel)
-       (cl-check-type (eieio-oref client cname) jupyter-channel))
-     (should-not (jupyter-channel-alive-p (eieio-oref client cname))))
-
-    (jupyter-start-channels client)
-
-    (cl-loop
-     for cname in (list 'shell-channel 'iopub-channel
-                        'hb-channel 'stdin-channel)
-     for channel = (eieio-oref client cname)
-     unless (eq cname 'hb-channel) do
-     (should (slot-boundp channel 'socket))
-     (cl-check-type (oref channel socket) zmq-socket)
-     and do (should (jupyter-channel-alive-p (eieio-oref client cname))))))
-
-(ert-deftest jupyter-channel-subprocess ()
-  (ert-info ("Queuing messages preserves sort order")
-    (cl-flet ((queue-msg
-               (messages priorities msg)
-               (jupyter--ioloop-queue-message messages priorities msg)
-               messages))
-      (let* ((priorities '((:iopub . 1)
-                           (:shell . 2)))
-             (messages nil)
-             (time '(0 0 100 0))
-             (out-of-order
-              `((:iopub . (nil . (:header (:date ,time))))
-                (:shell . (nil . (:header (:date ,time))))
-                (:shell . (nil . (:header (:date ,(time-add time '(0 0 100))))))
-                (:iopub . (nil . (:header (:date ,(time-subtract
-                                                   time '(0 0 100)))))))))
-        (setq msg (nth 0 out-of-order))
-        (setq messages (queue-msg messages priorities msg))
-        (should
-         (equal messages `((:iopub . (nil . (:header (:date ,time)))))))
-
-        (setq msg (nth 1 out-of-order))
-        (setq messages (queue-msg messages priorities msg))
-        (should (equal  messages `((:shell . (nil . (:header (:date ,time))))
-                                   (:iopub . (nil . (:header (:date ,time)))))))
-
-        (setq msg (nth 2 out-of-order))
-        (setq messages (queue-msg messages priorities msg))
-        (should
-         (equal
-          messages `((:shell . (nil . (:header (:date ,time))))
-                     (:iopub . (nil . (:header (:date ,time))))
-                     (:shell . (nil . (:header (:date ,(time-add time '(0 0 100)))))))))
-
-        (setq msg (nth 3 out-of-order))
-        (setq messages (queue-msg messages priorities msg))
-        (should
-         (equal
-          messages `((:iopub . (nil . (:header (:date ,(time-subtract time '(0 0 100))))))
-                     (:shell . (nil . (:header (:date ,time))))
-                     (:iopub . (nil . (:header (:date ,time))))
-                     (:shell . (nil . (:header (:date ,(time-add time '(0 0 100)))))))))))))
+  (let* ((ports (cl-loop
+                 with sock = (zmq-socket (zmq-current-context) zmq-PUB)
+                 for c in '(:shell :hb :iopub :stdin :control)
+                 collect c and
+                 collect (zmq-bind-to-random-port sock "tcp://127.0.0.1")
+                 finally (zmq-close sock)))
+         (conn-info `(:shell_port
+                      ,(plist-get ports :shell)
+                      :key  "8671b7e4-5656e6c9d24edfce81916780"
+                      :hb_port
+                      ,(plist-get ports :hb)
+                      :kernel_name "python"
+                      :control_port
+                      ,(plist-get ports :control)
+                      :signature_scheme "hmac-sha256"
+                      :ip "127.0.0.1"
+                      :stdin_port
+                      ,(plist-get ports :stdin)
+                      :transport "tcp"
+                      :iopub_port
+                      ,(plist-get ports :iopub)))
+         (client (jupyter-kernel-client)))
+    (ert-info ("`jupyter-initialize-connection'")
+      (jupyter-initialize-connection client conn-info)
+      (let ((session (oref client session)))
+        (should (string= (jupyter-session-key session)
+                         (plist-get conn-info :key)))
+        (should (eq session (oref (oref client shell-channel) session)))
+        (should (eq session (oref (oref client stdin-channel) session)))
+        (should (eq session (oref (oref client iopub-channel) session)))
+        (should (eq session (oref (oref client hb-channel) session))))
+      (should (string= (oref (oref client shell-channel) endpoint)
+                       (format "tcp://127.0.0.1:%d" (plist-get ports :shell))))
+      (should (string= (oref (oref client stdin-channel) endpoint)
+                       (format "tcp://127.0.0.1:%d" (plist-get ports :stdin))))
+      (should (string= (oref (oref client iopub-channel) endpoint)
+                       (format "tcp://127.0.0.1:%d" (plist-get ports :iopub))))
+      (should (string= (oref (oref client hb-channel) endpoint)
+                       (format "tcp://127.0.0.1:%d" (plist-get ports :hb))))
+      (ert-info ("Re-initializing stops running channels")
+        (jupyter-start-channels client)
+        (should (jupyter-channels-running-p client))
+        (jupyter-initialize-connection client conn-info)
+        (should-not (jupyter-channels-running-p client))
+        (jupyter-start-channels client)))
+    (ert-info ("Setting `jupyter-request-inhibited-handlers'")
+      (let* ((jupyter-inhibit-handlers '(:stream))
+             (req (jupyter-send-kernel-info-request client)))
+        (should (equal (jupyter-request-inhibited-handlers req)
+                       '(:stream)))
+        (setq jupyter-inhibit-handlers '(:foo))
+        (should-error (jupyter-send-kernel-info-request client))))
+    (ert-info ("Destructor")
+      (should (buffer-live-p (oref client -buffer)))
+      (should (jupyter-channels-running-p client))
+      (destructor client)
+      (should-not (jupyter-channels-running-p client))
+      (should-not (buffer-live-p (oref client -buffer))))))
 
 (ert-deftest jupyter-message-types ()
-  (let* ((manager (jupyter-kernel-manager "python"))
-         (client (jupyter-make-client manager 'jupyter-kernel-client)))
-    (jupyter-start-channels client)
-    ;; Let the channels start
-    (sleep-for 1)
+  (cl-destructuring-bind (manager client _info)
+      (jupyter-start-new-kernel "python")
     (unwind-protect
         (progn
           (ert-info ("Kernel info")
@@ -447,6 +401,8 @@ testing the callback functionality of a
               (should-not (null res))
               (should (json-plist-p res))
               (should (eq (jupyter-message-type res) :shutdown-reply)))))
+      (when (jupyter-kernel-alive-p manager)
+        (destructor manager))
       (destructor client))))
 
 (defun jupyter-test-src-block (session code test-result)
@@ -465,6 +421,8 @@ testing the callback functionality of a
                  (point) (goto-char (org-babel-result-end))))))
           (should (equal result test-result))
           (delete-region pos (point)))))))
+
+(defvar org-babel-jupyter-resource-directory nil)
 
 (ert-deftest org-babel-jupyter ()
   (ert-info ("Dynamic result types")
