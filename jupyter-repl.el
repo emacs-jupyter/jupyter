@@ -1332,8 +1332,16 @@ line if TYPE is `inspect'."
   (let (code pos)
     (cl-case type
       (inspect
-       (setq code (buffer-substring (line-beginning-position)
-                                    (line-end-position))
+       (setq code
+             ;; TODO: This still needs work
+             (save-excursion
+               ;; Ignore the invisible characters of a prompt
+               (when (and (eq major-mode 'jupyter-repl-mode)
+                          (field-at-pos (point)))
+                 (goto-char (1+ (field-end))))
+               (buffer-substring
+                (line-beginning-position)
+                (line-end-position)))
              ;; NOTE: The +1 is because normally, when inspecting code, `point'
              ;; is on a character of the symbol being inspected, this is in
              ;; contrast to completing code where `point' is after the last
@@ -1346,7 +1354,7 @@ line if TYPE is `inspect'."
                  pos (1- (jupyter-repl-cell-code-position)))
          (setq code (buffer-substring (line-beginning-position) (point))
                pos (- (point) (line-beginning-position))))))
-    (cons code pos)))
+    (list code pos)))
 
 (defun jupyter-repl-completion-prefix ()
   "Return the prefix for the current completion context.
@@ -1423,7 +1431,7 @@ COMMAND and ARG have the same meaning as the elements of
      (cons
       :async
       (lambda (cb)
-        (cl-destructuring-bind (code . pos)
+        (cl-destructuring-bind (code pos)
             (jupyter-repl-code-context-at-point 'complete)
           (jupyter-add-callback
               ;; Ignore errors during completion
@@ -1493,7 +1501,7 @@ respond before returning nil."
 Send an inspect request to the `jupyter-repl-current-client' of
 the `current-buffer' and display the results in a buffer."
   (interactive)
-  (cl-destructuring-bind (code . pos)
+  (cl-destructuring-bind (code pos)
       (jupyter-repl-code-context-at-point 'inspect)
     (let ((buf (current-buffer)))
       ;; TODO: Reset this to nil when the inspect buffer is closed.
