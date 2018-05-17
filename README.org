@@ -443,9 +443,9 @@ types:
   '(:status :execute-result :execute-reply)
   (lambda (msg)
     (pcase (jupyter-message-type msg)
-      ("status" ...)
-      ("execute_reply" ...)
-      ("execute_result" ...))))
+      (:status ...)
+      (:execute-reply ...)
+      (:execute-result ...))))
 #+END_SRC
 
 Note, this can also be achieved by adding the same function to each message
