@@ -360,8 +360,7 @@ Finally, INFO is the kernel info plist obtained from a
                    (started nil)
                    (cb (lambda (msg)
                          (setq started
-                               (equal (jupyter-message-get msg :execution_state)
-                                      "starting")))))
+                               (jupyter-message-status-starting-p msg)))))
               (jupyter-add-hook client 'jupyter-iopub-message-hook cb)
               (jupyter-start-kernel manager 10)
               (setq reporter (make-progress-reporter "Kernel starting up..."))
