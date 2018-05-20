@@ -82,26 +82,27 @@
 ;;; Encode/decoding messages
 
 (defun jupyter--encode (object)
-  (cl-letf (((symbol-function 'json-encode-keyword)
-             (lambda (keyword)
-               (cond
-                ((eq keyword t)          "true")
-                ((eq keyword json-false) "false")
-                ;; Fix encoding recursive objects so that nil will get
-                ;; turned into "{}"
-                ((eq keyword json-null)  "{}")))))
+  ;; TODO: Handle date fields, they get turned into list
+  (cl-letf (((symbol-function 'json-encode)
+             (lambda (object)
+               (cond ((memq object (list t json-null json-false))
+                      (if (eq object json-null) "{}"
+                        (json-encode-keyword object)))
+                     ((stringp object)      (json-encode-string object))
+                     ((keywordp object)
+                      ;; Handle `jupyter-message-type'
+                      (let ((msg-type (plist-get jupyter-message-types object)))
+                        (json-encode-string
+                         (or msg-type (substring (symbol-name object) 1)))))
+                     ((symbolp object)      (json-encode-string
+                                             (symbol-name object)))
+                     ((numberp object)      (json-encode-number object))
+                     ((arrayp object)       (json-encode-array object))
+                     ((hash-table-p object) (json-encode-hash-table object))
+                     ((listp object)        (json-encode-list object))
+                     (t                     (signal 'json-error (list object)))))))
     (encode-coding-string
-     (if (stringp object) object
-       (let ((msg-type-prop (plist-member object :msg_type)))
-         (if msg-type-prop
-             (let* ((type-sym (cadr msg-type-prop))
-                    (msg-type (plist-get jupyter-message-types type-sym)))
-               (unless msg-type
-                 (error "Invalid message type (`%s')" msg-type))
-               (setcar (cdr msg-type-prop) msg-type)
-               (prog1 (json-encode-plist object)
-                 (setcar (cdr msg-type-prop) type-sym)))
-           (json-encode-plist object))))
+     (if (stringp object) object (json-encode-plist object))
      'utf-8 t)))
 
 (defun jupyter--decode (str)
