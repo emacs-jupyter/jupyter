@@ -1288,10 +1288,10 @@ kernel that the REPL buffer is connected to."
       ;; `eieio-instance-tracker'.
       (prog1 t
         (jupyter-stop-channels jupyter-repl-current-client)
-        (when (and (jupyter-repl-client-has-manager-p)
-                   (jupyter-kernel-alive-p
-                    (oref jupyter-repl-current-client manager)))
-          (jupyter-shutdown-kernel (oref jupyter-repl-current-client manager)))
+        (destructor jupyter-repl-current-client)
+        (when (jupyter-repl-client-has-manager-p)
+          (jupyter-shutdown-kernel (oref jupyter-repl-current-client manager))
+          (destructor (oref jupyter-repl-current-client manager)))
         (cl-loop
          with client = jupyter-repl-current-client
          for buffer in (buffer-list)
