@@ -1376,7 +1376,13 @@ actually sent to the kernel."
                    ;; a punctuation syntax class.
                    (and char (= char ?\\)
                         (buffer-substring (1- beg) (point)))))
-               (company-grab-symbol-cons "\\.\\|::\\|->" 2))))))
+               (let* ((s (company-grab-symbol-cons "\\.\\|::\\|->" 2)))
+                 ;; Do not complete on floating point numbers
+                 (unless (and (consp s)
+                              (string= (car s) "")
+                              (= (char-before (point)) ?.)
+                              (<= ?0 (char-before (1- (point))) ?9))
+                   s)))))))
 
 (defun jupyter-repl-construct-completion-candidates
     (prefix matches metadata start end)
@@ -1397,15 +1403,31 @@ is used for completion."
         ;; TODO: Handle the case when the matches are method signatures in the
         ;; Julia kernel. This information would be useful for doing some kind
         ;; of eldoc like feature.
-        (prefix (ignore-errors  (substring prefix 0 (- (length prefix) (- end start)))))
-        (match nil))
-    ;; Set the prefix on the match if needed
-    (when prefix
-      (while (setq match (car tail))
-        (unless (string-prefix-p prefix match)
-          (setcar tail (concat prefix (car tail))))
+        (match-prefix-len (- (- end start) (length prefix))))
+    ;; FIXME: How to complete things like 000|? In the python kernel,
+    ;; completions will return matchs to append like and, or, ... but the
+    ;; prefix 000 was provided so company will replace 000 with the match if it
+    ;; is accepted instead of appending it. In this case end == start ==
+    ;; (length prefix). How can we append the match? The only way I can see is
+    ;; to add 000 as a prefix to every match.
+    (cond
+     ((> match-prefix-len 0)
+      ;; Remove the beginning characters of a match when len > 0. This happens
+      ;; when completing things like foo.ba, the python kernel will return
+      ;; matches like foo.bar, foo.baz, but we only want the bar or baz part.
+      (while (car tail)
+        (setcar tail (substring (car tail) match-prefix-len))
         (setq tail (cdr tail))))
+     ((< match-prefix-len 0)
+      ;; Add the prefix when necessaey
+      ;; (while (car tail)
+      ;;   (put-text-property 0 1 'match (abs match-prefix-len) (car tail))
+      ;;   (setq tail (cdr tail)))
+
+      ))
     ;; When a type is supplied add it as an annotation
+    ;; TODO: Customize annotation types, when an annotation type "function"
+    ;; appears, substitute "λ".
     (when types
       (let ((max-len (apply #'max (mapcar #'length matches))))
         (cl-mapc
@@ -1425,7 +1447,6 @@ COMMAND and ARG have the same meaning as the elements of
   (cl-case command
     (interactive (company-begin-backend 'company-jupyter-repl))
     (sorted t)
-    (no-cache t)
     (prefix (jupyter-repl-completion-prefix))
     (candidates
      (cons
@@ -1451,7 +1472,6 @@ COMMAND and ARG have the same meaning as the elements of
                       (jupyter-repl-construct-completion-candidates
                        arg matches metadata cursor_start cursor_end))))))))))
     (ignore-case t)
-    (match (get-text-property 0 'match arg))
     (annotation (get-text-property 0 'annot arg))
     (doc-buffer (let* ((inhibit-read-only t)
                        (buf (jupyter-repl--inspect
