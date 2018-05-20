@@ -1432,10 +1432,9 @@ is used for completion."
       (let ((max-len (apply #'max (mapcar #'length matches))))
         (cl-mapc
          (lambda (match meta)
-           (let ((prefix (make-string (1+ (- max-len (length match))) ? )))
-             (put-text-property
-              0 1 'annot (concat prefix (plist-get meta :type))
-              match)))
+           (let* ((prefix (make-string (1+ (- max-len (length match))) ? ))
+                  (annot (concat prefix (plist-get meta :type))))
+             (put-text-property 0 1 'annot annot match)))
          matches types)))
     matches))
 

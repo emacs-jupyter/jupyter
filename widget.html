@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Jupyter Client</title>
+<script type="application/javascript" src="/skewer"></script>
+<script type="application/javascript" src="/jupyter"></script>
+<style type="text/css">
+* {
+     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+</style>
+<script type="application/javascript">
+var kernel = new EmacsJupyter({username: "{username}", clientId: "{client-id}"}, "");
+document.addEventListener("DOMContentLoaded", function(event) {
+    var commManager = new CommManager(kernel);
+    var widgetManager = new WidgetManager(kernel, document.getElementById("widget"));
+    commManager.register_target(widgetManager.comm_target_name, function(comm, msg) {
+        widgetManager.handle_comm_open(comm, msg);
+    });
+    kernel.widgetManager = widgetManager;
+    kernel.commManager = commManager;
+    var state = {widget-state};
+    if(state) { kernel.widgetManager.set_state(state); }
+});
+</script>
+</head>
+<body>
+</body>
+</html>

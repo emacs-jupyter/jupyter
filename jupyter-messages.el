@@ -290,6 +290,22 @@
     (cl-check-type target-name string)
     (list :target_name target-name)))
 
+(cl-defun jupyter-message-comm-open (&key id target-name data)
+  (cl-check-type id string)
+  (cl-check-type target-name string)
+  (cl-check-type data json-plist)
+  (list :comm_id id :target_name target-name :data data))
+
+(cl-defun jupyter-message-comm-msg (&key id data)
+  (cl-check-type id string)
+  (cl-check-type data json-plist)
+  (list :comm_id id :data data))
+
+(cl-defun jupyter-message-comm-close (&key id data)
+  (cl-check-type id string)
+  (cl-check-type data json-plist)
+  (list :comm_id id :data data))
+
 (cl-defun jupyter-message-shutdown-request (&key restart)
   (list :restart (if restart t jupyter--false)))
 

@@ -34,11 +34,16 @@
 (require 'jupyter-base)
 (require 'jupyter-channels)
 (require 'jupyter-messages)
+(require 'skewer-mode)
 
 (declare-function hash-table-values "subr-x" (hash-table))
 
 (defvar jupyter--debug nil
   "Set to non-nil to emit sent and received messages to *Messages*.")
+
+(defvar jupyter--clients nil
+  "A list of all live clients.
+Clients are removed from this list when their `destructor' is called.")
 
 (defvar jupyter-default-timeout 1
   "The default timeout in seconds for `jupyter-wait-until'.")
@@ -70,8 +75,9 @@ If set to t, disable all client handlers.")
   ((type
     :initform :stdin)))
 
-(defclass jupyter-kernel-client ()
-  ((requests
+(defclass jupyter-kernel-client (eieio-instance-tracker)
+  ((tracking-symbol :initform 'jupyter--clients)
+   (requests
     :type hash-table
     :initform (make-hash-table :test 'equal)
     :documentation "A hash table with message ID's as keys. This
@@ -130,13 +136,23 @@ buffer.")
 
 (cl-defmethod initialize-instance ((client jupyter-kernel-client) &rest _slots)
   (cl-call-next-method)
+  (push client jupyter--clients)
   (oset client -buffer (generate-new-buffer " *jupyter-kernel-client*")))
 
 (cl-defmethod destructor ((client jupyter-kernel-client) &rest _params)
   "Close CLIENT's channels and cleanup internal resources."
   (jupyter-stop-channels client)
+  (delete-instance client)
   (when (buffer-live-p (oref client -buffer))
     (kill-buffer (oref client -buffer))))
+
+(defun jupyter-find-client-for-session (session-id)
+  "Return the `jupyter-kernel-client' for SESSION-ID."
+  (or (cl-find-if
+       (lambda (client)
+         (string= (jupyter-session-id (oref client session)) session-id))
+       jupyter--clients)
+      (error "No client found for session (%s)" session-id)))
 
 (defun jupyter-initialize-connection (client info-or-session)
   "Initialize CLIENT with connection INFO-OR-SESSION.
@@ -506,10 +522,10 @@ in CLIENT."
   (cl-find-if
    (lambda (channel) (eq (oref channel type) ctype))
    (mapcar (lambda (sym) (slot-value client sym))
-      '(hb-channel
-        stdin-channel
-        shell-channel
-        iopub-channel))))
+           '(hb-channel
+             stdin-channel
+             shell-channel
+             iopub-channel))))
 
 (defun jupyter--ioloop-filter (client event)
   "The process filter for CLIENT's ioloop subprocess.
@@ -795,11 +811,14 @@ are taken:
         (if (not req)
             (when (jupyter-get client 'jupyter-include-other-output)
               (jupyter--run-handler-maybe client channel req msg))
+          (setf (jupyter-request-last-message req) msg)
+          ;; TODO: This is redundant if we keep the last message since we can
+          ;; just access the date field of a message.
+          (setf (jupyter-request-last-message-time req) (current-time))
           (unwind-protect
               (jupyter--run-callbacks req msg)
             (unwind-protect
                 (jupyter--run-handler-maybe client channel req msg)
-              (setf (jupyter-request-last-message-time req) (current-time))
               (when (jupyter-message-status-idle-p msg)
                 (setf (jupyter-request-idle-received-p req) t))
               (jupyter--drop-idle-requests client))))))))
@@ -1038,6 +1057,38 @@ the user. Otherwise `read-from-minibuffer' is used."
               :target-name target-name)))
     (jupyter-send client channel :comm-info-request msg)))
 
+(cl-defgeneric jupyter-send-comm-open ((client jupyter-kernel-client)
+                                       &key id
+                                       target-name
+                                       data)
+  (declare (indent 1))
+  (let ((channel (oref client shell-channel))
+        (msg (jupyter-message-comm-open
+              :id id
+              :target-name target-name
+              :data data)))
+    (jupyter-send client channel :comm-open msg)))
+
+(cl-defgeneric jupyter-send-comm-msg ((client jupyter-kernel-client)
+                                      &key id
+                                      data)
+  (declare (indent 1))
+  (let ((channel (oref client shell-channel))
+        (msg (jupyter-message-comm-msg
+              :id id
+              :data data)))
+    (jupyter-send client channel :comm-msg msg)))
+
+(cl-defgeneric jupyter-send-comm-close ((client jupyter-kernel-client)
+                                        &key id
+                                        data)
+  (declare (indent 1))
+  (let ((channel (oref client shell-channel))
+        (msg (jupyter-message-comm-close
+              :id id
+              :data data)))
+    (jupyter-send client channel :comm-close msg)))
+
 (cl-defgeneric jupyter-handle-comm-info-reply ((_client jupyter-kernel-client)
                                                _req
                                                _comms)
@@ -1089,6 +1140,9 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
   (jupyter-dispatch-message-cases client req msg
     ((shutdown-reply restart)
      (stream name text)
+     (comm-open comm_id target_name target_module data)
+     (comm-msg comm_id data)
+     (comm-close comm_id data)
      (execute-input code execution_count)
      (execute-result execution_count data metadata)
      (error ename evalue traceback)
@@ -1096,6 +1150,29 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
      (clear-output wait)
      (display-data data metadata transient)
      (update-display-data data metadata transient))))
+
+(cl-defgeneric jupyter-handle-comm-open ((_client jupyter-kernel-client)
+                                         _req
+                                         _id
+                                         _target-name
+                                         _target-module
+                                         _data)
+  (declare (indent 1))
+  nil)
+
+(cl-defgeneric jupyter-handle-comm-msg ((_client jupyter-kernel-client)
+                                        _req
+                                        _id
+                                        _data)
+  (declare (indent 1))
+  nil)
+
+(cl-defgeneric jupyter-handle-comm-close ((_client jupyter-kernel-client)
+                                          _req
+                                          _id
+                                          _data)
+  (declare (indent 1))
+  nil)
 
 (cl-defgeneric jupyter-handle-stream ((_client jupyter-kernel-client)
                                       _req

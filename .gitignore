@@ -1,3 +1,6 @@
 *.elc
 .projectile
 flycheck_*
+node_modules/
+*lock*
+built/

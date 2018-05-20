@@ -31,6 +31,7 @@
 
 (require 'cl-lib)
 (require 'eieio)
+(require 'eieio-base)
 (require 'json)
 (require 'zmq)
 (require 'hmac-def)
@@ -83,6 +84,9 @@ directory is where kernel connection files are written to."
   :group 'jupyter
   :type 'string)
 
+(defconst jupyter-root (file-name-directory load-file-name)
+  "Root directory containing emacs-jupyter.")
+
 (defconst jupyter-protocol-version "5.3"
   "The jupyter protocol version that is implemented.")
 
@@ -108,6 +112,9 @@ directory is where kernel connection files are written to."
         :is-complete-reply "is_complete_reply"
         :comm-info-request "comm_info_request"
         :comm-info-reply "comm_info_reply"
+        :comm-open "comm_open"
+        :comm-msg "comm_msg"
+        :comm-close "comm_close"
         :kernel-info-request "kernel_info_request"
         :kernel-info-reply "kernel_info_reply"
         :shutdown-request "shutdown_request"
@@ -192,6 +199,10 @@ following fields:
                     `jupyter-kernel-client' has received the
                     status: idle message for the request.
 
+- LAST-MESSAGE :: The raw message property list of the last
+                  message received by the kernel in response to
+                  this request.
+
 - LAST-MESSAGE-TIME :: The last time a message was received for
                        the request.
 
@@ -209,6 +220,7 @@ following fields:
   (-id)
   (time (current-time))
   (idle-received-p nil)
+  (last-message nil)
   (last-message-time nil)
   (inhibited-handlers nil)
   (callbacks))
@@ -328,6 +340,12 @@ the ROUTING-ID of the socket. Return the created socket."
         (json-array-type 'list)
         (json-false nil))
     (json-read-file file)))
+
+(defun jupyter-read-plist-from-string (string)
+  (let ((json-object-type 'plist)
+        ;; TODO: See the comment in `jupyter--decode'
+        (json-array-type 'list))
+    (json-read-from-string string)))
 
 (provide 'jupyter-base)
 
