@@ -306,11 +306,10 @@ response to the sent message, see `jupyter-add-callback' and
 
 (defmacro jupyter--ioloop-do-command (poller channels)
   "Read and execute a command from stdin.
-SESSION is a variable bound to a `jupyter-session' object, POLLER
-is a variable bound to a `zmq-poller' object. and CHANNELS is a
-variable bound to an alist of (SOCK . CTYPE) pairs where SOCK is
-a `zmq-socket' representing a `jupyter-channel' that has a
-channel type of CTYPE.
+POLLER is a variable bound to a `zmq-poller' object. and CHANNELS
+is a variable bound to an alist of (SOCK . CTYPE) pairs where
+SOCK is a `zmq-socket' representing a `jupyter-channel' that has
+a channel type of CTYPE.
 
 The parent Emacs process should send the ioloop subprocess cons
 cells of the form:
