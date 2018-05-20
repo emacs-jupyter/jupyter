@@ -439,7 +439,7 @@ it does not need to be added by the user."
       results)
    do (org-babel-jupyter--inject-render-param render-param params)
    (cl-letf (((symbol-function 'message) #'ignore))
-     (org-babel-insert-result result result-params info nil kernel-lang))
+     (org-babel-insert-result result result-params info))
    (org-babel-jupyter--clear-render-param render-param params)))
 
 (defun org-babel-execute:jupyter (body params)
@@ -464,116 +464,110 @@ the PARAMS alist."
                        '(:stream
                          :execute-reply :execute-result
                          :display-data :error)))
-                  (jupyter-send-execute-request client)))))
-    ;; Setup callbacks for the request
-    (let* ((result-type (alist-get :result-type params))
-           (no-results (member "none" (alist-get :result-params params)))
-           (async (equal (alist-get :async params) "yes"))
-           (block-beginning (copy-marker org-babel-current-src-block-location))
-           (first-async-insertion t)
-           (results nil)
-           (add-result
-            (lambda (result)
-              ;; TODO: Figure out how to handle result-type output in the async
-              ;; case. Should the output be pooled and displayed when finished?
-              ;; No I don't think so. It should be appended to the current
-              ;; output but for multiline output that is received this will end
-              ;; up either putting it in an example block and you would have
-              ;; multiple example blocks for a single output. The best bet
-              ;; would be to insert it as raw text in a drawer.
-              (unless no-results
-                (or (consp result) (setq result (cons "scalar" result)))
-                (if async
-                    (org-with-point-at block-beginning
-                      (when first-async-insertion
-                        (setq first-async-insertion nil)
-                        (org-babel-jupyter--clear-request-id req)
-                        (org-babel-jupyter--inject-render-param "append" params))
-                      (org-babel-jupyter-insert-results result params kernel-lang))
-                  (push result results))))))
-      ;; TODO: Handle stream output and errors similar to ob-ipython
-      ;; TODO: Don't process results if no-results is non-nil
-      (jupyter-add-callback req
-        :stream
-        (lambda (msg)
-          (and (eq result-type 'output)
-               (equal (jupyter-message-get msg :name) "stdout")
-               (funcall add-result (ansi-color-apply
-                                    (jupyter-message-get msg :text)))))
-        :status
-        (lambda (msg)
-          (when (and async (jupyter-message-status-idle-p msg))
-            (set-marker block-beginning nil)
-            (when first-async-insertion
-              (org-babel-jupyter--clear-request-id req))))
-        :execute-reply
-        (lambda (msg)
-          (cl-destructuring-bind (&key status ename evalue traceback
-                                       &allow-other-keys)
-              (jupyter-message-content msg)
-            (unless (equal status "ok")
-              ;; HACK: Prevent insertion of a file when an error happens
-              (let ((params (member "file" (alist-get :result-params params))))
-                (and params (setcar params "scalar")))
-              (if (eq result-type 'output)
-                  (funcall add-result (mapconcat #'ansi-color-apply traceback "\n"))
-                (funcall add-result (format "%s: %s" ename (ansi-color-apply evalue)))))
-            (when async
-              ;; Run the hooks here instead of in the status message to prevent
-              ;; any delays
-              (org-with-point-at block-beginning
-                (run-hooks 'org-babel-after-execute-hook)))))
-        '(:display-data :execute-result)
-        (lambda (msg)
-          (unless (eq result-type 'output)
-            (cl-destructuring-bind (&key data metadata &allow-other-keys)
+                  (jupyter-send-execute-request client))))
+         (no-results (member "none" (alist-get :result-params params))))
+    (unless no-results
+      (let* ((result-type (alist-get :result-type params))
+             (async (equal (alist-get :async params) "yes"))
+             (block-beginning (copy-marker org-babel-current-src-block-location))
+             (results nil)
+             (first-async-insertion t)
+             (add-result
+              (lambda (result)
+                ;; TODO: Figure out how to handle result-type output in the
+                ;; async case. Should the output be pooled and displayed when
+                ;; finished? No I don't think so. It should be appended to the
+                ;; current output but for multiline output that is received
+                ;; this will end up either putting it in an example block and
+                ;; you would have multiple example blocks for a single output.
+                ;; The best bet would be to insert it as raw text in a drawer.
+                (unless no-results
+                  (or (consp result) (setq result (cons "scalar" result)))
+                  (if async
+                      (org-with-point-at block-beginning
+                                         (when first-async-insertion
+                                           (setq first-async-insertion nil)
+                                           (org-babel-jupyter--clear-request-id req)
+                                           (org-babel-jupyter--inject-render-param "append" params))
+                                         (org-babel-jupyter-insert-results result params kernel-lang))
+                    (push result results))))))
+        ;; TODO: Handle stream output and errors similar to ob-ipython
+        (jupyter-add-callback req
+          :stream
+          (lambda (msg)
+            (and (eq result-type 'output)
+                 (equal (jupyter-message-get msg :name) "stdout")
+                 (funcall add-result (ansi-color-apply
+                                      (jupyter-message-get msg :text)))))
+          :status
+          (lambda (msg)
+            (when (and async (jupyter-message-status-idle-p msg))
+              (set-marker block-beginning nil)
+              (when first-async-insertion
+                (org-babel-jupyter--clear-request-id req))))
+          :execute-reply
+          (lambda (msg)
+            (cl-destructuring-bind (&key status ename evalue traceback
+                                         &allow-other-keys)
                 (jupyter-message-content msg)
-              (funcall add-result (org-babel-jupyter-prepare-result
-                                   data metadata params))))))
-      (if async
-          (let ((fresult (member "file" (alist-get :result-params params)))
-                (fparam (assoc :file params)))
-            ;; HACK: Prevent insertion of a file while getting results. If the
-            ;; :file parameter is specified, it takes precedence over the
-            ;; returned value specified below. But we want to show the request
-            ;; ID so we temporarily modify the src block parameters and restore
-            ;; them after execution, but before the async results are obtained.
-            (when fresult
+              (unless (equal status "ok")
+                ;; HACK: Prevent insertion of a file when an error happens
+                (let ((params (member "file" (alist-get :result-params params))))
+                  (and params (setcar params "scalar")))
+                (if (eq result-type 'output)
+                    (funcall add-result (mapconcat #'ansi-color-apply traceback "\n"))
+                  (funcall add-result (format "%s: %s" ename (ansi-color-apply evalue)))))
+              (when async
+                ;; Run the hooks here instead of in the status message to prevent
+                ;; any delays
+                (org-with-point-at block-beginning
+                                   (run-hooks 'org-babel-after-execute-hook)))))
+          '(:display-data :execute-result)
+          (lambda (msg)
+            (unless (eq result-type 'output)
+              (cl-destructuring-bind (&key data metadata &allow-other-keys)
+                  (jupyter-message-content msg)
+                (funcall add-result (org-babel-jupyter-prepare-result
+                                     data metadata params))))))
+        ;; Prevent showing the request ID as a file link for async results
+        (let ((fresult (member "file" (assq :result-params params))))
+          (when (and async fresult)
+            (let ((fparam (assq :file params)))
               (setcar fresult "scalar")
               (when fparam (delq fparam params))
-              (cl-labels ((reset-file-param
-                           ()
-                           (setcar fresult "file")
-                           (when fparam (nconc params (list fparam)))
-                           (remove-hook
-                            'org-babel-after-execute-hook #'reset-file-param t)))
-                (add-hook
-                 'org-babel-after-execute-hook #'reset-file-param nil t)))
+              (cl-labels
+                  ((reset-file-param
+                    ()
+                    (setcar fresult "file")
+                    (when fparam (nconc params (list fparam)))
+                    (remove-hook 'org-babel-after-execute-hook #'reset-file-param t)))
+                (add-hook 'org-babel-after-execute-hook #'reset-file-param nil t)))))
+        (if async
             ;; TODO: Use `org-babel-after-execute-hook' to make the id
             ;; read-only.
-            (concat (when (member "raw" (alist-get :result-params params)) ": ")
-                    (jupyter-request-id req)))
-        (jupyter-wait-until-idle req most-positive-fixnum)
-        ;; Finalize the list of results
-        (setq results (nreverse results))
-        (cl-destructuring-bind (render-param . result)
-            (org-babel-jupyter--transform-result (car results) kernel-lang)
-          (org-babel-jupyter--inject-render-param render-param params)
-          (prog1 result
-            ;; Insert remaining results after the first one has been
-            ;; inserted.
-            (when (cdr results)
-              ;; TODO: Prevent running the hooks until all results have been
-              ;; inserted. Think harder about how to insert a list of
-              ;; results.
-              (run-at-time
-               0.01 nil
-               (lambda ()
-                 (org-with-point-at block-beginning
-                   (org-babel-jupyter--clear-render-param render-param params)
-                   (org-babel-jupyter--inject-render-param "append" params)
-                   (org-babel-jupyter-insert-results (cdr results) params kernel-lang)
-                   (set-marker block-beginning nil)))))))))))
+            (concat (when (member "raw" (assq :result-params params)) ": ")
+                    (jupyter-request-id req))
+          (jupyter-wait-until-idle req most-positive-fixnum)
+          ;; Finalize the list of results
+          (setq results (nreverse results))
+          (cl-destructuring-bind (render-param . result)
+              (org-babel-jupyter--transform-result (car results) kernel-lang)
+            (org-babel-jupyter--inject-render-param render-param params)
+            (prog1 result
+              ;; Insert remaining results after the first one has been
+              ;; inserted.
+              (when (cdr results)
+                ;; TODO: Prevent running the hooks until all results have been
+                ;; inserted. Think harder about how to insert a list of
+                ;; results.
+                (run-at-time
+                 0.01 nil
+                 (lambda ()
+                   (org-with-point-at block-beginning
+                                      (org-babel-jupyter--clear-render-param render-param params)
+                                      (org-babel-jupyter--inject-render-param "append" params)
+                                      (org-babel-jupyter-insert-results (cdr results) params kernel-lang)
+                                      (set-marker block-beginning nil))))))))))))
 
 (defun org-babel-jupyter-make-language-alias (kernel lang)
   "Simimilar to `org-babel-make-language-alias' but for Jupyter src-blocks.
