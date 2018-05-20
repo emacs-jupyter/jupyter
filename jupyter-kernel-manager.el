@@ -111,7 +111,8 @@ buffer and delete MANAGER's connection file from the
    ((not (process-live-p kernel))
     (and (buffer-live-p (process-buffer kernel))
          (kill-buffer (process-buffer kernel)))
-    (when (file-exists-p (oref manager conn-file))
+    (when (and (slot-boundp manager 'conn-file)
+               (file-exists-p (oref manager conn-file)))
       (delete-file (oref manager conn-file)))
     (oset manager kernel nil)
     (oset manager conn-file nil))))
@@ -181,18 +182,19 @@ kernel. Starting a kernel involves the following steps:
   (unless (jupyter-kernel-alive-p manager)
     (cl-destructuring-bind (kernel-name . (resource-dir . spec))
         (car (jupyter-find-kernelspecs (oref manager name)))
-      (let* ((session (oref manager session))
-             (key (jupyter-session-key session))
+      (let* ((temporary-file-directory jupyter-runtime-directory)
+             (session (oref manager session))
              (conn-info (jupyter-session-conn-info session))
-             (conn-file (expand-file-name
-                         (concat "kernel-" key ".json")
-                         jupyter-runtime-directory))
+             (conn-file (make-temp-file "emacs-kernel-" nil ".json"))
              (reporter (make-progress-reporter
                         (format "Starting %s kernel..." kernel-name))))
         ;; Write the connection info file
-        (with-temp-file conn-file
-          (let ((json-encoding-pretty-print t))
-            (insert (json-encode-plist conn-info))))
+        (let ((json-encoding-pretty-print t))
+          (with-temp-buffer
+            (insert (json-encode-plist conn-info))
+            (write-region (point-min) (point-max) conn-file)))
+        ;; This is needed for reliability
+        (sleep-for 0.5)
         ;; Start the process
         (let ((atime (nth 4 (file-attributes conn-file)))
               (proc (jupyter--start-kernel
@@ -217,13 +219,7 @@ kernel. Starting a kernel involves the following steps:
               (progress-reporter-update reporter)
               (sleep-for 0 200)))
           (oset manager kernel proc)
-          (oset manager conn-file (expand-file-name
-                                   (format "kernel-%d.json" (process-id proc))
-                                   jupyter-runtime-directory))
-          ;; Gaurd against a kernel that dies after starting. For example,
-          ;; the Julia kernel JuliaLang/IJulia.jl/issues/596 on Julia 0.6.0
-          (when (process-live-p proc)
-            (rename-file conn-file (oref manager conn-file)))
+          (oset manager conn-file conn-file)
           (jupyter-start-channels manager)
           (progress-reporter-done reporter)
           manager)))))
