@@ -57,6 +57,7 @@
 
 (require 'jupyter-base)
 (require 'jupyter-client)
+(require 'jupyter-widget-client)
 (require 'jupyter-kernel-manager)
 (require 'shr)
 (require 'ring)
@@ -112,8 +113,13 @@ timeout, the built-in is-complete handler is used."
 
 ;;; Implementation
 
-(defclass jupyter-repl-client (jupyter-kernel-client)
+(defclass jupyter-repl-client (jupyter-widget-client)
   ((buffer :type buffer)
+   (wait-to-clear
+    :type boolean :initform nil
+    :documentation "Whether or not we should wait to clear the
+current output of the cell. Set when the kernel sends a
+`:clear-output' message.")
    (kernel-info :type json-plist :initform nil)
    (execution-state :type string :initform "idle")
    (execution-count :type integer :initform 1)))
@@ -1003,20 +1009,80 @@ lines then truncate it to something less than
                                            data
                                            _metadata
                                            transient)
-  (jupyter-repl-do-at-request client req
-    (cl-destructuring-bind (&key display_id &allow-other-keys)
-        transient
-      (if display_id
-          ;; TODO: More general display of output types. Follow the notebook
-          ;; convention, and have buffers or regions of the REPL dedicated to
-          ;; errors. Use an overlay to display errors in the REPL buffer.
-          (with-jupyter-repl-doc-buffer (format "display-%d" display_id)
-            (jupyter-repl-insert-data data))
-        (jupyter-repl-insert-data data)))))
+  (let ((clear (prog1 (oref client wait-to-clear)
+                 (oset client wait-to-clear nil)))
+        widget)
+    (cond
+     ((setq widget (plist-get data :application/vnd.jupyter.widget-view+json))
+      (jupyter-widgets-display-model client (plist-get widget :model_id)))
+     ;; ((eq (jupyter-message-parent-message-type
+     ;;       (jupyter-request-last-message req))
+     ;;      :comm-msg)
+     ;;  (with-current-buffer (get-buffer-create "*jupyter-repl-output*")
+     ;;    (when clear (erase-buffer))
+     ;;    (jupyter-repl-insert-data data)
+     ;;    (pop-to-buffer (current-buffer))))
+     (t
+      (let ((req (if (eq (jupyter-message-parent-message-type
+                          (jupyter-request-last-message req))
+                         :comm-msg)
+                     ;; For comm messages which produce a display_data, the
+                     ;; request is assumed to be the most recently completed
+                     ;; one.
+                     ;;
+                     ;; TODO: Handle display_id, display_id is supposed to be
+                     ;; used such that any individual output produced by a cell
+                     ;; can be referenced whereas the output of the whole cell
+                     ;; is referenced by the request msg_id.
+                     (with-jupyter-repl-buffer client
+                       (save-excursion
+                         (goto-char (point-max))
+                         (jupyter-repl-previous-cell 2)
+                         (jupyter-repl-cell-request)))
+                   req)))
+        (jupyter-repl-do-at-request client req
+          (cl-destructuring-bind (&key display_id &allow-other-keys)
+              transient
+            (if display_id
+                ;; TODO: More general display of output types. Follow the
+                ;; notebook convention, and have buffers or regions of the REPL
+                ;; dedicated to errors. Use an overlay to display errors in the
+                ;; REPL buffer.
+                (with-jupyter-repl-doc-buffer (format "display-%d" display_id)
+                  (jupyter-repl-insert-data data))
+              (when clear (jupyter-repl-clear-last-cell-output client))
+              (jupyter-repl-insert-data data)))))))))
+
+(defun jupyter-repl-clear-last-cell-output (client)
+  "In CLIENT's REPL buffer, clear the output of the last completed cell."
+  (with-jupyter-repl-buffer client
+    (goto-char (point-max))
+    (jupyter-repl-previous-cell 2)
+    (delete-region (1+ (jupyter-repl-cell-end-position))
+                   (progn
+                     (jupyter-repl-next-cell)
+                     (point)))))
+
+(cl-defmethod jupyter-handle-clear-output ((client jupyter-repl-client)
+                                           req
+                                           wait)
+  ;; TODO: Tale into account json-false elsewhere
+  (unless (oset client wait-to-clear (eq wait t))
+    (cond
+     ((eq (jupyter-message-parent-message-type
+           (jupyter-request-last-message req))
+          :comm-msg)
+      (with-current-buffer (get-buffer-create "*jupyter-repl-output*")
+        (erase-buffer)))
+     (t
+      (jupyter-repl-clear-last-cell-output client)))))
 
 (cl-defmethod jupyter-handle-status ((client jupyter-repl-client) req execution-state)
   (oset client execution-state execution-state)
-  (when (and req (equal execution-state "idle"))
+  (when (and req (equal execution-state "idle")
+             (not (memq (jupyter-message-parent-message-type
+                         (jupyter-request-last-message req))
+                        '(:comm-close :comm-open :comm-msg))))
     (with-jupyter-repl-buffer client
       (save-excursion
         (jupyter-repl-goto-cell req)
@@ -1045,36 +1111,52 @@ buffer to display TEXT."
                                          (pop-up-windows . t))))))
 
 (cl-defmethod jupyter-handle-stream ((client jupyter-repl-client) req name text)
-  (if req
+  (if (null req)
+      ;; Otherwise the stream request is due to someone else, pop up a buffer.
+      ;; TODO: Make this configurable so that we can just ignore output.
+      (jupyter-repl-display-other-output client name text)
+    (cond
+     ((eq (jupyter-message-parent-message-type
+           (jupyter-request-last-message req))
+          :comm-msg)
+      (with-current-buffer (get-buffer-create "*jupyter-repl-output*")
+        (jupyter-repl-insert-ansi-coded-text text)))
+     (t
       (jupyter-repl-do-at-request client req
-        (jupyter-repl-insert-ansi-coded-text text))
-    ;; Otherwise the stream request is due to someone else, pop up a buffer.
-    ;; TODO: Make this configurable so that we can just ignore output.
-    (jupyter-repl-display-other-output client name text)))
+        (jupyter-repl-insert-ansi-coded-text text))))))
 
 (cl-defmethod jupyter-handle-error ((client jupyter-repl-client)
                                     req ename evalue traceback)
   ;; When the request is from us
   (if req
-      (jupyter-repl-do-at-request client req
-        (when traceback
-          (let ((pos (point)))
-            (jupyter-repl-insert-ansi-coded-text
-             (mapconcat #'identity traceback "\n"))
-            ;; TODO: Better way of accessing client kernel's properties
-            ;;
-            ;;    (jupyter-client-property client :kernel-language)
-            (when (eq jupyter-repl-lang-mode 'python-mode)
-              ;; Fix spacing between error name and Traceback
-              (save-excursion
-                (goto-char pos)
-                (when (search-forward ename nil t)
-                  (let ((len (- fill-column
-                                (- (point) (line-beginning-position))
-                                (- (line-end-position) (point)))))
-                    (jupyter-repl-insert
-                     (make-string (if (> len 4) len 4) ? )))))))
-          (jupyter-repl-newline)))
+      (cond
+       ((eq (jupyter-message-parent-message-type
+             (jupyter-request-last-message req))
+            :comm-msg)
+        (with-jupyter-repl-doc-buffer "traceback"
+          (jupyter-repl-insert-ansi-coded-text
+           (mapconcat #'identity traceback "\n"))
+          (pop-to-buffer (current-buffer))))
+       (t
+        (jupyter-repl-do-at-request client req
+          (when traceback
+            (let ((pos (point)))
+              (jupyter-repl-insert-ansi-coded-text
+               (mapconcat #'identity traceback "\n"))
+              ;; TODO: Better way of accessing client kernel's properties
+              ;;
+              ;;    (jupyter-client-property client :kernel-language)
+              (when (eq jupyter-repl-lang-mode 'python-mode)
+                ;; Fix spacing between error name and Traceback
+                (save-excursion
+                  (goto-char pos)
+                  (when (search-forward ename nil t)
+                    (let ((len (- fill-column
+                                  (- (point) (line-beginning-position))
+                                  (- (line-end-position) (point)))))
+                      (jupyter-repl-insert
+                       (make-string (if (> len 4) len 4) ? )))))))
+            (jupyter-repl-newline)))))
     ;; TODO: Probably this shouldn't be here.
     (jupyter-repl-display-other-output
      client "stderr" (format "(other client) %s: %s" ename evalue))))
