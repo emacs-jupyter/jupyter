@@ -33,8 +33,6 @@
 (require 'jupyter-messages)
 (require 'jupyter-client)
 
-(declare-function string-trim-right "subr-x" (str))
-
 (defgroup jupyter-kernel-manager nil
   "Jupyter kernel manager"
   :group 'jupyter)

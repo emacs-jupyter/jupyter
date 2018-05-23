@@ -46,13 +46,16 @@
 (defun jupyter--sign-message (session parts)
   (if (> (length (jupyter-session-key session)) 0)
       (cl-loop
-       for byte across (hmac-sha256
-                        ;; NOTE: Encoding to a unibyte representation due to an
-                        ;; "Attempt to change byte length of a string" error.
-                        (encode-coding-string
-                         (mapconcat #'identity parts "") 'utf-8 t)
-                        (encode-coding-string
-                         (jupyter-session-key session) 'utf-8 t))
+       ;; NOTE: Encoding to a unibyte representation due to an "Attempt to
+       ;; change byte length of a string" error.
+       with key = (encode-coding-string
+                   (jupyter-session-key session) 'utf-8 t)
+       with parts = (let ((parts (cdr parts))
+                          (str ""))
+                      (dotimes (_ 4 (encode-coding-string str 'utf-8 t))
+                        (setq str (concat str (car parts))
+                              parts (cdr parts))))
+       for byte across (jupyter-hmac-sha256 parts key)
        concat (format "%02x" byte))
     ""))
 
@@ -172,12 +175,11 @@ They are all set to appropriate default values."
     (error "Malformed message. Minimum length of parts is 5"))
   (when (jupyter-session-key session)
     (let ((signature (car parts)))
-      (when (string= signature "")
+      (when (= (length signature) 0)
         (error "Unsigned message"))
       ;; TODO: digest_history
       ;; https://github.com/jupyter/jupyter_client/blob/7a0278af7c1652ac32356d6f00ae29d24d78e61c/jupyter_client/session.py#L915
-      (unless (string= (jupyter--sign-message session (cl-subseq parts 1 5))
-                       signature)
+      (unless (string= (jupyter--sign-message session parts) signature)
         (error "Invalid signature: %s" signature))))
   (cl-destructuring-bind
       (header parent-header metadata content &rest buffers)
@@ -324,23 +326,24 @@ They are all set to appropriate default values."
 
 ;;; Convenience functions
 
-(defsubst jupyter-message-id (msg)
+(defun jupyter-message-id (msg)
   "Get the ID of MSG."
   (plist-get msg :msg_id))
 
-(defsubst jupyter-message-parent-id (msg)
+(defun jupyter-message-parent-id (msg)
   "Get the parent ID of MSG."
   (jupyter-message-id (plist-get msg :parent_header)))
 
-(defsubst jupyter-message-type (msg)
+(defun jupyter-message-type (msg)
   "Get the type of MSG."
-  (plist-get msg :msg_type))
+  (or (plist-get msg :msg_type)
+      (plist-get (plist-get msg :header) :msg_type)))
 
 (defun jupyter-message-session (msg)
   "Get the session ID of MSG."
   (plist-get (plist-get msg :header) :session))
 
-(defsubst jupyter-message-parent-message-type (msg)
+(defun jupyter-message-parent-message-type (msg)
   "Get the type of MSG's parent message."
   (jupyter-message-type (plist-get msg :parent_header)))
 
@@ -360,21 +363,21 @@ Otherwise return the MSG-TYPE string as a keyword."
         (error "Invalid message type (`%s')" msg-type))
       (car head))))
 
-(defsubst jupyter-message-content (msg)
+(defun jupyter-message-content (msg)
   "Get the MSG contents."
   (plist-get msg :content))
 
-(defsubst jupyter-message-time (msg)
+(defun jupyter-message-time (msg)
   "Get the MSG time.
 The returned time has the same form as returned by
 `current-time'."
   (plist-get (plist-get msg :header) :date))
 
-(defsubst jupyter-message-get (msg key)
+(defun jupyter-message-get (msg key)
   "Get the value in MSG's `jupyter-message-content' that corresponds to KEY."
   (plist-get (jupyter-message-content msg) key))
 
-(defsubst jupyter-message-data (msg mimetype)
+(defun jupyter-message-data (msg mimetype)
   "Get the message data for a specific mimetype.
 MSG should be a message with a `:data' field in its contents.
 MIMETYPE is should be a standard media mimetype

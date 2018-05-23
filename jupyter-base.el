@@ -32,10 +32,12 @@
 (require 'cl-lib)
 (require 'eieio)
 (require 'eieio-base)
+(require 'subr-x) ; `string-trim'
 (require 'json)
 (require 'zmq)
 (require 'hmac-def)
 (require 'jupyter-kernelspec)
+
 
 (defcustom jupyter-include-other-output nil
   "Whether or not to handle IOPub messages from other clients.
@@ -133,11 +135,11 @@ directory is where kernel connection files are written to."
 The plist values are the message types either sent or received
 from the kernel.")
 
-;; https://tools.ietf.org/html/rfc4868
-(defun sha256 (object)
+(defun jupyter-sha256 (object)
+  "Return the SHA256 hash of OBJECT."
   (secure-hash 'sha256 object nil nil t))
 
-(define-hmac-function hmac-sha256 sha256 64 32)
+(define-hmac-function jupyter-hmac-sha256 jupyter-sha256 64 32)
 
 (defun jupyter-new-uuid ()
   "Make a version 4 UUID."
@@ -251,7 +253,7 @@ Note that `zmq-make-tunnel' is used to create the tunnels."
         (sock (zmq-socket (zmq-current-context) zmq-REP)))
     (when (tramp-tramp-file-p conn-file)
       (let* ((vec (tramp-dissect-file-name conn-file))
-             (user (tramp-file-name-real-user vec)))
+             (user (tramp-file-name-user vec)))
         (setq server (if user (concat user "@" (tramp-file-name-host vec))
                        (tramp-file-name-host vec)))))
     (unwind-protect

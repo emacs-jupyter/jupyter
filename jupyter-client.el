@@ -210,7 +210,8 @@ connection is terminated before initializing a new one."
               &allow-other-keys)
         conn-info
       (when (and (> (length key) 0)
-                 (not (functionp (intern signature_scheme))))
+                 (not (functionp
+                       (intern (concat "jupyter-" signature_scheme)))))
         (error "Unsupported signature scheme: %s" signature_scheme))
       ;; Stop the channels if connected to some other kernel
       (jupyter-stop-channels client)
