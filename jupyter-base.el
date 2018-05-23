@@ -336,15 +336,12 @@ the ROUTING-ID of the socket. Return the created socket."
 
 (defun jupyter-read-plist (file)
   "Read a JSON encoded FILE as a property list."
-  (let ((json-object-type 'plist)
-        (json-array-type 'list)
-        (json-false nil))
+  (let ((json-object-type 'plist))
     (json-read-file file)))
 
 (defun jupyter-read-plist-from-string (string)
-  (let ((json-object-type 'plist)
-        ;; TODO: See the comment in `jupyter--decode'
-        (json-array-type 'list))
+  "Read a property list from a JSON encoded STRING."
+  (let ((json-object-type 'plist))
     (json-read-from-string string)))
 
 (provide 'jupyter-base)

@@ -91,8 +91,7 @@ They are all set to appropriate default values."
   (cl-letf (((symbol-function 'json-encode)
              (lambda (object)
                (cond ((memq object (list t json-null json-false))
-                      (if (eq object json-null) "{}"
-                        (json-encode-keyword object)))
+                      (json-encode-keyword object))
                      ((stringp object)      (json-encode-string object))
                      ((keywordp object)
                       ;; Handle `jupyter-message-type'
@@ -107,14 +106,16 @@ They are all set to appropriate default values."
                      ((listp object)        (json-encode-list object))
                      (t                     (signal 'json-error (list object)))))))
     (encode-coding-string
-     (if (stringp object) object (json-encode-plist object))
+     (cond
+      ((stringp object) object)
+      ;; FIXME: This seems expensive
+      ((json-plist-p object) (json-encode-plist object))
+      (t (json-encode object)))
      'utf-8 t)))
 
 (defun jupyter--decode (str)
   (setq str (decode-coding-string str 'utf-8))
   (let* ((json-object-type 'plist)
-         (json-array-type 'list)
-         (json-false nil)
          (val (condition-case nil
                   (json-read-from-string str)
                 ;; If it can't be read as JSON, assume its just a regular
@@ -233,7 +234,9 @@ They are all set to appropriate default values."
                                            code
                                            (silent nil)
                                            (store-history t)
-                                           (user-expressions nil)
+                                           ;; This needs to be an empty
+                                           ;; dictionary is not specified
+                                           (user-expressions #s(hash-table))
                                            (allow-stdin t)
                                            (stop-on-error nil))
   (cl-check-type code string)

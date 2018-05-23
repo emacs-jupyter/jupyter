@@ -200,7 +200,7 @@ kernel. Starting a kernel involves the following steps:
               (proc (jupyter--start-kernel
                      manager kernel-name (plist-get spec :env)
                      (cl-loop
-                      for arg in (plist-get spec :argv)
+                      for arg in (append (plist-get spec :argv) nil)
                       if (equal arg "{connection_file}")
                       collect conn-file
                       else if (equal arg "{resource_dir}")

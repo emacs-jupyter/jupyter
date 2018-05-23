@@ -957,7 +957,7 @@ lines then truncate it to something less than
 (defun jupyter-repl--handle-payload (payload)
   "Do the client actions in PAYLOAD."
   (cl-loop
-   for pl in payload
+   for pl across payload
    do (pcase (plist-get pl :source)
         ("page"
          (let ((text (plist-get (plist-get pl :data) :text/plain))
@@ -1226,7 +1226,8 @@ REPL buffer."
 
 (cl-defmethod jupyter-handle-history-reply ((client jupyter-repl-client) _req history)
   (with-jupyter-repl-buffer client
-    (cl-loop for (_session _line-number input-output) in history
+    (cl-loop for elem across history
+             for input-output = (aref elem 2)
              do (ring-remove+insert+extend jupyter-repl-history input-output))))
 
 (cl-defmethod jupyter-handle-is-complete-reply ((client jupyter-repl-client) _req status indent)
@@ -1480,12 +1481,13 @@ value that PREFIX takes.
 
 This function constructs candidates assuming that `company-mode'
 is used for completion."
-  (let ((types (plist-get metadata :_jupyter_types_experimental))
-        (tail matches)
-        ;; TODO: Handle the case when the matches are method signatures in the
-        ;; Julia kernel. This information would be useful for doing some kind
-        ;; of eldoc like feature.
-        (match-prefix-len (- (- end start) (length prefix))))
+  (let* ((matches (append matches nil))
+         (tail matches)
+         (types (append (plist-get metadata :_jupyter_types_experimental) nil))
+         ;; TODO: Handle the case when the matches are method signatures in the
+         ;; Julia kernel. This information would be useful for doing some kind
+         ;; of eldoc like feature.
+         (match-prefix-len (- (- end start) (length prefix))))
     ;; FIXME: How to complete things like 000|? In the python kernel,
     ;; completions will return matchs to append like and, or, ... but the
     ;; prefix 000 was provided so company will replace 000 with the match if it
