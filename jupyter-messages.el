@@ -121,15 +121,8 @@
         (when date
           (plist-put val :date (jupyter--decode-time date)))
         (when msg-type
-          ;; Convert the message type string to a message type symbol
-          (let ((head jupyter-message-types)
-                (tail (cdr jupyter-message-types)))
-            (while (and head (not (string= msg-type (car tail))))
-              (setq head (cdr tail)
-                    tail (cddr tail)))
-            (unless head
-              (error "Invalid message type (`%s')" msg-type))
-            (plist-put val :msg_type (car head))))))))
+          (plist-put val :msg_type
+                     (jupyter-message-type-as-keyword msg-type)))))))
 
 (defun jupyter--decode-time (str)
   (let* ((time (date-to-time str)))
@@ -317,6 +310,22 @@
 (defsubst jupyter-message-parent-message-type (msg)
   "Get the type of MSG's parent message."
   (jupyter-message-type (plist-get msg :parent_header)))
+
+(defun jupyter-message-type-as-keyword (msg-type)
+  "Return MSG-TYPE as one of the keys in `jupyter-message-types'.
+If MSG-TYPE is already a valid message type keyword, return it.
+Otherwise return the MSG-TYPE string as a keyword."
+  (if (keywordp msg-type)
+      (if (plist-get jupyter-message-types msg-type) msg-type
+        (error "Invalid message type (`%s')" msg-type))
+    (let ((head jupyter-message-types)
+          (tail (cdr jupyter-message-types)))
+      (while (and head (not (string= msg-type (car tail))))
+        (setq head (cdr tail)
+              tail (cddr tail)))
+      (unless head
+        (error "Invalid message type (`%s')" msg-type))
+      (car head))))
 
 (defsubst jupyter-message-content (msg)
   "Get the MSG contents."
