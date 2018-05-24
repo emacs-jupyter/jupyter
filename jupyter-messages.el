@@ -176,10 +176,11 @@ They are all set to appropriate default values."
         (error "Unsigned message"))
       ;; TODO: digest_history
       ;; https://github.com/jupyter/jupyter_client/blob/7a0278af7c1652ac32356d6f00ae29d24d78e61c/jupyter_client/session.py#L915
-      (unless (string= (jupyter--sign-message session (cdr parts)) signature)
+      (unless (string= (jupyter--sign-message session (cl-subseq parts 1 5))
+                       signature)
         (error "Invalid signature: %s" signature))))
   (cl-destructuring-bind
-      (header parent-header metadata content &optional buffers)
+      (header parent-header metadata content &rest buffers)
       (cdr parts)
     (setq header (jupyter--decode header))
     (list
