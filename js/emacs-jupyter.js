@@ -3,7 +3,7 @@ var coreutils = require('@jupyterlab/coreutils');
 var KernelFutureHandler = require('@jupyterlab/services/kernel/future').KernelFutureHandler;
 var CommHandler = require('@jupyterlab/services/kernel/comm').CommHandler;
 
-var EmacsJupyter = function(options) {
+var EmacsJupyter = function(options, port) {
     var _this = this;
 
     this.username = options.username || '';
@@ -16,47 +16,48 @@ var EmacsJupyter = function(options) {
     this.widgetManager = null;
     this.widgetState = null;
     this.commManager = null;
-    this.messagePromise = Promise.resolve();
+    this.messagePromise = new Promise(function (resolve) { resolve(); });
 
     window.addEventListener("unload", function(event) {
-        var XHR = window.skewerNativeXHR || XMLHttpRequest;
-        var xhr = new XHR();
-        xhr.open('POST', skewer.host + '/jupyter/widgets/state/' + _this.clientId, false);
-        xhr.setRequestHeader("Content-Type", "text/plain");
-        xhr.send(JSON.stringify(_this.widgetState));
-        return undefined;
+        // TODO: Send widget state
     });
 
-    // Kick off the message receiving process
-    var callback = function(msg) {
+    // Localhost
+    this.wsPort = port;
+    this.ws = new WebSocket("ws://127.0.0.1:" + port);
+    this.ws.onopen = function () {
+        // Ensure that Emacs knows which websocket connection corresponds to
+        // each kernel client
+        _this.ws.send(JSON.stringify({
+            header: {
+                msg_type: "connect",
+                session: _this.clientId
+            }
+        }));
+    };
+    this.ws.onmessage = function(event) {
         if(_this.isDisposed) {
             return;
         }
-
-        var p = _this.handlerPromise;
-        _this.handlerPromise = new Promise(function (resolve) {
-            if(msg.buffers && msg.buffers.length > 0) {
-                for(var i = 0; i < msg.buffers.length; i++) {
-                    var bin = atob(msg.buffers[i]);
-                    var len = bin.length;
-                    var buf = new Uint8Array(len);
-                    for(var j = 0; j < len; j++) {
-                        buf[j] = bin.charCodeAt(j);
+        msg = JSON.parse(event.data);
+        _this.messagePromise =
+            _this.messagePromise.then(function () {
+                if(msg.buffers && msg.buffers.length > 0) {
+                    for(var i = 0; i < msg.buffers.length; i++) {
+                        var bin = atob(msg.buffers[i]);
+                        var len = bin.length;
+                        var buf = new Uint8Array(len);
+                        for(var j = 0; j < len; j++) {
+                            buf[j] = bin.charCodeAt(j);
+                        }
+                        msg.buffers[i] = buf.buffer;
                     }
-                    msg.buffers[i] = buf.buffer;
                 }
-            }
-
-            resolve(Promise.all([p, _this.handleMessage(msg)]).then(function () {
-                skewer.getJSON(EmacsJupyter.baseUrl + "/recv?clientId=" + _this.clientId, callback);
-            }));
-        });
+                _this.handleMessage(msg);
+            });
     };
-    skewer.getJSON(EmacsJupyter.baseUrl + "/recv?clientId=" + _this.clientId, callback);
 };
 exports.EmacsJupyter = EmacsJupyter;
-
-EmacsJupyter.baseUrl = skewer.host + "/jupyter/widgets"
 
 EmacsJupyter.prototype.dispose = function () {
     if (this.isDisposed) {
@@ -112,13 +113,12 @@ EmacsJupyter.prototype.handleCommOpen = function (msg) {
         }
         return Promise.resolve(response).then(function () {
             if (_this.isDisposed) {
-                return;
+                return null;
             }
             return comm;
         });
     });
     this.commPromises.set(content.comm_id, promise);
-    return undefined;
 };
 
 EmacsJupyter.prototype.handleCommClose = function (msg) {
@@ -145,8 +145,6 @@ EmacsJupyter.prototype.handleCommClose = function (msg) {
             console.error('Exception closing comm: ', e, e.stack, msg);
         }
     });
-
-    return undefined;
 };
 
 EmacsJupyter.prototype.handleCommMsg = function (msg) {
@@ -169,8 +167,6 @@ EmacsJupyter.prototype.handleCommMsg = function (msg) {
             console.error('Exception handling comm msg: ', e, e.stack, msg);
         }
     });
-
-    return undefined;
 };
 
 EmacsJupyter.prototype.loadObject = function(name, moduleName, registry) {
@@ -227,21 +223,8 @@ EmacsJupyter.prototype.sendShellMessage = function(msg, expectReply, disposeOnDo
         _this.futures.delete(msgId);
     }, msg, expectReply, disposeOnDone, this);
 
-    var promise = new Promise(function (resolve) {
-        skewer.postJSON(EmacsJupyter.baseUrl + "/send/" + _this.clientId, msg, function (reply) {
-            // This is needed since Emacs will generate a new ID on every
-            // messsage sent, this is the least intrusive way of handling it.
-            var id = reply.id;
-            msg.header.msg_id = id;
-            _this.futures.set(id, future);
-            resolve(void 0);
-        });
-    });
-    if(_this.pending === void 0) {
-        _this.pending = promise;
-    } else {
-        _this.pending = Promise.all([_this.pending, promise]);
-    }
+    _this.ws.send(JSON.stringify(msg));
+    _this.futures.set(msg.header.msg_id, future);
     return future;
 };
 

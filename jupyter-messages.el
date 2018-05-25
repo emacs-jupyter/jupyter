@@ -336,6 +336,10 @@ They are all set to appropriate default values."
   "Get the type of MSG."
   (plist-get msg :msg_type))
 
+(defun jupyter-message-session (msg)
+  "Get the session ID of MSG."
+  (plist-get (plist-get msg :header) :session))
+
 (defsubst jupyter-message-parent-message-type (msg)
   "Get the type of MSG's parent message."
   (jupyter-message-type (plist-get msg :parent_header)))

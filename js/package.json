@@ -1,32 +1,32 @@
 {
-  "private": true,
-  "name": "emacs-jupyter",
-  "version": "0.1",
-  "description": "Integrate emacs-jupyter with widgets in a browser.",
-  "main": "index.js",
-  "scripts": {
-    "clean": "rimraf built",
-    "build": "webpack",
-    "test": "npm run test:default",
-    "test:default": "echo \"No test specified\""
-  },
-  "author": "Nathaniel Nicandro",
-  "license": "BSD-3-Clause",
-  "dependencies": {
-    "@jupyter-widgets/base": "^1.1.10",
-    "@jupyter-widgets/controls": "^1.2.1",
-    "@jupyter-widgets/output": "^1.0.10",
-    "codemirror": "^5.9.0",
-    "font-awesome": "^4.7.0",
-    "npm": "^6.0.1"
-  },
-  "devDependencies": {
-    "css-loader": "^0.28.4",
-    "file-loader": "^0.11.2",
-    "json-loader": "^0.5.4",
-    "raw-loader": "^0.5.1",
-    "style-loader": "^0.18.1",
-    "url-loader": "^0.5.9",
-    "webpack": "^3.5.5"
-  }
+    "private": true,
+    "name": "emacs-jupyter",
+    "version": "0.1",
+    "description": "Integrate emacs-jupyter with widgets in a browser.",
+    "main": "index.js",
+    "scripts": {
+        "clean": "rimraf built",
+        "build": "webpack",
+        "test": "npm run test:default",
+        "test:default": "echo \"No test specified\""
+    },
+    "author": "Nathaniel Nicandro",
+    "license": "BSD-3-Clause",
+    "dependencies": {
+        "@jupyter-widgets/base": "^1.1.10",
+        "@jupyter-widgets/controls": "^1.2.1",
+        "@jupyter-widgets/output": "^1.0.10",
+        "codemirror": "^5.9.0",
+        "font-awesome": "^4.7.0",
+        "npm": "^6.0.1"
+    },
+    "devDependencies": {
+        "css-loader": "^0.28.4",
+        "file-loader": "^0.11.2",
+        "json-loader": "^0.5.4",
+        "raw-loader": "^0.5.1",
+        "style-loader": "^0.18.1",
+        "url-loader": "^0.5.9",
+        "webpack": "^3.5.5"
+    }
 }

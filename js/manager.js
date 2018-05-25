@@ -35,7 +35,7 @@ WidgetManager.prototype.loadClass = function(className, moduleName, moduleVersio
             resolve(output);
         else {
             var fallback = function(err) {
-                let failedId = err.requireModules && err.requireModules[0];
+                var failedId = err.requireModules && err.requireModules[0];
                 if (failedId) {
                     console.log('Falling back to unpkg.com for ' + moduleName + '@' + moduleVersion);
                     window.require(['https://unpkg.com/' + moduleName + '@' + moduleVersion + '/dist/index.js'], resolve, reject);
@@ -59,7 +59,7 @@ WidgetManager.prototype.display_view = function(msg, view, options) {
     return Promise.resolve(view).then(function(view) {
         PhosphorWidget.attach(view.pWidget, _this.area);
         view.on('remove', function() {
-            skewer.log('View removed', view);
+            console.log('View removed', view);
         });
         view.trigger('displayed');
         return view;
