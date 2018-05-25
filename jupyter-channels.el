@@ -136,12 +136,12 @@ wait until TIMEOUT for a message."
           idents-msg
         msg))))
 
-(cl-defmethod jupyter-send ((channel jupyter-async-channel) type message)
+(cl-defmethod jupyter-send ((channel jupyter-async-channel) type message &optional msg-id)
   (zmq-subprocess-send (oref channel ioloop)
-    (list 'send (oref channel type) type message)))
+    (list 'send (oref channel type) type message msg-id)))
 
-(cl-defmethod jupyter-send ((channel jupyter-sync-channel) type message)
-  (jupyter-send (oref channel session) (oref channel socket) type message))
+(cl-defmethod jupyter-send ((channel jupyter-sync-channel) type message &optional msg-id)
+  (jupyter-send (oref channel session) (oref channel socket) type message msg-id))
 
 (cl-defmethod jupyter-recv ((channel jupyter-sync-channel))
   (jupyter-recv (oref channel session) (oref channel socket)))

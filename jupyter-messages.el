@@ -70,9 +70,14 @@
         (cons idents parts)
       (error "Message delimiter not in message list"))))
 
-(defun jupyter--message-header (session msg-type)
+(defun jupyter--message-header (session msg-type &optional msg-id)
+  "Return a message header.
+The `:session' key of the header will have its value set to
+SESSION's ID, and its `:msg_type' will be set to MSG-TYPE. The
+other fields are `:msg_id', `:version', `:username', and `:date'.
+They are all set to appropriate default values."
   (list
-   :msg_id (jupyter-new-uuid)
+   :msg_id (or msg-id (jupyter-new-uuid))
    :msg_type msg-type
    :version jupyter-protocol-version
    :username user-login-name
@@ -138,6 +143,7 @@
                                    type
                                    &key idents
                                    content
+                                   msg-id
                                    parent-header
                                    metadata
                                    buffers)
@@ -146,7 +152,7 @@
   (cl-check-type metadata json-plist)
   (cl-check-type content json-plist)
   (cl-check-type buffers list)
-  (let* ((header (jupyter--message-header session type))
+  (let* ((header (jupyter--message-header session type msg-id))
          (msg-id (plist-get header :msg_id))
          (parts (mapcar #'jupyter--encode (list header
                                            parent-header
@@ -190,11 +196,14 @@
                             socket
                             type
                             message
-                            &optional flags)
+                            &optional
+                            msg-id
+                            flags)
   (declare (indent 1))
-  (cl-destructuring-bind (msg-id . msg)
-      (jupyter--encode-message session type :content message)
-    (prog1 msg-id
+  (cl-destructuring-bind (id . msg)
+      (jupyter--encode-message session type
+        :msg-id msg-id :content message)
+    (prog1 id
       (zmq-send-multipart socket msg flags))))
 
 (cl-defmethod jupyter-recv ((session jupyter-session) socket &optional flags)
