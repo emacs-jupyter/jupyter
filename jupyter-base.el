@@ -56,7 +56,9 @@ client use `jupyter-set'."
 (defcustom jupyter-iopub-message-hook nil
   "Hook run with one argument, a message received on the IOPub channel.
 Do not add to this hook variable directly, use
-`jupyter-add-hook'."
+`jupyter-add-hook'. If any of the message hooks return a non-nil
+value, the client handlers will be prevented from running for the
+message."
   :group 'jupyter
   :type 'hook)
 (put 'jupyter-iopub-message-hook 'permanent-local t)
@@ -64,7 +66,9 @@ Do not add to this hook variable directly, use
 (defcustom jupyter-shell-message-hook nil
   "Hook run with one argument, a message received on the SHELL channel.
 Do not add to this hook variable directly, use
-`jupyter-add-hook'."
+`jupyter-add-hook'. If any of the message hooks return a non-nil
+value, the client handlers will be prevented from running for the
+message."
   :group 'jupyter
   :type 'hook)
 (put 'jupyter-shell-message-hook 'permanent-local t)
@@ -72,7 +76,9 @@ Do not add to this hook variable directly, use
 (defcustom jupyter-stdin-message-hook nil
   "Hook run with one argument, a message received on the STDIN channel.
 Do not add to this hook variable directly, use
-`jupyter-add-hook'."
+`jupyter-add-hook'. If any of the message hooks return a non-nil
+value, the client handlers will be prevented from running for the
+message."
   :group 'jupyter
   :type 'hook)
 (put 'jupyter-stdin-message-hook 'permanent-local t)

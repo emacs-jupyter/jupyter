@@ -1733,20 +1733,21 @@ If the current region is active send the current region using
   "Update the REPL buffer after CLIENT restarts.
 If MSG is a startup message, insert the banner of the kernel,
 syncrhronize the execution state, and insert a new input prompt."
-  (with-jupyter-repl-buffer client
-    (when (jupyter-message-status-starting-p msg)
-      ;; FIXME: Don't assume `jupyter-include-other-output' was previously nil
-      (jupyter-set jupyter-repl-current-client 'jupyter-include-other-output nil)
-      (jupyter-repl-without-continuation-prompts
-       (goto-char (point-max))
-       (jupyter-repl-previous-cell)
-       (unless (jupyter-repl-cell-finalized-p)
-         (jupyter-repl-finalize-cell nil)
-         (jupyter-repl-newline)
-         (jupyter-repl-insert-banner
-          (plist-get (oref client kernel-info) :banner))
-         (jupyter-repl-sync-execution-state)
-         (jupyter-repl-insert-prompt 'in))))))
+  (prog1 nil
+    (with-jupyter-repl-buffer client
+      (when (jupyter-message-status-starting-p msg)
+        ;; FIXME: Don't assume `jupyter-include-other-output' was previously nil
+        (jupyter-set jupyter-repl-current-client 'jupyter-include-other-output nil)
+        (jupyter-repl-without-continuation-prompts
+         (goto-char (point-max))
+         (jupyter-repl-previous-cell)
+         (unless (jupyter-repl-cell-finalized-p)
+           (jupyter-repl-finalize-cell nil)
+           (jupyter-repl-newline)
+           (jupyter-repl-insert-banner
+            (plist-get (oref client kernel-info) :banner))
+           (jupyter-repl-sync-execution-state)
+           (jupyter-repl-insert-prompt 'in)))))))
 
 (defun jupyter-repl-interrupt-kernel ()
   "Interrupt the kernel if possible.

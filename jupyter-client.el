@@ -281,12 +281,12 @@ this is called."
   (with-jupyter-client-buffer client
     (add-hook hook function append t)))
 
-(defun jupyter-run-hook-with-args (client hook &rest args)
+(defun jupyter-run-hook-with-args-until-success (client hook &rest args)
   "Run CLIENT's value for HOOK with the arguments ARGS."
   (with-jupyter-client-buffer client
     (when jupyter--debug
       (message "RUN-HOOK: %s" hook))
-    (apply #'run-hook-with-args hook args)))
+    (apply #'run-hook-with-args-until-success hook args)))
 
 (defun jupyter-remove-hook (client hook function)
   "Remove from CLIENT's value of HOOK the function FUNCTION."
@@ -872,9 +872,10 @@ will be transformed to
                                       client
                                       req
                                       msg)
-  (jupyter-run-hook-with-args client 'jupyter-stdin-message-hook msg)
-  (jupyter-dispatch-message-cases client req msg
-    ((input-reply prompt password))))
+  (unless (jupyter-run-hook-with-args-until-success
+           client 'jupyter-stdin-message-hook msg)
+    (jupyter-dispatch-message-cases client req msg
+      ((input-reply prompt password)))))
 
 (cl-defgeneric jupyter-handle-input-reply ((client jupyter-kernel-client)
                                            _req
@@ -902,20 +903,21 @@ the user. Otherwise `read-from-minibuffer' is used."
                                       client
                                       req
                                       msg)
-  (jupyter-run-hook-with-args client 'jupyter-shell-message-hook msg)
-  ;; Let `jupyter-handle-error' handle errors for requests.
-  (unless (member (jupyter-message-get msg :status) '("error" "abort"))
-    (jupyter-dispatch-message-cases client req msg
-      ((execute-reply execution_count user_expressions payload)
-       (shutdown-reply restart)
-       (inspect-reply found data metadata)
-       (complete-reply matches cursor_start cursor_end metadata)
-       (history-reply history)
-       (is-complete-reply status indent)
-       (comm-info-reply comms)
-       (kernel-info-reply protocol_version implementation
-                          implementation_version language_info
-                          banner help_links)))))
+  (unless (jupyter-run-hook-with-args-until-success
+           client 'jupyter-shell-message-hook msg)
+    ;; Let `jupyter-handle-error' handle errors for requests.
+    (unless (member (jupyter-message-get msg :status) '("error" "abort"))
+      (jupyter-dispatch-message-cases client req msg
+        ((execute-reply execution_count user_expressions payload)
+         (shutdown-reply restart)
+         (inspect-reply found data metadata)
+         (complete-reply matches cursor_start cursor_end metadata)
+         (history-reply history)
+         (is-complete-reply status indent)
+         (comm-info-reply comms)
+         (kernel-info-reply protocol_version implementation
+                            implementation_version language_info
+                            banner help_links))))))
 
 (cl-defgeneric jupyter-send-execute-request ((client jupyter-kernel-client)
                                              &key code
@@ -1125,20 +1127,21 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
                                       client
                                       req
                                       msg)
-  (jupyter-run-hook-with-args client 'jupyter-iopub-message-hook msg)
-  (jupyter-dispatch-message-cases client req msg
-    ((shutdown-reply restart)
-     (stream name text)
-     (comm-open comm_id target_name target_module data)
-     (comm-msg comm_id data)
-     (comm-close comm_id data)
-     (execute-input code execution_count)
-     (execute-result execution_count data metadata)
-     (error ename evalue traceback)
-     (status execution_state)
-     (clear-output wait)
-     (display-data data metadata transient)
-     (update-display-data data metadata transient))))
+  (unless (jupyter-run-hook-with-args-until-success
+           client 'jupyter-iopub-message-hook msg)
+    (jupyter-dispatch-message-cases client req msg
+      ((shutdown-reply restart)
+       (stream name text)
+       (comm-open comm_id target_name target_module data)
+       (comm-msg comm_id data)
+       (comm-close comm_id data)
+       (execute-input code execution_count)
+       (execute-result execution_count data metadata)
+       (error ename evalue traceback)
+       (status execution_state)
+       (clear-output wait)
+       (display-data data metadata transient)
+       (update-display-data data metadata transient)))))
 
 (cl-defgeneric jupyter-handle-comm-open ((client jupyter-kernel-client)
                                          req
