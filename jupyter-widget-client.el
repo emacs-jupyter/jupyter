@@ -130,7 +130,7 @@ required by the JupyterLab widget manager."
                    (encode-coding-string (car buffers) 'utf-8-auto t) t))
           (setq buffers (cdr buffers))))
       ;; Needed by WidgetManager
-      (unless (plist-get msg :metadata)
+      (unless (jupyter-message-metadata msg)
         (plist-put msg :metadata '(:version "2.0"))))))
 
 (cl-defmethod jupyter-widgets-send-message ((client jupyter-widget-client) msg)

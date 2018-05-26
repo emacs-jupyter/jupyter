@@ -174,7 +174,7 @@ executing BODY."
      ,@body))
 
 (defmacro jupyter-repl-do-at-request (client req &rest body)
-  "Switch to CLIENT's buffer, move to then end of REQ, and run BODY.
+  "Switch to CLIENT's buffer, move to the end of REQ, and run BODY.
 Switching to CLIENT's buffer is accomplished using
 `with-jupyter-repl-buffer'. After switching, `point' is moved to
 the `jupyter-repl-cell-beginning-position' of the cell after the
@@ -739,7 +739,7 @@ cell. N defaults to 1."
   N)
 
 (defun jupyter-repl-previous-cell (&optional N)
-  "Go to the start of the current of previous cell.
+  "Go to the start of the current or previous cell.
 If `point' is already at the start of the current cell, go to the
 start of the previous cell. Otherwise go to the start of the
 current cell. Optional argument N is the number of times to move
