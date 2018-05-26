@@ -391,6 +391,16 @@ can contain the following keywords along with their values:
 
 ;;; Handling rich output
 
+(defvar jupyter-repl-graphic-mimetypes '(:image/png :image/svg+xml :text/latex)
+  "Mimetypes that display graphics in the REPL buffer.")
+
+(defun jupyter-repl-graphic-data-p (msg)
+  "Check to see if MSG has mimetypes for graphics."
+  (cl-loop
+   with graphic-types = jupyter-repl-graphic-mimetypes
+   for (mimetype _value) on (jupyter-message-get msg :data) by #'cddr
+   thereis (memq mimetype graphic-types)))
+
 (defun jupyter-repl-insert-html (html)
   "Parse and insert the HTML string using `shr-insert-document'."
   (jupyter-repl-insert
@@ -495,7 +505,7 @@ image."
   (add-text-properties 0 (length text) '(syntax-table (3)) text)
   (jupyter-repl-insert text))
 
-(defun jupyter-repl-insert-data (data)
+(defun jupyter-repl-insert-data (data metadata)
   "Insert DATA into the REPL buffer in order of decreasing richness.
 DATA should be plist mapping mimetypes to their content. Attempt
 to insert a recognized mimetype, trying each one in order of
@@ -508,13 +518,18 @@ decreasing richness of the mimetype. The current order is
 - image/svg+xml
 - text/plain
 
-When no valid mimetype is present in DATA, a warning is shown."
+When no valid mimetype is present in DATA, a warning is shown.
+
+METADATA is a plist similar to data, but with values describing
+extra information for inserting each kind of mimetype. For
+example the value of `image/png' can be a plist with the keys
+`:width', `:height'."
   (let ((mimetypes (cl-loop
-                    with graphic-types = '(:image/png :image/svg+xml :text/latex)
                     for (k d) on data by #'cddr
-                    when (and d (not (equal d ""))
-                              (or (display-graphic-p)
-                                  (not (memq k graphic-types))))
+                    when
+                    (and d (not (equal d ""))
+                         (or (display-graphic-p)
+                             (not (memq k jupyter-repl-graphic-mimetypes))))
                     collect k)))
     (cond
      ((and (memq :text/html mimetypes)
@@ -532,18 +547,18 @@ When no valid mimetype is present in DATA, a warning is shown."
       (jupyter-repl-insert-latex (plist-get data :text/latex))
       (jupyter-repl-newline))
      ((memq :image/png mimetypes)
-      (insert-image
-       (create-image
-        (base64-decode-string
-         (plist-get data :image/png))
-        nil 'data)
-       (propertize " " 'read-only t)))
+      (cl-destructuring-bind (&key width height)
+          (plist-get metadata :image/png)
+        (let* ((data (base64-decode-string (plist-get data :image/png)))
+               (img (create-image data nil 'data :width width :height height)))
+          (insert-image img (propertize " " 'read-only t)))))
      ((and (memq :image/svg+xml mimetypes)
            (image-type-available-p 'svg))
-      (insert-image
-       (create-image
-        (plist-get data :image/svg+xml) 'svg)
-       (propertize " " 'read-only t)))
+      (cl-destructuring-bind (&key width height)
+          (plist-get metadata :image/svg+xml)
+        (let* ((data (plist-get data :image/svg+xml))
+               (img (create-image data 'svg nil :width width :height height)))
+          (insert-image img (propertize " " 'read-only t)))))
      ((memq :text/plain mimetypes)
       (jupyter-repl-insert-ansi-coded-text
        (plist-get data :text/plain))
@@ -997,17 +1012,16 @@ lines then truncate it to something less than
                                              req
                                              _execution-count
                                              data
-                                             _metadata)
+                                             metadata)
   ;; Only handle our results
   (when req
     (jupyter-repl-do-at-request client req
       (jupyter-repl-insert-prompt 'out)
-      (jupyter-repl-insert-data data))))
-
+      (jupyter-repl-insert-data data metadata))))
 (cl-defmethod jupyter-handle-display-data ((client jupyter-repl-client)
                                            req
                                            data
-                                           _metadata
+                                           metadata
                                            transient)
   (let ((clear (prog1 (oref client wait-to-clear)
                  (oset client wait-to-clear nil)))
@@ -1049,9 +1063,9 @@ lines then truncate it to something less than
                 ;; dedicated to errors. Use an overlay to display errors in the
                 ;; REPL buffer.
                 (with-jupyter-repl-doc-buffer (format "display-%d" display_id)
-                  (jupyter-repl-insert-data data))
+                  (jupyter-repl-insert-data data metadata))
               (when clear (jupyter-repl-clear-last-cell-output client))
-              (jupyter-repl-insert-data data)))))))))
+              (jupyter-repl-insert-data data metadata)))))))))
 
 (defun jupyter-repl-clear-last-cell-output (client)
   "In CLIENT's REPL buffer, clear the output of the last completed cell."
@@ -1587,16 +1601,16 @@ respond before returning nil."
                   :code code :pos pos)
                 timeout)))
     (when msg
-      (cl-destructuring-bind (&key status found data &allow-other-keys)
+      (cl-destructuring-bind (&key status found data metadata &allow-other-keys)
           (jupyter-message-content msg)
         (when (and (equal status "ok") found)
           (if buffer
               (with-current-buffer buffer
                 (prog1 buffer
-                  (jupyter-repl-insert-data data)
+                  (jupyter-repl-insert-data data metadata)
                   (goto-char (point-min))))
             (with-temp-buffer
-              (jupyter-repl-insert-data data)
+              (jupyter-repl-insert-data data metadata)
               (buffer-string))))))))
 
 (defun jupyter-repl-inspect-at-point ()
@@ -1686,7 +1700,9 @@ displayed without anything showing up in the REPL buffer."
               (with-current-buffer
                   (get-buffer-create "*jupyter-repl-result*")
                 (erase-buffer)
-                (jupyter-repl-insert-data (jupyter-message-get msg :data))
+                (jupyter-repl-insert-data
+                 (jupyter-message-get msg :data)
+                 (jupyter-message-get msg :metadata))
                 (goto-char (point-min))
                 (switch-to-buffer-other-window (current-buffer)))))))
       req)))
