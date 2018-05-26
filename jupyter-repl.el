@@ -1980,7 +1980,21 @@ call the function `font-lock-mode'."
                       (unless (get-text-property
                                (nth 8 state) 'font-lock-face)
                         (when sff (funcall sff state)))))))))
-    (font-lock-mode)))
+    (font-lock-mode)
+    ;; Special case since `js2-mode' does not use `font-lock-defaults' for
+    ;; highlighting.
+    (when (and (eq jupyter-repl-lang-mode 'js2-mode)
+               (null (nth 0 font-lock-defaults)))
+      (add-hook 'after-change-functions
+                (lambda (beg end len)
+                  (unless (jupyter-repl-cell-finalized-p)
+                    (save-restriction
+                      (narrow-to-region
+                       (jupyter-repl-cell-code-beginning-position)
+                       (jupyter-repl-cell-code-end-position))
+                      (js2-parse)
+                      (js2-mode-apply-deferred-properties))))
+                t t))))
 
 (defun jupyter-repl-insert-banner (banner)
   "Insert BANNER into the `current-buffer'.
