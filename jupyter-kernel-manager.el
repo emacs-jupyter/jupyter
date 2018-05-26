@@ -362,7 +362,8 @@ Finally, INFO is the kernel info plist obtained from a
               (jupyter-add-hook client 'jupyter-iopub-message-hook cb)
               (jupyter-start-kernel manager 10)
               (setq reporter (make-progress-reporter "Kernel starting up..."))
-              (with-timeout (10 (error "Kernel did not send startup message"))
+              ;; The javascript kernel doesn't seem to send the startup message
+              (with-timeout (5 (message "Kernel did not send startup message"))
                 (while (not started)
                   (progress-reporter-update reporter)
                   (sleep-for 0.02))
