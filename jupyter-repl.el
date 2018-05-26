@@ -149,6 +149,15 @@ the buffer local value of this variable is set to t and code in a
 cell is considered complete if the last line in a code cell is a
 blank line, i.e. if RET is pressed twice in a row.")
 
+(defvar jupyter-repl-display-ids nil
+  "A hash table of display IDs.
+Display IDs are implemented by setting the text property,
+`jupyter-display', to the display ID requested by a
+`:display-data' message. When a display is updated from an
+`:update-display-data' message, the display ID from the initial
+`:display-data' is retrieved from this table and used to find the
+display in the REPL buffer. See `jupyter-repl-update-display'.")
+
 ;;; Macros
 
 (defmacro with-jupyter-repl-buffer (client &rest body)
@@ -564,6 +573,22 @@ example the value of `image/png' can be a plist with the keys
        (plist-get data :text/plain))
       (jupyter-repl-newline))
      (t (warn "No supported mimetype found %s" mimetypes)))))
+
+(defun jupyter-repl-insert-data-with-id (display-id data metadata)
+  "Associate DISPLAY-ID with DATA when inserting DATA.
+DATA and METADATA have the same meaning as in
+`jupyter-repl-insert-data'."
+  (unless jupyter-repl-display-ids
+    (setq-local jupyter-repl-display-ids
+                (make-hash-table :test #'equal
+                                 :weakness 'value)))
+  (let ((beg (point))
+        (id (gethash display-id jupyter-repl-display-ids)))
+    (or id (setq id (puthash display-id
+                             display-id
+                             jupyter-repl-display-ids)))
+    (jupyter-repl-insert-data data metadata)
+    (put-text-property beg (point) 'jupyter-display id)))
 
 ;;; Prompt
 
@@ -1018,6 +1043,47 @@ lines then truncate it to something less than
     (jupyter-repl-do-at-request client req
       (jupyter-repl-insert-prompt 'out)
       (jupyter-repl-insert-data data metadata))))
+
+(defun jupyter-repl-next-display-with-id (id)
+  "Move `point' to the start of the next display matching ID.
+Return non-nil if successful. If no display with ID is found,
+return nil without moving `point'."
+  (let ((pos (next-single-property-change (point) 'jupyter-display)))
+    (while (and pos (not (eq (get-text-property pos 'jupyter-display) id)))
+      (setq pos (next-single-property-change pos 'jupyter-display)))
+    (and pos (goto-char pos))))
+
+(defun jupyter-repl-update-display (id data metadata)
+  "Update the display with ID using DATA.
+DATA and METADATA have the same meaning as in a `:display-data'
+message.
+
+Updating a display involves finding and clearing the data that is
+currently associated with the ID and inserting DATA at the same
+location. If multiple locations have the same display ID, all of
+them are updated. Raise an error if no display with ID could be
+found."
+  (save-excursion
+    (goto-char (point-min))
+    (let (str)
+      (while (jupyter-repl-next-display-with-id id)
+        (or str (setq str (with-temp-buffer
+                            (jupyter-repl-insert-data data metadata)
+                            (put-text-property
+                             (point-min) (point-max) 'jupyter-display id)
+                            (buffer-string))))
+        (delete-region (point) (next-single-property-change
+                                (point) 'jupyter-display))
+        (let ((beg (point)) ov)
+          (insert str)
+          (setq ov (make-overlay (1+ beg) (point)))
+          (overlay-put ov 'face 'secondary-selection)
+          (run-at-time 0.3 nil (lambda () (delete-overlay ov)))))
+      (when (= (point) (point-min))
+        (error "No display matching id (%s)" id)))))
+
+;; NOTE: Info on display_id
+;; https://github.com/jupyter/jupyter_client/issues/209
 (cl-defmethod jupyter-handle-display-data ((client jupyter-repl-client)
                                            req
                                            data
@@ -1058,14 +1124,24 @@ lines then truncate it to something less than
           (cl-destructuring-bind (&key display_id &allow-other-keys)
               transient
             (if display_id
-                ;; TODO: More general display of output types. Follow the
-                ;; notebook convention, and have buffers or regions of the REPL
-                ;; dedicated to errors. Use an overlay to display errors in the
-                ;; REPL buffer.
-                (with-jupyter-repl-doc-buffer (format "display-%d" display_id)
-                  (jupyter-repl-insert-data data metadata))
+                (jupyter-repl-insert-data-with-id display_id data metadata)
               (when clear (jupyter-repl-clear-last-cell-output client))
               (jupyter-repl-insert-data data metadata)))))))))
+
+(cl-defmethod jupyter-handle-update-display-data ((client jupyter-repl-client)
+                                                  _req
+                                                  data
+                                                  metadata
+                                                  transient)
+  (cl-destructuring-bind (&key display_id &allow-other-keys)
+      transient
+    (unless display_id
+      (error "No display ID in `:update-display-data' message"))
+    (with-jupyter-repl-buffer client
+      (let ((id (gethash display_id jupyter-repl-display-ids)))
+        (unless id
+          (error "Display ID not found (%s)" id))
+        (jupyter-repl-update-display id data metadata)))))
 
 (defun jupyter-repl-clear-last-cell-output (client)
   "In CLIENT's REPL buffer, clear the output of the last completed cell."
