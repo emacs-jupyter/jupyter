@@ -1018,12 +1018,15 @@ lines then truncate it to something less than
          (jupyter-repl-replace-cell-code (plist-get pl :text))))))
 
 (cl-defmethod jupyter-handle-execute-reply ((client jupyter-repl-client)
-                                            _req
+                                            req
                                             execution-count
                                             _user-expressions
                                             payload)
   (oset client execution-count (1+ execution-count))
   (with-jupyter-repl-buffer client
+    (save-excursion
+      (jupyter-repl-goto-cell req)
+      (jupyter-repl-cell-unmark-busy))
     (when payload
       (jupyter-repl--handle-payload payload))))
 
@@ -1167,16 +1170,8 @@ found."
      (t
       (jupyter-repl-clear-last-cell-output client)))))
 
-(cl-defmethod jupyter-handle-status ((client jupyter-repl-client) req execution-state)
-  (oset client execution-state execution-state)
-  (when (and req (equal execution-state "idle")
-             (not (memq (jupyter-message-parent-message-type
-                         (jupyter-request-last-message req))
-                        '(:comm-close :comm-open :comm-msg))))
-    (with-jupyter-repl-buffer client
-      (save-excursion
-        (jupyter-repl-goto-cell req)
-        (jupyter-repl-cell-unmark-busy)))))
+(cl-defmethod jupyter-handle-status ((client jupyter-repl-client) _req execution-state)
+  (oset client execution-state execution-state))
 
 (defvar jupyter-repl--output-marker nil)
 
