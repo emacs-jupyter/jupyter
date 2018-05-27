@@ -211,9 +211,6 @@ following fields:
                   message received by the kernel in response to
                   this request.
 
-- LAST-MESSAGE-TIME :: The last time a message was received for
-                       the request.
-
 - INHIBITED-HANDLERS :: A list of handler message types to
                         prevent the running of that particular
                         handler. If set to t, disable all
@@ -229,7 +226,6 @@ following fields:
   (time (current-time))
   (idle-received-p nil)
   (last-message nil)
-  (last-message-time nil)
   (inhibited-handlers nil)
   (callbacks))
 

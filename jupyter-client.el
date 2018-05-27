@@ -526,10 +526,12 @@ by `jupyter--ioloop'."
      (unless (eq ctype :stdin)
        ;; Anything sent on stdin is a reply and therefore never added to
        ;; `:pending-requests'
-       (let ((req (jupyter--ioloop-pop-request client)))
+       (let ((req (jupyter--ioloop-pop-request client))
+             (requests (oref client requests)))
          (cl-assert (equal (jupyter-request-id req) msg-id)
                     nil "Message request sent out of order to the kernel.")
-         (puthash msg-id req (oref client requests)))))
+         (puthash msg-id req requests)
+         (puthash "last-sent" req requests))))
     (`(recvd ,ctype ,idents . ,msg)
      (when jupyter--debug
        (message "RECV: %s %s %s %s"
@@ -748,22 +750,16 @@ that if no TIMEOUT is given, it defaults to
 (defun jupyter--drop-idle-requests (client)
   "Drop completed requests from CLIENT's request table.
 A request is deemed complete when an idle message has been
-received for it."
+received for it and it is not the most recently sent request."
   (cl-loop
    with requests = (oref client requests)
-   with ctime = (current-time)
-   ;; Drop idle requests when the last received message time is longer than 1 s
-   ;; ago and after the idle message has been received. Sometimes reply
-   ;; messages are received after an idle message.
-   with secs = '(0 1)
+   with last-sent = (gethash "last-sent" requests)
    for req in (hash-table-values requests)
-   for id = (jupyter-request-id req)
-   for ltime = (jupyter-request-last-message-time req)
    when (and (jupyter-request-idle-received-p req)
-             (time-less-p secs (time-subtract ctime ltime)))
+             (not (eq req last-sent)))
    do (when jupyter--debug
-        (message "DROPPING-REQ: %s" id))
-   (remhash id requests)))
+        (message "DROPPING-REQ: %s" (jupyter-request-id req)))
+   (remhash (jupyter-request-id req) requests)))
 
 (defun jupyter--run-handler-maybe (client channel req msg)
   (let ((inhibited-handlers (and req (jupyter-request-inhibited-handlers req))))
@@ -801,9 +797,6 @@ are taken:
             (when (jupyter-get client 'jupyter-include-other-output)
               (jupyter--run-handler-maybe client channel req msg))
           (setf (jupyter-request-last-message req) msg)
-          ;; TODO: This is redundant if we keep the last message since we can
-          ;; just access the date field of a message.
-          (setf (jupyter-request-last-message-time req) (current-time))
           (unwind-protect
               (jupyter--run-callbacks req msg)
             (unwind-protect
