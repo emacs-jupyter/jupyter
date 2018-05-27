@@ -98,6 +98,14 @@ live channels of the client.")
    (session
     :type jupyter-session
     :documentation "The session for this client.")
+   (comms
+    :type hash-table
+    :initform (make-hash-table :test 'equal)
+    :documentation "A hash table with comm ID's as keys. Contains
+all of the open comms. Each value is a cons cell (REQ . DATA)
+which contains the generating `jupyter-request' that caused the
+comm to open and the initial DATA passed to the comm for
+initialization.")
    (manager
     :initform nil
     :documentation "If this client was initialized using a
@@ -1131,14 +1139,15 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
      (display-data data metadata transient)
      (update-display-data data metadata transient))))
 
-(cl-defgeneric jupyter-handle-comm-open ((_client jupyter-kernel-client)
-                                         _req
-                                         _id
+(cl-defgeneric jupyter-handle-comm-open ((client jupyter-kernel-client)
+                                         req
+                                         id
                                          _target-name
                                          _target-module
-                                         _data)
+                                         data)
   (declare (indent 1))
-  nil)
+  (let ((comms (oref client comms)))
+    (puthash id (cons (jupyter-request-id req) data) comms)))
 
 (cl-defgeneric jupyter-handle-comm-msg ((_client jupyter-kernel-client)
                                         _req
@@ -1147,12 +1156,13 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
   (declare (indent 1))
   nil)
 
-(cl-defgeneric jupyter-handle-comm-close ((_client jupyter-kernel-client)
+(cl-defgeneric jupyter-handle-comm-close ((client jupyter-kernel-client)
                                           _req
-                                          _id
+                                          id
                                           _data)
   (declare (indent 1))
-  nil)
+  (let ((comms (oref client comms)))
+    (remhash id comms)))
 
 (cl-defgeneric jupyter-handle-stream ((_client jupyter-kernel-client)
                                       _req
