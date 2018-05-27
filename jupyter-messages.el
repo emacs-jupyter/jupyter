@@ -450,7 +450,7 @@ return the value of KEY in MSG."
   "Get the session ID of MSG."
   (plist-get (jupyter-message-header msg) :session))
 
-(defun jupyter-message-parent-message-type (msg)
+(defun jupyter-message-parent-type (msg)
   "Get the type of MSG's parent message."
   (jupyter-message-type (jupyter-message-parent-header msg)))
 

@@ -1113,7 +1113,7 @@ found."
      ;;    (jupyter-repl-insert-data data)
      ;;    (pop-to-buffer (current-buffer))))
      (t
-      (let ((req (if (eq (jupyter-message-parent-message-type
+      (let ((req (if (eq (jupyter-message-parent-type
                           (jupyter-request-last-message req))
                          :comm-msg)
                      ;; For comm messages which produce a display_data, the
@@ -1175,7 +1175,7 @@ found."
   ;; TODO: Tale into account json-false elsewhere
   (unless (oset client wait-to-clear (eq wait t))
     (cond
-     ((eq (jupyter-message-parent-message-type
+     ((eq (jupyter-message-parent-type
            (jupyter-request-last-message req))
           :comm-msg)
       (with-current-buffer (get-buffer-create "*jupyter-repl-output*")
@@ -1214,7 +1214,7 @@ buffer to display TEXT."
       ;; TODO: Make this configurable so that we can just ignore output.
       (jupyter-repl-display-other-output client name text)
     (cond
-     ((eq (jupyter-message-parent-message-type
+     ((eq (jupyter-message-parent-type
            (jupyter-request-last-message req))
           :comm-msg)
       (with-current-buffer (get-buffer-create "*jupyter-repl-output*")
