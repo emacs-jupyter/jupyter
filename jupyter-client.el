@@ -898,19 +898,17 @@ the user. Otherwise `read-from-minibuffer' is used."
                                       msg)
   (unless (jupyter-run-hook-with-args-until-success
            client 'jupyter-shell-message-hook msg)
-    ;; Let `jupyter-handle-error' handle errors for requests.
-    (unless (member (jupyter-message-get msg :status) '("error" "abort"))
-      (jupyter-dispatch-message-cases client req msg
-        ((execute-reply execution_count user_expressions payload)
-         (shutdown-reply restart)
-         (inspect-reply found data metadata)
-         (complete-reply matches cursor_start cursor_end metadata)
-         (history-reply history)
-         (is-complete-reply status indent)
-         (comm-info-reply comms)
-         (kernel-info-reply protocol_version implementation
-                            implementation_version language_info
-                            banner help_links))))))
+    (jupyter-dispatch-message-cases client req msg
+      ((execute-reply execution_count user_expressions payload)
+       (shutdown-reply restart)
+       (inspect-reply found data metadata)
+       (complete-reply matches cursor_start cursor_end metadata)
+       (history-reply history)
+       (is-complete-reply status indent)
+       (comm-info-reply comms)
+       (kernel-info-reply protocol_version implementation
+                          implementation_version language_info
+                          banner help_links)))))
 
 (cl-defgeneric jupyter-send-execute-request ((client jupyter-kernel-client)
                                              &key code
