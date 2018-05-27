@@ -11,8 +11,8 @@
 </style>
 <script type="application/javascript">
   var kernel;
-  // TODO: May not be available everywhere
   document.addEventListener("DOMContentLoaded", function(event) {
+      // TODO: May not be available everywhere
       var p = new URLSearchParams(window.location.search);
       var kernel = new EmacsJupyter({username: p.get('username'),
                                      clientId: p.get('clientId')},

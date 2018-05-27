@@ -111,10 +111,6 @@ initialization.")
     :documentation "If this client was initialized using a
 `jupyter-kernel-manager' this slot will hold the manager which
 initialized the client.")
-   ;; TODO: Periodically cleanup these buffers when the object they point to
-   ;; are no longer in use. How can we determine if an object has no more
-   ;; references? Maybe do something with `post-gc-hook'? Or require explicit
-   ;; cleanup?
    (-buffer
     :type buffer
     :documentation "An internal buffer used to store client local
@@ -762,6 +758,7 @@ received for it and it is not the most recently sent request."
    (remhash (jupyter-request-id req) requests)))
 
 (defun jupyter--run-handler-maybe (client channel req msg)
+  "Possibly run CLIENT's CHANNEL handler on REQ's received MSG."
   (let ((inhibited-handlers (and req (jupyter-request-inhibited-handlers req))))
     (unless (or (eq inhibited-handlers t)
                 (memq (jupyter-message-type msg) inhibited-handlers))

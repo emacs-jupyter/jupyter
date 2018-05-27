@@ -178,11 +178,17 @@ from the kernel.")
                  (id (jupyter-new-uuid))
                  (key nil))))
   "A `jupyter-session' holds the information needed to
-authenticate messages. Each `jupyter-session' should have a
-unique ID which is used as the `zmq-ROUTING-ID' for every
-`jupyter-channel' socket that utilizes the session object. The
-KEY of a `jupyter-session' is used for message signing. Message
-signing is not done if the KEY of a `jupyter-session' is empty."
+authenticate messages. A `jupyter-session' contains the following
+fields:
+
+- CONN-INFO :: The connection info. property list of the kernel
+  this session is used to sign messages for.
+
+- ID :: A string of bytes used as the `zmq-ROUTING-ID' for every
+  `jupyter-channel' that utilizes the sessiong object.
+
+- KEY :: The key used when signing messages. If KEY is nil,
+  message signing is not performed."
   (conn-info nil :read-only t)
   (id nil :read-only t)
   (key nil :read-only t))

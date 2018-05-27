@@ -118,15 +118,32 @@ timeout, the built-in is-complete handler is used."
 ;;; Implementation
 
 (defclass jupyter-repl-client (jupyter-widget-client)
-  ((buffer :type buffer)
+  ((buffer
+    :type (or null buffer)
+    :initform nil
+    :documentation "The REPL buffer whose
+`jupyter-repl-current-client' is this client.")
    (wait-to-clear
     :type boolean :initform nil
     :documentation "Whether or not we should wait to clear the
 current output of the cell. Set when the kernel sends a
 `:clear-output' message.")
-   (kernel-info :type json-plist :initform nil)
-   (execution-state :type string :initform "idle")
-   (execution-count :type integer :initform 1)))
+   (kernel-info
+    :type json-plist
+    :initform nil
+    :documentation "The saved kernel info created when first
+initializing this client. This is the plist returned from the the
+call to `jupyter-start-new-kernel' when this client was
+created.")
+   (execution-state
+    :type string
+    :initform "idle"
+    :documentation "The current state of the kernel. Can be
+either \"idle\", \"busy\", or \"starting\".")
+   (execution-count
+    :type integer
+    :initform 1
+    :documentation "The current execution count of the kernel.")))
 
 (defvar jupyter-repl-lang-buffer nil
   "A buffer with the `major-mode' set to the REPL language's `major-mode'.")
@@ -147,7 +164,7 @@ current output of the cell. Set when the kernel sends a
 See `jupyter-repl-fontify-according-to-mode'.")
 
 (defvar jupyter-repl-use-builtin-is-complete nil
-  "Whether or not to send is_complete_request's to a kernel.
+  "Whether or not to send `:is-complete-request's to a kernel.
 If a Jupyter kernel does not respond to an is_complete_request,
 the buffer local value of this variable is set to t and code in a
 cell is considered complete if the last line in a code cell is a
@@ -159,8 +176,9 @@ Display IDs are implemented by setting the text property,
 `jupyter-display', to the display ID requested by a
 `:display-data' message. When a display is updated from an
 `:update-display-data' message, the display ID from the initial
-`:display-data' is retrieved from this table and used to find the
-display in the REPL buffer. See `jupyter-repl-update-display'.")
+`:display-data' message is retrieved from this table and used to
+find the display in the REPL buffer. See
+`jupyter-repl-update-display'.")
 
 ;;; Macros
 
@@ -299,7 +317,7 @@ for the property."
 
 ;; Adapted from `org-src-font-lock-fontify-block'
 (defun jupyter-repl-fixup-font-lock-properties ()
-  "Fixup the text properties in the `curren-buffer'.
+  "Fixup the text properties in the `current-buffer'.
 Fixing the text properties of the current buffer involves
 substituting any `face' property with `font-lock-face' for
 insertion into the REPL buffer and adding
@@ -958,7 +976,6 @@ Finalizing a cell involves the following steps:
     (remove-text-properties beg (point) '(rear-nonsticky))
     ;; font-lock-multiline to avoid improper syntactic elements from
     ;; spilling over to the rest of the buffer.
-    ;; TODO: I don't think this is a proper use of this text property
     (add-text-properties beg (point) '(read-only t font-lock-multiline t))))
 
 (defun jupyter-repl-replace-cell-code (new-code)
@@ -1177,7 +1194,7 @@ found."
 (cl-defmethod jupyter-handle-clear-output ((client jupyter-repl-client)
                                            req
                                            wait)
-  ;; TODO: Tale into account json-false elsewhere
+  ;; TODO: Take into account json-false elsewhere
   (unless (oset client wait-to-clear (eq wait t))
     (cond
      ((eq (jupyter-message-parent-type
@@ -1215,8 +1232,6 @@ buffer to display TEXT."
 
 (cl-defmethod jupyter-handle-stream ((client jupyter-repl-client) req name text)
   (if (null req)
-      ;; Otherwise the stream request is due to someone else, pop up a buffer.
-      ;; TODO: Make this configurable so that we can just ignore output.
       (jupyter-repl-display-other-output client name text)
     (cond
      ((eq (jupyter-message-parent-type
@@ -1602,8 +1617,6 @@ is used for completion."
 
       ))
     ;; When a type is supplied add it as an annotation
-    ;; TODO: Customize annotation types, when an annotation type "function"
-    ;; appears, substitute "λ".
     (when types
       (let ((max-len (apply #'max (mapcar #'length matches))))
         (cl-mapc
@@ -2258,14 +2271,14 @@ purposes and SYNTAX-TABLE is the syntax table of MODE."
 
 (defun jupyter-repl--new-repl (client)
   "Initialize a new REPL buffer based on CLIENT.
-CLIENT is a `jupyter-repl-client' already connected to its
-kernel and should have a non-nil kernel-info slot.
+CLIENT is a `jupyter-repl-client' already connected to its kernel
+and has a non-nil kernel-info slot.
 
 A new REPL buffer communicating with CLIENT's kernel is created
-and set as CLIENT'sthis case, if MANAGER will be the buffer slot.
-If CLIENT already has a non-nil buffer slot, raise an error."
+and set as CLIENT's buffer slot. If CLIENT already has a non-nil
+buffer slot, raise an error."
   (if (slot-boundp client 'buffer) (error "Client already has a REPL buffer")
-    (unless (ignore-errors (oref client kernel-info))
+    (unless (oref client kernel-info)
       (error "Client needs to have valid kernel-info"))
     (cl-destructuring-bind (&key language_info
                                  banner
@@ -2306,8 +2319,6 @@ Otherwise, in a non-interactive call, return the
     (setq kernel-name (caar (jupyter-find-kernelspecs kernel-name))))
   (unless kernel-name
     (error "No kernel found for prefix (%s)" kernel-name))
-  ;; The manager is set as the client's manager slot in
-  ;; `jupyter-start-new-kernel'
   (cl-destructuring-bind (_manager client info)
       (jupyter-start-new-kernel kernel-name 'jupyter-repl-client)
     (oset client kernel-info info)

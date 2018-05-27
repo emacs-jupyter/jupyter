@@ -323,8 +323,8 @@ class is CLIENT-CLASS. The client is connected to the kernel with
 all channels listening for messages and the heartbeat channel
 unpaused. Note that the client's `manager' slot will also be set
 to the kernel manager instance, see `jupyter-make-client'.
-Finally, INFO is the kernel info plist obtained from a
-`:kernel-info-request'."
+Finally, INFO is the kernel info plist obtained from an initial
+`:kernel-info-request' sent to the kernel using KC."
   (or client-class (setq client-class 'jupyter-kernel-client))
   (unless (child-of-class-p client-class 'jupyter-kernel-client)
     (signal 'wrong-type-argument

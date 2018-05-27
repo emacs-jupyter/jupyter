@@ -236,15 +236,8 @@ Return the cons cell (\"file\" . FILE), see
 
 (defun org-babel-jupyter-prepare-result (data metadata params)
   "Return the rendered DATA.
-DATA is converted into a representation suitable for display in
-an `org-mode' buffer depending on
-
 DATA is a plist, (:mimetype1 value1 ...), containing the
 different representations of a result returned by a kernel.
-Preparing a result
-
-which is used to render
-a result which can be passed to `org-babel-insert-result'.
 
 METADATA is the metadata plist used to render DATA with, as
 returned by the Jupyter kernel. This plist typically contains
