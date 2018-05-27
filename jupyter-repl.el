@@ -279,6 +279,9 @@ erased."
   (with-jupyter-repl-buffer client
     jupyter-repl-lang-mode))
 
+(cl-defmethod jupyter-repl-language ((client jupyter-repl-client))
+  (plist-get (plist-get (oref client kernel-info) :language_info) :name))
+
 ;;; Text insertion
 
 (defun jupyter-repl-add-font-lock-properties (start end &optional object)
@@ -1214,41 +1217,36 @@ buffer to display TEXT."
       (jupyter-repl-do-at-request client req
         (jupyter-repl-insert-ansi-coded-text text))))))
 
+(defun jupyter-repl-fix-python-traceback-spacing (ename)
+  "Add spacing between the first occurance of ENAME and \"Traceback\".
+Do this for the current cell."
+  (save-excursion
+    (jupyter-repl-previous-cell)
+    (when (and (search-forward ename nil t)
+               (looking-at "Traceback"))
+      (let ((len (- fill-column
+                    jupyter-repl-prompt-margin-width
+                    (- (point) (line-beginning-position))
+                    (- (line-end-position) (point)))))
+        (jupyter-repl-insert
+         (make-string (if (> len 4) len 4) ? ))))))
+
 (cl-defmethod jupyter-handle-error ((client jupyter-repl-client)
                                     req ename evalue traceback)
-  ;; When the request is from us
-  (if req
-      (cond
-       ((eq (jupyter-message-parent-message-type
-             (jupyter-request-last-message req))
-            :comm-msg)
-        (with-jupyter-repl-doc-buffer "traceback"
-          (jupyter-repl-insert-ansi-coded-text
-           (mapconcat #'identity traceback "\n"))
-          (pop-to-buffer (current-buffer))))
-       (t
-        (jupyter-repl-do-at-request client req
-          (when traceback
-            (let ((pos (point)))
-              (jupyter-repl-insert-ansi-coded-text
-               (mapconcat #'identity traceback "\n"))
-              ;; TODO: Better way of accessing client kernel's properties
-              ;;
-              ;;    (jupyter-client-property client :kernel-language)
-              (when (eq jupyter-repl-lang-mode 'python-mode)
-                ;; Fix spacing between error name and Traceback
-                (save-excursion
-                  (goto-char pos)
-                  (when (search-forward ename nil t)
-                    (let ((len (- fill-column
-                                  (- (point) (line-beginning-position))
-                                  (- (line-end-position) (point)))))
-                      (jupyter-repl-insert
-                       (make-string (if (> len 4) len 4) ? )))))))
-            (jupyter-repl-newline)))))
-    ;; TODO: Probably this shouldn't be here.
-    (jupyter-repl-display-other-output
-     client "stderr" (format "(other client) %s: %s" ename evalue))))
+  (when req
+    (setq traceback (concat (mapconcat #'identity traceback "\n") "\n"))
+    (cond
+     ((eq (jupyter-message-parent-type
+           (jupyter-request-last-message req))
+          :comm-msg)
+      (with-jupyter-repl-doc-buffer "traceback"
+        (jupyter-repl-insert-ansi-coded-text traceback)
+        (pop-to-buffer (current-buffer))))
+     (t
+      (jupyter-repl-do-at-request client req
+        (jupyter-repl-insert-ansi-coded-text traceback)
+        (when (equal (jupyter-repl-language client) "python")
+          (jupyter-repl-fix-python-traceback-spacing ename)))))))
 
 (cl-defmethod jupyter-handle-input-reply ((client jupyter-repl-client) req prompt _password)
   (jupyter-repl-do-at-request client req
@@ -1361,53 +1359,45 @@ code without sending the `:is-complete-request'. See
 `jupyter-repl-use-builtin-is-complete' for yet another way to
 execute the current cell."
   (interactive "P")
-  (let ((cell-beginning
-         (condition-case nil
-             (save-excursion
-               (goto-char (point-max))
-               (jupyter-repl-cell-beginning-position))
-           (beginning-of-buffer
-            ;; No cell's in the current buffer, just insert one
-            (prog1 nil
-              (jupyter-repl-insert-prompt 'in))))))
-    (when cell-beginning
-      (if (< (point) cell-beginning)
-          (goto-char (point-max))
-        (unless (or (and (jupyter-repl-client-has-manager-p)
-                         (jupyter-kernel-alive-p
-                          (oref jupyter-repl-current-client manager)))
-                    (jupyter-hb-beating-p
-                     (oref jupyter-repl-current-client hb-channel)))
-          (error "Kernel not alive"))
-        ;; NOTE: kernels allow execution requests to queue up, but we prevent
-        ;; sending a request when the kernel is busy because of the is-complete
-        ;; request. Some kernels don't respond to this request when the kernel
-        ;; is busy.
-        (unless (member (oref jupyter-repl-current-client execution-state)
-                        '("starting" "idle"))
-          (jupyter-repl-sync-execution-state)
-          (error "Kernel busy"))
-        (if force (jupyter-send-execute-request jupyter-repl-current-client)
-          (if (not jupyter-repl-use-builtin-is-complete)
-              (let ((res (jupyter-wait-until-received
-                             :is-complete-reply
-                           (let ((jupyter-inhibit-handlers '(:status)))
-                             (jupyter-send-is-complete-request
-                                 jupyter-repl-current-client
-                               :code (jupyter-repl-cell-code)))
-                           jupyter-repl-maximum-is-complete-timeout)))
-                (unless res
-                  (message "Kernel did not respond to is-complete-request, using built-in is-complete.
-Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
-                  (setq-local jupyter-repl-use-builtin-is-complete t)
-                  (jupyter-repl-ret force)))
+  (condition-case nil
+      (let ((cell-beginning (save-excursion
+                              (goto-char (point-max))
+                              (jupyter-repl-cell-beginning-position))))
+        (if (< (point) cell-beginning)
             (goto-char (point-max))
-            (let ((complete-p (equal (buffer-substring
-                                      (line-beginning-position) (point))
-                                     "")))
-              (jupyter-handle-is-complete-reply
-                  jupyter-repl-current-client
-                nil (if complete-p "complete" "incomplete") ""))))))))
+          (unless (jupyter-repl-connected-p)
+            (error "Kernel not alive"))
+          ;; NOTE: kernels allow execution requests to queue up, but we prevent
+          ;; sending a request when the kernel is busy because of the
+          ;; is-complete request. Some kernels don't respond to this request
+          ;; when the kernel is busy.
+          (unless (member (oref jupyter-repl-current-client execution-state)
+                          '("starting" "idle"))
+            (jupyter-repl-sync-execution-state)
+            (error "Kernel busy"))
+          (if force (jupyter-send-execute-request jupyter-repl-current-client)
+            (if (not jupyter-repl-use-builtin-is-complete)
+                (let* ((jupyter-inhibit-handlers '(:status))
+                       (res (jupyter-wait-until-received :is-complete-reply
+                              (jupyter-send-is-complete-request
+                                  jupyter-repl-current-client
+                                :code (jupyter-repl-cell-code))
+                              jupyter-repl-maximum-is-complete-timeout)))
+                  (unless res
+                    (message "Kernel did not respond to is-complete-request, using built-in is-complete.
+Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
+                    (setq-local jupyter-repl-use-builtin-is-complete t)
+                    (jupyter-repl-ret force)))
+              (goto-char (point-max))
+              (let ((complete-p (equal (buffer-substring
+                                        (line-beginning-position) (point))
+                                       "")))
+                (jupyter-handle-is-complete-reply
+                    jupyter-repl-current-client
+                  nil (if complete-p "complete" "incomplete") ""))))))
+    (beginning-of-buffer
+     ;; No cells in the current buffer, just insert one
+     (jupyter-repl-insert-prompt 'in))))
 
 (defun jupyter-repl-indent-line ()
   "Indent the line according to the language of the REPL."

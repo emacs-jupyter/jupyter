@@ -39,7 +39,7 @@ var EmacsJupyter = function(options, port) {
         if(_this.isDisposed) {
             return;
         }
-        msg = JSON.parse(event.data);
+        var msg = JSON.parse(event.data);
         _this.messagePromise =
             _this.messagePromise.then(function () {
                 if(msg.buffers && msg.buffers.length > 0) {
@@ -88,7 +88,9 @@ EmacsJupyter.prototype.connectToComm = function (targetName, commId) {
         return this.commPromises.get(id);
     }
     var promise = Promise.resolve(void 0).then(function () {
-        return new CommHandler(targetName, id, _this, function () { _this._unregisterComm(id); });
+        return new CommHandler(targetName, id, _this, function () {
+            _this._unregisterComm(id);
+        });
     });
     this.commPromises.set(id, promise);
     return promise;
@@ -100,8 +102,15 @@ EmacsJupyter.prototype.handleCommOpen = function (msg) {
     if (this.isDisposed) {
         return;
     }
-    var promise = this.loadObject(content.target_name, content.target_module, this.targetRegistry).then(function (target) {
-        var comm = new CommHandler(content.target_name, content.comm_id, _this, function () { _this._unregisterComm(content.comm_id); });
+    var promise = this.loadObject(content.target_name,
+                                  content.target_module,
+                                  this.targetRegistry)
+        .then(function (target) {
+        var comm = new CommHandler(content.target_name,
+                                   content.comm_id,
+                                   _this, function () {
+                                       _this._unregisterComm(content.comm_id);
+                                   });
         var response;
         try {
             response = target(comm, msg);
@@ -223,8 +232,8 @@ EmacsJupyter.prototype.sendShellMessage = function(msg, expectReply, disposeOnDo
         _this.futures.delete(msgId);
     }, msg, expectReply, disposeOnDone, this);
 
-    _this.ws.send(JSON.stringify(msg));
-    _this.futures.set(msg.header.msg_id, future);
+    this.ws.send(JSON.stringify(msg));
+    this.futures.set(msg.header.msg_id, future);
     return future;
 };
 
