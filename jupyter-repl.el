@@ -95,20 +95,24 @@
 
 (defcustom jupyter-repl-maximum-size 1024
   "Maximum number of lines before the buffer is truncated."
+  :type 'integer
   :group 'jupyter-repl)
 
 (defcustom jupyter-repl-maximum-is-complete-timeout 2
   "Maximum number of seconds to wait for an is-complete reply.
 When no is-complete reply is received from the kernel within this
 timeout, the built-in is-complete handler is used."
+  :type 'integer
   :group 'jupyter-repl)
 
 (defcustom jupyter-repl-history-maximum-length 100
   "The maximum number of history elements to keep track of."
+  :type 'integer
   :group 'jupyter-repl)
 
 (defcustom jupyter-repl-prompt-margin-width 12
   "The width of the margin which displays prompt strings."
+  :type 'integer
   :group 'jupyter-repl)
 
 ;;; Implementation
