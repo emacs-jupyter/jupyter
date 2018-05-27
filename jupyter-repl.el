@@ -1135,8 +1135,14 @@ found."
               transient
             (if display_id
                 (jupyter-repl-insert-data-with-id display_id data metadata)
-              (when clear (jupyter-repl-clear-last-cell-output client))
-              (jupyter-repl-insert-data data metadata)))))))))
+              (let ((inhibit-redisplay t))
+                (when clear (jupyter-repl-clear-last-cell-output client))
+                (jupyter-repl-insert-data data metadata)
+                ;; Prevent slight flickering of prompt margin and text, this is
+                ;; needed in addition to `inhibit-redisplay'. It also seems
+                ;; that it can be placed anywhere within this let and it will
+                ;; prevent flickering.
+                (sit-for 0.1 t))))))))))
 
 (cl-defmethod jupyter-handle-update-display-data ((client jupyter-repl-client)
                                                   _req
