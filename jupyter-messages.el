@@ -314,6 +314,10 @@
   "Get the type of MSG."
   (plist-get msg :msg_type))
 
+(defsubst jupyter-message-parent-message-type (msg)
+  "Get the type of MSG's parent message."
+  (jupyter-message-type (plist-get msg :parent_header)))
+
 (defsubst jupyter-message-content (msg)
   "Get the MSG contents."
   (plist-get msg :content))
