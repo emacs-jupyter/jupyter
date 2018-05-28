@@ -1218,7 +1218,9 @@ buffer to display TEXT."
            (jupyter-request-last-message req))
           :comm-msg)
       (with-current-buffer (get-buffer-create "*jupyter-repl-output*")
-        (jupyter-repl-insert-ansi-coded-text text)))
+        (let ((inhibit-read-only t))
+          (jupyter-repl-insert-ansi-coded-text text)
+          (display-buffer (current-buffer)))))
      (t
       (jupyter-repl-do-at-request client req
         (jupyter-repl-insert-ansi-coded-text text))))))
