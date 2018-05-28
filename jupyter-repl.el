@@ -637,6 +637,7 @@ the prompt. The prompt string is inserted as a `display' text
 property in the `after-string' property of the overlay and the
 overlay is added to the newline character just inserted."
   (jupyter-repl-newline)
+  (overlay-recenter (point))
   (let ((ov (make-overlay (1- (point)) (point) nil t))
         (md (jupyter-repl--prompt-display-value str face)))
     (overlay-put ov 'after-string (propertize " " 'display md))
@@ -657,7 +658,7 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
       ((eq type 'in)
        (let ((count (oref jupyter-repl-current-client execution-count)))
          (setq ov (jupyter-repl--insert-prompt
-                   (format "In [%d]:" count) 'jupyter-repl-input-prompt)
+                   (format "In [%d] " count) 'jupyter-repl-input-prompt)
                props (list 'jupyter-cell (list 'beginning count))))
        ;; Insertion of an invisible character is to prevent the prompt overlay
        ;; from inheriting the text properties of code at the beginning of a
@@ -679,7 +680,7 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
        ;; needed here.
        (let ((count (jupyter-repl-cell-count 'escape)))
          (setq ov (jupyter-repl--insert-prompt
-                   (format "Out [%d]:" count) 'jupyter-repl-output-prompt)
+                   (format "Out [%d] " count) 'jupyter-repl-output-prompt)
                props (list 'jupyter-cell (list 'out count))))
        ;; Prevent the overlay from inheriting text properties. Front sticky to
        ;; prevent inserting text at the beginning of the output cell before the
@@ -688,7 +689,7 @@ If TYPE is nil or `in' insert a new input prompt. If TYPE is
         :properties '(invisible t front-sticky t) " "))
       ((eq type 'continuation)
        (setq ov (jupyter-repl--insert-prompt
-                 ":" 'jupyter-repl-input-prompt)
+                 " " 'jupyter-repl-input-prompt)
              props (list 'read-only nil 'rear-nonsticky t))))
      (add-text-properties (overlay-start ov) (overlay-end ov) props))))
 
@@ -704,15 +705,15 @@ STR is the replacement prompt string."
 
 (defun jupyter-repl-cell-mark-busy ()
   "Mark the current cell as busy.
-The changes the current input prompt to \"In [*]:\""
-  (jupyter-repl-cell-update-prompt "In [*]:"))
+The changes the current input prompt to \"In [*] \""
+  (jupyter-repl-cell-update-prompt "In [*] "))
 
 (defun jupyter-repl-cell-unmark-busy ()
   "Un-mark the current cell as busy.
-This changes the current input prompt to \"In [N]:\" where N is
+This changes the current input prompt to \"In [N] \" where N is
 the execution count of the cell."
   (jupyter-repl-cell-update-prompt
-   (format "In [%d]:" (jupyter-repl-cell-count))))
+   (format "In [%d] " (jupyter-repl-cell-count))))
 
 (defun jupyter-repl-cell-count (&optional escape)
   "Get the cell count of the current cell at `point'.
@@ -1996,6 +1997,8 @@ in the appropriate direction, to the saved element."
   "Jupyter-REPL"
   "A Jupyter REPL major mode."
   (cl-check-type jupyter-repl-current-client jupyter-repl-client)
+  ;; This is a better setting when rendering HTML tables
+  (setq-local truncate-lines t)
   (setq-local indent-line-function #'jupyter-repl-indent-line)
   (setq-local left-margin-width jupyter-repl-prompt-margin-width)
   ;; Initialize a buffer using the major-mode correponding to the kernel's
