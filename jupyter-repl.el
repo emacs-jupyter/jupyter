@@ -523,10 +523,16 @@ image."
 
 (defun jupyter-repl-insert-data (data metadata)
   "Insert DATA into the REPL buffer in order of decreasing richness.
-DATA should be plist mapping mimetypes to their content. Attempt
-to insert a recognized mimetype, trying each one in order of
-decreasing richness of the mimetype. The current order is
+DATA is a plist mapping mimetypes to their content. METADATA is a
+plist similar to data, but with values describing extra
+information for inserting each kind of mimetype. For example the
+value of `image/png' can be a plist with the keys `:width',
+`:height'.
 
+Attempt to insert a recognized mimetype, trying each one in order
+of decreasing richness of the mimetype. The current order is
+
+- application/vnd.jupyter.widget-view+json
 - text/html
 - text/markdown (only if `markdown-mode' is available)
 - text/latex
@@ -534,12 +540,12 @@ decreasing richness of the mimetype. The current order is
 - image/svg+xml
 - text/plain
 
-When no valid mimetype is present in DATA, a warning is shown.
+As a special case, since Emacs is currently unable to embed a web
+browser in a sufficient way, inserting a widget does not actually
+insert it into the buffer. Instead the widget is displayed in a
+browser.
 
-METADATA is a plist similar to data, but with values describing
-extra information for inserting each kind of mimetype. For
-example the value of `image/png' can be a plist with the keys
-`:width', `:height'."
+When no valid mimetype is present in DATA, a warning is shown."
   (let ((mimetypes (cl-loop
                     for (k d) on data by #'cddr
                     when
@@ -548,6 +554,11 @@ example the value of `image/png' can be a plist with the keys
                              (not (memq k jupyter-repl-graphic-mimetypes))))
                     collect k)))
     (cond
+     ((memq :application/vnd.jupyter.widget-view+json mimetypes)
+      (jupyter-widgets-display-model
+       jupyter-repl-current-client
+       (plist-get (plist-get data :application/vnd.jupyter.widget-view+json)
+                  :model_id)))
      ((and (memq :text/html mimetypes)
            (functionp 'libxml-parse-html-region))
       (let ((html (plist-get data :text/html)))
@@ -584,18 +595,23 @@ example the value of `image/png' can be a plist with the keys
 (defun jupyter-repl-insert-data-with-id (display-id data metadata)
   "Associate DISPLAY-ID with DATA when inserting DATA.
 DATA and METADATA have the same meaning as in
-`jupyter-repl-insert-data'."
+`jupyter-repl-insert-data'.
+
+Currently there is no support for associating a DISPLAY-ID if
+DATA is displayed as a widget."
   (unless jupyter-repl-display-ids
     (setq-local jupyter-repl-display-ids
                 (make-hash-table :test #'equal
                                  :weakness 'value)))
   (let ((beg (point))
-        (id (gethash display-id jupyter-repl-display-ids)))
-    (or id (setq id (puthash display-id
-                             display-id
-                             jupyter-repl-display-ids)))
+        (id (gethash display-id jupyter-repl-display-ids))
+        (widget-p (memq :application/vnd.jupyter.widget-view+json data)))
+    (or id widget-p (setq id (puthash display-id
+                                      display-id
+                                      jupyter-repl-display-ids)))
     (jupyter-repl-insert-data data metadata)
-    (put-text-property beg (point) 'jupyter-display id)))
+    (unless widget-p
+      (put-text-property beg (point) 'jupyter-display id))))
 
 ;;; Prompt
 
@@ -1101,48 +1117,32 @@ found."
                                            transient)
   (let ((clear (prog1 (oref client wait-to-clear)
                  (oset client wait-to-clear nil)))
-        widget)
-    (cond
-     ((setq widget (plist-get data :application/vnd.jupyter.widget-view+json))
-      (jupyter-widgets-display-model client (plist-get widget :model_id)))
-     ;; ((eq (jupyter-message-parent-message-type
-     ;;       (jupyter-request-last-message req))
-     ;;      :comm-msg)
-     ;;  (with-current-buffer (get-buffer-create "*jupyter-repl-output*")
-     ;;    (when clear (erase-buffer))
-     ;;    (jupyter-repl-insert-data data)
-     ;;    (pop-to-buffer (current-buffer))))
-     (t
-      (let ((req (if (eq (jupyter-message-parent-type
-                          (jupyter-request-last-message req))
-                         :comm-msg)
-                     ;; For comm messages which produce a display_data, the
-                     ;; request is assumed to be the most recently completed
-                     ;; one.
-                     ;;
-                     ;; TODO: Handle display_id, display_id is supposed to be
-                     ;; used such that any individual output produced by a cell
-                     ;; can be referenced whereas the output of the whole cell
-                     ;; is referenced by the request msg_id.
-                     (with-jupyter-repl-buffer client
-                       (save-excursion
-                         (goto-char (point-max))
-                         (jupyter-repl-previous-cell 2)
-                         (jupyter-repl-cell-request)))
-                   req)))
-        (jupyter-repl-do-at-request client req
-          (cl-destructuring-bind (&key display_id &allow-other-keys)
-              transient
-            (if display_id
-                (jupyter-repl-insert-data-with-id display_id data metadata)
-              (let ((inhibit-redisplay t))
-                (when clear (jupyter-repl-clear-last-cell-output client))
-                (jupyter-repl-insert-data data metadata)
-                ;; Prevent slight flickering of prompt margin and text, this is
-                ;; needed in addition to `inhibit-redisplay'. It also seems
-                ;; that it can be placed anywhere within this let and it will
-                ;; prevent flickering.
-                (sit-for 0.1 t))))))))))
+        (req (if (eq (jupyter-message-parent-type
+                      (jupyter-request-last-message req))
+                     :comm-msg)
+                 ;; For comm messages which produce a `:display-data' message,
+                 ;; the request is assumed to be the most recently completed
+                 ;; one.
+                 (with-jupyter-repl-buffer client
+                   (save-excursion
+                     (goto-char (point-max))
+                     (jupyter-repl-previous-cell 2)
+                     (jupyter-repl-cell-request)))
+               req)))
+    (jupyter-repl-do-at-request client req
+      (cl-destructuring-bind (&key display_id &allow-other-keys)
+          transient
+        (if display_id
+            (jupyter-repl-insert-data-with-id display_id data metadata)
+          (let ((inhibit-redisplay t))
+            (when clear
+              (jupyter-repl-clear-last-cell-output client)
+              ;; Prevent slight flickering of prompt margin and text, this is
+              ;; needed in addition to `inhibit-redisplay'. It also seems that
+              ;; it can be placed anywhere within this let and it will prevent
+              ;; flickering.
+              (sit-for 0.1 t))
+            (jupyter-repl-insert-data data metadata)))))))
 
 (cl-defmethod jupyter-handle-update-display-data ((client jupyter-repl-client)
                                                   _req
