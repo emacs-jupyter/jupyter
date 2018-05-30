@@ -1739,7 +1739,7 @@ displayed without anything showing up in the REPL buffer."
       (jupyter-repl-insert-prompt 'in))
     (setq str (string-trim str))
     (let* ((jupyter-inhibit-handlers
-            (or silently '(:execute-reply :execute-result)))
+            (or silently '(:execute-result)))
            (req (jupyter-send-execute-request jupyter-repl-current-client
                   :code (if silently (string-trim str)
                           (prog1 nil
