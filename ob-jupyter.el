@@ -272,6 +272,9 @@ an \"EXPORT markdown\" block. See `org-babel-insert-result'."
      ((memq :text/org mimetypes)
       (cons (unless (member "raw" result-params) "org")
             (plist-get data :text/org)))
+     ;; TODO: Insert a link which runs code to display the widget
+     ((memq :application/vnd.jupyter.widget-view+json mimetypes)
+      (cons "scalar" "Widget"))
      ((memq :text/html mimetypes)
       (let ((html (plist-get data :text/html)))
         (save-match-data
