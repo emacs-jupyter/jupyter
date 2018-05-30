@@ -59,11 +59,12 @@ valid Jupyter message, see `jupyter--decode-message'."
        ;; change byte length of a string" error.
        with key = (encode-coding-string
                    (jupyter-session-key session) 'utf-8 t)
-       with parts = (let ((parts (cdr parts))
-                          (str ""))
-                      (dotimes (_ 4 (encode-coding-string str 'utf-8 t))
-                        (setq str (concat str (car parts))
-                              parts (cdr parts))))
+       with parts = (encode-coding-string
+                     (cl-loop
+                      with parts = parts
+                      repeat 4 concat (car parts)
+                      and do (setq parts (cdr parts)))
+                     'utf-8 t)
        for byte across (jupyter-hmac-sha256 parts key)
        concat (format "%02x" byte))
     ""))
