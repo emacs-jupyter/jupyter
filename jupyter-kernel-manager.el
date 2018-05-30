@@ -107,8 +107,6 @@ buffer and delete MANAGER's connection file from the
 `jupyter-runtime-directory'."
   (cond
    ((not (process-live-p kernel))
-    (and (buffer-live-p (process-buffer kernel))
-         (kill-buffer (process-buffer kernel)))
     (when (and (slot-boundp manager 'conn-file)
                (file-exists-p (oref manager conn-file)))
       (delete-file (oref manager conn-file)))
@@ -204,20 +202,22 @@ kernel. Starting a kernel involves the following steps:
                       else if (equal arg "{resource_dir}")
                       collect resource-dir
                       else collect arg))))
+          (oset manager kernel proc)
+          (oset manager conn-file conn-file)
           ;; TODO: This is not reliable.
           ;;
           ;; Block until the kernel reads the connection file
           (with-timeout
               ((or timeout 5)
-               (delete-process proc)
-               (delete-file conn-file)
                (error "Kernel did not read connection file within timeout"))
             ;; TODO: This may fail on some systems see `file-attributes'
             (while (equal atime (nth 4 (file-attributes conn-file)))
               (progress-reporter-update reporter)
-              (sleep-for 0 200)))
-          (oset manager kernel proc)
-          (oset manager conn-file conn-file)
+              (sleep-for 0 200))
+            (unless (process-live-p proc)
+              (error "Kernel process exited:\n%s"
+                     (with-current-buffer (process-buffer proc)
+                       (buffer-string)))))
           (jupyter-start-channels manager)
           (progress-reporter-done reporter)
           manager)))))
