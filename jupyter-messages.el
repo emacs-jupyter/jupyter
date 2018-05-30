@@ -41,6 +41,12 @@
 (defconst jupyter--false :json-false
   "The symbol used to disambiguate nil from boolean false.")
 
+(defconst jupyter--empty-dict (make-hash-table :size 1)
+  "An empty hash table to disambiguate nil during encoding.
+Message parts that are nil, but should be encoded into an empty
+dictionary are set to this value so that they are encoded as
+dictionaries.")
+
 ;;; Signing messages
 
 (defun jupyter--sign-message (session parts)
@@ -197,6 +203,10 @@ The returned object has the same form as the object returned by
   (cl-check-type content json-plist)
   (cl-check-type parent-header json-plist)
   (cl-check-type buffers list)
+  (or content (setq content jupyter--empty-dict))
+  (or parent-header (setq parent-header jupyter--empty-dict))
+  (or metadata (setq metadata jupyter--empty-dict))
+
   (let* ((header (jupyter--message-header session type msg-id))
          (msg-id (plist-get header :msg_id))
          (parts (mapcar #'jupyter--encode (list header
@@ -315,16 +325,14 @@ FLAGS is passed to SOCKET according to `zmq-recv'."
                                            code
                                            (silent nil)
                                            (store-history t)
-                                           ;; This needs to be an empty
-                                           ;; dictionary is not specified
-                                           (user-expressions #s(hash-table))
+                                           (user-expressions nil)
                                            (allow-stdin t)
                                            (stop-on-error nil))
   (cl-check-type code string)
   (cl-check-type user-expressions json-plist)
   (list :code code :silent (if silent t jupyter--false)
         :store_history (if store-history t jupyter--false)
-        :user_expressions user-expressions
+        :user_expressions (or user-expressions jupyter--empty-dict)
         :allow_stdin (if allow-stdin t jupyter--false)
         :stop_on_error (if stop-on-error t jupyter--false)))
 
