@@ -24,7 +24,15 @@
 
 ;;; Commentary:
 
+;; Use an external browser to interact with Jupyter widgets.
 ;;
+;; A `jupyter-kernel-client' does not come with any widget support by default,
+;; the purpose of the `jupyter-widget-client' subclass is to provide support.
+;; This is done by opening up an external browser and serving it the necessary
+;; resources to display widgets using the `simple-httpd' package. Emacs then
+;; acts as an intermediary for the comm messages sent between the browser and
+;; the kernel where the communication between Emacs and the browser happens
+;; through a `websocket'.
 
 ;;; Code:
 
@@ -32,7 +40,8 @@
 (require 'websocket)
 (require 'jupyter-client)
 
-(defvar jupyter-widgets-initialized nil)
+(defvar jupyter-widgets-initialized nil
+  "A client local that is non-nil if a browser for widgets is opened.")
 
 (defvar jupyter-widgets-server nil
   "The `websocket-server' redirecting kernel messages.")
@@ -40,77 +49,88 @@
 (defvar jupyter-widgets-port 8090
   "The port that `jupyter-widgets-server' listens on.")
 
+(defvar jupyter-widgets-supported-targets '("jupyter.widget")
+  "A list of the supported widget target names.")
+
+(defvar jupyter-widgets-url-format
+  "http://127.0.0.1:%d/jupyter/widgets?username=%s&clientId=%s&port=%d"
+  "Format of the URL that will visited to display widgets.")
+
 (defclass jupyter-widget-client (jupyter-kernel-client)
-  ((widget-proc
+  ((widget-sock
+    :type (or null websocket)
     :initform nil
-    :documentation "The process currently requesting a message.")
+    :documentation "The `websocket' connected to the browser
+displaying the widgets for this client.")
    (widget-state
     :type string
     :initform "null"
     :documentation "The JSON encode string representing the
-    widget state. When a browser displaying the widgets of the client
-    is closed, the state of the widgets is sent back to Emacs so that
-    the state can be recovred when a new browser is opened.")
+widget state. When a browser displaying the widgets of the client
+is closed, the state of the widgets is sent back to Emacs so that
+the state can be recovred when a new browser is opened.")
    (widget-messages
     :type list
     :initform nil
-    :documentation "A list of messages to send to the widget process."))
+    :documentation "A list of pending messages to send to the
+widget socket."))
   :abstract t)
 
-(defun jupyter-on-message (ws frame)
+;;; Websocket handlers
+
+(defun jupyter-widgets-on-message (ws frame)
+  "When websocket, WS, receives a message FRAME, handle it.
+Send the contents of the message FRAME to the kernel and register
+callbacks."
   (cl-assert (eq (websocket-frame-opcode frame) 'text))
   (let* ((msg (jupyter-read-plist-from-string
                (websocket-frame-payload frame)))
          (client (jupyter-find-client-for-session
                   (jupyter-message-session msg))))
     (cl-assert client)
-    (unless (equal ws (oref client widget-proc))
+    (unless (equal ws (oref client widget-sock))
       ;; TODO: Handle multiple clients and sending
       ;; widget state to new clients
-      (oset client widget-proc ws))
-    ;; The widget client sends a connect message so that Emacs knows
-    ;; which websocket to use, do not do any processing when we
-    ;; received this message.
-    (when (equal (jupyter-message-type msg) "connect")
-      (cl-loop for msg in (nreverse (oref client widget-messages))
-               do (websocket-send-text ws msg))
-      (oset client widget-messages nil))
-    (unless (equal (jupyter-message-type msg) "connect")
-      (let* ((msg-id (jupyter-message-id msg))
-             (msg-type (jupyter-message-type-as-keyword
-                        (jupyter-message-type msg)))
-             (channel (pcase (plist-get msg :channel)
-                        ("shell" (oref client shell-channel))
-                        ("iopub" (oref client iopub-channel))
-                        ("stdin" (oref client stdin-channel))))
-             (content (jupyter-message-content msg))
-             (jupyter-inhibit-handlers
-              ;; Only let the browser handle thee
-              ;; messages
-              (append '(:comm-msg)
-                      (when (memq msg-type '(:comm-info-request))
-                        '(:status :comm-info-reply))))
-             (req (jupyter-send client channel msg-type content msg-id)))
-        (jupyter-add-callback req
-          '(:comm-open :comm-close :comm-info-reply :comm-msg :status)
-          (apply-partially #'jupyter-widgets-send-message client))))))
+      (oset client widget-sock ws))
+    (pcase (jupyter-message-type msg)
+      ("connect"
+       ;; Send any queued widget messages when receiving the connect message
+       ;; from the browser. Note this message type is not a true Jupyter
+       ;; message.
+       (cl-loop for msg in (nreverse (oref client widget-messages))
+                do (websocket-send-text ws msg))
+       (oset client widget-messages nil))
+      (_
+       ;; Any other message the browser sends is meant for the kernel so do the
+       ;; redirection and setup the callbacks
+       (let* ((msg-id (jupyter-message-id msg))
+              (msg-type (jupyter-message-type-as-keyword
+                         (jupyter-message-type msg)))
+              (channel (pcase (plist-get msg :channel)
+                         ("shell" (oref client shell-channel))
+                         ("iopub" (oref client iopub-channel))
+                         ("stdin" (oref client stdin-channel))))
+              (content (jupyter-message-content msg))
+              (jupyter-inhibit-handlers
+               ;; Only let the browser handle these messages
+               (append '(:comm-msg)
+                       (when (memq msg-type '(:comm-info-request))
+                         '(:status :comm-info-reply))))
+              (req (jupyter-send client channel msg-type content msg-id)))
+         (jupyter-add-callback req
+           '(:comm-open :comm-close :comm-info-reply :comm-msg :status)
+           (apply-partially #'jupyter-widgets-send-message client)))))))
 
-(cl-defmethod initialize-instance ((client jupyter-widget-client) &rest _args)
-  (unless (process-live-p jupyter-widgets-server)
-    (setq jupyter-widgets-server
-          (websocket-server
-           jupyter-widgets-port
-           :host 'local
-           :on-message #'jupyter-on-message
-           :on-close
-           (lambda (ws)
-             (cl-loop
-              for client in jupyter--clients
-              when (and (obj-of-class-p client 'jupyter-widget-client)
-                        (equal ws (oref client widget-proc)))
-              do (oset client widget-proc nil)
-              (jupyter-set client 'jupyter-widgets-initialized nil))))))
-  (cl-call-next-method))
+(defun jupyter-widgets-on-close (ws)
+  "Uninitialize the client whose widget-sock is WS."
+  (cl-loop
+   for client in jupyter--clients
+   when (and (obj-of-class-p client 'jupyter-widget-client)
+             (equal ws (oref client widget-sock)))
+   do (oset client widget-sock nil)
+   (jupyter-set client 'jupyter-widgets-initialized nil)))
+
+;;; Working with comm messages
 
 (defun jupyter-widgets-sanitize-comm-msg (msg)
   "Ensure that a comm MSG's fields are not ambiguous before encoding.
@@ -134,7 +154,7 @@ required by the JupyterLab widget manager."
         (plist-put msg :metadata '(:version "2.0"))))))
 
 (cl-defmethod jupyter-widgets-send-message ((client jupyter-widget-client) msg)
-  "Send a MSG to CLIENT's `widget-proc' `websocket'."
+  "Send a MSG to CLIENT's `widget-sock' `websocket'."
   (when (memq (jupyter-message-type msg)
               '(:comm-open :comm-close :comm-msg))
     (jupyter-widgets-sanitize-comm-msg msg))
@@ -149,18 +169,19 @@ required by the JupyterLab widget manager."
                  :iopub)
                 ((memq msg-type '(:comm-info-reply))
                  :shell)))
-    ;; TODO: Do not let this grow without bound
     (push (jupyter--encode msg) (oref client widget-messages))
-    (when (websocket-openp (oref client widget-proc))
+    (when (websocket-openp (oref client widget-sock))
       (cl-loop for msg in (nreverse (oref client widget-messages))
-               do (websocket-send-text
-                   (oref client widget-proc) msg))
+               do (websocket-send-text (oref client widget-sock) msg))
       (oset client widget-messages nil))))
+
+;;; Displaying widgets in the browser
+;; NOTE: The "display_model" and "clear_display" messages below are not true
+;; Jupyter messages, but are only used for communication between the browser
+;; and Emacs.
 
 (cl-defmethod jupyter-widgets-display-model ((client jupyter-widget-client) model-id)
   "Display the model with MODEL-ID for the kernel CLIENT is connected to."
-  ;; NOTE: This is a message specific for this purpose and not really a
-  ;; Jupyter message
   ;; (jupyter-widgets-clear-display client)
   (jupyter-widgets-send-message
    client (list :msg_type "display_model"
@@ -168,11 +189,56 @@ required by the JupyterLab widget manager."
 
 (cl-defmethod jupyter-widgets-clear-display ((client jupyter-widget-client))
   "Clear the models being displayed for CLIENT."
-  ;; NOTE: This is a message specific for this purpose and not really a
-  ;; Jupyter message
   (jupyter-widgets-send-message client (list :msg_type "clear_display")))
 
+;;; `jupyter-kernel-client' methods
+
+(cl-defmethod jupyter-handle-comm-open ((client jupyter-widget-client)
+                                        req
+                                        _id
+                                        target-name
+                                        _target-module
+                                        _data)
+  (when (member target-name jupyter-widgets-supported-targets)
+    ;; Initialize the server
+    (unless (process-live-p jupyter-widgets-server)
+      (setq jupyter-widgets-server
+            (websocket-server
+             jupyter-widgets-port
+             :host 'local
+             :on-message #'jupyter-widgets-on-message
+             :on-close #'jupyter-widgets-on-close)))
+    (unless (jupyter-get client 'jupyter-widgets-initialized)
+      (jupyter-set client 'jupyter-widgets-initialized t)
+      (unless (get-process "httpd")
+        (httpd-start))
+      (browse-url
+       (format jupyter-widgets-url-format
+               httpd-port
+               user-login-name
+               (jupyter-session-id (oref client session))
+               jupyter-widgets-port)))
+    (jupyter-widgets-send-message client (jupyter-request-last-message req)))
+  (cl-call-next-method))
+
+(cl-defmethod jupyter-handle-comm-close ((client jupyter-widget-client)
+                                         req
+                                         _id
+                                         _data)
+  (jupyter-widgets-send-message client (jupyter-request-last-message req))
+  (cl-call-next-method))
+
+(cl-defmethod jupyter-handle-comm-msg ((client jupyter-widget-client)
+                                       req
+                                       _id
+                                       _data)
+  (jupyter-widgets-send-message client (jupyter-request-last-message req))
+  (cl-call-next-method))
+
+;;; `httpd' interface
+
 (defun httpd/jupyter (proc path query &rest _args)
+  "Serve the javascript required for Jupyter widget support."
   (let ((split-path (split-string (substring path 1) "/")))
     (if (= (length split-path) 1)
         (with-httpd-buffer proc "text/javascript; charset=UTF-8"
@@ -181,6 +247,7 @@ required by the JupyterLab widget manager."
       (error "Not found"))))
 
 (defun httpd/jupyter/widgets/built (proc path query &rest _args)
+  "Serve the resources required by the widgets in the browser."
   (let* ((split-path (split-string (substring path 1) "/"))
          (file (car (last split-path)))
          (mime (pcase (file-name-extension file)
@@ -210,47 +277,12 @@ required by the JupyterLab widget manager."
 ;; loaded we can automatically search the jupyter --paths for notebook
 ;; extension modules matching it.
 (defun httpd/jupyter/widgets (proc &rest _args)
+  "Serve the HTML page to display widgets."
   (with-temp-buffer
     (insert-file-contents (expand-file-name "widget.html" jupyter-root))
     (httpd-send-header
      proc "text/html; charset=UTF-8" 200
      :Access-Control-Allow-Origin "*")))
-
-(cl-defmethod jupyter-handle-comm-open ((client jupyter-widget-client)
-                                        req
-                                        _id
-                                        _target-name
-                                        _target-module
-                                        _data)
-  (let ((msg (jupyter-request-last-message req)))
-    (when (member (jupyter-message-get msg :target_name)
-                  '("jupyter.widget"))
-      (unless (jupyter-get client 'jupyter-widgets-initialized)
-        (jupyter-set client 'jupyter-widgets-initialized t)
-        (unless (get-process "httpd")
-          (httpd-start))
-        (browse-url
-         (format "http://127.0.0.1:%d/jupyter/widgets?username=%s&clientId=%s&port=%d"
-                 httpd-port
-                 user-login-name
-                 (jupyter-session-id (oref client session))
-                 jupyter-widgets-port)))
-      (jupyter-widgets-send-message client msg)))
-  (cl-call-next-method))
-
-(cl-defmethod jupyter-handle-comm-close ((client jupyter-widget-client)
-                                         req
-                                         _id
-                                         _data)
-  (jupyter-widgets-send-message client (jupyter-request-last-message req))
-  (cl-call-next-method))
-
-(cl-defmethod jupyter-handle-comm-msg ((client jupyter-widget-client)
-                                       req
-                                       _id
-                                       _data)
-  (jupyter-widgets-send-message client (jupyter-request-last-message req))
-  (cl-call-next-method))
 
 (provide 'jupyter-widget-client)
 
