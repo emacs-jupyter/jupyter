@@ -256,7 +256,7 @@ and `:msg_type'."
         (error "Unsigned message"))
       ;; TODO: digest_history
       ;; https://github.com/jupyter/jupyter_client/blob/7a0278af7c1652ac32356d6f00ae29d24d78e61c/jupyter_client/session.py#L915
-      (unless (string= (jupyter--sign-message session parts) signature)
+      (unless (string= (jupyter--sign-message session (cdr parts)) signature)
         (error "Invalid signature: %s" signature))))
   (cl-destructuring-bind
       (header parent-header metadata content &rest buffers)
