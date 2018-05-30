@@ -478,11 +478,11 @@ the PARAMS alist."
                   (or (consp result) (setq result (cons "scalar" result)))
                   (if async
                       (org-with-point-at block-beginning
-                                         (when first-async-insertion
-                                           (setq first-async-insertion nil)
-                                           (org-babel-jupyter--clear-request-id req)
-                                           (org-babel-jupyter--inject-render-param "append" params))
-                                         (org-babel-jupyter-insert-results result params kernel-lang))
+                        (when first-async-insertion
+                          (setq first-async-insertion nil)
+                          (org-babel-jupyter--clear-request-id req)
+                          (org-babel-jupyter--inject-render-param "append" params))
+                        (org-babel-jupyter-insert-results result params kernel-lang))
                     (push result results))))))
         ;; TODO: Handle stream output and errors similar to ob-ipython
         (jupyter-add-callback req
@@ -514,7 +514,7 @@ the PARAMS alist."
                 ;; Run the hooks here instead of in the status message to prevent
                 ;; any delays
                 (org-with-point-at block-beginning
-                                   (run-hooks 'org-babel-after-execute-hook)))))
+                  (run-hooks 'org-babel-after-execute-hook)))))
           '(:display-data :execute-result)
           (lambda (msg)
             (unless (eq result-type 'output)
@@ -557,10 +557,10 @@ the PARAMS alist."
                  0.01 nil
                  (lambda ()
                    (org-with-point-at block-beginning
-                                      (org-babel-jupyter--clear-render-param render-param params)
-                                      (org-babel-jupyter--inject-render-param "append" params)
-                                      (org-babel-jupyter-insert-results (cdr results) params kernel-lang)
-                                      (set-marker block-beginning nil))))))))))))
+                     (org-babel-jupyter--clear-render-param render-param params)
+                     (org-babel-jupyter--inject-render-param "append" params)
+                     (org-babel-jupyter-insert-results (cdr results) params kernel-lang)
+                     (set-marker block-beginning nil))))))))))))
 
 (defun org-babel-jupyter-make-language-alias (kernel lang)
   "Simimilar to `org-babel-make-language-alias' but for Jupyter src-blocks.
