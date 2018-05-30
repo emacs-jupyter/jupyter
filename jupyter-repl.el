@@ -455,7 +455,8 @@ can contain the following keywords along with their values:
     ;; help on a symbol by calling the help function on it or appending a
     ;; question mark at the end of the symbol.
     (if (and (string= (nth 3 link) "@ref")
-             (eq jupyter-repl-lang-mode 'julia-mode))
+             (string= (jupyter-repl-language jupyter-repl-current-client)
+                      "julia"))
         ;; Links have the form `fun`
         (let ((fun (substring (nth 2 link) 1 -1)))
           (goto-char (point-max))
