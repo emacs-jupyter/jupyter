@@ -512,9 +512,11 @@ the PARAMS alist."
                 ;; HACK: Prevent insertion of a file when an error happens
                 (let ((params (member "file" (alist-get :result-params params))))
                   (and params (setcar params "scalar")))
-                (if (eq result-type 'output)
-                    (funcall add-result (mapconcat #'ansi-color-apply traceback "\n"))
-                  (funcall add-result (format "%s: %s" ename (ansi-color-apply evalue)))))
+                (setq traceback (mapconcat #'ansi-color-apply traceback "\n"))
+                (with-jupyter-repl-doc-buffer "traceback"
+                  (jupyter-repl-insert-ansi-coded-text traceback)
+                  (pop-to-buffer (current-buffer)))
+                (funcall add-result (format "%s: %s" ename (ansi-color-apply evalue))))
               (when async
                 ;; Run the hooks here instead of in the status message to prevent
                 ;; any delays

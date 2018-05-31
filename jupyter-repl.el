@@ -1273,6 +1273,7 @@ Do this for the current cell."
           :comm-msg)
       (with-jupyter-repl-doc-buffer "traceback"
         (jupyter-repl-insert-ansi-coded-text traceback)
+        (goto-char (line-beginning-position))
         (pop-to-buffer (current-buffer))))
      (t
       (jupyter-repl-do-at-request client req
