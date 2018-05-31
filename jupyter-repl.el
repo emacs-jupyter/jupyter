@@ -61,10 +61,14 @@
 (require 'jupyter-kernel-manager)
 (require 'shr)
 (require 'ring)
+(require 'ansi-color)
 
 (declare-function company-begin-backend "company" (backend &optional callback))
 (declare-function company-doc-buffer "company" (&optional string))
+(declare-function company-grab-symbol-cons "company" (idle-begin-after-re &optional max-len))
 (declare-function org-format-latex "org" (prefix &optional beg end dir overlays msg forbuffer processing-type))
+(declare-function markdown-link-at-pos "markdown-mode" (pos))
+(declare-function markdown-follow-link-at-point "markdown-mode")
 
 ;; TODO: Read up on how method tags can be used, see
 ;; https://ericabrahamsen.net/tech/2016/feb/bbdb-eieio-object-oriented-elisp.html

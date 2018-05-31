@@ -46,6 +46,7 @@
 
 (declare-function org-element-at-point "org-element")
 (declare-function org-at-drawer-p "org")
+(declare-function org-in-src-block-p "org" (&optional inside))
 (declare-function org-element-property "org-element" (property element))
 (declare-function org-element-type "org-element" (element))
 (declare-function org-element-context "org-element" (&optional element))
@@ -56,7 +57,8 @@
 (defcustom org-babel-jupyter-resource-directory "./.ob-jupyter/"
   "Directory used to store automatically generated image files.
 See `org-babel-jupyter-file-name'."
-  :group 'ob-jupyter)
+  :group 'ob-jupyter
+  :type 'string)
 
 (defvar org-babel-jupyter-session-clients (make-hash-table :test #'equal)
   "A hash table mapping session names to `jupyter-repl-client's.")
