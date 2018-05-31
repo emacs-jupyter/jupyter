@@ -897,7 +897,7 @@ POS defaults to `point'."
 
 (defun jupyter-repl-multiline-p (text)
   "Is TEXT a multi-line string?"
-  (string-match "\n" text))
+  (string-match-p "\n" text))
 
 (defun jupyter-repl-cell-line-p ()
   "Is the current line a cell input line?"
