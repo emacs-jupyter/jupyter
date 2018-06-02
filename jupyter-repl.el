@@ -2283,7 +2283,7 @@ and has a non-nil kernel-info slot.
 A new REPL buffer communicating with CLIENT's kernel is created
 and set as CLIENT's buffer slot. If CLIENT already has a non-nil
 buffer slot, raise an error."
-  (if (slot-boundp client 'buffer) (error "Client already has a REPL buffer")
+  (if (oref client buffer) (error "Client already has a REPL buffer")
     (unless (oref client kernel-info)
       (error "Client needs to have valid kernel-info"))
     (cl-destructuring-bind (&key language_info
