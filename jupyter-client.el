@@ -896,7 +896,7 @@ the user. Otherwise `read-from-minibuffer' is used."
   (unless (jupyter-run-hook-with-args-until-success
            client 'jupyter-shell-message-hook msg)
     (jupyter-dispatch-message-cases client req msg
-      ((execute-reply execution_count user_expressions payload)
+      ((execute-reply status execution_count user_expressions payload)
        (shutdown-reply restart)
        (inspect-reply found data metadata)
        (complete-reply matches cursor_start cursor_end metadata)
@@ -930,6 +930,7 @@ the user. Otherwise `read-from-minibuffer' is used."
 
 (cl-defgeneric jupyter-handle-execute-reply ((_client jupyter-kernel-client)
                                              _req
+                                             _status
                                              _execution-count
                                              _user-expressions
                                              _payload)

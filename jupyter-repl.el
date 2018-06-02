@@ -1068,6 +1068,7 @@ lines then truncate it to something less than
 
 (cl-defmethod jupyter-handle-execute-reply ((client jupyter-repl-client)
                                             req
+                                            _status
                                             execution-count
                                             _user-expressions
                                             payload)
