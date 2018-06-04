@@ -291,6 +291,19 @@ this is called."
 
 ;;; Sending messages
 
+(cl-defmethod jupyter-generate-request ((_client jupyter-kernel-client) _msg)
+  "Generate a `jupyter-request' object for MSG.
+This method gives an opportunity for subclasses to initialize a
+`jupyter-request' object or a structure that includes the
+`jupyter-request' slots.
+
+The default implementation returns a new `jupyter-request' with
+the default value for all slots.
+
+Note, the `:id' and `:inhibited-handlers' fields are overwritten
+by the caller of this method."
+  (make-jupyter-request))
+
 (cl-defmethod jupyter-send ((client jupyter-kernel-client)
                             channel
                             type
@@ -320,9 +333,9 @@ response to the sent message, see `jupyter-add-callback' and
       ;; Anything sent to stdin is a reply not a request so don't add it to
       ;; `:pending-requests'.
       (unless (eq (oref channel type) :stdin)
-        (let ((req (make-jupyter-request
-                    :-id msg-id
-                    :inhibited-handlers jupyter-inhibit-handlers)))
+        (let ((req (jupyter-generate-request client message)))
+          (setf (jupyter-request--id req) msg-id)
+          (setf (jupyter-request-inhibited-handlers req) jupyter-inhibit-handlers)
           (jupyter--ioloop-push-request client req)
           req)))))
 
@@ -743,6 +756,10 @@ that if no TIMEOUT is given, it defaults to
 
 ;;; Client handlers
 
+(cl-defgeneric jupyter-drop-request ((_client jupyter-kernel-client) _req)
+  "Called when CLIENT removes REQ, from its request table."
+  nil)
+
 (defun jupyter--drop-idle-requests (client)
   "Drop completed requests from CLIENT's request table.
 A request is deemed complete when an idle message has been
@@ -755,7 +772,8 @@ received for it and it is not the most recently sent request."
              (not (eq req last-sent)))
    do (when jupyter--debug
         (message "DROPPING-REQ: %s" (jupyter-request-id req)))
-   (remhash (jupyter-request-id req) requests)))
+   (remhash (jupyter-request-id req) requests)
+   (jupyter-drop-request client req)))
 
 (defun jupyter--run-handler-maybe (client channel req msg)
   "Possibly run CLIENT's CHANNEL handler on REQ's received MSG."
