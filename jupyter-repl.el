@@ -2340,9 +2340,9 @@ Otherwise, in a non-interactive call, return the
     (when (and associate-buffer
                (eq major-mode (jupyter-repl-language-mode client)))
       (jupyter-repl-associate-buffer client))
-    (if (called-interactively-p 'interactive)
-        (pop-to-buffer (oref client buffer))
-      client)))
+    (when (called-interactively-p 'interactive)
+      (pop-to-buffer (oref client buffer)))
+    client))
 
 ;;;###autoload
 (defun connect-jupyter-repl (file-or-plist &optional associate-buffer client-class)
