@@ -403,14 +403,6 @@ Any other command sent to the subprocess will be ignored."
 ;; solution to this is to send the process id of the parent emacs and
 ;; periodically check if the process is still alive, then exit the subprocess
 ;; if the parent process is dead.
-;;
-;; FIXME: Fix the problem where lots of display_data messages are coming in,
-;; then we send a request, and wait for the request id to come back with
-;; `jupyter-request-id'. `jupyter-request-id' will time out. it looks like the
-;; poller is not noticing the stdin event in this case.
-;;
-;; One option would be to have two separate poll commands, one for STDIN and
-;; the other for the channels. But first write a test case for this scenario.
 (defun jupyter--ioloop (client)
   "Return the function used for communicating with CLIENT's kernel."
   (let ((sid (jupyter-session-id (oref client session)))
@@ -468,17 +460,6 @@ subprocess."
 
 (defun jupyter--ioloop-push-request (client req)
   "Insert a request into CLIENT's pending requests.
-Pending requests are `jupyter-request's that have a nil
-`jupyter-request--id'. The `jupyter-send' method for a
-`jupyter-kernel-client' sends a message to the ioloop subprocess
-which encodes the message and sends it off to the kernel.
-
-When the subprocess sends the message to the kernel, it sends the
-message ID associated with the request back to the parent Emacs
-process which is when the `jupyter-request--id' field becomes
-non-nil. This acts as a synchronization method so that the parent
-Emacs process can guarantee a message has been sent.
-
 Pending requests are stored in a ring located in the
 `:pending-requests' property of an ioloop subprocess. REQ is
 added as the newest element in this ring."
@@ -824,11 +805,11 @@ are taken:
 
 (defmacro jupyter-dispatch-message-cases (client req msg cases)
   "Dispatch to CLIENT handler's based on REQ and MSG.
-CASES defines the the handlers to dispatch to based on the
+CASES defines the handlers to dispatch to based on the
 `jupyter-message-type' of MSG and should be a list of lists, the
 first element of each inner list being the name of the handler,
 excluding the `jupyter-handle-' prefix. The rest of the elements
-sin the list are the name of the keys that will be extracted from
+in the list are the name of the keys that will be extracted from
 the `jupyter-message-content' of MSG and passed to the handler in
 the same order as they appear. For example,
 
@@ -841,11 +822,11 @@ will be transformed to
     (let ((content (jupyter-message-content msg)))
       (pcase (jupyter-message-type msg)
         (:shutdown-reply
-          (cl-destructuring-bind (&key restart @allow-other-keys)
+          (cl-destructuring-bind (&key restart &allow-other-keys)
               content
             (jupyter-handle-shutdown-reply client req restart)))
         (:stream
-          (cl-destructuring-bind (&key name text @allow-other-keys)
+          (cl-destructuring-bind (&key name text &allow-other-keys)
               content
             (jupyter-handle-stream client req name text)))
         (_ (warn \"Message type not handled (%s)\"

@@ -299,8 +299,7 @@ RENDER-PARAM to the PARAMS."
 Remove RENDER-PARAM from PARAMS or from the result parameters
 found in PARAMS. If RENDER-PARAM is a cons cell, remove it from
 the PARAMS list. If RENDER-PARAM is a string, remove it from the
-`:result-params' of PARAMS. In all cases, `delq' is used for
-removal."
+`:result-params' of PARAMS."
   (cond
    ((consp render-param)
     (delq render-param params))
@@ -422,7 +421,8 @@ it does not need to be added by the user."
    (jupyter-org--clear-render-param render-param params)))
 
 (defun jupyter-org-insert-sync-results (client req)
-  "For CLIENT, insert the results of REQ."
+  "For CLIENT, insert the results of REQ.
+Meant to be used as the return value of `org-babel-execute:jupyter'."
   (let ((results (nreverse (jupyter-org-request-results req)))
         (params (jupyter-org-request-block-params req))
         (kernel-lang (jupyter-repl-language client)))

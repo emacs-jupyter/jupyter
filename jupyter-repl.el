@@ -30,14 +30,15 @@
 ;; When called interactively, `run-jupyter-repl' asks for a kernel to start
 ;; (based on the kernels found using `jupyter-available-kernelspecs'), connects
 ;; a `jupyter-repl-client' to the selected kernel, and pops up a REPL buffer.
-;; On the other hand, if `connect-jupyter-repl' is called interactively, it
-;; will ask for the JSON file that contains the kernel's connection info.
+;; The main difference of `connect-jupyter-repl' is that it will obtain the
+;; kernel's connection info by asking for the JSON file containing it to start
+;; connection to a kernel.
 ;;
 ;; Additionally, `jupyter-repl-associate-buffer' associates the
 ;; `current-buffer' with a REPL client appropriate for the buffer's
 ;; `major-mode'. Associating a buffer with a REPL client enables the minor mode
 ;; `jupyter-repl-interaction-mode' and, if `company-mode' is installed, enables
-;; auto-completion using the associated REPL client.
+;; code completion using the associated REPL client.
 ;;
 ;; `jupyter-repl-interaction-mode' adds the following keybindings for
 ;; interacing a REPL client:
@@ -128,7 +129,8 @@ timeout, the built-in is-complete handler is used."
     :documentation "The REPL buffer whose
 `jupyter-repl-current-client' is this client.")
    (wait-to-clear
-    :type boolean :initform nil
+    :type boolean
+    :initform nil
     :documentation "Whether or not we should wait to clear the
 current output of the cell. Set when the kernel sends a
 `:clear-output' message.")
@@ -136,9 +138,7 @@ current output of the cell. Set when the kernel sends a
     :type json-plist
     :initform nil
     :documentation "The saved kernel info created when first
-initializing this client. This is the plist returned from the the
-call to `jupyter-start-new-kernel' when this client was
-created.")
+initializing this client.")
    (execution-state
     :type string
     :initform "idle"
@@ -210,16 +210,12 @@ executing BODY."
 
 (defmacro jupyter-repl-do-at-request (client req &rest body)
   "Switch to CLIENT's buffer, move to the end of REQ, and run BODY.
-Switching to CLIENT's buffer is accomplished using
-`with-jupyter-repl-buffer'. After switching, `point' is moved to
-the `jupyter-repl-cell-beginning-position' of the cell after the
-one associated with REQ, where REQ is a `jupyter-request'
-previously made using CLIENT. This position is where any output
-of REQ should be inserted.
+REQ is a `jupyter-request' previously made using CLIENT, a
+`jupyter-repl-client'.
 
-Note that `inhibit-modification-hooks' is set to t when BODY is
-run, this prevents any line continuation prompts to be inserted
-for multi-line output."
+`point' is moved to the `jupyter-repl-cell-beginning-position' of
+the cell *after* REQ, this position is where any newly generated
+output of REQ should be inserted."
   (declare (indent 2) (debug (symbolp &rest form)))
   `(with-jupyter-repl-buffer ,client
      (jupyter-repl-without-continuation-prompts
@@ -243,8 +239,7 @@ running BODY."
 The cell is narrowed to the region between and including
 `jupyter-repl-cell-code-beginning-position' and
 `jupyter-repl-cell-code-end-position'. When BODY is run, `point' will
-be at the `jupyter-repl-cell-code-beginning-position'. Note that
-this assumes that the `current-buffer' is a Jupyter REPL buffer."
+be at the `jupyter-repl-cell-code-beginning-position'."
   (declare (indent 0) (debug (&rest form)))
   `(save-excursion
      (save-restriction
@@ -262,9 +257,9 @@ A REPL documentation buffer has the following characteristics:
 - local keybindings to quit the window (q), and scroll the
   window (SPC and <backtab>).
 
-The buffer returned will have a `buffer-name' with the form
-
-    \"*jupyter-repl-NAME*\""
+The buffer returned will have a `buffer-name' of
+\"*jupyter-repl-NAME*\". If a buffer with this name already
+exists, it is returned."
   (let* ((bname (format "*jupyter-repl-%s*" name))
          (buffer (get-buffer bname)))
     (unless buffer
@@ -296,12 +291,13 @@ erased."
 
 ;;; Convenience functions
 
-(defsubst jupyter-repl-language-mode (client)
-  "Get the `major-mode' of CLIENT's kernel language."
+(defun jupyter-repl-language-mode (client)
+  "Return the `major-mode' of CLIENT's kernel language."
   (with-jupyter-repl-buffer client
     jupyter-repl-lang-mode))
 
 (cl-defmethod jupyter-repl-language ((client jupyter-repl-client))
+  "Return the name of CLIENT's kernel language."
   (plist-get (plist-get (oref client kernel-info) :language_info) :name))
 
 ;;; Text insertion
@@ -344,12 +340,9 @@ insertion into the REPL buffer and adding
           (throw 'done t))))))
 
 (defun jupyter-repl-get-fontify-buffer (mode)
-  "Get the cached buffer used to fontify text for MODE.
-Consult the `jupyter-repl-fontify-buffers' alist for a buffer to
-use for fontification according to MODE and return the buffer
-found. If no buffer exists for MODE: create a new buffer, set its
-`major-mode' to MODE, add it to `juptyer-repl-fontify-buffers',
-and return the buffer."
+  "Return the buffer used to fontify text for MODE.
+Retrieve the buffer for MODE from `jupyter-repl-fontify-buffers'.
+If no buffer for MODE exists, create a new one."
   (let ((buf (alist-get mode jupyter-repl-fontify-buffers)))
     (unless buf
       (setq buf (get-buffer-create
@@ -361,12 +354,6 @@ and return the buffer."
 
 (defun jupyter-repl-fontify-according-to-mode (mode str)
   "Fontify a string according to MODE.
-MODE has the same meaning as in
-`jupyter-repl-get-fontify-buffer'. STR is a string that will be
-fontified according to MODE by inserting it into the buffer
-returned by `jupyter-repl-get-fontify-buffer' (erasing any
-contents of the buffer before insertion).
-
 In addition to fontifying STR, if MODE has a non-default
 `fill-forward-paragraph-function', STR will be filled using
 `fill-region'."
@@ -639,9 +626,8 @@ DATA is displayed as a widget."
 ;;; Prompt
 
 (defun jupyter-repl--prompt-display-value (str face)
-  "Return the margin display value for a prompt.
-STR is the string used for the display value and FACE is the
-`font-lock-face' to use for STR."
+  "Return the margin display value for a prompt STR.
+FACE is the `font-lock-face' to use for STR."
   (list '(margin left-margin)
         (propertize
          (concat (make-string
@@ -655,10 +641,9 @@ STR is the string used for the display value and FACE is the
 (defun jupyter-repl--insert-prompt (str face)
   "Insert a new prompt at `point'.
 STR is the prompt string displayed in the `left-margin' using
-FACE as the `font-lock-face'. A newline is inserted before adding
-the prompt. The prompt string is inserted as a `display' text
-property in the `after-string' property of the overlay and the
-overlay is added to the newline character just inserted."
+FACE as the `font-lock-face'. A newline is inserted and the
+prompt is added as the after-string of an overlay of the
+newline."
   (jupyter-repl-newline)
   (overlay-recenter (point))
   (let ((ov (make-overlay (1- (point)) (point) nil t))
@@ -668,9 +653,9 @@ overlay is added to the newline character just inserted."
     ov))
 
 (defun jupyter-repl-insert-prompt (&optional type)
-  "Insert a REPL promp in CLIENT's buffer according to type.
-If TYPE is nil or `in' insert a new input prompt. If TYPE is
-`out' insert a new output prompt."
+  "Insert a REPL prompt according to TYPE.
+TYPE can either be `in', `out', or `continuation'. A value of nil
+for TYPE is interpreted as `in'."
   (setq type (or type 'in))
   (unless (memq type '(in out continuation))
     (error "Prompt type can only be (`in', `out', or `continuation')"))
@@ -729,22 +714,16 @@ STR is the replacement prompt string."
                                   str 'jupyter-repl-input-prompt))))))
 
 (defun jupyter-repl-cell-mark-busy ()
-  "Mark the current cell as busy.
-The changes the current input prompt to \"In [*] \""
+  "Mark the current cell as busy."
   (jupyter-repl-cell-update-prompt "In [*] "))
 
 (defun jupyter-repl-cell-unmark-busy ()
-  "Un-mark the current cell as busy.
-This changes the current input prompt to \"In [N] \" where N is
-the execution count of the cell."
+  "Un-mark the current cell as busy."
   (jupyter-repl-cell-update-prompt
    (format "In [%d] " (jupyter-repl-cell-count))))
 
 (defun jupyter-repl-cell-count ()
-  "Get the cell count of the current cell at `point'.
-If PREVIOUS is non-nil and `point' is already at the beginning of
-a cell, return the cell count of the previous cell before the
-current one."
+  "Return the cell count of the cell at `point'."
   (let ((pos (if (jupyter-repl-cell-beginning-p) (point)
                (save-excursion
                  (jupyter-repl-previous-cell)
@@ -752,7 +731,7 @@ current one."
     (nth 1 (get-text-property pos 'jupyter-cell))))
 
 (defun jupyter-repl-cell-request ()
-  "Get the `jupyter-request' of the current cell."
+  "Return the `jupyter-request' of the current cell."
   (get-text-property (jupyter-repl-cell-beginning-position) 'jupyter-request))
 
 ;;; Cell motions
@@ -760,11 +739,14 @@ current one."
 (defun jupyter-repl-cell-beginning-position ()
   "Return the cell beginning position of the current cell.
 If `point' is already at the beginning of the current cell,
-return `point'. Note that if the end of a cell is found before
-the beginning of a cell, i.e. when `point' is somewhere inside
-the output of a cell, raise an error. If the beginning of the
-buffer is found before the beginning of a cell, raise a
-`beginning-of-buffer' error."
+return `point'.
+
+If the end of a cell is found before the beginning of one, i.e.
+when `point' is somewhere inside the output of a cell, raise an
+error.
+
+If the beginning of the buffer is found before the beginning of a
+cell, raise a `beginning-of-buffer' error."
   (let ((pos (point)))
     (while (not (jupyter-repl-cell-beginning-p pos))
       (setq pos (previous-single-property-change pos 'jupyter-cell))
@@ -780,8 +762,10 @@ buffer is found before the beginning of a cell, raise a
 This is similar to `jupyter-repl-cell-beginning-position' except
 the position at the end of the current cell is returned and an
 error is raised if the beginning of a cell is found before an
-end. Note that if the current cell is the last cell in the
-buffer, `point-max' is considered the end of the cell."
+end.
+
+Note: If the current cell is the last cell in the buffer,
+`point-max' is considered the end of the cell."
   (let ((pos (point)))
     (catch 'unfinalized
       (while (not (jupyter-repl-cell-end-p pos))
@@ -814,9 +798,9 @@ unfinalized cell, the code ending position is `point-max'."
       (1- pos))))
 
 (defun jupyter-repl-next-cell (&optional N)
-  "Go to the start of the next cell.
-Optional argument N is the number of times to move to the next
-cell. N defaults to 1."
+  "Go to the beginning of the next cell.
+Move N times where N defaults to 1. Return the count of cells
+left to move."
   (or N (setq N 1))
   (catch 'done
     (while (> N 0)
@@ -829,11 +813,12 @@ cell. N defaults to 1."
   N)
 
 (defun jupyter-repl-previous-cell (&optional N)
-  "Go to the start of the current or previous cell.
-If `point' is already at the start of the current cell, go to the
-start of the previous cell. Otherwise go to the start of the
-current cell. Optional argument N is the number of times to move
-to the previous cell. N defaults to 1."
+  "Go to the beginning of the previous cell.
+Move N times where N defaults to 1. Return the count of cells
+left to move.
+
+Note, if `point' is not at the beginning of the current cell, the
+first move is to the beginning of the current cell."
   (or N (setq N 1))
   (catch 'done
     (while (> N 0)
@@ -863,7 +848,7 @@ a Jupyter REPL buffer."
     (error "Cell for request not found")))
 
 (defun jupyter-repl-forward-cell (&optional arg)
-  "Move to the code beginning of the cell after the current one.
+  "Go to the code beginning of the cell after the current one.
 ARG is the number of cells to move and defaults to 1."
   (interactive "^p")
   (or arg (setq arg 1))
@@ -871,7 +856,7 @@ ARG is the number of cells to move and defaults to 1."
   (goto-char (jupyter-repl-cell-code-beginning-position)))
 
 (defun jupyter-repl-backward-cell (&optional arg)
-  "Move to the code beginning of the cell before the current one.
+  "Go to the code beginning of the cell before the current one.
 ARG is the number of cells to move and defaults to 1."
   (interactive "^p")
   (or arg (setq arg 1))
@@ -911,22 +896,16 @@ POS defaults to `point'."
             (jupyter-repl-cell-code-end-position))))))
 
 (defun jupyter-repl-cell-finalized-p ()
-  "Has the current cell been finalized?
-A cell is considered finalized when `jupyter-repl-finalize-cell'
-has been previously called for it. `jupyter-repl-finalize-cell'
-is responsible for adding the text properties which cause
-`jupyter-repl-cell-end-p' to return non-nil."
+  "Has the current cell been finalized?"
   (jupyter-repl-cell-end-p (jupyter-repl-cell-end-position)))
 
 (defun jupyter-repl-client-has-manager-p ()
-  "Does the `jupyter-repl-current-client' have a `jupyter-kernel-manager'?
-Checks to see if the REPL client of the `current-buffer' has a
-kernel manager as its manager slot."
+  "Does the `jupyter-repl-current-client' have a `jupyter-kernel-manager'?"
   (and jupyter-repl-current-client
        (oref jupyter-repl-current-client manager)))
 
 (defun jupyter-repl-connected-p ()
-  "Determine if the `jupyter-repl-current-client' is connected to its kernel."
+  "Is the `jupyter-repl-current-client' connected to its kernel?"
   (when jupyter-repl-current-client
     (or (and (jupyter-repl-client-has-manager-p)
              ;; Check if the kernel is local
@@ -952,22 +931,14 @@ kernel manager as its manager slot."
         (mapconcat #'identity (nreverse lines) "\n")))))
 
 (defun jupyter-repl-cell-code-position ()
-  "Get the position that `point' is at relative to the contents of the cell.
-The first character of the cell code corresponds to position 1."
+  "Return the relative position of `point' with respect to the cell code."
   (unless (jupyter-repl-cell-line-p)
     (error "Not in code of cell"))
   (1+ (- (point) (jupyter-repl-cell-code-beginning-position))))
 
 (defun jupyter-repl-finalize-cell (req)
   "Finalize the current cell.
-REQ is the `jupyter-request' to associate with the current cell.
-Finalizing a cell involves the following steps:
-
-- Associate REQ with the cell
-- Move `point' to the location where the next input cell can be
-  inserted
-- Add the text property which marks the end of a cell
-- Make the cell read-only"
+REQ is the `jupyter-request' to associate with the current cell."
   (let ((beg (jupyter-repl-cell-beginning-position))
         (count (jupyter-repl-cell-count)))
     (goto-char (point-max))
@@ -994,7 +965,7 @@ Finalizing a cell involves the following steps:
   "Truncate the `current-buffer' based on `jupyter-repl-maximum-size'.
 The `current-buffer' is assumed to be a Jupyter REPL buffer. If
 the `current-buffer' is larger than `jupyter-repl-maximum-size'
-lines then truncate it to something less than
+lines, truncate it to something less than
 `jupyter-repl-maximum-size' lines."
   (save-excursion
     (when (= (forward-line (- jupyter-repl-maximum-size)) 0)
@@ -1098,7 +1069,7 @@ lines then truncate it to something less than
       (jupyter-repl-insert-data data metadata))))
 
 (defun jupyter-repl-next-display-with-id (id)
-  "Move `point' to the start of the next display matching ID.
+  "Go to the start of the next display matching ID.
 Return non-nil if successful. If no display with ID is found,
 return nil without moving `point'."
   (let ((pos (next-single-property-change (point) 'jupyter-display)))
@@ -1109,13 +1080,11 @@ return nil without moving `point'."
 (defun jupyter-repl-update-display (id data metadata)
   "Update the display with ID using DATA.
 DATA and METADATA have the same meaning as in a `:display-data'
-message.
-
-Updating a display involves finding and clearing the data that is
-currently associated with the ID and inserting DATA at the same
-location. If multiple locations have the same display ID, all of
-them are updated. Raise an error if no display with ID could be
-found."
+message."
+  ;; Updating a display involves finding and clearing the data that is
+  ;; currently associated with the ID and inserting DATA at the same location.
+  ;; If multiple locations have the same display ID, all of them are updated.
+  ;; Raise an error if no display with ID could be found.
   (save-excursion
     (goto-char (point-min))
     (let (str)
@@ -1385,11 +1354,12 @@ REPL buffer."
   "Send the current cell code to the kernel.
 If `point' is before the last cell in the REPL buffer move to
 `point-max', i.e. move to the last cell. Otherwise if `point' is
-at some position within the last cell of the REPL buffer, either
-insert a newline or ask the kernel to execute the cell code
-depending on the kernel's response to an `:is-complete-request'.
-If FORCE is non-nil, force the kernel to execute the current cell
-code without sending the `:is-complete-request'. See
+at some position within the last cell, either insert a newline or
+ask the kernel to execute the cell code depending on the kernel's
+response to an `:is-complete-request'.
+
+If a prefix argument is given, FORCE the kernel to execute the
+current cell code without sending an `:is-complete-request'. See
 `jupyter-repl-use-builtin-is-complete' for yet another way to
 execute the current cell."
   (interactive "P")
@@ -1454,11 +1424,10 @@ Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
 
 (defun jupyter-repl-after-buffer-change (beg end len)
   "Insert line continuation prompts in `jupyter-repl-mode' buffers.
-BEG, END, and LEN have the same meaning as for
-`after-change-functions'. If the change corresponds to text being
-inserted and the beginning of the insertion is on a
-`jupyter-repl-cell-line-p', insert line continuation prompts if
-the inserted text is multi-line."
+BEG, END, and LEN have the same meaning as in
+`after-change-functions'. For every change that corresponds to
+insertion of text and that text is multi-line, insert line
+continuation prompts for each line."
   (when (eq major-mode 'jupyter-repl-mode)
     (cond
      ;; Insertions only
@@ -1518,11 +1487,13 @@ value."
   "Return a cons cell, (CODE . POS), for the context around `point'.
 CODE is the required context for TYPE (either `inspect' or
 `complete') and POS is the relative position of `point' within
-CODE. The context also depends on the `major-mode' of the
+CODE.
+
+The returned CODE depends on the `major-mode' of the
 `current-buffer'. If the `major-mode' is `jupyter-repl-mode',
-CODE is the contents of the entire code cell. Otherwise its
-either the line up to `point' if TYPE is `complete' or the entire
-line if TYPE is `inspect'."
+CODE is the contents of the current cell. Otherwise its either
+the line up to `point' if TYPE is `complete' or the entire line
+if TYPE is `inspect'."
   (unless (memq type '(complete inspect))
     (error "Type not `complete' or `inspect' (%s)" type))
   (let (code pos)
@@ -1555,8 +1526,8 @@ line if TYPE is `inspect'."
 (defun jupyter-repl-completion-prefix ()
   "Return the prefix for the current completion context.
 Note that the prefix returned is not the content sent to the
-kernel. See `jupyter-repl-code-context-at-point' for what is
-actually sent to the kernel."
+kernel, but the symbol at `point'. See
+`jupyter-repl-code-context-at-point' for what is actually sent."
   (when jupyter-repl-current-client
     (let ((lang-mode (jupyter-repl-language-mode jupyter-repl-current-client)))
       (and (memq major-mode `(,lang-mode jupyter-repl-mode))
@@ -1681,20 +1652,16 @@ COMMAND and ARG have the same meaning as the elements of
 
 (defun jupyter-repl--inspect (code pos &optional detail buffer timeout)
   "Send an inspect request to a Jupyter kernel.
-CODE and POS are the code to send and the position within the
-code, respectively.
+POS is the position of `point' relative to the inspected CODE.
 
-If DETAIL is non-nil, it is the detail level of the inspect
-request. Otherwise a detail level of 0 is used.
+DETAIL is the detail level to use for the request and defaults to
+0.
 
-If BUFFER is non-nil then it should be the buffer in which to
-insert the inspection text returned from the kernel. After the
-inserting the text into BUFFER, BUFFER is returned. If BUFFER is
-nil, just return the inspection text. In both cases the
-inspection text is already in a form suitable for display.
+If BUFFER is provided, the inspection text returned from the
+kernel is inserted into BUFFER and BUFFER is returned. Otherwise,
+when BUFFER is nil, the formated inspection string is returned.
 
-TIMEOUT is how long to wait (in seconds) for the kernel to
-respond before returning nil."
+It the kernel doesn't respond within TIMEOUT seconds, return nil."
   (let* ((jupyter-inhibit-handlers '(:status))
          (msg (jupyter-wait-until-received :inspect-reply
                 (jupyter-send-inspect-request jupyter-repl-current-client
@@ -1723,38 +1690,39 @@ the `current-buffer' and display the results in a buffer."
     (let ((buf (current-buffer)))
       ;; TODO: Reset this to nil when the inspect buffer is closed.
       (with-jupyter-repl-doc-buffer "inspect"
-        (let ((jupyter-repl-current-client
-               (buffer-local-value 'jupyter-repl-current-client buf)))
-          ;; FIXME: Better way of inserting documentation into a buffer.
-          ;; Currently the way text is inserted is by inserting in a temp
-          ;; buffer and returning the string, but in cases where overlays may
-          ;; be inserted in the buffer (markdown), this fails. A better way
-          ;; would be to supply the buffer in which to insert text like what is
-          ;; done here, but how to make it more general for all insertion
-          ;; types?
-          (if (not (jupyter-repl--inspect code pos nil (current-buffer)))
-              (message "Inspect timed out")
-            ;; TODO: Customizable action
-            (display-buffer (current-buffer))
-            (set-window-start (get-buffer-window) (point-min)))))
+        ;; Set this in the inspect buffer so that
+        ;; `jupyter-repl-markdown-follow-link-at-point' works in the inspect
+        ;; buffer as well.
+        (setq-local jupyter-repl-current-client
+                    (buffer-local-value 'jupyter-repl-current-client buf))
+        ;; FIXME: Better way of inserting documentation into a buffer.
+        ;; Currently the way text is inserted is by inserting in a temp
+        ;; buffer and returning the string, but in cases where overlays may
+        ;; be inserted in the buffer (markdown), this fails. A better way
+        ;; would be to supply the buffer in which to insert text like what is
+        ;; done here, but how to make it more general for all insertion
+        ;; types?
+        (if (not (jupyter-repl--inspect code pos nil (current-buffer)))
+            (message "Inspect timed out")
+          ;; TODO: Customizable action
+          (display-buffer (current-buffer))
+          (set-window-start (get-buffer-window) (point-min))))
       (setq other-window-scroll-buffer (get-buffer "*jupyter-repl-inspect*")))))
 
 ;;; Evaluation
 
 (defun jupyter-repl-eval-string (str &optional silently)
-  "Evaluate STR with the `jupyter-repl-current-client'.
-The contents of the last cell in the REPL buffer will be replaced
-with STR and the last cell executed with the
-`juptyer-repl-current-client'. After execution, the execution
-result is echoed to the *Message* buffer or a new buffer showing
-the result is opened if the result output is larger than 10 lines
-long.
+  "Evaluate STR with the `jupyter-repl-current-client's REPL.
+Replaces the contents of the last cell in the REPL buffer with
+STR before evaluating.
 
-If optional argument SILENTLY is non-nil, do not replace the
-contents of the last cell and do not run any of the
-`jupyter-repl-client' handlers. All that occurs is that STR is
-sent to the kernel for execution and the results of the execution
-displayed without anything showing up in the REPL buffer."
+If the result of evaluation is more than 10 lines long, a buffer
+displaying the results is shown. For results less than 10 lines
+long, the result is displayed in the minibuffer.
+
+If a prefix argument is given, SILENTLY evaluate STR without any
+modification to the REPL buffer. Only the results of evaluation
+are displayed."
   (interactive (list (read-string "Jupyter Eval: ") current-prefix-arg))
   (unless (buffer-local-value
            'jupyter-repl-current-client (current-buffer))
@@ -1848,7 +1816,7 @@ If the current region is active send the current region using
 (defun jupyter-repl-on-kernel-restart (client msg)
   "Update the REPL buffer after CLIENT restarts.
 If MSG is a startup message, insert the banner of the kernel,
-syncrhronize the execution state, and insert a new input prompt."
+synchronize the execution state, and insert a new input prompt."
   (prog1 nil
     (with-jupyter-repl-buffer client
       (when (jupyter-message-status-starting-p msg)
@@ -2077,10 +2045,7 @@ When the kernel restarts, insert a new prompt."
      #'jupyter-repl-on-kernel-restart jupyter-repl-current-client)))
 
 (defun jupyter-repl-initialize-fontification ()
-  "Initialize fontification for the current REPL buffer.
-Extract `font-lock-defaults' from the `jupyter-repl-lang-buffer',
-set it as the `font-lock-defaults' of the `current-buffer' and
-call the function `font-lock-mode'."
+  "Initialize fontification for the current REPL buffer."
   (let (fld sff)
     (with-jupyter-repl-lang-buffer
       (setq fld font-lock-defaults
@@ -2125,10 +2090,7 @@ it."
      (add-text-properties start (point) '(font-lock-face shadow fontified t)))))
 
 (defun jupyter-repl-sync-execution-state ()
-  "Synchronize the state of the kernel in `jupyter-repl-current-client'.
-Set the execution-count slot of `jupyter-repl-current-client' to
-1+ the execution count of the client's kernel. Block until the
-kernel goes idle for our request."
+  "Synchronize the `jupyter-repl-current-client's kernel state."
   (let* ((client jupyter-repl-current-client)
          (req (let ((jupyter-inhibit-handlers t))
                 (jupyter-send-execute-request client :code "" :silent t))))
@@ -2147,9 +2109,7 @@ kernel goes idle for our request."
 ;;; `jupyter-repl-interaction-mode'
 
 (defun jupyter-repl-pop-to-buffer ()
-  "Switch to the REPL buffer associated with the `current-buffer'.
-Switch to the REPL buffer of the `jupyter-repl-current-client'
-for the `current-buffer'."
+  "Switch to the REPL buffer of the `jupyter-repl-current-client'."
   (interactive)
   (if jupyter-repl-current-client
       (with-jupyter-repl-buffer jupyter-repl-current-client
@@ -2158,10 +2118,9 @@ for the `current-buffer'."
     (error "Buffer not associated with a REPL, see `jupyter-repl-associate-buffer'")))
 
 (defun jupyter-repl-available-repl-buffers (&optional mode)
-  "Get a list of REPL buffers that are connected to live kernels.
+  "Return a list of REPL buffers that are connected to live kernels.
 If MODE is non-nil, return all REPL buffers whose
-`jupyter-repl-lang-mode' is MODE. MODE should be the `major-mode'
-used to edit files of one of the Jupyter kernel languages."
+`jupyter-repl-lang-mode' is MODE."
   (delq
    nil
    (mapcar (lambda (b)
@@ -2175,14 +2134,9 @@ used to edit files of one of the Jupyter kernel languages."
 ;;;###autoload
 (defun jupyter-repl-associate-buffer (client)
   "Associate the `current-buffer' with a REPL CLIENT.
-The `current-buffer's `major-mode' must be the
-`jupyter-repl-lang-mode' of the CLIENT. CLIENT can either be a
-`jupyter-repl-client' or a buffer with a non-nil
-`jupyter-repl-current-client'.
-
-Associating a buffer with CLIENT involves setting the
-buffer-local value of `jupyter-repl-current-client' to CLIENT and
-enabling `jupyter-repl-interaction-mode'."
+If the `major-mode' of the `current-buffer' is the
+`jupyter-repl-lang-mode' of CLIENT, enable
+`jupyter-repl-interaction-mode'."
   (interactive
    (list
     (completing-read
@@ -2211,7 +2165,7 @@ enabling `jupyter-repl-interaction-mode'."
     map))
 
 (defun jupyter-repl-propagate-client (orig-fun buffer-or-name &rest args)
-  "Propgate the `jupyter-repl-current-client' to other buffers."
+  "Propagate the `jupyter-repl-current-client' to other buffers."
   (when jupyter-repl-interaction-mode
     (let ((client jupyter-repl-current-client)
           (buf (get-buffer buffer-or-name))
@@ -2227,9 +2181,15 @@ enabling `jupyter-repl-interaction-mode'."
 
 (define-minor-mode jupyter-repl-interaction-mode
   "Minor mode for interacting with a Jupyter REPL.
-Note that for buffers with `jupyter-repl-interaction-mode'
-enabled, any new buffer opened with the same `major-mode' will
-automatically have its buffer associated with the REPL."
+When this minor mode is enabled you may evaluate code from the
+current buffer using the associated REPL (see
+`jupyter-repl-associate-buffer' to associate a REPL).
+
+In addition any new buffers opened with the same `major-mode' as
+the `current-buffer' will automatically have
+`jupyter-repl-interaction-mode' enabled for them.
+
+\\{jupyter-repl-interaction-map}"
   :group 'jupyter-repl
   :lighter " JuPy"
   :init-value nil
