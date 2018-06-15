@@ -1023,9 +1023,9 @@ lines then truncate it to something less than
                                             (user-expressions nil)
                                             (allow-stdin t)
                                             (stop-on-error nil))
-  (with-jupyter-repl-buffer client
-    (jupyter-repl-truncate-buffer)
-    (if code (cl-call-next-method)
+  (if code (cl-call-next-method)
+    (with-jupyter-repl-buffer client
+      (jupyter-repl-truncate-buffer)
       (setq code (string-trim (jupyter-repl-cell-code)))
       ;; Handle empty code cells as just an update of the prompt number
       (if (= (length code) 0)
