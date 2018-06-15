@@ -1669,7 +1669,7 @@ COMMAND and ARG have the same meaning as the elements of
     (annotation (get-text-property 0 'annot arg))
     (doc-buffer (let* ((inhibit-read-only t)
                        (buf (jupyter-repl--inspect
-                             arg (length arg) (company-doc-buffer)
+                             arg (length arg) nil (company-doc-buffer)
                              company-async-timeout)))
                   (when buf
                     (with-current-buffer buf
@@ -1679,10 +1679,13 @@ COMMAND and ARG have the same meaning as the elements of
 
 ;;; Inspection
 
-(defun jupyter-repl--inspect (code pos &optional buffer timeout)
+(defun jupyter-repl--inspect (code pos &optional detail buffer timeout)
   "Send an inspect request to a Jupyter kernel.
 CODE and POS are the code to send and the position within the
 code, respectively.
+
+If DETAIL is non-nil, it is the detail level of the inspect
+request. Otherwise a detail level of 0 is used.
 
 If BUFFER is non-nil then it should be the buffer in which to
 insert the inspection text returned from the kernel. After the
@@ -1695,7 +1698,7 @@ respond before returning nil."
   (let* ((jupyter-inhibit-handlers '(:status))
          (msg (jupyter-wait-until-received :inspect-reply
                 (jupyter-send-inspect-request jupyter-repl-current-client
-                  :code code :pos pos)
+                  :code code :pos pos :detail detail)
                 timeout)))
     (when msg
       (cl-destructuring-bind (&key status found data metadata &allow-other-keys)
@@ -1729,7 +1732,7 @@ the `current-buffer' and display the results in a buffer."
           ;; would be to supply the buffer in which to insert text like what is
           ;; done here, but how to make it more general for all insertion
           ;; types?
-          (if (not (jupyter-repl--inspect code pos (current-buffer)))
+          (if (not (jupyter-repl--inspect code pos nil (current-buffer)))
               (message "Inspect timed out")
             ;; TODO: Customizable action
             (display-buffer (current-buffer))
