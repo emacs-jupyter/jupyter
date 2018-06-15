@@ -1261,60 +1261,71 @@ Do this for the current cell."
       (jupyter-repl-insert (concat prompt value))
       (jupyter-repl-newline))))
 
-(defun jupyter-repl-history-next (&optional n no-replace)
+(defun jupyter-repl-history--next (n)
+  "Helper function for `jupyter-repl-history-next'.
+Rotates `jupyter-repl-history' N times in the forward direction,
+towards newer history elements and returns the Nth history
+element in that direction relative to the current REPL history.
+If the sentinel value is found before rotating N times, return
+nil."
+  (if (> n 0)
+      (if (eq (ring-ref jupyter-repl-history -1) 'jupyter-repl-history)
+          nil
+        (ring-insert jupyter-repl-history
+                     (ring-remove jupyter-repl-history -1))
+        (jupyter-repl-history--next (1- n)))
+    (ring-ref jupyter-repl-history 0)))
+
+(defun jupyter-repl-history-next (&optional n)
   "Go to the next history element.
 Navigate through the REPL history to the next (newer) history
 element and insert it as the last code cell. For N positive move
 forward in history that many times. If N is negative, move to
-older history elements.
-
-If NO-REPLACE is non-nil, don't insert the history element in the
-REPL buffer."
+older history elements."
   (interactive "p")
   (or n (setq n 1))
-  (if (< n 0) (jupyter-repl-history-previous (- n) no-replace)
+  (if (< n 0) (jupyter-repl-history-previous (- n))
     (goto-char (point-max))
-    (when (cl-loop
-           repeat n
-           thereis (eq (ring-ref jupyter-repl-history -1) 'jupyter-repl-history)
-           do (ring-insert
-               jupyter-repl-history (ring-remove jupyter-repl-history -1)))
-      ;; When the next history element is the sentinel, handle some edge cases
-      (cond
-       ((equal (jupyter-repl-cell-code)
-               (ring-ref jupyter-repl-history 0))
-        ;; If the cell code is the last history item, erase it
-        (jupyter-repl-replace-cell-code "")
-        (setq no-replace t))
-       ((equal (jupyter-repl-cell-code) "")
-        (error "End of history"))))
-    (unless no-replace
-      (jupyter-repl-replace-cell-code
-       (ring-ref jupyter-repl-history 0)))))
+    (let ((elem (jupyter-repl-history--next n)))
+      (if (and (null elem) (equal (jupyter-repl-cell-code) ""))
+          (error "End of history")
+        (if (null elem)
+            ;; When we have reached the last history element in the forward
+            ;; direction and the cell code is not empty, make it empty.
+            (jupyter-repl-replace-cell-code "")
+          (jupyter-repl-replace-cell-code
+           (ring-ref jupyter-repl-history 0)))))))
 
-(defun jupyter-repl-history-previous (&optional n no-replace)
+(defun jupyter-repl-history--previous (n)
+  "Helper function for `jupyter-repl-history-previous'.
+Rotates `jupyter-repl-history' N times in the backward direction,
+towards older history elements and returns the Nth history
+element in that direction relative to the current REPL history.
+If the sentinel value is found before rotating N times, return
+nil."
+  (if (> n 0)
+      (if (eq (ring-ref jupyter-repl-history 1) 'jupyter-repl-history)
+          nil
+        (ring-insert-at-beginning
+         jupyter-repl-history (ring-remove jupyter-repl-history 0))
+        (jupyter-repl-history--previous (1- n)))
+    (ring-ref jupyter-repl-history 0)))
+
+(defun jupyter-repl-history-previous (&optional n)
   "Go to the previous history element.
 Similar to `jupyter-repl-history-next' but for older history
 elements. If N is negative in this case, move to newer history
-elements.
-
-If NO-REPLACE is non-nil, don't insert the history element in the
-REPL buffer."
+elements."
   (interactive "p")
   (or n (setq n 1))
-  (if (< n 0) (jupyter-repl-history-next (- n) no-replace)
+  (if (< n 0) (jupyter-repl-history-next (- n))
     (goto-char (point-max))
-    (when (not (equal (jupyter-repl-cell-code)
-                      (ring-ref jupyter-repl-history 0)))
+    (unless (equal (jupyter-repl-cell-code)
+                   (ring-ref jupyter-repl-history 0))
       (setq n (1- n)))
-    (if (or (and (= n 0) (eq (ring-ref jupyter-repl-history 0) 'jupyter-repl-history))
-            (cl-loop
-             repeat n
-             thereis (eq (ring-ref jupyter-repl-history 1) 'jupyter-repl-history)
-             do (ring-insert-at-beginning
-                 jupyter-repl-history (ring-remove jupyter-repl-history 0))))
-        (error "Beginning of history")
-      (unless no-replace
+    (let ((elem (jupyter-repl-history--previous n)))
+      (if (null elem)
+          (error "Beginning of history")
         (jupyter-repl-replace-cell-code
          (ring-ref jupyter-repl-history 0))))))
 
@@ -1901,19 +1912,21 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
   "Return a search function to search through a REPL's input history."
   (lambda (string bound noerror)
     (let ((search-fun (isearch-search-fun-default)) found)
-      (unless isearch-forward (goto-char (point-max)))
+      (setq isearch-lazy-highlight-start-limit
+            (jupyter-repl-cell-beginning-position))
       (or
        ;; 1. First try searching in the initial cell text
        (funcall search-fun string
-                (if isearch-forward bound
-                  (jupyter-repl-cell-code-beginning-position))
+                (or bound
+                    (unless isearch-forward
+                      (jupyter-repl-cell-code-beginning-position)))
                 noerror)
        ;; 2. If the above search fails, start putting next/prev history
        ;; elements in the cell successively, and search the string in them. Do
        ;; this only when bound is nil (i.e. not while lazy-highlighting search
        ;; strings in the current cell text).
        (unless bound
-         (condition-case nil
+         (condition-case err
              (progn
                (while (not found)
                  (cond (isearch-forward
@@ -1927,28 +1940,26 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
                        (t
                         (jupyter-repl-history-previous)
                         (goto-char (point-max))))
-                 (setq isearch-barrier (point) isearch-opoint (point))
                  ;; After putting the next/prev history element, search the
                  ;; string in them again, until an error is thrown at the
                  ;; beginning/end of history.
                  (setq found (funcall search-fun string
                                       (unless isearch-forward
                                         (jupyter-repl-cell-code-beginning-position))
-                                      noerror)))
+                                      'noerror)))
                ;; Return point of the new search result
                (point))
-           ;; Return nil on the error "no next/preceding item"
-           (error nil)))))))
+           (error
+            (unless noerror
+              (signal (car err) (cdr err))))))))))
 
 (defun jupyter-repl-history-isearch-wrap ()
   "Wrap the input history search when search fails.
-Go to the newest history element for a forward search or to the
-oldest history element for a backward search."
-  (condition-case nil
-      (if isearch-forward
-          (jupyter-repl-history-next (ring-length jupyter-repl-history) t)
-        (jupyter-repl-history-previous (ring-length jupyter-repl-history) t))
-    (error nil))
+Go to the oldest history element for a forward search or to the
+newest history element for a backward search."
+  (if isearch-forward
+      (jupyter-repl-history--previous (ring-length jupyter-repl-history))
+    (jupyter-repl-history--next (ring-length jupyter-repl-history)))
   (jupyter-repl-replace-cell-code (ring-ref jupyter-repl-history 0))
   (goto-char (if isearch-forward (jupyter-repl-cell-code-beginning-position)
                (point-max))))
@@ -1958,12 +1969,24 @@ oldest history element for a backward search."
 Save the element at index 0 in `jupyter-repl-history'. When
 restoring the state, the `jupyter-repl-history' ring is rotated,
 in the appropriate direction, to the saved element."
-  (let ((elem (ring-ref jupyter-repl-history 0)))
-    (lambda (_cmd)
-      (while (not (eq (ring-ref jupyter-repl-history 0) elem))
-        (if isearch-forward (jupyter-repl-history-next 1 t)
-          (jupyter-repl-history-previous 1 t)))
-      (jupyter-repl-replace-cell-code (ring-ref jupyter-repl-history 0)))))
+  (let ((code (jupyter-repl-cell-code)))
+    (cond
+     ((equal code (ring-ref jupyter-repl-history 0))
+      (let ((elem (ring-ref jupyter-repl-history 0)))
+        (lambda (_cmd)
+          (when isearch-wrapped
+            (if isearch-forward
+                (jupyter-repl-history--next (ring-length jupyter-repl-history))
+              (jupyter-repl-history--previous (ring-length jupyter-repl-history))))
+          (while (not (eq (ring-ref jupyter-repl-history 0) elem))
+            (if isearch-forward
+                (jupyter-repl-history--previous 1)
+              (jupyter-repl-history--next 1)))
+          (jupyter-repl-replace-cell-code (ring-ref jupyter-repl-history 0)))))
+     (t
+      (let ((elem code))
+        (lambda (_cmd)
+          (jupyter-repl-replace-cell-code elem)))))))
 
 ;;; `jupyter-repl-mode'
 

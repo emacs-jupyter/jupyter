@@ -498,6 +498,46 @@ running BODY."
         (jupyter-test-repl-ret-sync)
         (should (get-text-property (- (point) 2) 'jupyter-cell))))))
 
+(defun jupyter-test-set-dummy-repl-history ()
+  "Reset `jupyter-repl-history' to a value used for testing.
+The history contains the elements \"1\", \"2\", and \"3\", the
+last element being the newest element added to the history."
+  (setq-local jupyter-repl-history (make-ring 5))
+  (ring-insert jupyter-repl-history 'jupyter-repl-history)
+  (jupyter-repl-history-add-input "1")
+  (jupyter-repl-history-add-input "2")
+  (jupyter-repl-history-add-input "3"))
+
+(ert-deftest jupyter-repl-history ()
+  (jupyter-with-python-repl client
+    (ert-info ("Rotating REPL history ring")
+      (jupyter-test-set-dummy-repl-history)
+      (should (null (jupyter-repl-history--next 1)))
+      (should (equal (jupyter-repl-history--next 0) "3"))
+      (should (equal (jupyter-repl-history--previous 1) "2"))
+      (should (equal (jupyter-repl-history--next 1) "3"))
+      (should (null (jupyter-repl-history--previous 4)))
+      (should (equal (ring-ref jupyter-repl-history 0) "1")))
+    (ert-info ("Replacing cell contents with history")
+      (jupyter-test-set-dummy-repl-history)
+      (should (equal (jupyter-repl-cell-code) ""))
+      (jupyter-repl-history-previous)
+      (should (equal (jupyter-repl-cell-code) "3"))
+      (jupyter-repl-history-previous)
+      (should (equal (jupyter-repl-cell-code) "2"))
+      (jupyter-repl-history-previous)
+      (should (equal (jupyter-repl-cell-code) "1"))
+      (should-error (jupyter-repl-history-previous))
+      (should (equal (jupyter-repl-cell-code) "1"))
+      (jupyter-repl-history-next)
+      (should (equal (jupyter-repl-cell-code) "2"))
+      (jupyter-repl-history-next)
+      (should (equal (jupyter-repl-cell-code) "3"))
+      (jupyter-repl-history-next)
+      (should (equal (jupyter-repl-cell-code) ""))
+      (should-error (jupyter-repl-history-next))
+      (should (equal (jupyter-repl-cell-code) "")))))
+
 (ert-deftest jupyter-repl-cell-motions ()
   (jupyter-with-python-repl client
     (jupyter-test-info ("`jupyter-repl-goto-cell'")
