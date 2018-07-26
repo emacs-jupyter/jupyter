@@ -135,9 +135,14 @@ return the result."
                        ((arrayp object)       (json-encode-array object))
                        ((hash-table-p object) (json-encode-hash-table object))
                        ((listp object)
-                        (if (eq (car object) 'message-part)
-                            (nth 1 object)
-                          (json-encode-list object)))
+                        (cond
+                         ((eq (car object) 'message-part)
+                          (jupyter--encode object))
+                         ;; Turn time objects into ISO 8601 time strings
+                         ((and (= (length object) 4)
+                               (cl-every #'integerp object))
+                          (jupyter--encode-time object))
+                         (t (json-encode-list object))))
                        (t                     (signal 'json-error (list object)))))))
       (encode-coding-string
        (cond
@@ -182,13 +187,26 @@ decoded string."
   "Decode a time STR into a time object.
 The returned object has the same form as the object returned by
 `current-time'."
-  (let ((usec 0))
-    (when (string-match "\\(T\\).+\\(\\(?:\\.\\|,\\)[0-9]+\\)" str)
-      (setq usec (ceiling (* 1000000 (string-to-number
-                                      (match-string 2 str)))))
-      (setq str (replace-match " " nil t str 1)))
-    (nconc (apply #'encode-time (parse-time-string str))
-           (list usec))))
+  (let ((usec 0)
+        (time '(0 0)))
+    (cond
+     ((string-match "\\(T\\)[^.,]+\\(?:[.,]\\([0-9]+\\)\\)?" str)
+      (let* ((fraction (match-string 2 str))
+             (plen (- 6 (length fraction)))
+             (pad (and fraction (> plen 0) (expt 10 plen))))
+        (when fraction
+          (setq usec (if pad (* pad (string-to-number fraction))
+                       (string-to-number (substring fraction 0 6))))))
+      (setq time (parse-time-string (replace-match " " nil t str 1))))
+     (t
+      (setq time (parse-time-string str))
+      (dotimes (i 3)
+        (or (nth i time) (setf (nth i time) 0)))))
+    (nconc (apply #'encode-time time) (list usec 0))))
+
+(defun jupyter--encode-time (time)
+  "Encode TIME into an ISO 8601 time string."
+  (format-time-string "%FT%T.%6N" time))
 
 (cl-defun jupyter--encode-message (session
                                    type
