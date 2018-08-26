@@ -1735,13 +1735,12 @@ are displayed."
     (goto-char (point-max))
     (unless (= (save-excursion (jupyter-repl-previous-cell)) 0)
       (jupyter-repl-insert-prompt 'in))
-    (setq str (string-trim str))
-    (let* ((jupyter-inhibit-handlers
-            (or silently '(:execute-result)))
+    (setq str (if silently (string-trim str)
+                (prog1 nil
+                  (jupyter-repl-replace-cell-code str))))
+    (let* ((jupyter-inhibit-handlers (or (and silently t) '(:execute-result)))
            (req (jupyter-send-execute-request jupyter-repl-current-client
-                  :code (if silently (string-trim str)
-                          (prog1 nil
-                            (jupyter-repl-replace-cell-code str))))))
+                  :code str)))
       (jupyter-add-callback req
         :execute-reply (lambda (msg)
                          (cl-destructuring-bind (&key status ename evalue
