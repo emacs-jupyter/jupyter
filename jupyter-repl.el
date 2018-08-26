@@ -2053,26 +2053,29 @@ When the kernel restarts, insert a new prompt."
     (with-jupyter-repl-lang-buffer
       (setq fld font-lock-defaults
             sff font-lock-syntactic-face-function))
-    (setq
-     font-lock-defaults
-     (apply #'list (nth 0 fld) (nth 1 fld) (nth 2 fld) (nth 3 fld) (nth 4 fld)
-            (append
-             (nthcdr 5 fld)
-             (list
-              (cons 'font-lock-syntactic-face-function
-                    ;; Only fontify syntactically when the text does
-                    ;; not have a font-lock-face property
-                    (lambda (state)
-                      (unless (get-text-property
-                               (nth 8 state) 'font-lock-face)
-                        (when sff (funcall sff state)))))))))
+    ;; Set `font-lock-defaults' to a copy of the font lock defaults for the
+    ;; REPL language but with a modified syntactic fontification function
+    (cl-destructuring-bind (kws &optional kws-only case-fold syntax-alist
+                                &rest vars)
+        fld
+      (setq font-lock-defaults
+            (apply #'list kws kws-only case-fold syntax-alist
+                   (append vars
+                           (list
+                            (cons 'font-lock-syntactic-face-function
+                                  ;; Only fontify syntactically when the text
+                                  ;; does not have a font-lock-face property
+                                  (lambda (state)
+                                    (unless (get-text-property
+                                             (nth 8 state) 'font-lock-face)
+                                      (when sff (funcall sff state))))))))))
     (font-lock-mode)
     ;; Special case since `js2-mode' does not use `font-lock-defaults' for
     ;; highlighting.
     (when (and (eq jupyter-repl-lang-mode 'js2-mode)
                (null (nth 0 font-lock-defaults)))
       (add-hook 'after-change-functions
-                (lambda (beg end len)
+                (lambda (_beg _end _len)
                   (unless (jupyter-repl-cell-finalized-p)
                     (save-restriction
                       (narrow-to-region
