@@ -638,46 +638,43 @@ FACE is the `font-lock-face' to use for STR."
          'fontified t
          'font-lock-face face)))
 
-(defun jupyter-repl--insert-prompt (str face)
-  "Insert a new prompt at `point'.
-STR is the prompt string displayed in the `left-margin' using
-FACE as the `font-lock-face'. A newline is inserted and the
-prompt is added as the after-string of an overlay of the
-newline."
-  (jupyter-repl-newline)
-  (overlay-recenter (point))
+(defun jupyter-repl--make-prompt (str face props)
+  "Make a prompt overlay for the character at `point'.
+STR is used as the prompt string and FACE is its
+`font-lock-face'. Add PROPS as text properties to the character."
   (let ((ov (make-overlay (1- (point)) (point) nil t))
         (md (jupyter-repl--prompt-display-value str face)))
     (overlay-put ov 'after-string (propertize " " 'display md))
     (overlay-put ov 'evaporate t)
-    ov))
+    (add-text-properties (overlay-start ov) (overlay-end ov) props)))
 
 (defun jupyter-repl-insert-prompt (&optional type)
   "Insert a REPL prompt according to TYPE.
-TYPE can either be `in', `out', or `continuation'. A value of nil
-for TYPE is interpreted as `in'."
+TYPE can either be `in', `out', or `continuation'. A nil TYPE is
+interpreted as `in'."
   (setq type (or type 'in))
   (unless (memq type '(in out continuation))
     (error "Prompt type can only be (`in', `out', or `continuation')"))
   (jupyter-repl-without-continuation-prompts
-   (let ((inhibit-read-only t)
-         ov props)
+   (let ((inhibit-read-only t))
+     (jupyter-repl-newline)
+     (overlay-recenter (point))
      (cond
       ((eq type 'in)
        (let ((count (oref jupyter-repl-current-client execution-count)))
-         (setq ov (jupyter-repl--insert-prompt
-                   (format "In [%d] " count) 'jupyter-repl-input-prompt)
-               props (list 'jupyter-cell (list 'beginning count))))
-       ;; Insertion of an invisible character is to prevent the prompt overlay
-       ;; from inheriting the text properties of code at the beginning of a
-       ;; cell similarly for the output prompt.
+         (jupyter-repl--make-prompt
+          (format "In [%d] " count) 'jupyter-repl-input-prompt
+          `(jupyter-cell (beginning ,count))))
+       ;; Prevent prompt overlay from inheriting text properties of code at the
+       ;; beginning of a cell.
        ;;
-       ;; The front-sticky property is so that `point' will not get trapped in
-       ;; the middle of the newline inserted by `jupyter-repl--insert-prompt'
-       ;; and the invisible character.
+       ;; rear-nonsticky is to prevent code inserted after this character to
+       ;; inherit any of its text properties.
        ;;
-       ;; Finally the field property is so that text motions will stop at the
-       ;; start of the code for a cell instead of moving past this invisible
+       ;; front-sticky is to prevent `point' from being trapped between the
+       ;; newline of the prompt overlay and this invisible character.
+       ;;
+       ;; field is so that text motions will not move past this invisible
        ;; character.
        (jupyter-repl-insert
         :properties '(invisible t rear-nonsticky t front-sticky t field t) " "))
@@ -689,19 +686,21 @@ for TYPE is interpreted as `in'."
        (let ((count (save-excursion
                       (jupyter-repl-previous-cell)
                       (jupyter-repl-cell-count))))
-         (setq ov (jupyter-repl--insert-prompt
-                   (format "Out [%d] " count) 'jupyter-repl-output-prompt)
-               props (list 'jupyter-cell (list 'out count))))
-       ;; Prevent the overlay from inheriting text properties. Front sticky to
-       ;; prevent inserting text at the beginning of the output cell before the
-       ;; insivible character.
+         (jupyter-repl--make-prompt
+          (format "Out [%d] " count) 'jupyter-repl-output-prompt
+          `(jupyter-cell (out ,count))))
+       ;; See the note above about the invisible character for input prompts
        (jupyter-repl-insert
         :properties '(invisible t front-sticky t) " "))
       ((eq type 'continuation)
-       (setq ov (jupyter-repl--insert-prompt
-                 " " 'jupyter-repl-input-prompt)
-             props (list 'read-only nil 'rear-nonsticky t))))
-     (add-text-properties (overlay-start ov) (overlay-end ov) props))))
+       (jupyter-repl--make-prompt
+        " " 'jupyter-repl-input-prompt
+        `(read-only nil rear-nonsticky t))
+       ;; Prevent prompt overlay from inheriting text properities of cell code.
+       ;; See the note for input prompts.
+       (jupyter-repl-insert
+        :read-only nil
+        :properties '(invisible t rear-nonsticky t front-sticky t field t) " "))))))
 
 (defun jupyter-repl-cell-update-prompt (str)
   "Update the current cell's input prompt.
@@ -918,16 +917,22 @@ POS defaults to `point'."
 ;;; Buffer text manipulation
 
 (defun jupyter-repl-cell-code ()
-  "Get the code of the current cell."
+  "Return the code of the current cell."
   (if (= (point-min) (point-max)) ""
-    (let (lines)
+    (let (lines pos)
       (save-excursion
         (goto-char (jupyter-repl-cell-code-beginning-position))
         (push (buffer-substring-no-properties (point) (point-at-eol))
               lines)
-        (while (and (line-move-1 1 'noerror)
+        (while (and (= (forward-line 1) 0)
                     (jupyter-repl-cell-line-p))
-          (push (buffer-substring-no-properties (point-at-bol) (point-at-eol)) lines))
+          ;; FIXME: Exclude invisible characters at the beginning of the line,
+          ;; these arise from continuation prompts
+          (setq pos (next-single-property-change
+                     (point) 'invisible nil (point-at-eol)))
+          (when pos (goto-char pos))
+          (push (buffer-substring-no-properties (point) (point-at-eol))
+                lines))
         (mapconcat #'identity (nreverse lines) "\n")))))
 
 (defun jupyter-repl-cell-code-position ()
@@ -1425,19 +1430,20 @@ Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
 (defun jupyter-repl-after-buffer-change (beg end len)
   "Insert line continuation prompts in `jupyter-repl-mode' buffers.
 BEG, END, and LEN have the same meaning as in
-`after-change-functions'. For every change that corresponds to
-insertion of text and that text is multi-line, insert line
-continuation prompts for each line."
+`after-change-functions'."
   (when (eq major-mode 'jupyter-repl-mode)
     (cond
      ;; Insertions only
      ((= len 0)
       (goto-char beg)
+      (setq end (set-marker (make-marker) end))
       (when (jupyter-repl-cell-line-p)
-        (while (search-forward "\n" end 'noerror)
+        (while (and (<= (point) end)
+                    (search-forward "\n" end 'noerror))
           (delete-char -1)
           (jupyter-repl-insert-prompt 'continuation)))
-      (goto-char end)))))
+      (goto-char end)
+      (set-marker end nil)))))
 
 (defun jupyter-repl-kill-buffer-query-function ()
   "Ask before killing a Jupyter REPL buffer.
