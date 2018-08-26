@@ -1787,14 +1787,14 @@ are displayed."
   (message "Evaluating %s..." file)
   (setq file (expand-file-name file))
   (if (file-exists-p file)
-      (let ((buf (find-buffer-visiting file)))
-        (jupyter-repl-eval-string
-         (if buf (with-current-buffer buf
-                   (buffer-string))
-           (with-current-buffer (delay-mode-hooks (find-file-noselect file))
-             (prog1 (buffer-string)
-               (kill-buffer))))
-         'silently))
+      (let* ((buf (find-buffer-visiting file))
+             (killp (null buf)))
+        (when (null buf)
+          (setq buf (delay-mode-hooks (find-file-noselect file))))
+        (with-current-buffer buf
+          (jupyter-repl-eval-string (buffer-string) 'silently))
+        (when killp
+          (kill-buffer)))
     (error "Not a file (%s)" file)))
 
 (defun jupyter-repl-eval-region (beg end &optional silently)
