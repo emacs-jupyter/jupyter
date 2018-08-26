@@ -282,11 +282,10 @@ erased."
   (declare (indent 1))
   (let ((buffer (make-symbol "buffer")))
     `(let ((,buffer (jupyter-repl-get-doc-buffer ,name)))
+       (setq other-window-scroll-buffer ,buffer)
        (with-current-buffer ,buffer
-         (let ((other-window-scroll-buffer nil)
-               (inhibit-read-only t))
+         (let ((inhibit-read-only t))
            (erase-buffer)
-           (setq other-window-scroll-buffer (current-buffer))
            ,@body)))))
 
 ;;; Convenience functions
@@ -1712,8 +1711,7 @@ the `current-buffer' and display the results in a buffer."
             (message "Inspect timed out")
           ;; TODO: Customizable action
           (display-buffer (current-buffer))
-          (set-window-start (get-buffer-window) (point-min))))
-      (setq other-window-scroll-buffer (get-buffer "*jupyter-repl-inspect*")))))
+          (set-window-start (get-buffer-window) (point-min)))))))
 
 ;;; Evaluation
 
