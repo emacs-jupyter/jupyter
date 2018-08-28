@@ -35,7 +35,7 @@
 
 (declare-function jupyter-read-plist "jupyter-base" (file))
 
-(defvar jupyter--kernelspecs nil
+(defvar jupyter--kernelspecs (make-hash-table :test #'equal :size 5)
   "An alist matching kernel names to their kernelspec directories.")
 
 (defun jupyter-read-kernelspec (dir)
@@ -58,21 +58,29 @@ shell command
 
 By default the available kernelspecs are cached. To force an
 update of the cached kernelspecs, give a non-nil value to
-REFRESH."
-  (or (and (not refresh) jupyter--kernelspecs)
-      (setq jupyter--kernelspecs
-            (delq nil
-                  (mapcar (lambda (s)
-                       (let ((s (split-string s " " 'omitnull)))
-                         (when (file-directory-p (cadr s))
-                           (let* ((kernel-name (car s))
-                                  (dir (cadr s))
-                                  (spec (jupyter-read-kernelspec dir)))
-                             (cons kernel-name (cons dir spec))))))
-                     (cdr
-                      (split-string
-                       (shell-command-to-string "jupyter kernelspec list")
-                       "\n" 'omitnull "[ \t]+")))))))
+REFRESH.
+
+If the `default-directory' is a remote directory, return the
+mapping for the remote host. In this case, each DIRECTORY in the
+kernelspec will be a remote file name with the connection
+information of the host as a prefix."
+  (let ((host (or (file-remote-p default-directory) "local")))
+    (or (and (not refresh) (gethash host jupyter--kernelspecs))
+        (let ((spec-list
+               (cdr
+                (split-string
+                 (shell-command-to-string "jupyter kernelspec list")
+                 "\n" 'omitnull "[ \t]+")))
+              (get-kernelspec
+               (lambda (s)
+                 (cl-destructuring-bind (kernel dir)
+                     (split-string s " " 'omitnull)
+                   (unless (equal host "local")
+                     (setq dir (concat host dir)))
+                   (let ((spec (jupyter-read-kernelspec dir)))
+                     (cons kernel (cons dir spec)))))))
+          (puthash host (delq nil (mapcar get-kernelspec spec-list))
+                   jupyter--kernelspecs)))))
 
 (defun jupyter-get-kernelspec (name &optional refresh)
   "Get the kernelspec for a kernel named NAME.
