@@ -49,17 +49,20 @@ Clients are removed from this list when their `destructor' is called.")
   "The default timeout in seconds for `jupyter-wait-until'.")
 
 (defvar jupyter-inhibit-handlers nil
-  "Whether or not new requests inhibit some client handlers.
-Do not set this variable directly, locally bind it to either t or
-a list of some of the keywords in `jupyter-message-types' to
-prevent the client from calling some of the handlers. For example
-to prevent a client from calling its execute-reply handler, you
-would do
+  "Whether or not new requests inhibit client handlers.
+If set to t, prevent new requests from running any of the client
+handler methods. If set to a list of `jupyter-message-types',
+prevent handler methods from running only for those message
+types.
+
+For example to prevent a client from calling its :execute-reply
+handler:
 
     (let ((jupyter-inhibit-handlers '(:execute-reply)))
       (jupyter-send-execute-request client ...))
 
-If set to t, disable all client handlers.")
+Do not set this variable directly, let bind it around specific
+requests like the above example.")
 
 ;; Define channel classes for method dispatching based on the channel type
 
@@ -291,11 +294,10 @@ this is called."
 
 ;;; Sending messages
 
-(cl-defmethod jupyter-generate-request ((_client jupyter-kernel-client) _msg)
+(cl-defgeneric jupyter-generate-request ((_client jupyter-kernel-client) _msg)
   "Generate a `jupyter-request' object for MSG.
 This method gives an opportunity for subclasses to initialize a
-`jupyter-request' object or a structure that includes the
-`jupyter-request' slots.
+`jupyter-request' based on the current context.
 
 The default implementation returns a new `jupyter-request' with
 the default value for all slots.

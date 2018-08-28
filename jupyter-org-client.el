@@ -151,9 +151,9 @@ METADATA has the same meaning as in
 
 (defun jupyter-org-image-file-name (data ext)
   "Return a file name based on DATA and EXT.
-`jupyter-org-resource-directory' is used as the directory
-name, the `sha1' hash of DATA is used as the base name, and EXT
-is used as the extension."
+`jupyter-org-resource-directory' is used as the directory name of
+the file, the `sha1' hash of DATA is used as the base name, and
+EXT is used as the extension."
   (let ((dir (prog1 jupyter-org-resource-directory
                (unless (file-directory-p jupyter-org-resource-directory)
                  (make-directory jupyter-org-resource-directory))))
@@ -273,9 +273,12 @@ RENDER-PARAM is the first element of the list returned by
 `jupyter-org-prepare-result', PARAMS are the parameters
 passed to `org-babel-execute:jupyter'.
 
-Append RENDER-PARAM to RESULT-PARAMS if it is a string, otherwise
-if RENDER-PARAM is a cons cell, (KEYWORD . STRING), append
-RENDER-PARAM to the PARAMS."
+Append RENDER-PARAM to the :result-params of PARAMS if it is a
+string. Otherwise, if RENDER-PARAM is a cons cell
+
+    (KEYWORD . STRING)
+
+append RENDER-PARAM to PARAMS."
   (cond
    ((consp render-param)
     (nconc params (list render-param)))

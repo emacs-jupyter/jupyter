@@ -71,9 +71,6 @@
 (declare-function markdown-link-at-pos "markdown-mode" (pos))
 (declare-function markdown-follow-link-at-point "markdown-mode")
 
-;; TODO: Read up on how method tags can be used, see
-;; https://ericabrahamsen.net/tech/2016/feb/bbdb-eieio-object-oriented-elisp.html
-
 ;; TODO: Fallbacks for when the language doesn't have a major mode installed.
 
 ;; TODO: Define `jupyter-kernel-manager-after-restart-hook' to update the
@@ -916,7 +913,7 @@ POS defaults to `point'."
           (and (jupyter-channel-alive-p hb)
                (jupyter-hb-beating-p hb))))))
 
-;;; Buffer text manipulation
+;;; Modifying cell code, truncating REPL buffer
 
 (defun jupyter-repl-cell-code ()
   "Return the code of the current cell."
@@ -1449,8 +1446,12 @@ BEG, END, and LEN have the same meaning as in
 
 (defun jupyter-repl-kill-buffer-query-function ()
   "Ask before killing a Jupyter REPL buffer.
-If the REPL buffer is killed, stop the client and possibly the
-kernel that the REPL buffer is connected to."
+If the REPL buffer is killed, stop the client. If the REPL client
+is connected to a kernel with a `jupyter-kernel-manager', kill
+the kernel.
+
+In addition, exit `jupyter-repl-interaction-mode' in all buffers
+associated with the REPL. See `jupyter-repl-associate-buffer'."
   (when (eq major-mode 'jupyter-repl-mode)
     (if (not (jupyter-channels-running-p jupyter-repl-current-client)) t
       (when (y-or-n-p
@@ -1696,7 +1697,6 @@ the `current-buffer' and display the results in a buffer."
   (cl-destructuring-bind (code pos)
       (jupyter-repl-code-context-at-point 'inspect)
     (let ((buf (current-buffer)))
-      ;; TODO: Reset this to nil when the inspect buffer is closed.
       (with-jupyter-repl-doc-buffer "inspect"
         ;; Set this in the inspect buffer so that
         ;; `jupyter-repl-markdown-follow-link-at-point' works in the inspect
