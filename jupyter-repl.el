@@ -819,17 +819,19 @@ Note, if `point' is not at the beginning of the current cell, the
 first move is to the beginning of the current cell."
   (or N (setq N 1))
   (catch 'done
-    (while (> N 0)
-      (let ((pos (previous-single-property-change (point) 'jupyter-cell)))
-        (while (and pos (not (jupyter-repl-cell-beginning-p pos)))
-          (setq pos (previous-single-property-change pos 'jupyter-cell)))
-        (unless (when pos (goto-char pos) (setq N (1- N)))
-          (goto-char (point-min))
-          ;; Handle edge case when the first cell is at the beginning of the
-          ;; buffer. This happens, for example, when erasing the buffer.
-          (when (jupyter-repl-cell-beginning-p (point))
-            (setq N (1- N)))
-          (throw 'done t)))))
+    (let ((starting-pos (point)))
+      (while (> N 0)
+        (let ((pos (previous-single-property-change (point) 'jupyter-cell)))
+          (while (and pos (not (jupyter-repl-cell-beginning-p pos)))
+            (setq pos (previous-single-property-change pos 'jupyter-cell)))
+          (unless (when pos (goto-char pos) (setq N (1- N)))
+            (goto-char (point-min))
+            ;; Handle edge case when the first cell is at the beginning of the
+            ;; buffer. This happens, for example, when erasing the buffer.
+            (when (and (/= (point) starting-pos)
+                       (jupyter-repl-cell-beginning-p (point)))
+              (setq N (1- N)))
+            (throw 'done t))))))
   N)
 
 (defun jupyter-repl-goto-cell (req)
