@@ -876,7 +876,8 @@ POS defaults to `point'."
   "Is POS the end of a cell?
 POS defaults to `point'."
   (setq pos (or pos (point)))
-  (eq (nth 0 (get-text-property pos 'jupyter-cell)) 'end))
+  (or (= pos (point-max))
+      (eq (nth 0 (get-text-property pos 'jupyter-cell)) 'end)))
 
 (defun jupyter-repl-multiline-p (text)
   "Is TEXT a multi-line string?"
