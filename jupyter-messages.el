@@ -117,9 +117,9 @@ is non-nil. If it is nil, then set the list's second element to
 the result of calling `jupyter--encode' on the third element and
 return the result."
   ;; TODO: Handle date fields, they get turned into list
-  (if (and (listp part) (eq (car part) 'message-part))
-      (or (nth 1 part)
-          (setf (nth 1 part) (jupyter--decode (nth 2 part))))
+  (if (eq (car-safe part) 'message-part)
+      (cl-destructuring-bind (_ encoded-rep decoded-rep) part
+        (or encoded-rep (setf (nth 1 part) (jupyter--encode decoded-rep))))
     (cl-letf (((symbol-function 'json-encode)
                (lambda (object)
                  (cond ((memq object (list t json-null json-false))
@@ -162,9 +162,9 @@ return the result.
 Otherwise, if PART is a string decode it using UTF-8 encoding and
 read it as a JSON string. If it is not valid JSON, return the
 decoded string."
-  (if (and (listp part) (eq (car part) 'message-part))
-      (or (nth 2 part)
-          (setf (nth 2 part) (jupyter--decode (nth 1 part))))
+  (if (eq (car-safe part) 'message-part)
+      (cl-destructuring-bind (_ encoded-rep decoded-rep) part
+        (or decoded-rep (setf (nth 2 part) (jupyter--decode encoded-rep))))
     (let* ((json-object-type 'plist)
            (str (decode-coding-string part 'utf-8))
            (val (condition-case nil
