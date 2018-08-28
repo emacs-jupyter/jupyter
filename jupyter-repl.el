@@ -1241,7 +1241,7 @@ Do this for the current cell."
          (make-string (if (> len 4) len 4) ? ))))))
 
 (cl-defmethod jupyter-handle-error ((client jupyter-repl-client)
-                                    req ename evalue traceback)
+                                    req ename _evalue traceback)
   (when req
     (setq traceback (concat (mapconcat #'identity traceback "\n") "\n"))
     (cond
