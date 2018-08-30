@@ -1870,16 +1870,19 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
     ;; This may have been set to t due to a non-responsive kernel so make sure
     ;; that we try again when restarting.
     (setq-local jupyter-repl-use-builtin-is-complete nil)
+    ;; When restarting, the startup message is not associated with any request
+    ;; so ensure that we are able to capture it.
     (jupyter-set jupyter-repl-current-client 'jupyter-include-other-output t))
   (if (jupyter-repl-client-has-manager-p)
       (let ((manager (oref jupyter-repl-current-client manager)))
-        (if (jupyter-kernel-alive-p manager)
-            (progn
-              (message "%s kernel..." (if shutdown "Shutting down"
-                                        "Restarting"))
-              (jupyter-shutdown-kernel manager (not shutdown)))
+        (cond
+         ((jupyter-kernel-alive-p manager)
+          (message "%s kernel..." (if shutdown "Shutting down"
+                                    "Restarting"))
+          (jupyter-shutdown-kernel manager (not shutdown)))
+         (t
           (message "Starting dead kernel...")
-          (jupyter-start-kernel manager)))
+          (jupyter-start-kernel manager))))
     (unless (jupyter-wait-until-received :shutdown-reply
               (jupyter-send-shutdown-request jupyter-repl-current-client
                 :restart (not shutdown)))
