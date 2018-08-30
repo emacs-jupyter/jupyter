@@ -924,9 +924,8 @@ POS defaults to `point'."
         (push (buffer-substring-no-properties (point) (point-at-eol))
               lines)
         (while (and (= (forward-line 1) 0)
+                    (/= (point) (point-max))
                     (jupyter-repl-cell-line-p))
-          ;; FIXME: Exclude invisible characters at the beginning of the line,
-          ;; these arise from continuation prompts
           (setq pos (next-single-property-change
                      (point) 'invisible nil (point-at-eol)))
           (when pos (goto-char pos))
