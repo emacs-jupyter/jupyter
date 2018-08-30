@@ -124,7 +124,14 @@ METADATA has the same meaning as in
                                              _execution-count
                                              data
                                              metadata)
-  (jupyter-org--handle-data client req data metadata))
+  (cond
+   ((equal (jupyter-repl-language client) "python")
+    ;; The Python kernel emits an execute-result and then a display-data
+    ;; message, so only return the text representation for the execute-result.
+    (jupyter-org--handle-data
+     client req (list :text/plain (plist-get data :text/plain)) nil))
+   (t
+    (jupyter-org--handle-data client req data metadata))))
 
 (cl-defmethod jupyter-handle-display-data ((client jupyter-org-client)
                                            (req jupyter-org-request)
