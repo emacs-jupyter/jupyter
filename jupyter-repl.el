@@ -1033,6 +1033,7 @@ lines, truncate it to something less than
         ((or "edit" "edit_magic")
          (with-current-buffer (find-file-other-window
                                (plist-get pl :filename))
+           (goto-char (point-min))
            (forward-line (plist-get pl :line_number))
            (set-window-start (selected-window) (point))))
         ("set_next_input"
