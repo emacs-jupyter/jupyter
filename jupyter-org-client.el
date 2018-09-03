@@ -31,6 +31,7 @@
 (require 'ob)
 
 (declare-function org-at-drawer-p "org")
+(declare-function org-in-regexp "org" (regexp &optional nlines visually))
 (declare-function org-babel-python-table-or-string "ob-python" (results))
 
 (defcustom jupyter-org-resource-directory "./.ob-jupyter/"
