@@ -125,10 +125,10 @@ if LANG cannot be determined, fall back to
     (jupyter-repl-associate-buffer
      (org-babel-jupyter-initiate-session session params))))
 
-(defun org-babel-prep-session:jupyter (session params &optional no-execute)
+(defun org-babel-prep-session:jupyter (session params &optional delay-eval)
   "Prepare a Jupyter SESSION according to PARAMS.
-If optional argument NO-EXECUTE is non-nil, do not execute any of
-the header variables in PARAMS."
+If DELAY-EVAL is non-nil, delay the evaluation of the header
+variables in PARAMS."
   (let ((buffer (org-babel-jupyter-initiate-session session params))
         (var-lines (org-babel-variable-assignments:jupyter params)))
     (with-current-buffer buffer
@@ -138,16 +138,16 @@ the header variables in PARAMS."
          (mapconcat #'identity var-lines "\n"))
         ;; For `org-babel-load-session:jupyter', ensure that the loaded code
         ;; starts on a new line.
-        (when no-execute
+        (when delay-eval
           (insert "\n")))
-      (unless no-execute
+      (unless delay-eval
         (jupyter-send-execute-request jupyter-repl-current-client))
       (current-buffer))))
 
 (defun org-babel-load-session:jupyter (session body params)
   "In a Jupyter SESSION, load BODY according to PARAMS."
   (save-window-excursion
-    (let ((buffer (org-babel-prep-session:jupyter session params 'noexecute)))
+    (let ((buffer (org-babel-prep-session:jupyter session params 'delay-eval)))
       (with-current-buffer buffer
         (insert (org-babel-chomp body))
         (current-buffer)))))
