@@ -202,20 +202,21 @@ returned by `jupyter-find-kernelspecs' will be used."
   "Destructively remove the file result parameters in PARAMS.
 Re-add the file parameters on the next call to
 `org-babel-after-execute-hook'."
-  (let* ((result-params (assq :result-params params))
-         (fresult (member "file" result-params))
-         (silent (member "none" result-params))
-         (fparam (assq :file params)))
-    (when (and (not silent) fresult)
-      (setcar fresult "scalar")
-      (delq fparam params)
-      (cl-labels
-          ((reset
-            ()
-            (setcar fresult "file")
-            (when fparam (nconc params (list fparam)))
-            (remove-hook 'org-babel-after-execute-hook #'reset t)))
-        (add-hook 'org-babel-after-execute-hook #'reset nil t)))))
+  (when (jupyter-org-file-header-arg-p req)
+    (let* ((params (jupyter-org-request-block-params req))
+           (result-params (assq :result-params params))
+           (fresult (member "file" result-params))
+           (fparam (assq :file params)))
+      (unless (jupyter-org-request-silent req)
+        (setcar fresult "scalar")
+        (delq fparam params)
+        (cl-labels
+            ((reset
+              ()
+              (setcar fresult "file")
+              (when fparam (nconc params (list fparam)))
+              (remove-hook 'org-babel-after-execute-hook #'reset t)))
+          (add-hook 'org-babel-after-execute-hook #'reset nil t))))))
 
 (defun org-babel-execute:jupyter (body params)
   "Execute BODY according to PARAMS.

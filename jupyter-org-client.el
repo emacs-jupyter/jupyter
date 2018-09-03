@@ -55,6 +55,13 @@ source code block.")))
   marker
   async)
 
+;;; Predicates
+
+(defun jupyter-org-file-header-arg-p (req)
+  "Determine if the source block of REQ specifies a file header argument."
+  (let ((params (jupyter-org-request-block-params req)))
+    (member "file" (assq :result-params params))))
+
 ;;; `jupyter-kernel-client' interface
 
 (cl-defmethod jupyter-generate-request ((client jupyter-org-client) _msg
@@ -95,19 +102,17 @@ source code block.")))
                                     ename
                                     evalue
                                     traceback)
-  ;; Prevent showing the error as a file link
-  (let* ((params (jupyter-org-request-block-params req))
-         (head (member "file" (alist-get :result-params params))))
-    (and head (setcar head "scalar")))
-  (with-jupyter-repl-doc-buffer "traceback"
-    (jupyter-repl-insert-ansi-coded-text
-     (mapconcat #'identity traceback "\n"))
-    (goto-char (line-beginning-position))
-    (pop-to-buffer (current-buffer)))
-  (jupyter-org-add-result
-   client req (format "%s: %s" ename (ansi-color-apply evalue))))
-
-(defun jupyter-org--handle-data (client req data metadata)
+  ;; Clear the file parameter to prevent showing the error as a file link
+  (when (jupyter-org-file-header-arg-p req)
+    (let ((params (jupyter-org-request-block-params req)))
+      (setcar (member "file" (assq :result-params params)) "scalar")))
+  (let ((emsg (format "%s: %s" ename (ansi-color-apply evalue))))
+    (with-jupyter-repl-doc-buffer "traceback"
+      (jupyter-repl-insert-ansi-coded-text
+       (mapconcat #'identity traceback "\n"))
+      (goto-char (line-beginning-position))
+      (pop-to-buffer (current-buffer)))
+    (jupyter-org-add-result client req emsg)))
   "For CLIENT's REQ, add DATA as a result.
 METADATA has the same meaning as in
 `jupyter-org-prepare-result'."
