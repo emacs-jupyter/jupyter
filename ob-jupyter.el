@@ -198,8 +198,8 @@ returned by `jupyter-find-kernelspecs' will be used."
     (if buffer (pop-to-buffer buffer)
       (user-error "No source block at point"))))
 
-(defun org-babel-jupyter--clear-file-param (params)
-  "Destructively remove the file result parameters in PARAMS.
+(defun org-babel-jupyter-clear-file-param (req)
+  "Destructively remove the file result parameters of REQ.
 Re-add the file parameters on the next call to
 `org-babel-after-execute-hook'."
   (when (jupyter-org-file-header-arg-p req)
@@ -237,7 +237,7 @@ the PARAMS alist."
                 (jupyter-send-execute-request client :code code))))
     (cond
      ((equal (alist-get :async params) "yes")
-      (org-babel-jupyter--clear-file-param (assq :result-params params))
+      (org-babel-jupyter-clear-file-param req)
       (concat (when (member "raw" (assq :result-params params)) ": ")
               (jupyter-request-id req)))
      (t
