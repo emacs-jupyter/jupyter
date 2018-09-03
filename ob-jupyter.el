@@ -234,7 +234,7 @@ the PARAMS alist."
                 ;; internally by org-babel since insertion of results will
                 ;; manipulate it.
                 (oset client block-params params)
-                (jupyter-send-execute-request client params :code code))))
+                (jupyter-send-execute-request client :code code))))
     (cond
      ((equal (alist-get :async params) "yes")
       (org-babel-jupyter--clear-file-param (assq :result-params params))
