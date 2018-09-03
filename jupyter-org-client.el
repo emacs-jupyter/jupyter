@@ -113,14 +113,16 @@ source code block.")))
       (goto-char (line-beginning-position))
       (pop-to-buffer (current-buffer)))
     (jupyter-org-add-result client req emsg)))
+
+(defun jupyter-org-prepare-and-add-result (client req data metadata)
   "For CLIENT's REQ, add DATA as a result.
 METADATA has the same meaning as in
 `jupyter-org-prepare-result'."
   (unless (eq (jupyter-org-request-result-type req) 'output)
-    (jupyter-org-add-result
-     ;; FIXME: Extra work done here when we request silent results
-     client req (jupyter-org-prepare-result
-                 data metadata (jupyter-org-request-block-params req)))))
+    (let* ((params (jupyter-org-request-block-params req))
+           (rendered-data (jupyter-org-prepare-result data metadata params)))
+      ;; FIXME: Extra work done here when we request silent results
+      (jupyter-org-add-result client req rendered-data))))
 
 (cl-defmethod jupyter-handle-execute-result ((client jupyter-org-client)
                                              (req jupyter-org-request)
@@ -131,10 +133,8 @@ METADATA has the same meaning as in
    ((equal (jupyter-repl-language client) "python")
     ;; The Python kernel emits an execute-result and then a display-data
     ;; message, so only return the text representation for the execute-result.
-    (jupyter-org--handle-data
-     client req (list :text/plain (plist-get data :text/plain)) nil))
-   (t
-    (jupyter-org--handle-data client req data metadata))))
+    (setq data (list :text/plain (plist-get data :text/plain)))))
+  (jupyter-org-prepare-and-add-result client req data metadata))
 
 (cl-defmethod jupyter-handle-display-data ((client jupyter-org-client)
                                            (req jupyter-org-request)
@@ -142,9 +142,11 @@ METADATA has the same meaning as in
                                            metadata
                                            ;; TODO: Add request objects as text
                                            ;; properties of source code blocks
-                                           ;; to implement display IDs
+                                           ;; to implement display IDs. Or how
+                                           ;; can #+NAME be used as a display
+                                           ;; ID?
                                            _transient)
-  (jupyter-org--handle-data client req data metadata))
+  (jupyter-org-prepare-and-add-result client req data metadata))
 
 (cl-defmethod jupyter-handle-execute-reply ((client jupyter-org-client)
                                             (_req jupyter-org-request)
