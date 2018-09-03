@@ -87,9 +87,7 @@ source code block.")))
                                      execution-state)
   (when (and (jupyter-org-request-async req)
              (equal execution-state "idle"))
-    (unless (jupyter-org-request-id-cleared-p req)
-      (jupyter-org--clear-request-id req)
-      (setf (jupyter-org-request-id-cleared-p req) t))
+    (jupyter-org-clear-request-id req)
     (run-hooks 'org-babel-after-execute-hook)))
 
 (cl-defmethod jupyter-handle-error ((client jupyter-org-client)
@@ -318,27 +316,30 @@ the PARAMS list. If RENDER-PARAM is a string, remove it from the
    ((not (null render-param))
     (error "Render parameter unsupported (%s)" render-param))))
 
-(defun jupyter-org--clear-request-id (req)
-  "Delete the request id of REQ when prepending or appending results."
-  (save-excursion
-    (let ((start (org-babel-where-is-src-block-result)))
-      (when start
-        (goto-char start)
-        (forward-line 1)
-        (when (search-forward (jupyter-request-id req) nil t)
-          (delete-region (line-beginning-position)
-                         (1+ (line-end-position)))
-          ;; Delete the entire drawer when there was nothing inside of it
-          ;; except for the id.
-          (when (and (org-at-drawer-p)
-                     (progn
-                       (forward-line -1)
-                       (org-at-drawer-p)))
-            (delete-region
-             (point)
-             (progn
-               (forward-line 1)
-               (1+ (line-end-position))))))))))
+(defun jupyter-org-clear-request-id (req)
+  "Delete the ID of REQ in the `org-mode' buffer if present."
+  (unless (jupyter-org-request-id-cleared-p req)
+    (org-with-point-at (jupyter-org-request-marker req)
+      (save-excursion
+        (let ((start (org-babel-where-is-src-block-result)))
+          (when start
+            (goto-char start)
+            (forward-line 1)
+            (when (search-forward (jupyter-request-id req) nil t)
+              (delete-region (line-beginning-position)
+                             (1+ (line-end-position)))
+              ;; Delete the entire drawer when there was nothing inside of it
+              ;; except for the id.
+              (when (and (org-at-drawer-p)
+                         (progn
+                           (forward-line -1)
+                           (org-at-drawer-p)))
+                (delete-region
+                 (point)
+                 (progn
+                   (forward-line 1)
+                   (1+ (line-end-position))))))))))
+    (setf (jupyter-org-request-id-cleared-p req) t)))
 
 ;; TODO: Externalize this, for example by adding a slot for transormation
 ;; functions to a `jupyter-org-client'. Or for a `jupyter-org-request' object
@@ -385,11 +386,9 @@ block for the request."
         (let ((params (jupyter-org-request-block-params req))
               (kernel-lang (jupyter-repl-language client)))
           (org-with-point-at (jupyter-org-request-marker req)
-            (unless (jupyter-org-request-id-cleared-p req)
-              (jupyter-org--clear-request-id req)
-              (jupyter-org--inject-render-param "append" params)
-              (setf (jupyter-org-request-id-cleared-p req) t))
-            (jupyter-org-insert-results result params kernel-lang)))
+            (jupyter-org-clear-request-id req)
+            (jupyter-org-insert-results result params kernel-lang))
+          (jupyter-org--inject-render-param "append" params))
       (push result (jupyter-org-request-results req)))))
 
 (defun jupyter-org-insert-results (results params kernel-lang)
