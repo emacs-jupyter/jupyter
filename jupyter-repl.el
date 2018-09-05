@@ -1863,14 +1863,14 @@ It the kernel doesn't respond within TIMEOUT seconds, return nil."
       (cl-destructuring-bind (&key status found data metadata &allow-other-keys)
           (jupyter-message-content msg)
         (when (and (equal status "ok") found)
-          (if buffer
-              (with-current-buffer buffer
-                (prog1 buffer
+          (with-current-buffer (or buffer (generate-new-buffer " *temp*"))
+            (unwind-protect
+                (progn
                   (jupyter-repl-insert-data data metadata)
-                  (goto-char (point-min))))
-            (with-temp-buffer
-              (jupyter-repl-insert-data data metadata)
-              (buffer-string))))))))
+                  (goto-char (point-min))
+                  (or buffer (buffer-string)))
+              (unless buffer
+                (kill-buffer (current-buffer))))))))))
 
 (defun jupyter-repl-inspect-at-point ()
   "Inspect the code at point.
