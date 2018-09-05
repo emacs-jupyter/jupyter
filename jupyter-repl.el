@@ -164,7 +164,7 @@ either \"idle\", \"busy\", or \"starting\".")
   "An alist of (MODE . BUFFER) pairs used for fontification.
 See `jupyter-repl-fontify-according-to-mode'.")
 
-(defvar jupyter-repl-use-builtin-is-complete nil
+(defvar-local jupyter-repl-use-builtin-is-complete nil
   "Whether or not to send `:is-complete-request's to a kernel.
 If a Jupyter kernel does not respond to an is_complete_request,
 the buffer local value of this variable is set to t and code in a
@@ -1405,7 +1405,7 @@ execute the current cell."
                   (unless res
                     (message "Kernel did not respond to is-complete-request, using built-in is-complete.
 Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
-                    (setq-local jupyter-repl-use-builtin-is-complete t)
+                    (setq jupyter-repl-use-builtin-is-complete t)
                     (jupyter-repl-ret force)))
               (goto-char (point-max))
               (let ((complete-p (equal (buffer-substring
