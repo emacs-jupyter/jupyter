@@ -1504,18 +1504,129 @@ value."
 
 ;;; Completion
 
-(defun jupyter-repl-code-context-at-point (type)
+(defconst jupyter-argument-completion-regexp
+  (rx
+   (group "(" (zero-or-more anything) ")")
+   (one-or-more anything) " "
+   (group (one-or-more anything)) ?: (group (one-or-more digit)))
+  "Regular expression to match arguments and file locations.")
+
+;;; Helpers for completion interface
+
+(defun jupyter-completion-symbol-beginning (&optional pos)
+  "Return the starting position of a completion symbol.
+If POS is non-nil return the position of the symbol before POS
+otherwise return the position of the symbol before point."
+  (save-excursion
+    (and pos (goto-char pos))
+    (+ (point) (skip-syntax-backward "w_"))))
+
+;; Adapted from `company-mode'
+(defun jupyter-completion-grab-symbol-cons (re &optional max-len)
+  "Return the current completion prefix before point.
+Return either a STRING or a (STRING . t) pair. If RE matches the
+beginning of the current symbol before point, return the latter.
+Otherwise return the symbol before point. If no completion can be
+done at point, return nil.
+
+MAX-LEN is the maximum number of characters to search behind the
+begiining of the symbol at point to look for a match of RE."
+  (let ((symbol (if (looking-at "\\>")
+                    (buffer-substring
+                     (point) (jupyter-completion-symbol-beginning))
+                  (unless (and (char-after)
+                               (memq (char-syntax (char-after)) '(?w ?_)))
+                    ""))))
+    (when symbol
+      (save-excursion
+        (forward-char (- (length symbol)))
+        (if (looking-back re (if max-len
+                                 (- (point) max-len)
+                               (line-beginning-position)))
+            (cons symbol t)
+          symbol)))))
+
+(defun jupyter-completion-floating-point-p ()
+  "Return non-nil if the text before `point' may be a floating point number.
+If the preceeding two characters before point are \"[0-9].\"
+return non-nil, otherwise return nil."
+  (and (= (char-before (point)) ?.)
+       (<= ?0 (char-before (1- (point))) ?9)))
+
+;;; Extracting arguments from argument strings
+
+(defun jupyter-completion--arg-extract-1 (pos)
+  "Helper function for `arg-extract-top'.
+Extract the arguments starting at POS and narrowing to the first
+SEXP."
+  (save-restriction
+    (goto-char pos)
+    (narrow-to-region
+     pos (save-excursion (forward-sexp) (point)))
+    (jupyter-completion--arg-extract)))
+
+(defun jupyter-completion--arg-extract ()
+  "Extract arguments from an argument string.
+Works for Julia and Python."
+  ;; TODO: This only extracts out arguments between {}, () pairs but I need to
+  ;; also consider how to extract single arguments like the T in C::T
+  (let (arg-info
+        inner-args ppss depth inner
+        (start (1+ (point-min)))
+        (get-sexp
+         (lambda ()
+           (buffer-substring-no-properties
+            (point) (progn (forward-sexp) (point)))))
+        (get-string
+         (lambda (start)
+           (string-trim
+            (buffer-substring-no-properties
+             start (1- (point)))))))
+    (while (re-search-forward ",\\|::" nil t)
+      (setq ppss (syntax-ppss)
+            depth (nth 0 ppss)
+            inner (nth 1 ppss))
+      (cl-case (char-before)
+        (?:
+         (if (eq (char-after) ?{)
+             (push (jupyter-completion--arg-extract-1 (point)) inner-args)
+           (push (list (list (funcall get-sexp))) inner-args)))
+        (?,
+         (if (/= depth 1)
+             (push (jupyter-completion--arg-extract-1 inner) inner-args)
+           (push (cons (funcall get-string start) (pop inner-args))
+                 arg-info)
+           (setq start (1+ (point)))))))
+    (goto-char (point-max))
+    (push (cons (funcall get-string start) (pop inner-args)) arg-info)
+    (nreverse arg-info)))
+
+(defun jupyter-completion--make-arg-snippet (args)
+  "Construct a snippet from ARGS."
+  (cl-loop
+   with i = 1
+   for top-args in args
+   ;; TODO: Handle nested arguments
+   for (arg . inner-args) = top-args
+   collect (format "${%d:%s}" i arg) into constructs
+   and do (setq i (1+ i))
+   finally return
+   (concat "(" (mapconcat #'identity constructs ", ") ")")))
+
+;;; Getting the completion context
+
+(defun jupyter-code-context-at-point (type)
   "Return a cons cell, (CODE . POS), for the context around `point'.
 CODE is the required context for TYPE (either `inspect' or
-`complete') and POS is the relative position of `point' within
+`completion') and POS is the relative position of `point' within
 CODE.
 
 The returned CODE depends on the `major-mode' of the
 `current-buffer'. If the `major-mode' is `jupyter-repl-mode',
 CODE is the contents of the current cell. Otherwise its either
-the line up to `point' if TYPE is `complete' or the entire line
+the line up to `point' if TYPE is `completion' or the entire line
 if TYPE is `inspect'."
-  (unless (memq type '(complete inspect))
+  (unless (memq type '(completion inspect))
     (error "Type not `complete' or `inspect' (%s)" type))
   (let (code pos)
     (cl-case type
@@ -1544,76 +1655,64 @@ if TYPE is `inspect'."
                pos (- (point) (line-beginning-position))))))
     (list code pos)))
 
-(defun jupyter-repl-completion-prefix ()
+(defun jupyter-completion-prefix ()
   "Return the prefix for the current completion context.
 Note that the prefix returned is not the content sent to the
 kernel, but the symbol at `point'. See
-`jupyter-repl-code-context-at-point' for what is actually sent."
+`jupyter-code-context-at-point' for what is actually sent."
   (when jupyter-repl-current-client
-    (let ((lang-mode (jupyter-repl-language-mode jupyter-repl-current-client)))
+    (let ((lang (jupyter-repl-language jupyter-repl-current-client))
+          (lang-mode (jupyter-repl-language-mode jupyter-repl-current-client)))
       (and (memq major-mode `(,lang-mode jupyter-repl-mode))
            ;; No completion in finalized cells
            (not (get-text-property (point) 'read-only))
-           (or (when (looking-at "\\_>")
-                 (let* ((beg (save-excursion
-                               (+ (point) (skip-syntax-backward "w_"))))
-                        (char (char-before beg)))
-                   ;; Handle LaTeX in the Julia kernel.
-                   ;;
-                   ;; TODO: Generalize this. Note that in julia-mode \ has
-                   ;; a punctuation syntax class.
-                   (and char (= char ?\\)
-                        (buffer-substring (1- beg) (point)))))
-               (let* ((s (company-grab-symbol-cons "\\.\\|::\\|->" 2)))
-                 ;; Do not complete on floating point numbers
-                 (unless (and (consp s)
-                              (string= (car s) "")
-                              (= (char-before (point)) ?.)
-                              (<= ?0 (char-before (1- (point))) ?9))
-                   s)))))))
+           (cond
+            ;; Completing argument lists
+            ((and (eq (char-syntax (char-before)) ?\()
+                  (or (not (char-after))
+                      (not (memq (char-syntax (char-after)) '(?w ?_)))))
+             (buffer-substring
+              (jupyter-completion-symbol-beginning (1- (point)))
+              (point)))
+            (t
+             (let* ((s (jupyter-completion-grab-symbol-cons "\\." 1)))
+               (unless (and (consp s) (string= (car s) "")
+                            (jupyter-completion-floating-point-p))
+                 s))))))))
 
-(defun jupyter-repl-construct-completion-candidates
-    (prefix matches metadata start end)
+(defun jupyter-completion-construct-candidates (matches metadata)
   "Construct candidates for completion.
-PREFIX is the prefix used to start the current completion.
 MATCHES are the completion matches returned by the kernel,
 METADATA is any extra data associated with MATCHES that was
-supplied by the kernel. START and END are the start and end of
-text that the elements of MATCHES will replace. Note that START
-and END are relative to the `jupyter-repl-code-context-at-point'
-and not to PREFIX. See `jupyter-repl-completion-prefix' for the
-value that PREFIX takes.
-
-This function constructs candidates assuming that `company-mode'
-is used for completion."
+supplied by the kernel."
   (let* ((matches (append matches nil))
          (tail matches)
          (types (append (plist-get metadata :_jupyter_types_experimental) nil))
-         ;; TODO: Handle the case when the matches are method signatures in the
-         ;; Julia kernel. This information would be useful for doing some kind
-         ;; of eldoc like feature.
-         (match-prefix-len (- (- end start) (length prefix))))
-    ;; FIXME: How to complete things like 000|? In the python kernel,
-    ;; completions will return matchs to append like and, or, ... but the
-    ;; prefix 000 was provided so company will replace 000 with the match if it
-    ;; is accepted instead of appending it. In this case end == start ==
-    ;; (length prefix). How can we append the match? The only way I can see is
-    ;; to add 000 as a prefix to every match.
-    (cond
-     ((> match-prefix-len 0)
-      ;; Remove the beginning characters of a match when len > 0. This happens
-      ;; when completing things like foo.ba, the python kernel will return
-      ;; matches like foo.bar, foo.baz, but we only want the bar or baz part.
-      (while (car tail)
-        (setcar tail (substring (car tail) match-prefix-len))
-        (setq tail (cdr tail))))
-     ((< match-prefix-len 0)
-      ;; Add the prefix when necessaey
-      ;; (while (car tail)
-      ;;   (put-text-property 0 1 'match (abs match-prefix-len) (car tail))
-      ;;   (setq tail (cdr tail)))
-
-      ))
+         (buf))
+    (save-current-buffer
+      (unwind-protect
+          (while tail
+            (when (string-match jupyter-repl-argument-completion-regexp (car tail))
+              (let* ((str (car tail))
+                     (args-str (match-string 1 str))
+                     (end (match-end 1))
+                     (path (match-string 2 str))
+                     (line (string-to-number (match-string 3 str)))
+                     (snippet (progn
+                                (unless buf
+                                  (setq buf (generate-new-buffer " *temp*"))
+                                  (set-buffer buf))
+                                (insert args-str)
+                                (goto-char (point-min))
+                                (prog1 (jupyter-completion--make-arg-snippet
+                                        (jupyter-completion--arg-extract))
+                                  (erase-buffer)))))
+                (put-text-property 0 1 'snippet snippet (car tail))
+                (put-text-property 0 1 'location (cons path line) (car tail))
+                (setcar tail (substring (car tail) 0 end))
+                (put-text-property 0 1 'docsig (car tail) (car tail))))
+            (setq tail (cdr tail)))
+        (when buf (kill-buffer buf))))
     ;; When a type is supplied add it as an annotation
     (when types
       (let ((max-len (apply #'max (mapcar #'length matches))))
@@ -1625,49 +1724,121 @@ is used for completion."
          matches types)))
     matches))
 
-(defun company-jupyter-repl (command &optional arg &rest _)
-  "`company-mode' backend using a `jupyter-repl-client'.
-COMMAND and ARG have the same meaning as the elements of
-`company-backends'."
-  (interactive (list 'interactive))
-  (cl-case command
-    (interactive (company-begin-backend 'company-jupyter-repl))
-    (sorted t)
-    (prefix (jupyter-repl-completion-prefix))
-    (candidates
-     (cons
-      :async
-      (lambda (cb)
-        (cl-destructuring-bind (code pos)
-            (jupyter-repl-code-context-at-point 'complete)
-          (jupyter-add-callback
-              ;; Ignore errors during completion
-              (let ((jupyter-inhibit-handlers t))
-                (jupyter-send-complete-request
-                    jupyter-repl-current-client
-                  :code code :pos pos))
-            :complete-reply
-            (lambda (msg)
-              (cl-destructuring-bind (&key status
-                                           matches metadata
-                                           cursor_start cursor_end
-                                           &allow-other-keys)
-                  (jupyter-message-content msg)
-                (funcall
-                 cb (when (equal status "ok")
-                      (jupyter-repl-construct-completion-candidates
-                       arg matches metadata cursor_start cursor_end))))))))))
-    (ignore-case t)
-    (annotation (get-text-property 0 'annot arg))
-    (doc-buffer (let* ((inhibit-read-only t)
-                       (buf (jupyter-repl--inspect
-                             arg (length arg) nil (company-doc-buffer)
-                             company-async-timeout)))
-                  (when buf
-                    (with-current-buffer buf
-                      (remove-text-properties
-                       (point-max) (point-min) '(read-only)))
-                    buf)))))
+;;; Completion at point interface
+
+(defvar jupyter-completion-last-prefix nil
+  "The last prefix used to fetch candidates.")
+
+(defvar jupyter-completion-cache nil
+  "The cache for completion candidates.
+Can either be a Jupyter message plist or a list of candidates")
+
+(defun jupyter-completion-prefetch (fun)
+  "Get completions for the current completion context.
+Run FUN when the completions are available."
+  (cl-destructuring-bind (code pos)
+      (jupyter-code-context-at-point 'completion)
+    (let ((req (let ((jupyter-inhibit-handlers t))
+                 (jupyter-send-complete-request
+                     jupyter-repl-current-client
+                   :code code :pos pos))))
+      (prog1 req
+        (jupyter-add-callback req :complete-reply fun)))))
+
+(defvar jupyter-completion--company-timer nil)
+
+(defun jupyter-completion-at-point ()
+  "Function to add to `completion-at-point-functions'."
+  (let ((prefix (jupyter-completion-prefix)) req)
+    (when jupyter-completion--company-timer
+      (cancel-timer jupyter-completion--company-timer))
+    (when prefix
+      (when (consp prefix)
+        (setq prefix (car prefix))
+        (when (and (bound-and-true-p company-mode)
+                   (not company-candidates)
+                   (< (length prefix) company-minimum-prefix-length))
+          ;; Trigger completion similar to `company' when
+          ;; `jupyter-completion-prefix' returns a cons cell.
+          (setq jupyter-completion--company-timer
+                ;; NOTE: When we reach here `company-idle-delay' is `now' since
+                ;; we are already inside a company completion so we can't use
+                ;; it, just use a sensible time value instead.
+                (run-with-timer 0.1 nil 'company-manual-begin))))
+      ;; Prefetch candidates
+      (when (or (not jupyter-completion-last-prefix)
+                (not jupyter-completion-cache)
+                (and
+                 ;; Only when there is no whitespace before point since some
+                 ;; kernel's would give a list of all completions on every
+                 ;; space.
+                 (not (eq (char-syntax (char-before)) ? ))
+                 (or
+                  ;; This case happens when completing things like foo.|
+                  (string= jupyter-completion-last-prefix "")
+                  ;; The obvious condition...
+                  (not (string-prefix-p jupyter-completion-last-prefix prefix))))
+                ;; Invalidate the cache when completing argument lists
+                (and (not (string= prefix ""))
+                     (eq (aref prefix (1- (length prefix))) ?\()))
+        (setq
+         jupyter-completion-last-prefix prefix
+         req (jupyter-completion-prefetch
+              (lambda (msg) (setq jupyter-completion-cache
+                             (cons 'fetched msg))))))
+      (list
+       (- (point) (length prefix)) (point)
+       (completion-table-dynamic
+        (lambda (_)
+          (when (and req (not (jupyter-request-idle-received-p req))
+                     (not (eq (jupyter-message-type
+                               (jupyter-request-last-message req))
+                              :complete-reply)))
+            (jupyter-wait-until-received :complete-reply req))
+          (when (eq (car jupyter-completion-cache) 'fetched)
+            (cl-destructuring-bind (&key status
+                                         matches metadata
+                                         &allow-other-keys)
+                (jupyter-message-content (cdr jupyter-completion-cache))
+              (setq jupyter-completion-cache
+                    (when (equal status "ok")
+                      (jupyter-completion-construct-candidates
+                       matches metadata)))))
+          jupyter-completion-cache))
+       :exit-function
+       #'jupyter-completion--post-completion
+       :company-location
+       (lambda (arg) (get-text-property 0 'location arg))
+       :annotation-function
+       (lambda (arg) (get-text-property 0 'annot arg))
+       :company-docsig
+       (lambda (arg) (get-text-property 0 'docsig arg))
+       :company-doc-buffer
+       #'jupyter-completion--company-doc-buffer))))
+
+(defun jupyter-completion--company-doc-buffer (arg)
+  (let* ((inhibit-read-only t)
+         (buf (jupyter-repl--inspect
+               arg (length arg) nil (company-doc-buffer)
+               company-async-timeout)))
+    (prog1 buf
+      (when buf
+        (with-current-buffer buf
+          (remove-text-properties
+           (point-min) (point-max) '(read-only)))))))
+
+(defun jupyter-completion--post-completion (arg status)
+  "If ARG is a completion with a snippet, expand the snippet.
+Do this only if STATUS is sole or finished."
+  (when (and (memq status '(sole finished))
+             (get-text-property 0 'snippet arg)
+             (bound-and-true-p yas-minor-mode))
+    (yas-expand-snippet
+     (get-text-property 0 'snippet arg)
+     (save-excursion
+       (forward-sexp -1)
+       (point))
+     (point))))
 
 ;;; Inspection
 
@@ -1707,7 +1878,7 @@ Send an inspect request to the `jupyter-repl-current-client' of
 the `current-buffer' and display the results in a buffer."
   (interactive)
   (cl-destructuring-bind (code pos)
-      (jupyter-repl-code-context-at-point 'inspect)
+      (jupyter-code-context-at-point 'inspect)
     (let ((buf (current-buffer)))
       (with-jupyter-repl-doc-buffer "inspect"
         ;; Set this in the inspect buffer so that
@@ -2231,26 +2402,9 @@ the `current-buffer' will automatically have
   :init-value nil
   :keymap jupyter-repl-interaction-map
   (if jupyter-repl-interaction-mode
-      (when (boundp 'company-mode)
-        (unless (cl-find-if
-                 (lambda (x) (or (and (listp x) (memq 'company-jupyter-repl x))
-                            (eq x 'company-jupyter-repl)))
-                 company-backends)
-          (setq-local company-backends
-                      (cons '(company-jupyter-repl
-                              ;; FIXME: These are too useful to give up but
-                              ;; seems more like a personal preference.
-                              :with
-                              company-dabbrev-code
-                              company-gtags
-                              company-etags
-                              company-keywords)
-                            company-backends))))
+      (add-hook 'completion-at-point-functions 'jupyter-completion-at-point nil t)
     (unless (eq major-mode 'jupyter-repl-mode)
-      (kill-local-variable 'jupyter-repl-current-client))
-    (when (boundp 'company-mode)
-      (setq-local company-backends
-                  (delq 'company-jupyter-repl company-backends)))))
+      (kill-local-variable 'jupyter-repl-current-client))))
 
 (defun jupyter-repl-kernel-language-mode-properties (language-info)
   "Get the `major-mode' info of a kernel's language.
