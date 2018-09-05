@@ -1631,8 +1631,15 @@ Works for Julia and Python."
   (list (jupyter-repl-cell-code)
         (1- (jupyter-repl-cell-code-position))))
 
-(defun jupyter-completion-prefix ()
+(cl-defgeneric jupyter-completion-prefix ()
   "Return the prefix for the current completion context.
+This default function checks to see if the
+`jupyter-kernel-language' of the `jupyter-repl-current-client'
+has a `:completion-prefix' support function set by
+`jupyter-kernel-support-put' and calls that function to obtain
+the completion prefix. If the language does not have a completion
+prefix function, `jupyter-completion-grab-symbol-cons' is used.
+
 Note that the prefix returned is not the content sent to the
 kernel, but the symbol at `point'. See
 `jupyter-code-context-at-point' for what is actually sent."
@@ -1655,6 +1662,10 @@ kernel, but the symbol at `point'. See
                (unless (and (consp s) (string= (car s) "")
                             (jupyter-completion-floating-point-p))
                  s))))))))
+
+(cl-defmethod jupyter-completion-prefix (&context (major-mode jupyter-repl-mode))
+  (and (not (get-text-property (point) 'read-only))
+       (cl-call-next-method)))
 
 (defun jupyter-completion-construct-candidates (matches metadata)
   "Construct candidates for completion.

@@ -161,6 +161,31 @@ METADATA has the same meaning as in
 
 
 ;;; Completions in code blocks
+
+(cl-defmethod jupyter-completion-prefix (&context (major-mode org-mode))
+  (when (org-in-src-block-p 'inside)
+    (let* ((el (org-element-at-point))
+           (lang (org-element-property :language el))
+           info params syntax client)
+      (when (string-prefix-p "jupyter-" lang)
+        (setq info (org-babel-get-src-block-info el)
+              params (nth 2 info)
+              client (with-current-buffer
+                         (org-babel-jupyter-initiate-session
+                          (alist-get :session params) params)
+                       (setq syntax (syntax-table))
+                       jupyter-repl-current-client))
+        ;; KLUDGE: Remove the need for setting
+        ;; `jupyter-repl-current-client', its needed so
+        ;; that `jupyter-completion-prefetch' will use the
+        ;; right client, similarly for the less specialized
+        ;; `jupyter-completion-prefix'
+        (setq jupyter-repl-current-client client)
+        ;; Use the syntax table of the language when
+        ;; retrieving the prefix
+        (with-syntax-table syntax
+          (cl-call-next-method))))))
+
 (cl-defmethod jupyter-code-context ((_type (eql inspect))
                                     &context (major-mode org-mode))
   (when (org-in-src-block-p 'inside)
