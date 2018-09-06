@@ -381,7 +381,7 @@ can contain the following keywords along with their values:
 - `:properties' :: A list of text properties and their values to
   be added to the inserted text. This defaults to an empty list.
 
-- `:inherit-properties' :: A non-nil value will use
+- `:inherit' :: A non-nil value will use
   `insert-and-inherit' instead of `insert' for the function used
   to insert the text. This is nil by default."
   (let ((arg nil)
@@ -392,10 +392,10 @@ can contain the following keywords along with their values:
       (cl-case arg
         (:read-only (setq read-only (cadr args)))
         (:properties (setq properties (cadr args)))
-        (:inherit-properties
+        (:inherit
          (setq insert-fun (if (cadr args) #'insert-and-inherit #'insert)))
         (otherwise
-         (error "Keyword not one of `:read-only', `:properties', `:inherit-properties' (`%s')" arg)))
+         (error "Keyword not one of `:read-only', `:properties', `:inherit-' (`%s')" arg)))
       (setq args (cddr args)))
     (setq properties (append (when read-only '(read-only t))
                              properties))
@@ -673,7 +673,7 @@ interpreted as `in'."
        ;; field is so that text motions will not move past this invisible
        ;; character.
        (jupyter-repl-insert
-        :properties '(invisible t rear-nonsticky t front-sticky t field t) " "))
+        :properties '(invisible t rear-nonsticky t front-sticky t) " "))
       ((eq type 'out)
        ;; Output is normally inserted by first going to the end of the output
        ;; for the request. The end of the ouput for a request is at the
@@ -696,7 +696,7 @@ interpreted as `in'."
        ;; See the note for input prompts.
        (jupyter-repl-insert
         :read-only nil
-        :properties '(invisible t rear-nonsticky t front-sticky t field t) " "))))))
+        :properties '(invisible t rear-nonsticky t front-sticky t) " "))))))
 
 (defun jupyter-repl-cell-update-prompt (str)
   "Update the current cell's input prompt.
@@ -958,11 +958,9 @@ REQ is the `jupyter-request' to associate with the current cell."
 
 (defun jupyter-repl-replace-cell-code (new-code)
   "Replace the current cell code with NEW-CODE."
-  ;; Prevent wrapping with `inhibit-read-only' so that an error is thrown when
-  ;; trying to replace a finalized cell.
   (goto-char (jupyter-repl-cell-code-beginning-position))
   (delete-region (point) (jupyter-repl-cell-code-end-position))
-  (jupyter-repl-insert :read-only nil new-code))
+  (jupyter-repl-insert :inherit t :read-only nil new-code))
 
 (defun jupyter-repl-truncate-buffer ()
   "Truncate the `current-buffer' based on `jupyter-repl-maximum-size'.
@@ -1437,6 +1435,27 @@ Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
 
 ;;; Buffer change functions
 
+(defun jupyter-repl-insert-continuation-prompts (bound)
+  "Insert continuation prompts if needed, stopping at BOUND.
+Return the new BOUND since inserting continuation prompts may add
+more characters than were initially in the buffer."
+  (setq bound (set-marker (make-marker) bound))
+  (set-marker-insertion-type bound t)
+  (while (and (< (point) bound)
+              (search-forward "\n" bound 'noerror))
+    (delete-char -1)
+    (jupyter-repl-insert-prompt 'continuation))
+  (prog1 (marker-position bound)
+    (set-marker bound nil)))
+
+(defun jupyter-repl-mark-as-cell-code (beg end)
+  "Add the field property to text between (BEG . END) if within a code cell."
+  ;; Handle field boundary at the front of the cell code
+  (when (= beg (jupyter-repl-cell-code-beginning-position))
+    (put-text-property beg (1+ beg) 'front-sticky t))
+  (when (text-property-not-all beg end 'field 'cell-code)
+    (font-lock-fillin-text-property beg end 'field 'cell-code)))
+
 (defun jupyter-repl-after-buffer-change (beg end len)
   "Insert line continuation prompts in `jupyter-repl-mode' buffers.
 BEG, END, and LEN have the same meaning as in
@@ -1446,15 +1465,10 @@ BEG, END, and LEN have the same meaning as in
      ;; Insertions only
      ((= len 0)
       (goto-char beg)
-      (setq end (set-marker (make-marker) end))
-      (set-marker-insertion-type end t)
       (when (jupyter-repl-cell-line-p)
-        (while (and (< (point) end)
-                    (search-forward "\n" end 'noerror))
-          (delete-char -1)
-          (jupyter-repl-insert-prompt 'continuation)))
-      (goto-char end)
-      (set-marker end nil)))))
+        (setq end (jupyter-repl-insert-continuation-prompts end))
+        (jupyter-repl-mark-as-cell-code beg end))
+      (goto-char end)))))
 
 (defun jupyter-repl-kill-buffer-query-function ()
   "Ask before killing a Jupyter REPL buffer.
