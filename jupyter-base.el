@@ -200,12 +200,8 @@ fields:
 request to a kernel. A `jupyter-request' consists of the
 following fields:
 
-- -ID :: A UUID to match a `jupyter-request' to the received
-        messages of a kernel. Note that this is an internal
-        field, to access the ID of a request use
-        `jupyter-request-id'. Note that `jupyter-request-id'
-        blocks until there is a guarantee that the request was
-        sent off to the kernel.
+- ID :: A UUID to match a `jupyter-request' to the received
+        messages of a kernel.
 
 - TIME :: The time at which the request was made.
 
@@ -228,20 +224,12 @@ following fields:
 - CALLBACKS :: An alist mapping message types to their
                corresponding callbacks. This alist is modified
                through calls to `jupyter-add-callback' on the request."
-  (-id)
+  (id "")
   (time (current-time))
   (idle-received-p nil)
   (last-message nil)
   (inhibited-handlers nil)
   (callbacks))
-
-(defun jupyter-request-id (req)
-  "Get the message ID for REQ."
-  (or (jupyter-request--id req)
-      (with-timeout (0.5 (error "Request not processed"))
-        (while (null (jupyter-request--id req))
-          (sleep-for 0 10))
-        (jupyter-request--id req))))
 
 ;;; Connecting to a kernel's channels
 

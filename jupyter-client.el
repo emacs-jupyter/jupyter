@@ -336,7 +336,7 @@ response to the sent message, see `jupyter-add-callback' and
       ;; `:pending-requests'.
       (unless (eq (oref channel type) :stdin)
         (let ((req (jupyter-generate-request client message)))
-          (setf (jupyter-request--id req) msg-id)
+          (setf (jupyter-request-id req) msg-id)
           (setf (jupyter-request-inhibited-handlers req) jupyter-inhibit-handlers)
           (jupyter--ioloop-push-request client req)
           req)))))

@@ -1518,7 +1518,7 @@ value."
 
 ;;; Completion
 
-(defconst jupyter-argument-completion-regexp
+(defconst jupyter-completion-argument-regexp
   (rx
    (group "(" (zero-or-more anything) ")")
    (one-or-more anything) " "
@@ -1535,7 +1535,7 @@ otherwise return the position of the symbol before point."
     (and pos (goto-char pos))
     (+ (point) (skip-syntax-backward "w_"))))
 
-;; Adapted from `company-mode'
+;; Adapted from `company-grab-symbol-cons'
 (defun jupyter-completion-grab-symbol-cons (re &optional max-len)
   "Return the current completion prefix before point.
 Return either a STRING or a (STRING . t) pair. If RE matches the
@@ -1706,7 +1706,7 @@ supplied by the kernel."
     (save-current-buffer
       (unwind-protect
           (while tail
-            (when (string-match jupyter-repl-argument-completion-regexp (car tail))
+            (when (string-match jupyter-completion-argument-regexp (car tail))
               (let* ((str (car tail))
                      (args-str (match-string 1 str))
                      (end (match-end 1))
@@ -1721,9 +1721,9 @@ supplied by the kernel."
                                 (prog1 (jupyter-completion--make-arg-snippet
                                         (jupyter-completion--arg-extract))
                                   (erase-buffer)))))
+                (setcar tail (substring (car tail) 0 end))
                 (put-text-property 0 1 'snippet snippet (car tail))
                 (put-text-property 0 1 'location (cons path line) (car tail))
-                (setcar tail (substring (car tail) 0 end))
                 (put-text-property 0 1 'docsig (car tail) (car tail))))
             (setq tail (cdr tail)))
         (when buf (kill-buffer buf))))
