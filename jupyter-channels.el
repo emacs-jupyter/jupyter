@@ -205,48 +205,40 @@ and is called when the kernel has not responded for 5
     :type boolean
     :initform t
     :documentation "A flag variable indicating that the heartbeat
- channel is paused and not communicating with the kernel. To
- pause the heartbeat channel use `jupyter-hb-pause', to unpause
- use `jupyter-hb-unpause'.")
-   (timer
-    :type (or null timer)
-    :initform nil
-    :documentation "The timer which sends/receives heartbeat
- messages to/from the kernel."))
+channel is paused and not communicating with the kernel. To
+pause the heartbeat channel use `jupyter-hb-pause', to unpause
+use `jupyter-hb-unpause'."))
   :documentation "A base class for heartbeat channels.")
 
 (cl-defmethod jupyter-channel-alive-p ((channel jupyter-hb-channel))
   "Return non-nil if CHANNEL is alive."
-  (and (oref channel timer) (memq (oref channel timer) timer-list)))
+  (zmq-socket-p (oref channel socket)))
 
 (cl-defmethod jupyter-hb-beating-p ((channel jupyter-hb-channel))
   "Return non-nil if the kernel associated with CHANNEL is still
 connected."
-  (unless (jupyter-channel-alive-p channel)
-    (error "Heartbeat channel not alive"))
-  (oref channel beating))
+  (and (jupyter-channel-alive-p channel)
+       (not (oref channel paused))
+       (oref channel beating)))
 
 (cl-defmethod jupyter-hb-pause ((channel jupyter-hb-channel))
   "Pause checking for heartbeat events on CHANNEL."
-  (unless (jupyter-channel-alive-p channel)
-    (error "Heartbeat channel not alive"))
   (oset channel paused t))
 
 (cl-defmethod jupyter-hb-unpause ((channel jupyter-hb-channel))
   "Unpause checking for heatbeat events on CHANNEL."
-  (unless (jupyter-channel-alive-p channel)
-    (error "Heartbeat channel not alive"))
-  (oset channel paused nil))
+  (when (oref channel paused)
+    (if (zmq-socket-p (oref channel socket))
+        (jupyter-hb--send-ping channel)
+      (jupyter-start-channel channel))))
 
 (cl-defmethod jupyter-stop-channel ((channel jupyter-hb-channel))
   "Stop the heartbeat CHANNEL.
 Stop the timer of the heartbeat channel."
   (when (jupyter-channel-alive-p channel)
-    (cancel-timer (oref channel timer))
-    (zmq-socket-set (oref channel socket) zmq-LINGER 0)
+    (oset channel paused t)
     (zmq-close (oref channel socket))
-    (oset channel socket nil)
-    (oset channel timer nil)))
+    (oset channel socket nil)))
 
 (defun jupyter-hb-on-kernel-dead (hb-channel fun)
   "When the kernel connected to HB-CHANNEL dies call FUN.
@@ -255,6 +247,33 @@ a response after 5 `time-to-dead' periods."
   (declare (indent 1))
   (cl-check-type hb-channel jupyter-hb-channel)
   (oset hb-channel kernel-died-cb fun))
+
+(defun jupyter-hb--send-ping (channel &optional counter)
+  (unless (oref channel paused)
+    (let ((sock (oref channel socket)))
+      (when (zmq-socket-p sock)
+        (zmq-send sock "ping")
+        (run-with-timer
+         (oref channel time-to-dead) nil
+         (lambda ()
+           (unless (oset channel beating
+                         (condition-case nil
+                             (and (zmq-recv sock zmq-NOBLOCK) t)
+                           ((zmq-EINTR zmq-EAGAIN) nil)))
+             (let ((identity (zmq-socket-get sock zmq-IDENTITY)))
+               (zmq-close sock)
+               (oset channel socket
+                     (jupyter-connect-channel
+                      :hb (oref channel endpoint) identity)))
+             (when (and (integerp counter) (> counter 5))
+               (oset channel paused t)
+               (when (oref channel kernel-died-cb)
+                 (funcall (oref channel kernel-died-cb)))))
+           (jupyter-hb--send-ping
+            channel
+            (unless (oref channel beating)
+              (or (integerp counter) (setq counter 0))
+              (1+ counter)))))))))
 
 (cl-defmethod jupyter-start-channel ((channel jupyter-hb-channel) &key identity)
   "Start a heartbeat CHANNEL.
@@ -265,40 +284,7 @@ channel, starts the timer."
   (unless (jupyter-channel-alive-p channel)
     (oset channel socket (jupyter-connect-channel
                           :hb (oref channel endpoint) identity))
-    ;; TODO: Do something when the kernel is for sure dead, i.e. when a message
-    ;; has not been received for a certain number of time-to-dead periods. For
-    ;; example run a hook and pause the channel.
-    (oset channel timer
-          (run-with-timer
-           0 (oref channel time-to-dead)
-           (let ((sent nil)
-                 (no-response-count 0))
-             (lambda (channel)
-               (let ((sock (oref channel socket)))
-                 (when sent
-                   (setq sent nil)
-                   (oset channel beating
-                         (condition-case nil
-                             (and (zmq-recv sock zmq-NOBLOCK) t)
-                           ((zmq-EINTR zmq-EAGAIN) nil)))
-                   (if (oref channel beating)
-                       (setq no-response-count 0)
-                     ;; Reset the connection
-                     (zmq-close sock)
-                     (setq sock (jupyter-connect-channel
-                                 :hb (oref channel endpoint) identity))
-                     (oset channel socket sock)
-                     ;; Pause the channel when it has been unresponsive after a
-                     ;; cetain number of time-to-dead periods
-                     (if (< no-response-count 5)
-                         (setq no-response-count (1+ no-response-count))
-                       (oset channel paused t)
-                       (when (oref channel kernel-died-cb)
-                         (funcall (oref channel kernel-died-cb))))))
-                 (unless (oref channel paused)
-                   (zmq-send sock "ping")
-                   (setq sent t)))))
-           channel))))
+    (jupyter-hb--send-ping channel)))
 
 (provide 'jupyter-channels)
 
