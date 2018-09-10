@@ -421,9 +421,30 @@ Any other command sent to the subprocess will be ignored."
               (channels `((:stdin . ,stdin)
                           (:shell . ,shell)
                           (:iopub . ,iopub)))
-              (messages nil))
+              (messages nil)
+              (poller nil)
+              (read-command-from-parent
+               (lambda ()
+                 (when (alist-get 0 events)
+                   (setf (alist-get 0 events nil 'remove) nil)
+                   (jupyter--ioloop-do-command poller channels))))
+              (queue-messages
+               (lambda ()
+                 (dolist (type-channel channels)
+                   (cl-destructuring-bind (type . channel) type-channel
+                     (when (zmq-assoc (oref channel socket) events)
+                       (push (cons type (jupyter-recv channel)) messages))))))
+              (send-messages-to-parent
+               (lambda ()
+                 ;; TODO: Throttle messages if they are coming in too hot
+                 (when messages
+                   (setq messages (nreverse messages))
+                   (while messages
+                     (prin1 (cons 'recvd (pop messages))))
+                   (zmq-flush 'stdout)))))
          (condition-case nil
-             (let ((poller (zmq-poller)))
+             (progn
+               (setq poller (zmq-poller))
                ;; Poll for stdin messages
                (zmq-poller-add poller 0 zmq-POLLIN)
                (zmq-prin1 '(start))
@@ -432,21 +453,9 @@ Any other command sent to the subprocess will be ignored."
                         (condition-case nil
                             (zmq-poller-wait-all poller (1+ (length channels)) -1)
                           ((zmq-EAGAIN zmq-EINTR zmq-ETIMEDOUT) nil))))
-                   ;; Perform a command from stdin
-                   (when (alist-get 0 events)
-                     (setf (alist-get 0 events nil 'remove) nil)
-                     (jupyter--ioloop-do-command poller channels))
-                   ;; Queue received messages
-                   (dolist (type-channel channels)
-                     (cl-destructuring-bind (type . channel) type-channel
-                       (when (zmq-assoc (oref channel socket) events)
-                         (push (cons type (jupyter-recv channel)) messages))))
-                   ;; TODO: Throttle messages if they are coming in too hot
-                   (when messages
-                     (setq messages (nreverse messages))
-                     (while messages
-                       (prin1 (cons 'recvd (pop messages))))
-                     (zmq-flush 'stdout)))))
+                   (funcall read-command-from-parent)
+                   (funcall queue-messages)
+                   (funcall send-messages-to-parent))))
            (quit
             (mapc #'jupyter-stop-channel (mapcar #'cdr channels))
             (zmq-prin1 '(quit))))))))
