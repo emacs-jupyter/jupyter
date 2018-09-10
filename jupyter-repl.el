@@ -159,7 +159,6 @@ either \"idle\", \"busy\", or \"starting\".")
 (defvar jupyter-repl-history nil
   "The history of the current Jupyter REPL.")
 
-;; TODO: Proper cleanup of these buffers when done with a client
 (defvar jupyter-repl-fontify-buffers nil
   "An alist of (MODE . BUFFER) pairs used for fontification.
 See `jupyter-repl-fontify-according-to-mode'.")
@@ -653,6 +652,7 @@ interpreted as `in'."
     (error "Prompt type can only be (`in', `out', or `continuation')"))
   (jupyter-repl-without-continuation-prompts
    (let ((inhibit-read-only t))
+     ;; The newline that `jupyter-repl--make-prompt' will overlay.
      (jupyter-repl-newline)
      (overlay-recenter (point))
      (cond
@@ -1170,7 +1170,6 @@ message."
 (cl-defmethod jupyter-handle-clear-output ((client jupyter-repl-client)
                                            req
                                            wait)
-  ;; TODO: Take into account json-false elsewhere
   (unless (oset client wait-to-clear (eq wait t))
     (cond
      ((eq (jupyter-message-parent-type
@@ -1582,8 +1581,6 @@ SEXP."
 (defun jupyter-completion--arg-extract ()
   "Extract arguments from an argument string.
 Works for Julia and Python."
-  ;; TODO: This only extracts out arguments between {}, () pairs but I need to
-  ;; also consider how to extract single arguments like the T in C::T
   (let (arg-info
         inner-args ppss depth inner
         (start (1+ (point-min)))
@@ -1909,7 +1906,6 @@ the `current-buffer' and display the results in a buffer."
         ;; types?
         (if (not (jupyter-repl--inspect code pos nil (current-buffer)))
             (message "Inspect timed out")
-          ;; TODO: Customizable action
           (display-buffer (current-buffer))
           (set-window-start (get-buffer-window) (point-min)))))))
 
@@ -2246,7 +2242,6 @@ in the appropriate direction, to the saved element."
   (add-hook 'pre-redisplay-functions 'jupyter-repl-preserve-window-margins nil t)
   ;; Initialize the REPL
   (buffer-disable-undo)
-  ;; TODO: Rename to initialize-jupyter-hooks
   (jupyter-repl-initialize-hooks)
   (jupyter-repl-initialize-fontification)
   (jupyter-repl-isearch-setup)
@@ -2379,8 +2374,6 @@ If the `major-mode' of the `current-buffer' is the
     (define-key map (kbd "C-c C-l") #'jupyter-repl-eval-file)
     (define-key map (kbd "C-c C-f") #'jupyter-repl-inspect-at-point)
     (define-key map (kbd "C-c C-r") #'jupyter-repl-restart-kernel)
-    ;; TODO: Change this keybinding since C-i is actually TAB and there may be
-    ;; a more conventional command to place here.
     (define-key map (kbd "C-c C-i") #'jupyter-repl-interrupt-kernel)
     (define-key map (kbd "C-c C-z") #'jupyter-repl-pop-to-buffer)
     map))

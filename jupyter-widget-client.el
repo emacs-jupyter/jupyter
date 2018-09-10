@@ -159,10 +159,6 @@ required by the JupyterLab widget manager."
               '(:comm-open :comm-close :comm-msg))
     (jupyter-widgets-sanitize-comm-msg msg))
   (let ((msg-type (jupyter-message-type msg)))
-    ;; FIXME: The :date field is an emacs time object, i.e. a 4 element list,
-    ;; convert to an actual time.
-    ;; We don't have a channel field, but KernelFutureHandler.handleMsg
-    ;; of jupyterlab requires it
     (plist-put msg :channel
                (cond
                 ((memq msg-type '(:status :comm-msg :comm-close :comm-open))

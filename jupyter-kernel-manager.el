@@ -165,10 +165,7 @@ If a valid kernel is found, its kernelspec is used to start a new
 kernel. Starting a kernel involves the following steps:
 
 1. Write the connection info of MANAGER's session to a file in
-   the `jupyter-runtime-directory'. Using the standard naming
-   convention, i.e. after a call to `jupyter-start-kernel' the
-   connection file will be named kernel-PID.json where PID is the
-   process ID of the kernel subprocess.
+   the `jupyter-runtime-directory'.
 
 2. Start a kernel subprocess passing the connection info file as
    the {connection_file} argument in the kernelspec argument

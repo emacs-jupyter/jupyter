@@ -176,7 +176,6 @@ decoded string."
         (when (listp val)
           (let ((date (plist-get val :date))
                 (msg-type (plist-get val :msg_type)))
-            ;; FIXME: Slow, the date field is not used anyways
             (when date
               (plist-put val :date (jupyter--decode-time date)))
             (when msg-type

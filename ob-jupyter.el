@@ -157,10 +157,13 @@ variables in PARAMS."
 If SESSION does not have a client already, one is created based
 on SESSION and PARAMS. If SESSION ends with \".json\" then
 SESSION is interpreted as a kernel connection file and a new
-kernel connected to SESSION is created. Otherwise a kernel is run
-based on the `:kernel' parameter in PARAMS which should be either
-a valid kernel name or a prefix of one. The first kernel that is
-returned by `jupyter-find-kernelspecs' will be used."
+kernel connected to SESSION is created.
+
+Otherwise a kernel is started based on the `:kernel' parameter
+in PARAMS which should be either a valid kernel name or a prefix
+of one. The first kernel that is returned by
+`jupyter-find-kernelspecs' when passed the value of the `:kernel'
+parameter will be used."
   (let* ((kernel (alist-get :kernel params))
          (key (concat session "-" kernel))
          (client

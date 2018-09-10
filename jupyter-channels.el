@@ -188,8 +188,8 @@ call `jupyter-get-message'.")
     :type integer
     :initform 1
     :documentation "The time in seconds to wait for a response
- from the kernel until the connection is assumed to be dead. Note
- that this slot only takes effect when starting the channel.")
+from the kernel until the connection is assumed to be dead. Note
+that this slot only takes effect when starting the channel.")
    (kernel-died-cb
     :type function
     :initform #'ignore
@@ -200,7 +200,7 @@ and is called when the kernel has not responded for 5
     :type (or boolean symbol)
     :initform t
     :documentation "A flag variable indicating that the heartbeat
- channel is communicating with the kernel.")
+channel is communicating with the kernel.")
    (paused
     :type boolean
     :initform t
@@ -215,8 +215,7 @@ use `jupyter-hb-unpause'."))
   (zmq-socket-p (oref channel socket)))
 
 (cl-defmethod jupyter-hb-beating-p ((channel jupyter-hb-channel))
-  "Return non-nil if the kernel associated with CHANNEL is still
-connected."
+  "Return non-nil if CHANNEL is reachable."
   (and (jupyter-channel-alive-p channel)
        (not (oref channel paused))
        (oref channel beating)))

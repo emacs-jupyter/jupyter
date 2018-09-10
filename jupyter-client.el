@@ -83,31 +83,30 @@ requests like the above example.")
    (requests
     :type hash-table
     :initform (make-hash-table :test 'equal)
-    :documentation "A hash table with message ID's as keys. This
-is used to register callback functions to run once a reply from a
-previously sent request is received. See `jupyter-add-callback'.
-Note that this is also used to filter received messages that
-originated from a previous request by this client. Whenever the
-client sends a message in which a reply is expected, it sets an
-entry in this table to represent the fact that the message has
-been sent. So if there is a non-nil value for a message ID it
-means that a message has been sent and the client is expecting a
-reply from the kernel.")
+    :documentation "A hash table with message ID's as keys.
+This is used to register callback functions to run once a reply
+from a previously sent request is received. See
+`jupyter-add-callback'. Note that this is also used to filter
+received messages that originated from a previous request by this
+client. Whenever the client sends a message in which a reply is
+expected, it sets an entry in this table to represent the fact
+that the message has been sent. So if there is a non-nil value
+for a message ID it means that a message has been sent and the
+client is expecting a reply from the kernel.")
    (ioloop
     :type (or null process)
     :initform nil
-    :documentation "The process which polls for events on all
-live channels of the client.")
+    :documentation "The process which receives events from channels.")
    (session
     :type jupyter-session
     :documentation "The session for this client.")
    (comms
     :type hash-table
     :initform (make-hash-table :test 'equal)
-    :documentation "A hash table with comm ID's as keys. Contains
-all of the open comms. Each value is a cons cell (REQ . DATA)
-which contains the generating `jupyter-request' that caused the
-comm to open and the initial DATA passed to the comm for
+    :documentation "A hash table with comm ID's as keys.
+Contains all of the open comms. Each value is a cons cell (REQ .
+DATA) which contains the generating `jupyter-request' that caused
+the comm to open and the initial DATA passed to the comm for
 initialization.")
    (manager
     :initform nil
@@ -167,20 +166,17 @@ buffer.")
 
 (defun jupyter-initialize-connection (client info-or-session)
   "Initialize CLIENT with connection INFO-OR-SESSION.
-If INFO-OR-SESSION is the name of a file, assume the file to be a
-kernel connection file, read the contents as a plist, and create
-a new `jupyter-session' using the plist as the conn-info slot of
-the session. If it is a remote file, create a new
-`jupyter-session' on the plist retured by
-`jupyter-tunnel-connection'.
-
-INFO-OR-SESSION can also be a plist with the same meaning as if
-the plist had been read from a connection file. Otherwise,
-INFO-OR-SESSION must be a `jupyter-session' and the connection is
-initialized using its conn-info slot.
-
-The session object is then set as the session for each
-`jupyter-channel' created for the CLIENT.
+INFO-OR-SESSION can be a file name, a plist, or a
+`jupyter-session' object that will be used to initialize CLIENT's
+connection. When INFO-OR-SESSION is a file name, read the
+contents of the file as a JSON plist and create a new
+`jupyter-session' from it. For remote files, create a new
+`jupyter-session' based on the plist returned from
+`jupyter-tunnel-connection'. When INFO-OR-SESSION is a plist, use
+it to create a new `jupyter-session'. Finally, when
+INFO-OR-SESSION is a `jupyter-session' it is used as the session
+for client. The session object used to initialize the connection
+will be set as the session slot of CLIENT.
 
 The necessary keys and values to initialize a connection can be
 found at

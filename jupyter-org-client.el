@@ -122,7 +122,6 @@ METADATA has the same meaning as in
   (unless (eq (jupyter-org-request-result-type req) 'output)
     (let* ((params (jupyter-org-request-block-params req))
            (rendered-data (jupyter-org-prepare-result data metadata params)))
-      ;; FIXME: Extra work done here when we request silent results
       (jupyter-org-add-result client req rendered-data))))
 
 (cl-defmethod jupyter-handle-execute-result ((client jupyter-org-client)
@@ -259,7 +258,6 @@ an \"EXPORT markdown\" block. See `org-babel-insert-result'."
      ((memq :text/markdown mimetypes)
       (cons '(:wrap . "SRC markdown") (plist-get data :text/markdown)))
      ((memq :text/latex mimetypes)
-      ;; TODO: Take into account result-params for other mimetypes
       (cons (unless (member "raw" result-params) "latex")
             (plist-get data :text/latex)))
      ((setq itype (cl-find-if (lambda (x) (memq x '(:image/png
