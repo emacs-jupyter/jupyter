@@ -1842,8 +1842,10 @@ Run FUN when the completions are available."
   "If ARG is a completion with a snippet, expand the snippet.
 Do this only if STATUS is sole or finished."
   (when (and (memq status '(sole finished))
-             (get-text-property 0 'snippet arg)
-             (bound-and-true-p yas-minor-mode))
+             (get-text-property 0 'snippet arg))
+    (when (and (require 'yasnippet nil t)
+               (not yas-minor-mode))
+      (yas-minor-mode 1))
     (yas-expand-snippet
      (get-text-property 0 'snippet arg)
      (save-excursion
