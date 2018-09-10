@@ -204,7 +204,7 @@ executing BODY."
   `(let ((inhibit-modification-hooks t))
      ,@body))
 
-(defmacro jupyter-repl-do-at-request (client req &rest body)
+(defmacro jupyter-repl-append-output (client req &rest body)
   "Switch to CLIENT's buffer, move to the end of REQ, and run BODY.
 REQ is a `jupyter-request' previously made using CLIENT, a
 `jupyter-repl-client'.
@@ -1066,7 +1066,7 @@ lines, truncate it to something less than
                                              metadata)
   ;; Only handle our results
   (when req
-    (jupyter-repl-do-at-request client req
+    (jupyter-repl-append-output client req
       (jupyter-repl-insert-prompt 'out)
       (jupyter-repl-insert-data data metadata))))
 
@@ -1127,7 +1127,7 @@ message."
                      (jupyter-repl-previous-cell 2)
                      (jupyter-repl-cell-request)))
                req)))
-    (jupyter-repl-do-at-request client req
+    (jupyter-repl-append-output client req
       (cl-destructuring-bind (&key display_id &allow-other-keys)
           transient
         (if display_id
@@ -1217,7 +1217,7 @@ buffer to display TEXT."
           (jupyter-repl-insert-ansi-coded-text text)
           (display-buffer (current-buffer)))))
      (t
-      (jupyter-repl-do-at-request client req
+      (jupyter-repl-append-output client req
         (jupyter-repl-insert-ansi-coded-text text))))))
 
 (defun jupyter-repl-fix-python-traceback-spacing (ename)
@@ -1247,13 +1247,13 @@ Do this for the current cell."
         (goto-char (line-beginning-position))
         (pop-to-buffer (current-buffer))))
      (t
-      (jupyter-repl-do-at-request client req
+      (jupyter-repl-append-output client req
         (jupyter-repl-insert-ansi-coded-text traceback)
         (when (equal (jupyter-repl-language client) "python")
           (jupyter-repl-fix-python-traceback-spacing ename)))))))
 
 (cl-defmethod jupyter-handle-input-reply ((client jupyter-repl-client) req prompt _password)
-  (jupyter-repl-do-at-request client req
+  (jupyter-repl-append-output client req
     (let ((value (cl-call-next-method)))
       (jupyter-repl-insert (concat prompt value))
       (jupyter-repl-newline))))
