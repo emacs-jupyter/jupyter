@@ -27,12 +27,14 @@
 ;; Use an external browser to interact with Jupyter widgets.
 ;;
 ;; A `jupyter-kernel-client' does not come with any widget support by default,
-;; the purpose of the `jupyter-widget-client' subclass is to provide support.
-;; This is done by opening up an external browser and serving it the necessary
+;; the purpose of the `jupyter-widget-client' class is to provide such support.
+;; This is done by opening an external browser and serving it the necessary
 ;; resources to display widgets using the `simple-httpd' package. Emacs then
-;; acts as an intermediary for the comm messages sent between the browser and
-;; the kernel where the communication between Emacs and the browser happens
-;; through a `websocket'.
+;; acts as an intermediary for the widget comm messages sent between the
+;; browser and the kernel, communicating with the kernel through `zmq' and with
+;; the browser through `websocket'.
+;;
+;; To add widget support to a client, subclass `jupyter-widget-client'.
 
 ;;; Code:
 
