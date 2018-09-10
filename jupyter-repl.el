@@ -1956,9 +1956,7 @@ are displayed."
                           with nlines = 0
                           for c across res when (eq c ?\n) do (cl-incf nlines)
                           thereis (> nlines 10)))
-                    (with-current-buffer
-                        (get-buffer-create "*jupyter-repl-result*")
-                      (erase-buffer)
+                    (with-jupyter-repl-doc-buffer "result"
                       (insert res)
                       (goto-char (point-min))
                       (display-buffer (current-buffer)))
