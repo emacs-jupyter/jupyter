@@ -151,6 +151,10 @@ buffer.")
   (jupyter-stop-channels client)
   (delete-instance client)
   (when (buffer-live-p (oref client -buffer))
+    ;; Don't ask if the buffer should be killed, this is needed because of the
+    ;; lock file mechanism for channel subprocesses.
+    (with-current-buffer (oref client -buffer)
+      (set-buffer-modified-p nil))
     (kill-buffer (oref client -buffer))))
 
 (defun jupyter-find-client-for-session (session-id)
@@ -401,14 +405,40 @@ Any other command sent to the subprocess will be ignored."
         (signal 'quit nil))
        (otherwise (error "Unhandled command (%s)" cmd)))))
 
-;; FIXME: The subprocess may not get killed if the parent emacs crashes. One
-;; solution to this is to send the process id of the parent emacs and
-;; periodically check if the process is still alive, then exit the subprocess
-;; if the parent process is dead.
+(defmacro jupyter--ioloop-with-lock-file (client &rest body)
+  "In CLIENT's IOLoop buffer run BODY, ensuring the lock file mechanism works.
+This makes sure that when `set-buffer-modified-p' is called, it
+properly locks or unlocks the associated lock file for the IOLoop
+process."
+  (declare (indent 1))
+  (let ((lock (make-symbol "--lock")))
+    `(with-current-buffer (oref ,client -buffer)
+       (let* ((create-lockfiles t)
+              (,lock (concat "jupyter-lock" (jupyter-session-id (oref ,client session))))
+              (buffer-file-name (expand-file-name ,lock temporary-file-directory))
+              (buffer-file-truename (file-truename buffer-file-name)))
+         ,@body))))
+
+(defun jupyter--ioloop-unlock (client)
+  "Unlock CLIENT's file lock."
+  (jupyter--ioloop-with-lock-file client
+    (set-buffer-modified-p nil)))
+
+(defun jupyter--ioloop-lock (client)
+  "Return the file name of CLIENT's file lock.
+Acquire the lock first. Unlock the lock if one exists. The lock
+file serves as a proxy for the case when the parent Emacs process
+crashes without properly cleaning up its child processes."
+  (jupyter--ioloop-with-lock-file client
+    (jupyter--ioloop-unlock client)
+    (set-buffer-modified-p t)
+    (buffer-file-name)))
+
 (defun jupyter--ioloop (client)
   "Return the function used for communicating with CLIENT's kernel."
   (let ((sid (jupyter-session-id (oref client session)))
-        (skey (jupyter-session-key (oref client session))))
+        (skey (jupyter-session-key (oref client session)))
+        (lock (jupyter--ioloop-lock client)))
     `(lambda (ctx)
        (push ,(file-name-directory (locate-library "jupyter-base")) load-path)
        (require 'jupyter-base)
@@ -451,8 +481,11 @@ Any other command sent to the subprocess will be ignored."
                (while t
                  (let ((events
                         (condition-case nil
-                            (zmq-poller-wait-all poller (1+ (length channels)) -1)
+                            (zmq-poller-wait-all
+                             poller (1+ (length channels)) 5000)
                           ((zmq-EAGAIN zmq-EINTR zmq-ETIMEDOUT) nil))))
+                   (unless (or events (file-locked-p ,lock))
+                     (signal 'quit nil))
                    (funcall read-command-from-parent)
                    (funcall queue-messages)
                    (funcall send-messages-to-parent))))
@@ -504,6 +537,7 @@ in CLIENT."
   (cond
    ((not (process-live-p ioloop))
     (jupyter-stop-channel (oref client hb-channel))
+    (jupyter--ioloop-unlock client)
     (oset client ioloop nil))))
 
 (defun jupyter--get-channel (client ctype)
