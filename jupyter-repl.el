@@ -1643,22 +1643,20 @@ if TYPE is `inspect'."
     (cl-case type
       (inspect
        (setq code
-             ;; TODO: This still needs work
-             (save-excursion
-               ;; Ignore the invisible characters of a prompt
-               (when (and (eq major-mode 'jupyter-repl-mode)
-                          (field-at-pos (point)))
-                 (goto-char (1+ (field-end))))
-               (buffer-substring
-                (line-beginning-position)
-                (line-end-position)))
+             (buffer-substring
+              (if (and (eq major-mode 'jupyter-repl-mode)
+                       (invisible-p (line-beginning-position)))
+                  (next-single-property-change
+                   (line-beginning-position) 'invisible)
+                (line-beginning-position))
+              (line-end-position))
              ;; NOTE: The +1 is because normally, when inspecting code, `point'
              ;; is on a character of the symbol being inspected, this is in
              ;; contrast to completing code where `point' is after the last
              ;; character of the prefix. This fixes an edge case where `point'
              ;; is at the first character of a symbol.
-             pos (1+ (- (point) (line-beginning-position)))))
-      (complete
+             pos (- (point) (line-beginning-position))))
+      (completion
        (if (eq major-mode 'jupyter-repl-mode)
            (setq code (jupyter-repl-cell-code)
                  pos (1- (jupyter-repl-cell-code-position)))
