@@ -159,10 +159,10 @@ buffer.")
 
 (defun jupyter-find-client-for-session (session-id)
   "Return the `jupyter-kernel-client' for SESSION-ID."
-  (or (cl-find-if
-       (lambda (client)
-         (string= (jupyter-session-id (oref client session)) session-id))
-       jupyter--clients)
+  (or (catch 'found
+        (dolist (client jupyter--clients)
+          (when (string= (jupyter-session-id (oref client session)) session-id)
+            (throw 'found client))))
       (error "No client found for session (%s)" session-id)))
 
 (defun jupyter-initialize-connection (client info-or-session)
@@ -542,13 +542,14 @@ in CLIENT."
 
 (defun jupyter--get-channel (client ctype)
   "Get CLIENT's channel based on CTYPE."
-  (cl-find-if
-   (lambda (channel) (eq (oref channel type) ctype))
-   (mapcar (lambda (sym) (slot-value client sym))
-           '(hb-channel
-             stdin-channel
-             shell-channel
-             iopub-channel))))
+  (catch 'found
+    (dolist (channel (mapcar (lambda (sym) (slot-value client sym))
+                        '(hb-channel
+                          stdin-channel
+                          shell-channel
+                          iopub-channel)))
+      (when (eq (oref channel type) ctype)
+        (throw 'found channel)))))
 
 (defun jupyter--ioloop-filter (client event)
   "The process filter for CLIENT's ioloop subprocess.
