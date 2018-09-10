@@ -271,7 +271,7 @@ exists, it is returned."
   "With the REPL documentation buffer corresponding to NAME, run BODY.
 NAME should be a string representing the purpose of the
 documentation buffer. The buffer corresponding to NAME will be
-obtained by a call to `juptyer-repl-get-doc-buffer'. Before
+obtained by a call to `jupyter-repl-get-doc-buffer'. Before
 running BODY, the doc buffer is set as the
 `other-window-scroll-buffer' and the contents of the buffer are
 erased."
