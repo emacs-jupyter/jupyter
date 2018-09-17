@@ -1007,6 +1007,34 @@ the user. Otherwise `read-from-minibuffer' is used."
   (declare (indent 1))
   nil)
 
+;;; Completion contexts
+
+(cl-defgeneric jupyter-code-context (type)
+  "Return a list, (CODE POS), for the context around `point'.
+CODE is the required context for TYPE (either `inspect' or
+`completion') and POS is the relative position of `point' within
+CODE. Depending on the current context such as the current
+`major-mode', CODE and POS will be used for `:complete-request's
+originating from `jupyter-completion-at-point' and
+`:inspect-request's from `jupyter-repl-inspect-at-point'.")
+
+(defun jupyter-line-context (&optional start)
+  "Return the code context of the current line.
+START is the buffer position considered as the start of the line. See
+`jupyter-code-context' for the form of the returned list."
+  (or start (setq start (line-beginning-position)))
+  (let ((code (buffer-substring start (line-end-position)))
+        (pos (- (point) start)))
+    (unless (looking-at "\\_>")
+      (setq pos (1+ pos)))
+    (list code (min pos (length code)))))
+
+(cl-defmethod jupyter-code-context ((_type (eql inspect)))
+  (jupyter-line-context))
+
+(cl-defmethod jupyter-code-context ((_type (eql completion)))
+  (jupyter-line-context))
+
 (cl-defgeneric jupyter-send-complete-request ((client jupyter-kernel-client)
                                               &key code
                                               (pos 0))

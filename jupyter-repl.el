@@ -1621,43 +1621,15 @@ Works for Julia and Python."
 
 ;;; Getting the completion context
 
-(defun jupyter-code-context-at-point (type)
-  "Return a cons cell, (CODE . POS), for the context around `point'.
-CODE is the required context for TYPE (either `inspect' or
-`completion') and POS is the relative position of `point' within
-CODE.
+(cl-defmethod jupyter-code-context ((_type (eql inspect))
+                                    &context (major-mode jupyter-repl-mode))
+  (jupyter-line-context (next-single-property-change
+                         (line-beginning-position) 'invisible)))
 
-The returned CODE depends on the `major-mode' of the
-`current-buffer'. If the `major-mode' is `jupyter-repl-mode',
-CODE is the contents of the current cell. Otherwise its either
-the line up to `point' if TYPE is `completion' or the entire line
-if TYPE is `inspect'."
-  (unless (memq type '(completion inspect))
-    (error "Type not `complete' or `inspect' (%s)" type))
-  (let (code pos)
-    (cl-case type
-      (inspect
-       (setq code
-             (buffer-substring
-              (if (and (eq major-mode 'jupyter-repl-mode)
-                       (invisible-p (line-beginning-position)))
-                  (next-single-property-change
-                   (line-beginning-position) 'invisible)
-                (line-beginning-position))
-              (line-end-position))
-             ;; NOTE: The +1 is because normally, when inspecting code, `point'
-             ;; is on a character of the symbol being inspected, this is in
-             ;; contrast to completing code where `point' is after the last
-             ;; character of the prefix. This fixes an edge case where `point'
-             ;; is at the first character of a symbol.
-             pos (- (point) (line-beginning-position))))
-      (completion
-       (if (eq major-mode 'jupyter-repl-mode)
-           (setq code (jupyter-repl-cell-code)
-                 pos (1- (jupyter-repl-cell-code-position)))
-         (setq code (buffer-substring (line-beginning-position) (point))
-               pos (- (point) (line-beginning-position))))))
-    (list code pos)))
+(cl-defmethod jupyter-code-context ((_type (eql completion))
+                                    &context (major-mode jupyter-repl-mode))
+  (list (jupyter-repl-cell-code)
+        (1- (jupyter-repl-cell-code-position))))
 
 (defun jupyter-completion-prefix ()
   "Return the prefix for the current completion context.
@@ -1741,7 +1713,7 @@ Can either be a Jupyter message plist or a list of candidates")
   "Get completions for the current completion context.
 Run FUN when the completions are available."
   (cl-destructuring-bind (code pos)
-      (jupyter-code-context-at-point 'completion)
+      (jupyter-code-context 'completion)
     (let ((req (let ((jupyter-inhibit-handlers t))
                  (jupyter-send-complete-request
                      jupyter-repl-current-client
@@ -1884,7 +1856,7 @@ Send an inspect request to the `jupyter-repl-current-client' of
 the `current-buffer' and display the results in a buffer."
   (interactive)
   (cl-destructuring-bind (code pos)
-      (jupyter-code-context-at-point 'inspect)
+      (jupyter-code-context 'inspect)
     (let ((buf (current-buffer)))
       (with-jupyter-repl-doc-buffer "inspect"
         ;; Set this in the inspect buffer so that

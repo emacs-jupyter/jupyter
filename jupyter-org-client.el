@@ -159,6 +159,24 @@ METADATA has the same meaning as in
   (when payload
     (jupyter-repl--handle-payload payload)))
 
+
+;;; Completions in code blocks
+(cl-defmethod jupyter-code-context ((_type (eql inspect))
+                                    &context (major-mode org-mode))
+  (when (org-in-src-block-p 'inside)
+    (jupyter-line-context)))
+
+(cl-defmethod jupyter-code-context ((_type (eql completion))
+                                    &context (major-mode org-mode))
+  (when (org-in-src-block-p 'inside)
+    (let* ((el (org-element-at-point))
+           (beg (org-element-property :begin el))
+           (val (org-element-property :value el))
+           ;; Remove the last \n that is always present in
+           ;; code blocks
+           (code (substring val 0 (1- (length val)))))
+      (list code (min (- (point) beg) (length code))))))
+
 ;;; Inserting results
 
 (defun jupyter-org-image-file-name (data ext)
