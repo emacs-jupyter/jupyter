@@ -1029,7 +1029,7 @@ originating from `jupyter-completion-at-point' and
 START is the buffer position considered as the start of the line. See
 `jupyter-code-context' for the form of the returned list."
   (or start (setq start (line-beginning-position)))
-  (let ((code (buffer-substring start (line-end-position)))
+  (let ((code (buffer-substring-no-properties start (line-end-position)))
         (pos (- (point) start)))
     (unless (looking-at "\\_>")
       (setq pos (1+ pos)))

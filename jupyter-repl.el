@@ -1396,7 +1396,7 @@ Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
                     (setq jupyter-repl-use-builtin-is-complete t)
                     (jupyter-repl-ret force)))
               (goto-char (point-max))
-              (let ((complete-p (equal (buffer-substring
+              (let ((complete-p (equal (buffer-substring-no-properties
                                         (line-beginning-position) (point))
                                        "")))
                 (jupyter-handle-is-complete-reply
@@ -1536,7 +1536,7 @@ done at point, return nil.
 MAX-LEN is the maximum number of characters to search behind the
 begiining of the symbol at point to look for a match of RE."
   (let ((symbol (if (looking-at "\\>")
-                    (buffer-substring
+                    (buffer-substring-no-properties
                      (point) (jupyter-completion-symbol-beginning))
                   (unless (and (char-after)
                                (memq (char-syntax (char-after)) '(?w ?_)))
