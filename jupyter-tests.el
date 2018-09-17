@@ -493,6 +493,24 @@ running BODY."
         (should (json-plist-p res))
         (should (eq (jupyter-message-type res) :shutdown-reply))))))
 
+(ert-deftest jupyter-completion ()
+  (ert-info ("`jupyter-completion-number-p'")
+    (with-temp-buffer
+      (insert "0.311")
+      (should (jupyter-completion-number-p))
+      (erase-buffer)
+      (insert "0311")
+      (should (jupyter-completion-number-p))
+      (erase-buffer)
+      (insert "0311.")
+      (should (jupyter-completion-number-p))
+      (erase-buffer)
+      (insert "100foo")
+      (should-not (jupyter-completion-number-p))
+      (erase-buffer)
+      (insert "foo100")
+      (should-not (jupyter-completion-number-p)))))
+
 (ert-deftest jupyter-repl ()
   (jupyter-with-python-repl client
     (should (jupyter-repl-client-has-manager-p))

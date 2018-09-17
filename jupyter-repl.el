@@ -1550,12 +1550,13 @@ begiining of the symbol at point to look for a match of RE."
             (cons symbol t)
           symbol)))))
 
-(defun jupyter-completion-floating-point-p ()
-  "Return non-nil if the text before `point' may be a floating point number.
-If the preceeding two characters before point are \"[0-9].\"
-return non-nil, otherwise return nil."
-  (and (= (char-before (point)) ?.)
-       (<= ?0 (char-before (1- (point))) ?9)))
+(defun jupyter-completion-number-p ()
+  "Return non-nil if the text before `point' may be a floating point number."
+  (and (or (<= ?0 (char-before (point)) ?9)
+           (eq (char-before (point)) ?.))
+       (save-excursion
+         (skip-syntax-backward "w.")
+         (looking-at-p "[0-9]+\\.?[0-9]*"))))
 
 ;;; Extracting arguments from argument strings
 
