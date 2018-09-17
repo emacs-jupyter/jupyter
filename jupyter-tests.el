@@ -131,11 +131,11 @@ If the `current-buffer' is not a REPL, this is identical to
   `(ert-info ((quote ,message-form) :prefix (quote ,prefix-form))
      ;; Clear the REPL buffer before each new test section, but do this only if
      ;; the current client is a REPL client
-     (when (and jupyter-repl-current-client
-                (obj-of-class-p jupyter-repl-current-client
+     (when (and jupyter-current-client
+                (obj-of-class-p jupyter-current-client
                                 'jupyter-repl-client)
                 (eq (current-buffer)
-                    (oref jupyter-repl-current-client buffer)))
+                    (oref jupyter-current-client buffer)))
        (let ((inhibit-read-only t))
          (erase-buffer)
          (jupyter-test-repl-ret-sync)))
@@ -187,7 +187,7 @@ running BODY."
   ;; busy cycles
   (jupyter-repl-ret)
   (jupyter-test-wait-until-idle-repl
-   jupyter-repl-current-client))
+   jupyter-current-client))
 
 (ert-deftest jupyter-echo-client ()
   (jupyter-with-echo-client client

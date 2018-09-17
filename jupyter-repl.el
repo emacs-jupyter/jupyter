@@ -124,7 +124,7 @@ timeout, the built-in is-complete handler is used."
     :type (or null buffer)
     :initform nil
     :documentation "The REPL buffer whose
-`jupyter-repl-current-client' is this client.")
+`jupyter-current-client' is this client.")
    (wait-to-clear
     :type boolean
     :initform nil
@@ -143,10 +143,6 @@ either \"idle\", \"busy\", or \"starting\".")
 
 (defvar jupyter-repl-lang-buffer nil
   "A buffer with the `major-mode' set to the REPL language's `major-mode'.")
-
-(defvar jupyter-repl-current-client nil
-  "The `jupyter-repl-client' for the `current-buffer'.")
-(put 'jupyter-repl-current-client 'permanent-local t)
 
 (defvar jupyter-repl-lang-mode nil
   "The `major-mode' corresponding to the kernel's language.")
@@ -556,7 +552,7 @@ When no valid mimetype is present in DATA, a warning is shown."
     (cond
      ((memq :application/vnd.jupyter.widget-view+json mimetypes)
       (jupyter-widgets-display-model
-       jupyter-repl-current-client
+       jupyter-current-client
        (plist-get (plist-get data :application/vnd.jupyter.widget-view+json)
                   :model_id)))
      ((and (memq :text/html mimetypes)
@@ -652,7 +648,7 @@ interpreted as `in'."
      (overlay-recenter (point))
      (cond
       ((eq type 'in)
-       (let ((count (oref jupyter-repl-current-client execution-count)))
+       (let ((count (oref jupyter-current-client execution-count)))
          (jupyter-repl--make-prompt
           (format "In [%d] " count) 'jupyter-repl-input-prompt
           `(jupyter-cell (beginning ,count))))
@@ -893,18 +889,18 @@ POS defaults to `point'."
   (jupyter-repl-cell-end-p (jupyter-repl-cell-end-position)))
 
 (defun jupyter-repl-client-has-manager-p ()
-  "Does the `jupyter-repl-current-client' have a `jupyter-kernel-manager'?"
-  (and jupyter-repl-current-client
-       (oref jupyter-repl-current-client manager)))
+  "Does the `jupyter-current-client' have a `jupyter-kernel-manager'?"
+  (and jupyter-current-client
+       (oref jupyter-current-client manager)))
 
 (defun jupyter-repl-connected-p ()
-  "Is the `jupyter-repl-current-client' connected to its kernel?"
-  (when jupyter-repl-current-client
+  "Is the `jupyter-current-client' connected to its kernel?"
+  (when jupyter-current-client
     (or (and (jupyter-repl-client-has-manager-p)
              ;; Check if the kernel is local
              (jupyter-kernel-alive-p
-              (oref jupyter-repl-current-client manager)))
-        (let ((hb (oref jupyter-repl-current-client hb-channel)))
+              (oref jupyter-current-client manager)))
+        (let ((hb (oref jupyter-current-client hb-channel)))
           (and (jupyter-channel-alive-p hb)
                (jupyter-hb-beating-p hb))))))
 
@@ -1382,16 +1378,16 @@ execute the current cell."
           ;; sending a request when the kernel is busy because of the
           ;; is-complete request. Some kernels don't respond to this request
           ;; when the kernel is busy.
-          (unless (member (oref jupyter-repl-current-client execution-state)
+          (unless (member (oref jupyter-current-client execution-state)
                           '("starting" "idle"))
             (jupyter-repl-sync-execution-state)
             (error "Kernel busy"))
-          (if force (jupyter-send-execute-request jupyter-repl-current-client)
+          (if force (jupyter-send-execute-request jupyter-current-client)
             (if (not jupyter-repl-use-builtin-is-complete)
                 (let* ((jupyter-inhibit-handlers '(:status))
                        (res (jupyter-wait-until-received :is-complete-reply
                               (jupyter-send-is-complete-request
-                                  jupyter-repl-current-client
+                                  jupyter-current-client
                                 :code (jupyter-repl-cell-code))
                               jupyter-repl-maximum-is-complete-timeout)))
                   (unless res
@@ -1404,7 +1400,7 @@ Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
                                         (line-beginning-position) (point))
                                        "")))
                 (jupyter-handle-is-complete-reply
-                    jupyter-repl-current-client
+                    jupyter-current-client
                   nil (if complete-p "complete" "incomplete") ""))))))
     (beginning-of-buffer
      ;; No cells in the current buffer, just insert one
@@ -1473,7 +1469,7 @@ the kernel.
 In addition, exit `jupyter-repl-interaction-mode' in all buffers
 associated with the REPL. See `jupyter-repl-associate-buffer'."
   (when (eq major-mode 'jupyter-repl-mode)
-    (if (not (jupyter-channels-running-p jupyter-repl-current-client)) t
+    (if (not (jupyter-channels-running-p jupyter-current-client)) t
       (when (y-or-n-p
              (format "Jupyter REPL (%s) still connected. Kill it? "
                      (buffer-name (current-buffer))))
@@ -1481,16 +1477,16 @@ associated with the REPL. See `jupyter-repl-associate-buffer'."
         ;; want to also delete a kernel if this is the last client connected.
         ;; See `eieio-instance-tracker'.
         (prog1 t
-          (jupyter-stop-channels jupyter-repl-current-client)
-          (destructor jupyter-repl-current-client)
+          (jupyter-stop-channels jupyter-current-client)
+          (destructor jupyter-current-client)
           (when (jupyter-repl-client-has-manager-p)
-            (jupyter-shutdown-kernel (oref jupyter-repl-current-client manager))
-            (destructor (oref jupyter-repl-current-client manager)))
+            (jupyter-shutdown-kernel (oref jupyter-current-client manager))
+            (destructor (oref jupyter-current-client manager)))
           (cl-loop
-           with client = jupyter-repl-current-client
+           with client = jupyter-current-client
            for buffer in (buffer-list)
            do (with-current-buffer buffer
-                (when (eq jupyter-repl-current-client client)
+                (when (eq jupyter-current-client client)
                   (jupyter-repl-interaction-mode -1)))))))))
 
 (defun jupyter-repl-preserve-window-margins (&optional window)
@@ -1634,7 +1630,7 @@ Works for Julia and Python."
 (cl-defgeneric jupyter-completion-prefix ()
   "Return the prefix for the current completion context.
 This default function checks to see if the
-`jupyter-kernel-language' of the `jupyter-repl-current-client'
+`jupyter-kernel-language' of the `jupyter-current-client'
 has a `:completion-prefix' support function set by
 `jupyter-kernel-support-put' and calls that function to obtain
 the completion prefix. If the language does not have a completion
@@ -1727,7 +1723,7 @@ Run FUN when the completions are available."
       (jupyter-code-context 'completion)
     (let ((req (let ((jupyter-inhibit-handlers t))
                  (jupyter-send-complete-request
-                     jupyter-repl-current-client
+                     jupyter-current-client
                    :code code :pos pos))))
       (prog1 req
         (jupyter-add-callback req :complete-reply fun)))))
@@ -1845,7 +1841,7 @@ when BUFFER is nil, the formated inspection string is returned.
 It the kernel doesn't respond within TIMEOUT seconds, return nil."
   (let* ((jupyter-inhibit-handlers '(:status))
          (msg (jupyter-wait-until-received :inspect-reply
-                (jupyter-send-inspect-request jupyter-repl-current-client
+                (jupyter-send-inspect-request jupyter-current-client
                   :code code :pos pos :detail detail)
                 timeout)))
     (when msg
@@ -1863,7 +1859,7 @@ It the kernel doesn't respond within TIMEOUT seconds, return nil."
 
 (defun jupyter-repl-inspect-at-point ()
   "Inspect the code at point.
-Send an inspect request to the `jupyter-repl-current-client' of
+Send an inspect request to the `jupyter-current-client' of
 the `current-buffer' and display the results in a buffer."
   (interactive)
   (cl-destructuring-bind (code pos)
@@ -1873,8 +1869,8 @@ the `current-buffer' and display the results in a buffer."
         ;; Set this in the inspect buffer so that
         ;; `jupyter-repl-markdown-follow-link-at-point' works in the inspect
         ;; buffer as well.
-        (setq-local jupyter-repl-current-client
-                    (buffer-local-value 'jupyter-repl-current-client buf))
+        (setq-local jupyter-current-client
+                    (buffer-local-value 'jupyter-current-client buf))
         ;; FIXME: Better way of inserting documentation into a buffer.
         ;; Currently the way text is inserted is by inserting in a temp
         ;; buffer and returning the string, but in cases where overlays may
@@ -1890,7 +1886,7 @@ the `current-buffer' and display the results in a buffer."
 ;;; Evaluation
 
 (defun jupyter-repl-eval-string (str &optional silently)
-  "Evaluate STR with the `jupyter-repl-current-client's REPL.
+  "Evaluate STR with the `jupyter-current-client's REPL.
 Replaces the contents of the last cell in the REPL buffer with
 STR before evaluating.
 
@@ -1903,9 +1899,9 @@ modification to the REPL buffer. Only the results of evaluation
 are displayed."
   (interactive (list (read-string "Jupyter Eval: ") current-prefix-arg))
   (unless (buffer-local-value
-           'jupyter-repl-current-client (current-buffer))
-    (user-error "No `jupyter-repl-current-client' set, see `jupyter-repl-associate-buffer'"))
-  (with-jupyter-repl-buffer jupyter-repl-current-client
+           'jupyter-current-client (current-buffer))
+    (user-error "No `jupyter-current-client' set, see `jupyter-repl-associate-buffer'"))
+  (with-jupyter-repl-buffer jupyter-current-client
     (goto-char (point-max))
     (unless (= (save-excursion (jupyter-repl-previous-cell)) 0)
       (jupyter-repl-insert-prompt 'in))
@@ -1913,7 +1909,7 @@ are displayed."
                 (prog1 nil
                   (jupyter-repl-replace-cell-code str))))
     (let* ((jupyter-inhibit-handlers (or (and silently t) '(:execute-result)))
-           (req (jupyter-send-execute-request jupyter-repl-current-client
+           (req (jupyter-send-execute-request jupyter-current-client
                   :code str)))
       (jupyter-add-callback req
         :execute-reply (lambda (msg)
@@ -1951,7 +1947,7 @@ are displayed."
       req)))
 
 (defun jupyter-repl-eval-file (file)
-  "Send the contents of FILE using `jupyter-repl-current-client'."
+  "Send the contents of FILE using `jupyter-current-client'."
   (interactive
    (list (read-file-name "File name: " nil nil nil
                          (file-name-nondirectory
@@ -1970,7 +1966,7 @@ are displayed."
     (error "Not a file (%s)" file)))
 
 (defun jupyter-repl-eval-region (beg end &optional silently)
-  "Evaluate a region with the `jupyter-repl-current-client'.
+  "Evaluate a region with the `jupyter-current-client'.
 BEG and END are the beginning and end of the region to evaluate.
 SILENTLY has the same meaning as in `jupyter-repl-eval-string'."
   (interactive "rP")
@@ -1978,7 +1974,7 @@ SILENTLY has the same meaning as in `jupyter-repl-eval-string'."
    (buffer-substring-no-properties beg end) silently))
 
 (defun jupyter-repl-eval-line-or-region ()
-  "Evaluate the current line or region with the `jupyter-repl-current-client'.
+  "Evaluate the current line or region with the `jupyter-current-client'.
 If the current region is active send the current region using
 `jupyter-repl-eval-region', otherwise send the current line."
   (interactive)
@@ -1996,7 +1992,7 @@ synchronize the execution state, and insert a new input prompt."
     (with-jupyter-repl-buffer client
       (when (jupyter-message-status-starting-p msg)
         ;; FIXME: Don't assume `jupyter-include-other-output' was previously nil
-        (jupyter-set jupyter-repl-current-client 'jupyter-include-other-output nil)
+        (jupyter-set jupyter-current-client 'jupyter-include-other-output nil)
         (jupyter-repl-without-continuation-prompts
          (goto-char (point-max))
          (jupyter-repl-previous-cell)
@@ -2017,7 +2013,7 @@ A kernel can be interrupted if it was started using a
       (user-error "Cannot interrupt non-subprocess kernels")
     (message "Interrupting kernel")
     (jupyter-interrupt-kernel
-     (oref jupyter-repl-current-client manager))))
+     (oref jupyter-current-client manager))))
 
 ;; TODO: Make timeouts configurable
 (defun jupyter-repl-restart-kernel (&optional shutdown)
@@ -2030,9 +2026,9 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
     (setq-local jupyter-repl-use-builtin-is-complete nil)
     ;; When restarting, the startup message is not associated with any request
     ;; so ensure that we are able to capture it.
-    (jupyter-set jupyter-repl-current-client 'jupyter-include-other-output t))
+    (jupyter-set jupyter-current-client 'jupyter-include-other-output t))
   (if (jupyter-repl-client-has-manager-p)
-      (let ((manager (oref jupyter-repl-current-client manager)))
+      (let ((manager (oref jupyter-current-client manager)))
         (cond
          ((jupyter-kernel-alive-p manager)
           (message "%s kernel..." (if shutdown "Shutting down"
@@ -2042,16 +2038,16 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
           (message "Starting dead kernel...")
           (jupyter-start-kernel manager))))
     (unless (jupyter-wait-until-received :shutdown-reply
-              (jupyter-send-shutdown-request jupyter-repl-current-client
+              (jupyter-send-shutdown-request jupyter-current-client
                 :restart (not shutdown)))
-      (jupyter-set jupyter-repl-current-client 'jupyter-include-other-output nil)
+      (jupyter-set jupyter-current-client 'jupyter-include-other-output nil)
       (message "Kernel did not respond to shutdown request"))))
 
 (defun jupyter-repl-display-kernel-buffer ()
   "Display the kernel processes stdout."
   (interactive)
   (if (jupyter-repl-client-has-manager-p)
-      (let ((manager (oref jupyter-repl-current-client manager)))
+      (let ((manager (oref jupyter-current-client manager)))
         (display-buffer (process-buffer (oref manager kernel))))
     (user-error "Kernel not a subprocess")))
 
@@ -2155,7 +2151,7 @@ in the appropriate direction, to the saved element."
   "Display a scratch buffer associated with the current REPL buffer."
   (interactive)
   (if (jupyter-repl-connected-p)
-      (let ((client jupyter-repl-current-client))
+      (let ((client jupyter-current-client))
         (with-current-buffer (get-buffer-create
                               (concat "*jupyter-scratch*"))
           (funcall (jupyter-repl-language-mode client))
@@ -2180,7 +2176,7 @@ in the appropriate direction, to the saved element."
 (define-derived-mode jupyter-repl-mode fundamental-mode
   "Jupyter-REPL"
   "A Jupyter REPL major mode."
-  (cl-check-type jupyter-repl-current-client jupyter-repl-client)
+  (cl-check-type jupyter-current-client jupyter-repl-client)
   ;; This is a better setting when rendering HTML tables
   (setq-local truncate-lines t)
   (setq-local indent-line-function #'jupyter-repl-indent-line)
@@ -2188,7 +2184,7 @@ in the appropriate direction, to the saved element."
   ;; Initialize a buffer using the major-mode correponding to the kernel's
   ;; language. This will be used for indentation and to capture font lock
   ;; properties.
-  (let* ((info (jupyter-kernel-info jupyter-repl-current-client))
+  (let* ((info (jupyter-kernel-info jupyter-current-client))
          (language-info (plist-get info :language_info))
          (language (plist-get language-info :name)))
     (cl-destructuring-bind (mode syntax)
@@ -2201,38 +2197,38 @@ in the appropriate direction, to the saved element."
       (set-syntax-table syntax)
       (with-jupyter-repl-lang-buffer
         (unless (eq major-mode mode)
-          (funcall mode)))))
-  ;; Get history from kernel
-  (setq-local jupyter-repl-history
-              (make-ring (1+ jupyter-repl-history-maximum-length)))
-  ;; The sentinel value keeps track of the newest/oldest elements of the
-  ;; history since next/previous navigation is implemented by rotations on the
-  ;; ring.
-  (ring-insert jupyter-repl-history 'jupyter-repl-history)
-  (let ((jupyter-inhibit-handlers '(:status)))
-    (jupyter-send-history-request jupyter-repl-current-client
-      :n jupyter-repl-history-maximum-length :raw nil :unique t))
-  (erase-buffer)
-  ;; Add local hooks
-  (add-hook 'kill-buffer-query-functions #'jupyter-repl-kill-buffer-query-function nil t)
-  (add-hook 'after-change-functions 'jupyter-repl-after-buffer-change nil t)
-  (add-hook 'pre-redisplay-functions 'jupyter-repl-preserve-window-margins nil t)
-  ;; Initialize the REPL
-  (buffer-disable-undo)
-  (jupyter-repl-initialize-hooks)
-  (jupyter-repl-initialize-fontification)
-  (jupyter-repl-isearch-setup)
-  (jupyter-repl-sync-execution-state)
-  (jupyter-repl-interaction-mode))
+          (funcall mode))))
+    ;; Get history from kernel
+    (setq-local jupyter-repl-history
+                (make-ring (1+ jupyter-repl-history-maximum-length)))
+    ;; The sentinel value keeps track of the newest/oldest elements of the
+    ;; history since next/previous navigation is implemented by rotations on the
+    ;; ring.
+    (ring-insert jupyter-repl-history 'jupyter-repl-history)
+    (let ((jupyter-inhibit-handlers '(:status)))
+      (jupyter-send-history-request jupyter-current-client
+        :n jupyter-repl-history-maximum-length :raw nil :unique t))
+    (erase-buffer)
+    ;; Add local hooks
+    (add-hook 'kill-buffer-query-functions #'jupyter-repl-kill-buffer-query-function nil t)
+    (add-hook 'after-change-functions 'jupyter-repl-after-buffer-change nil t)
+    (add-hook 'pre-redisplay-functions 'jupyter-repl-preserve-window-margins nil t)
+    ;; Initialize the REPL
+    (buffer-disable-undo)
+    (jupyter-repl-initialize-hooks)
+    (jupyter-repl-initialize-fontification)
+    (jupyter-repl-isearch-setup)
+    (jupyter-repl-sync-execution-state)
+    (jupyter-repl-interaction-mode)))
 
 (defun jupyter-repl-initialize-hooks ()
   "Initialize startup hooks.
 When the kernel restarts, insert a new prompt."
   ;; NOTE: This hook will only run if `jupyter-include-other-output' is non-nil
   ;; during the restart.
-  (jupyter-add-hook jupyter-repl-current-client 'jupyter-iopub-message-hook
+  (jupyter-add-hook jupyter-current-client 'jupyter-iopub-message-hook
     (apply-partially
-     #'jupyter-repl-on-kernel-restart jupyter-repl-current-client)))
+     #'jupyter-repl-on-kernel-restart jupyter-current-client)))
 
 (defun jupyter-repl-initialize-fontification ()
   "Initialize fontification for the current REPL buffer."
@@ -2283,8 +2279,8 @@ it."
      (add-text-properties start (point) '(font-lock-face shadow fontified t)))))
 
 (defun jupyter-repl-sync-execution-state ()
-  "Synchronize the `jupyter-repl-current-client's kernel state."
-  (let* ((client jupyter-repl-current-client)
+  "Synchronize the `jupyter-current-client's kernel state."
+  (let* ((client jupyter-current-client)
          (req (let ((jupyter-inhibit-handlers t))
                 (jupyter-send-execute-request client :code "" :silent t))))
     (jupyter-add-callback req
@@ -2302,10 +2298,10 @@ it."
 ;;; `jupyter-repl-interaction-mode'
 
 (defun jupyter-repl-pop-to-buffer ()
-  "Switch to the REPL buffer of the `jupyter-repl-current-client'."
+  "Switch to the REPL buffer of the `jupyter-current-client'."
   (interactive)
-  (if jupyter-repl-current-client
-      (with-jupyter-repl-buffer jupyter-repl-current-client
+  (if jupyter-current-client
+      (with-jupyter-repl-buffer jupyter-current-client
         (goto-char (point-max))
         (pop-to-buffer (current-buffer)))
     (error "Buffer not associated with a REPL, see `jupyter-repl-associate-buffer'")))
@@ -2339,10 +2335,10 @@ If the `major-mode' of the `current-buffer' is the
      nil t)))
   (setq client (if (or (bufferp client) (stringp client))
                    (with-current-buffer client
-                     jupyter-repl-current-client)
+                     jupyter-current-client)
                  client))
   (cl-check-type client jupyter-repl-client)
-  (setq-local jupyter-repl-current-client client)
+  (setq-local jupyter-current-client client)
   (jupyter-repl-interaction-mode))
 
 (defvar jupyter-repl-interaction-map
@@ -2356,9 +2352,9 @@ If the `major-mode' of the `current-buffer' is the
     map))
 
 (defun jupyter-repl-propagate-client (orig-fun buffer-or-name &rest args)
-  "Propagate the `jupyter-repl-current-client' to other buffers."
+  "Propagate the `jupyter-current-client' to other buffers."
   (when jupyter-repl-interaction-mode
-    (let ((client jupyter-repl-current-client)
+    (let ((client jupyter-current-client)
           (buf (get-buffer buffer-or-name))
           (mode major-mode))
       (when buf
@@ -2388,7 +2384,7 @@ the `current-buffer' will automatically have
   (if jupyter-repl-interaction-mode
       (add-hook 'completion-at-point-functions 'jupyter-completion-at-point nil t)
     (unless (eq major-mode 'jupyter-repl-mode)
-      (kill-local-variable 'jupyter-repl-current-client))))
+      (kill-local-variable 'jupyter-current-client))))
 
 (defun jupyter-repl-kernel-language-mode-properties (language-info)
   "Get the `major-mode' info of a kernel's language.
@@ -2432,7 +2428,7 @@ buffer slot, raise an error."
                (format "*jupyter-repl[%s]*"
                        (concat language-name " " language-version))))
         (with-jupyter-repl-buffer client
-          (setq-local jupyter-repl-current-client client)
+          (setq-local jupyter-current-client client)
           (jupyter-repl-mode)
           (jupyter-repl-insert-banner banner)
           (jupyter-repl-insert-prompt 'in))))))

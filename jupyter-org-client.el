@@ -174,13 +174,13 @@ METADATA has the same meaning as in
                          (org-babel-jupyter-initiate-session
                           (alist-get :session params) params)
                        (setq syntax (syntax-table))
-                       jupyter-repl-current-client))
+                       jupyter-current-client))
         ;; KLUDGE: Remove the need for setting
-        ;; `jupyter-repl-current-client', its needed so
+        ;; `jupyter-current-client', its needed so
         ;; that `jupyter-completion-prefetch' will use the
         ;; right client, similarly for the less specialized
         ;; `jupyter-completion-prefix'
-        (setq jupyter-repl-current-client client)
+        (setq jupyter-current-client client)
         ;; Use the syntax table of the language when
         ;; retrieving the prefix
         (with-syntax-table syntax

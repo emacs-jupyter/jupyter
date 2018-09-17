@@ -141,7 +141,7 @@ variables in PARAMS."
         (when delay-eval
           (insert "\n")))
       (unless delay-eval
-        (jupyter-send-execute-request jupyter-repl-current-client))
+        (jupyter-send-execute-request jupyter-current-client))
       (current-buffer))))
 
 (defun org-babel-load-session:jupyter (session body params)
@@ -228,7 +228,7 @@ the PARAMS alist."
   (let* ((repl-buffer (org-babel-jupyter-initiate-session
                        (alist-get :session params) params))
          (client (with-current-buffer repl-buffer
-                   jupyter-repl-current-client))
+                   jupyter-current-client))
          (kernel-lang (jupyter-kernel-language client))
          (vars (org-babel-variable-assignments:jupyter params kernel-lang))
          (code (org-babel-expand-body:jupyter body params vars kernel-lang))

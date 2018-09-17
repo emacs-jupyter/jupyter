@@ -45,6 +45,15 @@
   "A list of all live clients.
 Clients are removed from this list when their `destructor' is called.")
 
+;; This is mainly used by the REPL code, but is also set by
+;; the `org-mode' client whenever `point' is inside a code
+;; block.
+(defvar jupyter-current-client nil
+  "The `jupyter-kernel-client' for the `current-buffer'.")
+
+(put 'jupyter-current-client 'permanent-local t)
+(make-variable-buffer-local 'jupyter-current-client)
+
 (defvar jupyter-default-timeout 1
   "The default timeout in seconds for `jupyter-wait-until'.")
 
