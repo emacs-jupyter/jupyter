@@ -130,7 +130,7 @@ METADATA has the same meaning as in
                                              data
                                              metadata)
   (cond
-   ((equal (jupyter-repl-language client) "python")
+   ((equal (jupyter-kernel-language client) "python")
     ;; The Python kernel emits an execute-result and then a display-data
     ;; message, so only return the text representation for the execute-result.
     (setq data (list :text/plain (plist-get data :text/plain)))))
@@ -433,7 +433,7 @@ block for the request."
         (message "%s" (cdr result)))
     (if (jupyter-org-request-async req)
         (let ((params (jupyter-org-request-block-params req))
-              (kernel-lang (jupyter-repl-language client)))
+              (kernel-lang (jupyter-kernel-language client)))
           (org-with-point-at (jupyter-org-request-marker req)
             (jupyter-org-clear-request-id req)
             (jupyter-org-insert-results result params kernel-lang))
@@ -483,7 +483,7 @@ it does not need to be added by the user."
 Meant to be used as the return value of `org-babel-execute:jupyter'."
   (let ((results (nreverse (jupyter-org-request-results req)))
         (params (jupyter-org-request-block-params req))
-        (kernel-lang (jupyter-repl-language client)))
+        (kernel-lang (jupyter-kernel-language client)))
     (cl-destructuring-bind (render-param . result)
         (jupyter-org--transform-result (car results) kernel-lang)
       (jupyter-org--inject-render-param render-param params)

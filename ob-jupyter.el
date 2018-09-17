@@ -229,7 +229,7 @@ the PARAMS alist."
                        (alist-get :session params) params))
          (client (with-current-buffer repl-buffer
                    jupyter-repl-current-client))
-         (kernel-lang (jupyter-repl-language client))
+         (kernel-lang (jupyter-kernel-language client))
          (vars (org-babel-variable-assignments:jupyter params kernel-lang))
          (code (org-babel-expand-body:jupyter body params vars kernel-lang))
          (req (progn

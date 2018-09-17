@@ -1244,7 +1244,7 @@ Do this for the current cell."
      (t
       (jupyter-repl-append-output client req
         (jupyter-repl-insert-ansi-coded-text traceback)
-        (when (equal (jupyter-repl-language client) "python")
+        (when (equal (jupyter-kernel-language client) "python")
           (jupyter-repl-fix-python-traceback-spacing ename)))))))
 
 (cl-defmethod jupyter-handle-input-reply ((client jupyter-repl-client) req prompt _password)

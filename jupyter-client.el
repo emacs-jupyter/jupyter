@@ -1150,6 +1150,8 @@ START is the buffer position considered as the start of the line. See
   (declare (indent 1))
   nil)
 
+;;; Accessing kernel info properties
+
 (cl-defmethod jupyter-kernel-info ((client jupyter-kernel-client))
   "Return the kernel info plist of CLIENT.
 Return CLIENT's kernel-info slot if non-nil. Otherwise send a
@@ -1173,6 +1175,10 @@ If the kernel CLIENT is connected to does not respond to a
           (unless (oref client kernel-info)
             (error "Kernel did not respond to kernel-info request"))
           (progress-reporter-done reporter)))))
+
+(cl-defmethod jupyter-kernel-language ((client jupyter-kernel-client))
+  "Return the language of the kernel CLIENT is connected to."
+  (plist-get (plist-get (jupyter-kernel-info client) :language_info) :name))
 
 (cl-defgeneric jupyter-send-kernel-info-request ((client jupyter-kernel-client))
   "Send a kernel-info request."
