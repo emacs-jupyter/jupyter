@@ -152,7 +152,7 @@ CLIENT is bound to the Python client of the kernel. Cleanup the
 client and delete the kernel process after running BODY."
   (declare (indent 1) (debug (symbolp &rest form)))
   (let ((manager (make-symbol "--manager")))
-    `(cl-destructuring-bind (,manager ,client _info)
+    `(cl-destructuring-bind (,manager ,client)
          (jupyter-start-new-kernel "python")
        (unwind-protect
            (progn ,@body)

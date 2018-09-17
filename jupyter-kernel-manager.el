@@ -313,15 +313,13 @@ of `jupyer-kernel-client' and will be used to initialize a new
 client connected to the kernel. CLIENT-CLASS defaults to
 `jupyter-kernel-client'.
 
-Return a list (KM KC INFO) where KM is the
-`jupyter-kernel-manager' that manages the lifetime of the kernel
-subprocess. KC is a new client connected to the kernel whose
-class is CLIENT-CLASS. The client is connected to the kernel with
-all channels listening for messages and the heartbeat channel
-unpaused. Note that the client's `manager' slot will also be set
-to the kernel manager instance, see `jupyter-make-client'.
-Finally, INFO is the kernel info plist obtained from an initial
-`:kernel-info-request' sent to the kernel using KC."
+Return a list (KM KC) where KM is the `jupyter-kernel-manager'
+that manages the lifetime of the kernel subprocess. KC is a new
+client connected to the kernel whose class is CLIENT-CLASS. The
+client is connected to the kernel with all channels listening for
+messages and the heartbeat channel unpaused. Note that the
+client's `manager' slot will also be set to the kernel manager
+instance, see `jupyter-make-client'."
   (or client-class (setq client-class 'jupyter-kernel-client))
   (unless (child-of-class-p client-class 'jupyter-kernel-client)
     (signal 'wrong-type-argument
@@ -341,7 +339,7 @@ Finally, INFO is the kernel info plist obtained from an initial
                      :spec (cddr match)
                      :session session))
            (client (jupyter-make-client manager client-class))
-           kernel-info)
+           started)
       (unwind-protect
           (let (reporter)
             (jupyter-start-channels client)
@@ -352,35 +350,27 @@ Finally, INFO is the kernel info plist obtained from an initial
             ;; NOTE: Startup messages have no parent header, hence the need for
             ;; `jupyter-include-other-output'.
             (let* ((jupyter-include-other-output t)
-                   (started nil)
                    (cb (lambda (msg)
                          (setq started
                                (jupyter-message-status-starting-p msg)))))
               (jupyter-add-hook client 'jupyter-iopub-message-hook cb)
               (jupyter-start-kernel manager 10)
               (setq reporter (make-progress-reporter "Kernel starting up..."))
-              ;; The javascript kernel doesn't seem to send the startup message
               (with-timeout (5 (message "Kernel did not send startup message"))
                 (while (not started)
                   (progress-reporter-update reporter)
                   (sleep-for 0.02))
                 (progress-reporter-done reporter))
               (jupyter-remove-hook client 'jupyter-iopub-message-hook cb))
-            (setq reporter (make-progress-reporter "Requesting kernel info..."))
-            (let ((jupyter-inhibit-handlers t))
-              (setq kernel-info
-                    (jupyter-message-content
-                     (jupyter-wait-until-received :kernel-info-reply
-                       (jupyter-send-kernel-info-request client)
-                       ;; TODO: Make this timeout configurable? The
-                       ;; python kernel starts up fast, but the Julia
-                       ;; kernel not so much.
-                       5)))
-              (unless kernel-info
-                (error "Kernel did not respond to kernel-info request"))
-              (progress-reporter-done reporter))
-            (list manager client kernel-info))
-        (unless kernel-info
+            ;; FIXME: The javascript kernel doesn't seem to
+            ;; send the startup message so instead of
+            ;; erroring when the kernel does not send a
+            ;; startup message, ensure that it responds to
+            ;; a kernel info request.
+            (setq started nil
+                  started (jupyter-kernel-info client))
+            (list manager client))
+        (unless started
           (destructor client)
           (destructor manager))))))
 

@@ -93,6 +93,13 @@ expected, it sets an entry in this table to represent the fact
 that the message has been sent. So if there is a non-nil value
 for a message ID it means that a message has been sent and the
 client is expecting a reply from the kernel.")
+   (kernel-info
+    :type json-plist
+    :initform nil
+    :documentation "The saved kernel info created when first
+initializing this client. When `jupyter-start-channels' is
+called, this will be set to the kernel info plist returned
+from an initial `:kernel-info-request'.")
    (ioloop
     :type (or null process)
     :initform nil
@@ -534,6 +541,7 @@ in CLIENT."
    ((not (process-live-p ioloop))
     (jupyter-stop-channel (oref client hb-channel))
     (jupyter--ioloop-unlock client)
+    (oset client kernel-info nil)
     (oset client ioloop nil))))
 
 (defun jupyter--get-channel (client ctype)
@@ -1116,6 +1124,30 @@ the user. Otherwise `read-from-minibuffer' is used."
   "Default comm info. reply handler."
   (declare (indent 1))
   nil)
+
+(cl-defmethod jupyter-kernel-info ((client jupyter-kernel-client))
+  "Return the kernel info plist of CLIENT.
+Return CLIENT's kernel-info slot if non-nil. Otherwise send a
+`:kernel-info-request' to CLIENT's kernel, set CLIENT's
+kernel-info slot to the plist retrieved from the kernel, and
+return it.
+
+If the kernel CLIENT is connected to does not respond to a
+`:kernel-info-request', raise an error."
+  (or (oref client kernel-info)
+      (let ((reporter (make-progress-reporter "Requesting kernel info..."))
+            (jupyter-inhibit-handlers t))
+        (prog1 (oset client kernel-info
+                     (jupyter-message-content
+                      (jupyter-wait-until-received :kernel-info-reply
+                        (jupyter-send-kernel-info-request client)
+                        ;; TODO: Make this timeout configurable? The
+                        ;; python kernel starts up fast, but the Julia
+                        ;; kernel not so much.
+                        5)))
+          (unless (oref client kernel-info)
+            (error "Kernel did not respond to kernel-info request"))
+          (progress-reporter-done reporter)))))
 
 (cl-defgeneric jupyter-send-kernel-info-request ((client jupyter-kernel-client))
   "Send a kernel-info request."

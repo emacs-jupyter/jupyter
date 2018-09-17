@@ -131,11 +131,6 @@ timeout, the built-in is-complete handler is used."
     :documentation "Whether or not we should wait to clear the
 current output of the cell. Set when the kernel sends a
 `:clear-output' message.")
-   (kernel-info
-    :type json-plist
-    :initform nil
-    :documentation "The saved kernel info created when first
-initializing this client.")
    (execution-state
     :type string
     :initform "idle"
@@ -293,7 +288,7 @@ erased."
 
 (cl-defmethod jupyter-repl-language ((client jupyter-repl-client))
   "Return the name of CLIENT's kernel language."
-  (plist-get (plist-get (oref client kernel-info) :language_info) :name))
+  (plist-get (plist-get (jupyter-kernel-info client) :language_info) :name))
 
 ;;; Text insertion
 
@@ -2026,7 +2021,7 @@ synchronize the execution state, and insert a new input prompt."
            (jupyter-repl-finalize-cell nil)
            (jupyter-repl-newline)
            (jupyter-repl-insert-banner
-            (plist-get (oref client kernel-info) :banner))
+            (plist-get (jupyter-kernel-info client) :banner))
            (jupyter-repl-sync-execution-state)
            (jupyter-repl-insert-prompt 'in)))))))
 
@@ -2210,8 +2205,9 @@ in the appropriate direction, to the saved element."
   ;; Initialize a buffer using the major-mode correponding to the kernel's
   ;; language. This will be used for indentation and to capture font lock
   ;; properties.
-  (let* ((info (oref jupyter-repl-current-client kernel-info))
-         (language-info (plist-get info :language_info)))
+  (let* ((info (jupyter-kernel-info jupyter-repl-current-client))
+         (language-info (plist-get info :language_info))
+         (language (plist-get language-info :name)))
     (cl-destructuring-bind (mode syntax)
         (jupyter-repl-kernel-language-mode-properties language-info)
       (setq-local jupyter-repl-lang-mode mode)
@@ -2442,12 +2438,10 @@ A new REPL buffer communicating with CLIENT's kernel is created
 and set as CLIENT's buffer slot. If CLIENT already has a non-nil
 buffer slot, raise an error."
   (if (oref client buffer) (error "Client already has a REPL buffer")
-    (unless (oref client kernel-info)
-      (error "Client needs to have valid kernel-info"))
     (cl-destructuring-bind (&key language_info
                                  banner
                                  &allow-other-keys)
-        (oref client kernel-info)
+        (jupyter-kernel-info client)
       (let ((language-name (plist-get language_info :name))
             (language-version (plist-get language_info :version)))
         (oset client buffer
@@ -2491,9 +2485,8 @@ Otherwise, in a non-interactive call, return the
     (error "No kernel found for prefix (%s)" kernel-name))
   (unless (child-of-class-p client-class 'jupyter-repl-client)
     (error "Class should be a subclass of `jupyter-repl-client' (`%s')" client-class))
-  (cl-destructuring-bind (_manager client info)
+  (cl-destructuring-bind (_manager client)
       (jupyter-start-new-kernel kernel-name client-class)
-    (oset client kernel-info info)
     (jupyter-repl--new-repl client)
     (when (and associate-buffer
                (eq major-mode (jupyter-repl-language-mode client)))
@@ -2522,22 +2515,13 @@ called interactively, display the new REPL buffer as well."
   (let ((client (make-instance client-class)))
     (jupyter-initialize-connection client file-or-plist)
     (jupyter-start-channels client)
-    (message "Requesting kernel info...")
-    (let* ((jupyter-inhibit-handlers t)
-           (info (jupyter-wait-until-received :kernel-info-reply
-                   (jupyter-send-kernel-info-request client)
-                   5)))
-      (unless info
-        (destructor client)
-        (error "Kernel did not respond to kernel-info request"))
-      (oset client kernel-info (jupyter-message-content info))
-      (jupyter-repl--new-repl client)
-      (when (and associate-buffer
-                 (eq major-mode (jupyter-repl-language-mode client)))
-        (jupyter-repl-associate-buffer client))
-      (when (called-interactively-p 'interactive)
-        (pop-to-buffer (oref client buffer)))
-      client)))
+    (jupyter-repl--new-repl client)
+    (when (and associate-buffer
+               (eq major-mode (jupyter-repl-language-mode client)))
+      (jupyter-repl-associate-buffer client))
+    (when (called-interactively-p 'interactive)
+      (pop-to-buffer (oref client buffer)))
+    client))
 
 (provide 'jupyter-repl)
 

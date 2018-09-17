@@ -363,12 +363,10 @@ to ask the user to select a kernel. This is what is done in =run-jupyter-repl=.
 As was mentioned previously, to start a new kernel on the =localhost= and
 create a connected client, use =jupyter-start-new-kernel= which takes a kernel
 name and returns a =jupyter-kernel-manager= which manages the lifetime of the
-kernel, a connected =jupyter-kernel-client=, and the =kernel-info= which
-manages the lifetime of the kernel, a connected =jupyter-kernel-client=, and
-the kernel info property list.
+kernel, and a connected =jupyter-kernel-client=.
 
 #+BEGIN_SRC elisp
-(cl-destructuring-bind (manager client info)
+(cl-destructuring-bind (manager client)
     (jupyter-start-new-kernel "python")
   BODY)
 #+END_SRC
