@@ -635,19 +635,16 @@ on EVENT. If TIMEOUT is nil it defaults to 1 s."
                                       (stdin t)
                                       (hb t))
   "Start the pre-configured channels of CLIENT.
-This function calls `jupyter-start-channel' for every channel
-that has a non-nil value passed to this function. All channels
-are started by default, so to prevent a channel from starting you
-would have to pass a nil value for the channel's key. As an
-example, to prevent the control channel from starting you would
-call this function like so
+Before starting the channels, ensure that the channel subprocess
+responsible for encoding/decoding messages and sending/receiving
+messages to/from the kernel is running.
 
-    (jupyter-start-channels client :stdin nil)
+Call `jupyter-start-channel' for every channel whose key has a
+non-nil value passed to this function.
 
-In addition to calling `jupyter-start-channel', a subprocess is
-created for each channel which monitors the channel's socket for
-input events. Note that this polling subprocess is not created
-for the heartbeat channel."
+If the shell channel is started, send an initial
+`:kernel-info-request' to set the kernel-info slot of CLIENT if
+necessary."
   (jupyter--start-ioloop client)
   (when hb
     (jupyter-start-channel (oref client hb-channel)))
