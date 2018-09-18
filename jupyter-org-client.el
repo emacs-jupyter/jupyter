@@ -195,7 +195,12 @@ METADATA has the same meaning as in
                                     &context (major-mode org-mode))
   (when (org-in-src-block-p 'inside)
     (let* ((el (org-element-at-point))
-           (beg (org-element-property :begin el))
+           (post (org-element-property :post-affiliated el))
+           (beg (save-excursion
+                  (goto-char (if post post
+                               (org-element-property :begin el)))
+                  (forward-line)
+                  (line-beginning-position)))
            (val (org-element-property :value el))
            ;; Remove the last \n that is always present in
            ;; code blocks
