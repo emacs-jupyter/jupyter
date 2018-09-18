@@ -297,32 +297,29 @@ font lock. Any text between START and END that does not have a
 for the property."
   (add-text-properties
    start end '(fontified t font-lock-fontified t font-lock-multiline t) object)
-  (font-lock-fillin-text-property
-   start end 'font-lock-face 'default object))
+  (jupyter-repl-fixup-font-lock-properties start end object))
 
 ;; Adapted from `org-src-font-lock-fontify-block'
-(defun jupyter-repl-fixup-font-lock-properties ()
-  "Fixup the text properties in the `current-buffer'.
-Fixing the text properties of the current buffer involves
-substituting any `face' property with `font-lock-face' for
-insertion into the REPL buffer and adding
-`font-lock-extra-managed-props' to the text."
-  (let ((start (point-min))
-        (pos (point-min)) next)
-    (catch 'done
-      (while (setq next (or (next-property-change pos) (point-max)))
-        ;; Handle additional properties from font-lock, so as to
-        ;; preserve, e.g., composition.
-        (dolist (prop (cons 'face font-lock-extra-managed-props))
-          (let ((new-prop (get-text-property pos prop)))
-            (put-text-property
-             (+ start (1- pos)) (1- (+ start next))
-             (if (eq prop 'face) 'font-lock-face prop)
-             (if (eq prop 'face) (or new-prop 'default)
-               new-prop))))
-        (setq pos next)
-        (when (= pos (point-max))
-          (throw 'done t))))))
+(defun jupyter-repl-fixup-font-lock-properties (beg end &optional object)
+  "Fixup the text properties in the `current-buffer' between BEG END.
+If OBJECT is non-nil, fixup the text properties of OBJECT. Fixing
+the text properties of the current buffer involves substituting
+any `face' property with `font-lock-face' for insertion into the
+REPL buffer and adding `font-lock-extra-managed-props' to the
+text."
+  (let ((pos (point-min)) next)
+    (while (/= (setq next (next-property-change beg object end)) end)
+      ;; Handle additional properties from font-lock, so as to
+      ;; preserve, e.g., composition.
+      (dolist (prop (cons 'face font-lock-extra-managed-props))
+        (let ((new-prop (get-text-property pos prop)))
+          (put-text-property
+           (+ beg (1- pos)) (1- (+ beg next))
+           (if (eq prop 'face) 'font-lock-face prop)
+           (if (eq prop 'face) (or new-prop 'default)
+             new-prop)
+           object)))
+      (setq beg next))))
 
 (defun jupyter-repl-get-fontify-buffer (mode)
   "Return the buffer used to fontify text for MODE.
@@ -346,10 +343,7 @@ In addition to fontifying STR, if MODE has a non-default
     (let ((inhibit-modification-hooks nil))
       (erase-buffer)
       (insert str)
-      (font-lock-ensure)
-      ;; FIXME: This adds a font-lock-face of default if text doesn't have a
-      ;; font-lock-face and so does `jupyter-repl-add-font-lock-properties'
-      (jupyter-repl-fixup-font-lock-properties))
+      (font-lock-ensure))
     (jupyter-repl-add-font-lock-properties (point-min) (point-max))
     (when (not (memq fill-forward-paragraph-function
                      '(forward-paragraph)))
@@ -423,7 +417,7 @@ can contain the following keywords along with their values:
                    (point-min) (point-max))))
          (erase-buffer)
          (shr-insert-document xml))
-       (jupyter-repl-fixup-font-lock-properties)
+       (jupyter-repl-fixup-font-lock-properties (point-min) (point-max))
        (string-trim (buffer-string))))))
 
 ;; Markdown integration
