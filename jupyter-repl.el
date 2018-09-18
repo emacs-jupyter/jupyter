@@ -171,6 +171,9 @@ Display IDs are implemented by setting the text property,
 find the display in the REPL buffer. See
 `jupyter-repl-update-display'.")
 
+(cl-generic-define-context-rewriter jupyter-repl-mode (mode &rest modes)
+  `(jupyter-repl-lang-mode (derived-mode ,mode ,@modes)))
+
 ;;; Macros
 
 (defmacro with-jupyter-repl-buffer (client &rest body)
@@ -2185,32 +2188,6 @@ in the appropriate direction, to the saved element."
     (define-key map (kbd "M-p") #'jupyter-repl-history-previous)
     map))
 
-(cl-defgeneric jupyter-repl-after-init ()
-  "Hook function called whenever `jupyter-repl-mode' is enabled/disabled.
-You may override this function for a particular language using a
-jupyter-lang &context specializer. For example, to do something
-when the language if the REPL is python the method signature
-would be
-
-    (cl-defmethod jupyter-repl-after-init (&context (jupyter-lang python)))"
-  nil)
-
-(cl-defmethod jupyter-repl-after-init (&context (jupyter-lang javascript))
-  ;; Special case since `js2-mode' does not use `font-lock-defaults' for
-  ;; highlighting.
-  (when (and (eq jupyter-repl-lang-mode 'js2-mode)
-             (null (nth 0 font-lock-defaults)))
-    (add-hook 'after-change-functions
-              (lambda (_beg _end _len)
-                (unless (jupyter-repl-cell-finalized-p)
-                  (save-restriction
-                    (narrow-to-region
-                     (jupyter-repl-cell-code-beginning-position)
-                     (jupyter-repl-cell-code-end-position))
-                    (js2-parse)
-                    (js2-mode-apply-deferred-properties))))
-              t t)))
-
 ;; TODO: Gaurd against a major mode change
 (put 'jupyter-repl-mode 'mode-class 'special)
 (define-derived-mode jupyter-repl-mode fundamental-mode
@@ -2259,9 +2236,37 @@ would be
     (jupyter-repl-initialize-fontification)
     (jupyter-repl-isearch-setup)
     (jupyter-repl-sync-execution-state)
-    (jupyter-repl-interaction-mode)
-    (when jupyter-repl-mode
-      (jupyter-repl-after-init))))
+    (jupyter-repl-interaction-mode)))
+
+(cl-defgeneric jupyter-repl-after-init ()
+  "Hook function called whenever `jupyter-repl-mode' is enabled/disabled.
+You may override this function for a particular language using a
+jupyter-lang &context specializer. For example, to do something
+when the language if the REPL is python the method signature
+would be
+
+    (cl-defmethod jupyter-repl-after-init (&context (jupyter-lang python)))"
+  nil)
+
+(cl-defmethod jupyter-repl-after-init (&context (jupyter-lang javascript)
+                                                (jupyter-repl-mode js2-mode))
+  "If `js2-mode' is used for Javascript kernels, enable syntax highlighting.
+`js2-mode' does not use `font-lock-defaults', but their own
+custom method."
+  (add-hook 'after-change-functions
+            (lambda (_beg _end len)
+              ;; Insertions only
+              (when (= len 0)
+                (unless (jupyter-repl-cell-finalized-p)
+                  (let ((cbeg (jupyter-repl-cell-code-beginning-position))
+                        (cend (jupyter-repl-cell-code-end-position)))
+                    (save-restriction
+                      (narrow-to-region cbeg cend)
+                      (js2-parse)
+                      (js2-mode-apply-deferred-properties))))))
+            t t))
+
+(add-hook 'jupyter-repl-mode-hook 'jupyter-repl-after-init)
 
 (defun jupyter-repl-initialize-hooks ()
   "Initialize startup hooks.
@@ -2294,21 +2299,7 @@ When the kernel restarts, insert a new prompt."
                                     (unless (get-text-property
                                              (nth 8 state) 'font-lock-face)
                                       (when sff (funcall sff state))))))))))
-    (font-lock-mode)
-    ;; Special case since `js2-mode' does not use `font-lock-defaults' for
-    ;; highlighting.
-    (when (and (eq jupyter-repl-lang-mode 'js2-mode)
-               (null (nth 0 font-lock-defaults)))
-      (add-hook 'after-change-functions
-                (lambda (_beg _end _len)
-                  (unless (jupyter-repl-cell-finalized-p)
-                    (save-restriction
-                      (narrow-to-region
-                       (jupyter-repl-cell-code-beginning-position)
-                       (jupyter-repl-cell-code-end-position))
-                      (js2-parse)
-                      (js2-mode-apply-deferred-properties))))
-                t t))))
+    (font-lock-mode)))
 
 (defun jupyter-repl-insert-banner (banner)
   "Insert BANNER into the `current-buffer'.
