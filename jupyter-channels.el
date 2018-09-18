@@ -39,7 +39,7 @@
     :type keyword
     :initarg :type
     :documentation "The type of this channel. Should be one of
- the keys in `jupyter-channel-socket-types'.")
+the keys in `jupyter-channel-socket-types'.")
    (session
     :type jupyter-session
     :initarg :session
@@ -63,7 +63,16 @@ send/receive messages.")
     :type (or null process)
     :initform nil
     :documentation "The process responsible for sending and
-receiving messages on this channel.")
+receiving messages on this channel.
+
+This subprocess is responsible for receiving message
+s-expressions sent by the `jupyter-send' method for a
+`jupyter-async-channel', encoding the message, and sending the
+encoded message to the kernel.
+
+The parent Emacs process is then responsible for calling
+`jupyter-queue-message' when a message is received from the
+subprocess.")
    (recv-queue
     :type ring
     :initform (make-ring 10))
@@ -137,6 +146,22 @@ wait until TIMEOUT for a message."
         msg))))
 
 (cl-defmethod jupyter-send ((channel jupyter-async-channel) type message &optional msg-id)
+  "Send an asynchronous MESSAGE on CHANNEL.
+MESSAGE is sent to the subprocess in CHANNEL's ioloop slot which
+is expected to send the message to the kernel. The list sent to
+the subprocess has the following form
+
+    (send CHANNEL-TYPE TYPE MESSAGE MSG-ID)
+
+where CHANNEL-TYPE is either `:iopub', `:shell', `:hb',
+`:control', TYPE is the message type (one of the keys in
+`jupyter-message-types'), MESSAGE is the message plist to send,
+and MSG-ID is the unique message ID to associate with the message
+with nil meaning to generate a new ID.
+
+When a message is received from the kernel, the subprocess is
+responsible for placing the message in CHANNEL's message queue
+using `jupyter-queue-message'."
   (zmq-subprocess-send (oref channel ioloop)
     (list 'send (oref channel type) type message msg-id)))
 
