@@ -884,7 +884,8 @@ POS defaults to `point'."
 
 (defun jupyter-repl-cell-finalized-p ()
   "Has the current cell been finalized?"
-  (jupyter-repl-cell-end-p (jupyter-repl-cell-end-position)))
+  (or (not (jupyter-repl-cell-line-p))
+      (/= (jupyter-repl-cell-end-position) (point-max))))
 
 (defun jupyter-repl-client-has-manager-p ()
   "Does the `jupyter-current-client' have a `jupyter-kernel-manager'?"
