@@ -395,26 +395,25 @@ the PARAMS list. If RENDER-PARAM is a string, remove it from the
                    (1+ (line-end-position))))))))))
     (setf (jupyter-org-request-id-cleared-p req) t)))
 
-;; TODO: Externalize this, for example by adding a slot for transormation
-;; functions to a `jupyter-org-client'. Or for a `jupyter-org-request' object
-;; since transformations will be based on the block language.
-(defun jupyter-org--transform-result (render-result kernel-lang)
-  "Do some final transformations of RENDER-RESULT based on KERNEL-LANG.
-For example, call `org-babel-python-table-or-string' on the
-results when rendering scalar data for a python code block.
-
+(cl-defgeneric jupyter-org-transform-result (render-result)
+  "Do some final transformations of RENDER-RESULT.
 RENDER-RESULT is the cons cell returned by
-`jupyter-org-prepare-result' and KERNEL-LANG is the kernel
-language."
-  (let ((render-param (or (car render-result) "scalar"))
-        (result (cdr render-result)))
-    (cond
-     ((and (equal render-param "scalar") (equal kernel-lang "python"))
-      (cons "scalar" (when result (org-babel-python-table-or-string result))))
-     (t
-      (if (equal render-param "scalar")
-          (cons "scalar" (when result (org-babel-script-escape result)))
-        render-result)))))
+`jupyter-org-prepare-result'. Return the transformed
+RENDER-RESULT cons cell.
+
+The default method calls `org-babel-script-escape' on the RESULT
+if it is a scalar, otherwise it just returns RENDER-RESULT."
+  (cond
+   ((equal (car render-result) "scalar")
+    (cons "scalar" (org-babel-script-escape (cdr render-result))))
+   (t render-result)))
+
+(cl-defmethod jupyter-org-transform-result (render-result
+                                            &context (jupyter-lang python))
+  (cond
+   ((equal (car render-result) "scalar")
+    (cons "scalar" (org-babel-python-table-or-string (cdr render-result))))
+   (t render-result)))
 
 (defun jupyter-org-add-result (client req result)
   "For a request made with CLIENT, add RESULT.
@@ -438,14 +437,14 @@ block for the request."
         (message "%s" (cdr result)))
     (if (jupyter-org-request-async req)
         (let ((params (jupyter-org-request-block-params req))
-              (kernel-lang (jupyter-kernel-language client)))
+              (jupyter-current-client client))
           (org-with-point-at (jupyter-org-request-marker req)
             (jupyter-org-clear-request-id req)
-            (jupyter-org-insert-results result params kernel-lang))
+            (jupyter-org-insert-results result params))
           (jupyter-org--inject-render-param "append" params))
       (push result (jupyter-org-request-results req)))))
 
-(defun jupyter-org-insert-results (results params kernel-lang)
+(defun jupyter-org-insert-results (results params)
   "Insert RESULTS at the current source block location.
 RESULTS is either a single cons cell or a list of such cells,
 each cell having the form
@@ -454,8 +453,7 @@ each cell having the form
 
 They should have been collected by previous calls to
 `jupyter-org-prepare-result'. PARAMS are the parameters
-passed to `org-babel-execute:jupyter'. KERNEL-LANG is the
-language of the kernel that produced RESULTS.
+passed to `org-babel-execute:jupyter'.
 
 Note that if RESULTS is a list, the last result in the list will
 be the one that eventually is shown in the org document. This is
@@ -475,9 +473,7 @@ it does not need to be added by the user."
    ;; caring about the parameters of the info and not anything else.
    with info = (list nil nil params)
    with result-params = (alist-get :result-params params)
-   for (render-param . result) in
-   (mapcar (lambda (r) (jupyter-org--transform-result r kernel-lang))
-      results)
+   for (render-param . result) in (mapcar #'jupyter-org-transform-result results)
    do (jupyter-org--inject-render-param render-param params)
    (cl-letf (((symbol-function 'message) #'ignore))
      (org-babel-insert-result result result-params info))
@@ -503,10 +499,11 @@ Meant to be used as the return value of `org-babel-execute:jupyter'."
            0.01 nil
            (lambda ()
              (org-with-point-at (jupyter-org-request-marker req)
-               (let ((params (jupyter-org-request-block-params req)))
+               (let ((params (jupyter-org-request-block-params req))
+                     (jupyter-current-client client))
                  (jupyter-org--clear-render-param render-param params)
                  (jupyter-org--inject-render-param "append" params)
-                 (jupyter-org-insert-results (cdr results) params kernel-lang)
+                 (jupyter-org-insert-results (cdr results) params)
                  (set-marker (jupyter-org-request-marker req) nil))))))))))
 
 (provide 'jupyter-org-client)

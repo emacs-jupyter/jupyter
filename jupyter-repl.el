@@ -216,10 +216,13 @@ output of REQ should be inserted."
 The contents of `jupyter-repl-lang-buffer' is erased before
 running BODY."
   (declare (indent 0) (debug (&rest form)))
-  `(with-current-buffer jupyter-repl-lang-buffer
-     (let ((inhibit-read-only t))
-       (erase-buffer)
-       ,@body)))
+  (let ((client (make-symbol "clientvar")))
+    `(let ((,client jupyter-current-client))
+       (with-current-buffer jupyter-repl-lang-buffer
+         (let ((inhibit-read-only t)
+               (jupyter-current-client ,client))
+           (erase-buffer)
+           ,@body)))))
 
 (defmacro with-jupyter-repl-cell (&rest body)
   "Narrow to the current cell, run BODY, then widen.
@@ -281,10 +284,6 @@ erased."
   "Return the `major-mode' of CLIENT's kernel language."
   (with-jupyter-repl-buffer client
     jupyter-repl-lang-mode))
-
-(cl-defmethod jupyter-repl-language ((client jupyter-repl-client))
-  "Return the name of CLIENT's kernel language."
-  (plist-get (plist-get (jupyter-kernel-info client) :language_info) :name))
 
 ;;; Text insertion
 
@@ -440,24 +439,28 @@ can contain the following keywords along with their values:
     (define-key map [mouse-2] 'jupyter-repl-markdown-follow-link-at-point)
     map))
 
+(cl-defgeneric jupyter-markdown-follow-link (_link-text _url _ref-label _title-text _bang)
+  "Follow the markdown link at `point'."
+  (markdown-follow-link-at-point))
+
+(cl-defmethod jupyter-markdown-follow-link (link-text url _ref-label _title-text _bang
+                                                      &context (jupyter-lang julia))
+  "Send a help query to the Julia REPL for LINK-TEXT if URL is \"@ref\".
+Otherwise follow the link normally."
+  (if (string= url "@ref")
+      ;; Links have the form `fun`
+      (let ((fun (substring link-text 1 -1)))
+        (goto-char (point-max))
+        (jupyter-repl-replace-cell-code (concat "?" fun))
+        (jupyter-repl-ret))
+    (cl-call-next-method)))
+
 (defun jupyter-repl-markdown-follow-link-at-point ()
   "Handle markdown links specially."
   (interactive)
   (let ((link (markdown-link-at-pos (point))))
-    ;; TODO: How to generalize this to kernels which do not utilize markdown in
-    ;; their docstrings? Maybe if you do M-RET on a symbol it will call the
-    ;; help function on it. For example in the python kernel, you can pull up
-    ;; help on a symbol by calling the help function on it or appending a
-    ;; question mark at the end of the symbol.
-    (if (and (string= (nth 3 link) "@ref")
-             (string= (jupyter-repl-language jupyter-repl-current-client)
-                      "julia"))
-        ;; Links have the form `fun`
-        (let ((fun (substring (nth 2 link) 1 -1)))
-          (goto-char (point-max))
-          (jupyter-repl-replace-cell-code (concat "?" fun))
-          (jupyter-repl-ret))
-      (markdown-follow-link-at-point))))
+    (when (car link)
+      (apply #'jupyter-markdown-follow-link (cddr link)))))
 
 (defun jupyter-repl-insert-markdown (text)
   "Insert TEXT, fontifying it using `markdown-mode' first."
@@ -1406,6 +1409,12 @@ Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
      ;; No cells in the current buffer, just insert one
      (jupyter-repl-insert-prompt 'in))))
 
+(cl-defgeneric jupyter-indent-line ()
+  (call-interactively #'indent-for-tab-command))
+
+(cl-defmethod jupyter-indent-line (&context (major-mode julia-mode))
+  (call-interactively #'julia-latexsub-or-indent))
+
 (defun jupyter-repl-indent-line ()
   "Indent the line according to the language of the REPL."
   (let* ((spos (jupyter-repl-cell-code-beginning-position))
@@ -1414,7 +1423,7 @@ Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
          (replacement (with-jupyter-repl-lang-buffer
                         (insert code)
                         (goto-char pos)
-                        (indent-according-to-mode)
+                        (jupyter-indent-line)
                         (setq pos (point))
                         (buffer-string))))
     ;; Don't modify the buffer when unnecessary, this allows
@@ -1628,41 +1637,49 @@ Works for Julia and Python."
   (list (jupyter-repl-cell-code)
         (1- (jupyter-repl-cell-code-position))))
 
-(cl-defgeneric jupyter-completion-prefix ()
+(cl-defgeneric jupyter-completion-prefix (&optional (re string) max-len)
   "Return the prefix for the current completion context.
-This default function checks to see if the
-`jupyter-kernel-language' of the `jupyter-current-client'
-has a `:completion-prefix' support function set by
-`jupyter-kernel-support-put' and calls that function to obtain
-the completion prefix. If the language does not have a completion
-prefix function, `jupyter-completion-grab-symbol-cons' is used.
+The default method calls `jupyter-completion-grab-symbol-cons'
+with RE and MAX-LEN as arguments, RE defaulting to \"\\\\.\". It
+also handles argument lists surrounded by parentheses specially
+by considering an open parentheses and the symbol before it as a
+completion prefix since some kernels will complete argument lists
+if given such a prefix.
 
 Note that the prefix returned is not the content sent to the
-kernel, but the symbol at `point'. See
-`jupyter-code-context-at-point' for what is actually sent."
-  (when jupyter-repl-current-client
-    (let ((lang (jupyter-repl-language jupyter-repl-current-client))
-          (lang-mode (jupyter-repl-language-mode jupyter-repl-current-client)))
-      (and (memq major-mode `(,lang-mode jupyter-repl-mode))
-           ;; No completion in finalized cells
-           (not (get-text-property (point) 'read-only))
-           (cond
-            ;; Completing argument lists
-            ((and (eq (char-syntax (char-before)) ?\()
-                  (or (not (char-after))
-                      (not (memq (char-syntax (char-after)) '(?w ?_)))))
-             (buffer-substring
-              (jupyter-completion-symbol-beginning (1- (point)))
-              (point)))
-            (t
-             (let* ((s (jupyter-completion-grab-symbol-cons "\\." 1)))
-               (unless (and (consp s) (string= (car s) "")
-                            (jupyter-completion-floating-point-p))
-                 s))))))))
+kernel, but the prefix used by `jupyter-completion-at-point'. See
+`jupyter-code-context' for what is actually sent to the kernel."
+  (or re (setq re "\\."))
+  (cond
+   ;; Completing argument lists
+   ((and (char-before)
+         (eq (char-syntax (char-before)) ?\()
+         (or (not (char-after))
+             (looking-at-p "\\_>")
+             (not (memq (char-syntax (char-after)) '(?w ?_)))))
+    (buffer-substring-no-properties
+     (jupyter-completion-symbol-beginning (1- (point)))
+     (point)))
+   ;; FIXME: Needed for cases where all completions are retrieved
+   ;; from Base.| and the prefix turns empty again after
+   ;; Base.REPLCompletions)|
+   ;;
+   ;; Actually the problem stems from stting the prefix length to 0
+   ;; in company in the case Base.| and we have not selected a
+   ;; completion and just pass over it.
+   ((and (looking-at-p "\\_>")
+         (eq (char-syntax (char-before)) ?\)))
+    nil)
+   (t
+    (unless (jupyter-completion-number-p)
+      (jupyter-completion-grab-symbol-cons re max-len)))))
 
 (cl-defmethod jupyter-completion-prefix (&context (major-mode jupyter-repl-mode))
   (and (not (get-text-property (point) 'read-only))
-       (cl-call-next-method)))
+       (cl-call-next-method "\\." 1)))
+
+(cl-defmethod jupyter-completion-prefix (&context (jupyter-lang julia))
+  (cl-call-next-method "\\\\\\|\\.\\|::\\|->" 2))
 
 (defun jupyter-completion-construct-candidates (matches metadata)
   "Construct candidates for completion.
@@ -2172,6 +2189,32 @@ in the appropriate direction, to the saved element."
     (define-key map (kbd "M-p") #'jupyter-repl-history-previous)
     map))
 
+(cl-defgeneric jupyter-repl-after-init ()
+  "Hook function called whenever `jupyter-repl-mode' is enabled/disabled.
+You may override this function for a particular language using a
+jupyter-lang &context specializer. For example, to do something
+when the language if the REPL is python the method signature
+would be
+
+    (cl-defmethod jupyter-repl-after-init (&context (jupyter-lang python)))"
+  nil)
+
+(cl-defmethod jupyter-repl-after-init (&context (jupyter-lang javascript))
+  ;; Special case since `js2-mode' does not use `font-lock-defaults' for
+  ;; highlighting.
+  (when (and (eq jupyter-repl-lang-mode 'js2-mode)
+             (null (nth 0 font-lock-defaults)))
+    (add-hook 'after-change-functions
+              (lambda (_beg _end _len)
+                (unless (jupyter-repl-cell-finalized-p)
+                  (save-restriction
+                    (narrow-to-region
+                     (jupyter-repl-cell-code-beginning-position)
+                     (jupyter-repl-cell-code-end-position))
+                    (js2-parse)
+                    (js2-mode-apply-deferred-properties))))
+              t t)))
+
 ;; TODO: Gaurd against a major mode change
 (put 'jupyter-repl-mode 'mode-class 'special)
 (define-derived-mode jupyter-repl-mode fundamental-mode
@@ -2220,7 +2263,9 @@ in the appropriate direction, to the saved element."
     (jupyter-repl-initialize-fontification)
     (jupyter-repl-isearch-setup)
     (jupyter-repl-sync-execution-state)
-    (jupyter-repl-interaction-mode)))
+    (jupyter-repl-interaction-mode)
+    (when jupyter-repl-mode
+      (jupyter-repl-after-init))))
 
 (defun jupyter-repl-initialize-hooks ()
   "Initialize startup hooks.
@@ -2400,14 +2445,11 @@ Where MODE is the `major-mode' to use for syntax highlighting
 purposes and SYNTAX-TABLE is the syntax table of MODE."
   (cl-destructuring-bind (&key file_extension &allow-other-keys)
       language-info
-    (let (mode syntax)
-      (with-temp-buffer
-        (let ((buffer-file-name
-               (concat "jupyter-repl-lang" file_extension)))
-          (delay-mode-hooks (set-auto-mode))
-          (setq mode major-mode)
-          (setq syntax (syntax-table))))
-      (list mode syntax))))
+    (with-temp-buffer
+      (let ((buffer-file-name
+             (concat "jupyter-repl-lang" file_extension)))
+        (delay-mode-hooks (set-auto-mode)))
+      (list major-mode (syntax-table)))))
 
 (defun jupyter-repl--new-repl (client)
   "Initialize a new REPL buffer based on CLIENT.

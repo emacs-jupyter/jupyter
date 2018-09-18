@@ -156,6 +156,17 @@ buffer.")
     :initarg :hb-channel
     :documentation "The heartbeat channel.")))
 
+;; Since the `eql' generalizer has the highest precedence,
+;; `jupyter-lang' will be the first method called, then
+;; the `major-mode' generalizer.
+;;
+;; TODO: Make `jupyter-kernel-language' a symbol to avoid
+;; interning a constant string.
+(cl-generic-define-context-rewriter jupyter-lang (lang)
+  `((when jupyter-current-client
+      (intern (jupyter-kernel-language jupyter-current-client)))
+    (eql ,lang)))
+
 (cl-defmethod initialize-instance ((client jupyter-kernel-client) &rest _slots)
   (cl-call-next-method)
   (push client jupyter--clients)
