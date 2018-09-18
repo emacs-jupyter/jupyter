@@ -298,30 +298,20 @@ mark the text between START and END as fontified according to
 font lock. Any text between START and END that does not have a
 `font-lock-face' property will have the `default' face filled in
 for the property."
+  (jupyter-repl-fixup-font-lock-properties start end object)
   (add-text-properties
-   start end '(fontified t font-lock-fontified t font-lock-multiline t) object)
-  (jupyter-repl-fixup-font-lock-properties start end object))
+   start end '(fontified t font-lock-fontified t font-lock-multiline t) object))
 
-;; Adapted from `org-src-font-lock-fontify-block'
 (defun jupyter-repl-fixup-font-lock-properties (beg end &optional object)
   "Fixup the text properties in the `current-buffer' between BEG END.
 If OBJECT is non-nil, fixup the text properties of OBJECT. Fixing
-the text properties of the current buffer involves substituting
-any `face' property with `font-lock-face' for insertion into the
-REPL buffer and adding `font-lock-extra-managed-props' to the
-text."
-  (let ((pos (point-min)) next)
+the text properties involves substituting any `face' property
+with `font-lock-face' for insertion into the REPL buffer."
+  (let (next)
     (while (/= (setq next (next-property-change beg object end)) end)
-      ;; Handle additional properties from font-lock, so as to
-      ;; preserve, e.g., composition.
-      (dolist (prop (cons 'face font-lock-extra-managed-props))
-        (let ((new-prop (get-text-property pos prop)))
-          (put-text-property
-           (+ beg (1- pos)) (1- (+ beg next))
-           (if (eq prop 'face) 'font-lock-face prop)
-           (if (eq prop 'face) (or new-prop 'default)
-             new-prop)
-           object)))
+      (when (eq prop 'face)
+        (let ((val (get-text-property beg prop object)))
+          (put-text-property beg next 'font-lock-face (or val 'default) object)))
       (setq beg next))))
 
 (defun jupyter-repl-get-fontify-buffer (mode)
