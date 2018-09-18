@@ -474,6 +474,7 @@ Otherwise follow the link normally."
         (setq pos next)))))
 
 (defvar org-format-latex-options)
+(defvar org-preview-latex-image-directory)
 
 (defun jupyter-repl-insert-latex (tex)
   "Generate and insert a LaTeX image based on TEX.
@@ -496,8 +497,8 @@ image."
     (jupyter-repl-insert tex)
     (setq end (point))
     (org-format-latex
-     ;; FIXME: Possibly make a resource directory for the REPL
-     "ltx" beg end org-babel-jupyter-resource-directory
+     org-preview-latex-image-directory
+     beg end org-babel-jupyter-resource-directory
      'overlays "Creating LaTeX image...%s"
      'forbuffer
      ;; Use the default method for creating image files
