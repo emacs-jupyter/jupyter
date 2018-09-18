@@ -269,58 +269,63 @@ the RESULT-PARAM will be
 
 and RESULT will be the markdown text which should be wrapped in
 an \"EXPORT markdown\" block. See `org-babel-insert-result'."
-  (let ((mimetypes (cl-loop for elem in data if (keywordp elem) collect elem))
-        (result-params (alist-get :result-params params))
-        itype)
-    (cond
-     ((memq :text/org mimetypes)
-      (cons (unless (member "raw" result-params) "org")
-            (plist-get data :text/org)))
-     ;; TODO: Insert a link which runs code to display the widget
-     ((memq :application/vnd.jupyter.widget-view+json mimetypes)
-      (cons "scalar" "Widget"))
-     ((memq :text/html mimetypes)
-      (let ((html (plist-get data :text/html)))
-        (save-match-data
-          ;; Allow handling of non-string data but with an html mimetype at a
-          ;; higher level
-          (if (and (stringp html) (string-match "^<img" html))
-              (let* ((dom (with-temp-buffer
-                            (insert html)
-                            (libxml-parse-html-region (point-min) (point-max))))
-                     (img (car (dom-by-tag dom 'img)))
-                     (src (dom-attr img 'src)))
-                ;; Regex adapted from `shr-get-image-data'
-                (when (string-match
-                       "\\`data:\\(\\([^/;,]+\\(/[^;,]+\\)?\\)\\(;[^;,]+\\)*\\)?,\\(.*\\)" src)
-                  (let ((mimetype (intern (concat ":" (match-string 2 src))))
-                        (data (url-unhex-string (match-string 5 src))))
-                    (jupyter-org-prepare-result
-                     (list mimetype data) metadata params))))
-            (cons "html" (plist-get data :text/html))))))
-     ((memq :text/markdown mimetypes)
-      (cons '(:wrap . "SRC markdown") (plist-get data :text/markdown)))
-     ((memq :text/latex mimetypes)
-      (cons (unless (member "raw" result-params) "latex")
-            (plist-get data :text/latex)))
-     ((setq itype (cl-find-if (lambda (x) (memq x '(:image/png
-                                               :image/jpg
-                                               :image/svg+xml)))
-                              mimetypes))
-      (let* ((data (plist-get data itype))
-             (overwrite (not (null (alist-get :file params))))
-             (encoded (memq itype '(:image/png :image/jpg)))
-             (file (or (alist-get :file params)
-                       (jupyter-org-image-file-name
-                        data (cl-case itype
-                               (:image/png "png")
-                               (:image/jpg "jpg")
-                               (:image/svg+xml "svg"))))))
-        (jupyter-org--image-result data file overwrite encoded)))
-     ((memq :text/plain mimetypes)
-      (cons "scalar" (plist-get data :text/plain)))
-     (t (warn "No supported mimetype found %s" mimetypes)))))
-
+  (let* ((mimetypes (cl-loop for elem in data if (keywordp elem) collect elem))
+         (result-params (alist-get :result-params params))
+         (itype nil)
+         (render-result
+          (cond
+           ((memq :text/org mimetypes)
+            (cons (unless (member "raw" result-params) "org")
+                  (plist-get data :text/org)))
+           ;; TODO: Insert a link which runs code to display the widget
+           ((memq :application/vnd.jupyter.widget-view+json mimetypes)
+            (cons "scalar" "Widget"))
+           ((memq :text/html mimetypes)
+            (let ((html (plist-get data :text/html)))
+              (save-match-data
+                ;; Allow handling of non-string data but with an html mimetype at a
+                ;; higher level
+                (if (and (stringp html) (string-match "^<img" html))
+                    (let* ((dom (with-temp-buffer
+                                  (insert html)
+                                  (libxml-parse-html-region (point-min) (point-max))))
+                           (img (car (dom-by-tag dom 'img)))
+                           (src (dom-attr img 'src)))
+                      ;; Regex adapted from `shr-get-image-data'
+                      (when (string-match
+                             "\\`data:\\(\\([^/;,]+\\(/[^;,]+\\)?\\)\\(;[^;,]+\\)*\\)?,\\(.*\\)" src)
+                        (let ((mimetype (intern (concat ":" (match-string 2 src))))
+                              (data (url-unhex-string (match-string 5 src))))
+                          (jupyter-org-prepare-result
+                           (list mimetype data) metadata params))))
+                  (cons "html" (plist-get data :text/html))))))
+           ((memq :text/markdown mimetypes)
+            (cons '(:wrap . "SRC markdown") (plist-get data :text/markdown)))
+           ((memq :text/latex mimetypes)
+            (cons (unless (member "raw" result-params) "latex")
+                  (plist-get data :text/latex)))
+           ((setq itype (cl-find-if (lambda (x) (memq x '(:image/png
+                                                     :image/jpg
+                                                     :image/svg+xml)))
+                                    mimetypes))
+            (let* ((data (plist-get data itype))
+                   (overwrite (not (null (alist-get :file params))))
+                   (encoded (memq itype '(:image/png :image/jpg)))
+                   (file (or (alist-get :file params)
+                             (jupyter-org-image-file-name
+                              data (cl-case itype
+                                     (:image/png "png")
+                                     (:image/jpg "jpg")
+                                     (:image/svg+xml "svg"))))))
+              (jupyter-org--image-result data file overwrite encoded)))
+           ((memq :text/plain mimetypes)
+            (cons "scalar" (plist-get data :text/plain)))
+           (t (warn "No supported mimetype found %s" mimetypes)))))
+    (prog1 render-result
+      (unless (car render-result)
+        (setcar render-result "scalar"))
+      (unless (cdr render-result)
+        (setcdr render-result "")))))
 (defun jupyter-org--inject-render-param (render-param params)
   "Destructively modify result parameters for `org-babel-insert-result'.
 RENDER-PARAM is the first element of the list returned by
