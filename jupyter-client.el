@@ -164,8 +164,13 @@ buffer.")
 ;; interning a constant string.
 (cl-generic-define-context-rewriter jupyter-lang (lang)
   `((when jupyter-current-client
-      (intern (jupyter-kernel-language jupyter-current-client)))
-    (eql ,lang)))
+      (list (intern (jupyter-kernel-language jupyter-current-client))))
+    ;; Using `head' here instead of `eql' since its
+    ;; priority is less than `major-mode' and `eql'. We
+    ;; would like any language methods to happen after
+    ;; checking the major mode and any specific eql
+    ;; specializers.
+    (head ,lang)))
 
 (cl-defmethod initialize-instance ((client jupyter-kernel-client) &rest _slots)
   (cl-call-next-method)
