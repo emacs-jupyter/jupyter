@@ -2420,6 +2420,7 @@ the `current-buffer' will automatically have
   :keymap jupyter-repl-interaction-map
   (if jupyter-repl-interaction-mode
       (add-hook 'completion-at-point-functions 'jupyter-completion-at-point nil t)
+    (remove-hook 'completion-at-point-functions 'jupyter-completion-at-point t)
     (unless (eq major-mode 'jupyter-repl-mode)
       (kill-local-variable 'jupyter-current-client))))
 
