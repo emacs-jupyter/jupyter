@@ -1550,8 +1550,9 @@ begiining of the symbol at point to look for a match of RE."
 
 (defun jupyter-completion-number-p ()
   "Return non-nil if the text before `point' may be a floating point number."
-  (and (or (<= ?0 (char-before (point)) ?9)
-           (eq (char-before (point)) ?.))
+  (and (char-before)
+       (or (<= ?0 (char-before) ?9)
+           (eq (char-before) ?.))
        (save-excursion
          (skip-syntax-backward "w.")
          (looking-at-p "[0-9]+\\.?[0-9]*"))))
