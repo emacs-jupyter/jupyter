@@ -2018,13 +2018,12 @@ synchronize the execution state, and insert a new input prompt."
         (jupyter-repl-without-continuation-prompts
          (goto-char (point-max))
          (jupyter-repl-previous-cell)
-         (unless (jupyter-repl-cell-finalized-p)
-           (jupyter-repl-finalize-cell nil)
-           (jupyter-repl-newline)
-           (jupyter-repl-insert-banner
-            (plist-get (jupyter-kernel-info client) :banner))
-           (jupyter-repl-sync-execution-state)
-           (jupyter-repl-insert-prompt 'in)))))))
+         (jupyter-repl-finalize-cell nil)
+         (jupyter-repl-newline)
+         (jupyter-repl-insert-banner
+          (plist-get (jupyter-kernel-info client) :banner))
+         (jupyter-repl-sync-execution-state)
+         (jupyter-repl-insert-prompt 'in))))))
 
 (defun jupyter-repl-interrupt-kernel ()
   "Interrupt the kernel if possible.
