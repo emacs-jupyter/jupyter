@@ -2363,7 +2363,11 @@ If MODE is non-nil, return all REPL buffers whose
   "Associate the `current-buffer' with a REPL CLIENT.
 If the `major-mode' of the `current-buffer' is the
 `jupyter-repl-lang-mode' of CLIENT, enable
-`jupyter-repl-interaction-mode'."
+`jupyter-repl-interaction-mode'.
+
+CLIENT should be a `jupyter-repl-client' or a subclass thereof.
+If CLIENT is a buffer or the name of a buffer, use the
+`jupyter-current-client' local to the buffer."
   (interactive
    (list
     (completing-read
