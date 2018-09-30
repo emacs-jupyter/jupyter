@@ -1739,72 +1739,87 @@ Run FUN when the completions are available."
 
 (defun jupyter-completion-at-point ()
   "Function to add to `completion-at-point-functions'."
-  (let ((prefix (jupyter-completion-prefix)) req)
-    (when jupyter-completion--company-timer
-      (cancel-timer jupyter-completion--company-timer))
-    (when prefix
-      (when (consp prefix)
-        (setq prefix (car prefix))
-        (when (and (bound-and-true-p company-mode)
-                   (not company-candidates)
-                   (< (length prefix) company-minimum-prefix-length))
-          ;; Trigger completion similar to `company' when
-          ;; `jupyter-completion-prefix' returns a cons cell.
-          (setq jupyter-completion--company-timer
-                ;; NOTE: When we reach here `company-idle-delay' is `now' since
-                ;; we are already inside a company completion so we can't use
-                ;; it, just use a sensible time value instead.
-                (run-with-timer 0.1 nil 'company-manual-begin))))
-      ;; Prefetch candidates
-      (when (or (not jupyter-completion-last-prefix)
-                (not jupyter-completion-cache)
-                (and
-                 ;; Only when there is no whitespace before point since some
-                 ;; kernel's would give a list of all completions on every
-                 ;; space.
-                 (not (eq (char-syntax (char-before)) ? ))
-                 (or
-                  ;; This case happens when completing things like foo.|
-                  (string= jupyter-completion-last-prefix "")
-                  ;; The obvious condition...
-                  (not (string-prefix-p jupyter-completion-last-prefix prefix))))
-                ;; Invalidate the cache when completing argument lists
-                (and (not (string= prefix ""))
-                     (eq (aref prefix (1- (length prefix))) ?\()))
-        (setq
-         jupyter-completion-last-prefix prefix
-         req (jupyter-completion-prefetch
-              (lambda (msg) (setq jupyter-completion-cache
-                             (cons 'fetched msg))))))
-      (list
-       (- (point) (length prefix)) (point)
-       (completion-table-dynamic
-        (lambda (_)
-          (when (and req (not (jupyter-request-idle-received-p req))
-                     (not (eq (jupyter-message-type
-                               (jupyter-request-last-message req))
-                              :complete-reply)))
-            (jupyter-wait-until-received :complete-reply req))
-          (when (eq (car jupyter-completion-cache) 'fetched)
-            (cl-destructuring-bind (&key status
-                                         matches metadata
-                                         &allow-other-keys)
-                (jupyter-message-content (cdr jupyter-completion-cache))
-              (setq jupyter-completion-cache
-                    (when (equal status "ok")
-                      (jupyter-completion-construct-candidates
-                       matches metadata)))))
-          jupyter-completion-cache))
-       :exit-function
-       #'jupyter-completion--post-completion
-       :company-location
-       (lambda (arg) (get-text-property 0 'location arg))
-       :annotation-function
-       (lambda (arg) (get-text-property 0 'annot arg))
-       :company-docsig
-       (lambda (arg) (get-text-property 0 'docsig arg))
-       :company-doc-buffer
-       #'jupyter-completion--company-doc-buffer))))
+  (when jupyter-current-client
+    (let ((prefix (jupyter-completion-prefix)) req)
+      (when jupyter-completion--company-timer
+        (cancel-timer jupyter-completion--company-timer))
+      (when prefix
+        (when (consp prefix)
+          (setq prefix (car prefix))
+          (when (and (bound-and-true-p company-mode)
+                     (not company-candidates)
+                     (< (length prefix) company-minimum-prefix-length))
+            ;; Trigger completion similar to `company' when
+            ;; `jupyter-completion-prefix' returns a cons cell.
+            (setq jupyter-completion--company-timer
+                  ;; NOTE: When we reach here `company-idle-delay' is `now' since
+                  ;; we are already inside a company completion so we can't use
+                  ;; it, just use a sensible time value instead.
+                  (run-with-idle-timer
+                   0.01 nil
+                   (lambda ()
+                     (let ((company-minimum-prefix-length 0)
+                           (this-command 'company-manual-begin))
+                       (unless company-candidates
+                         (company-auto-begin))
+                       ;; Only call frontends when there are
+                       ;; completions from the kernel for
+                       ;; syntax based auto completion
+                       (when jupyter-completion-cache
+                         (company-post-command))))))))
+        ;; Prefetch candidates
+        (when (or (not jupyter-completion-last-prefix)
+                  (not jupyter-completion-cache)
+                  (and
+                   ;; FIXME: We would like to manually get
+                   ;; completions for empty prefixes because
+                   ;; of things like from foo import |
+                   ;; Only when there is no whitespace before point since some
+                   ;; kernel's would give a list of all completions on every
+                   ;; space.
+                   ;; (not (eq (char-syntax (char-before)) ? ))
+                   (or
+                    ;; This case happens when completing things like foo.|
+                    (string= jupyter-completion-last-prefix "")
+                    ;; The obvious condition...
+                    (not (string-prefix-p jupyter-completion-last-prefix prefix))))
+                  ;; Invalidate the cache when completing argument lists
+                  (and (not (string= prefix ""))
+                       (eq (aref prefix (1- (length prefix))) ?\()))
+          (setq
+           jupyter-completion-last-prefix prefix
+           req (jupyter-completion-prefetch
+                (lambda (msg) (setq jupyter-completion-cache
+                               (cons 'fetched msg))))))
+        (list
+         (- (point) (length prefix)) (point)
+         (completion-table-dynamic
+          (lambda (_)
+            (when (and req (not (jupyter-request-idle-received-p req))
+                       (not (eq (jupyter-message-type
+                                 (jupyter-request-last-message req))
+                                :complete-reply)))
+              (jupyter-wait-until-received :complete-reply req))
+            (when (eq (car jupyter-completion-cache) 'fetched)
+              (cl-destructuring-bind (&key status
+                                           matches metadata
+                                           &allow-other-keys)
+                  (jupyter-message-content (cdr jupyter-completion-cache))
+                (setq jupyter-completion-cache
+                      (when (equal status "ok")
+                        (jupyter-completion-construct-candidates
+                         matches metadata)))))
+            jupyter-completion-cache))
+         :exit-function
+         #'jupyter-completion--post-completion
+         :company-location
+         (lambda (arg) (get-text-property 0 'location arg))
+         :annotation-function
+         (lambda (arg) (get-text-property 0 'annot arg))
+         :company-docsig
+         (lambda (arg) (get-text-property 0 'docsig arg))
+         :company-doc-buffer
+         #'jupyter-completion--company-doc-buffer)))))
 
 (defun jupyter-completion--company-doc-buffer (arg)
   (let* ((inhibit-read-only t)
