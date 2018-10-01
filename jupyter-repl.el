@@ -195,8 +195,36 @@ Normally a continuation prompt is inserted for every newline
 inserted into the REPL buffer through a function in
 `after-change-functions'. Prevent the function from running while
 executing BODY."
+  (declare (debug (&rest form)))
   `(let ((inhibit-modification-hooks t))
      ,@body))
+
+;; Taken from `eshell-handle-control-codes'
+(defun jupyter-repl-handle-control-codes (beg end)
+  "Handle any control sequences between BEG and END."
+  (save-excursion
+    (goto-char beg)
+    (while (< (point) end)
+      (let ((char (char-after)))
+        (cond
+         ((eq char ?\r)
+          (if (< (1+ (point)) end)
+              (if (memq (char-after (1+ (point)))
+                        '(?\n ?\r))
+                  (delete-char 1)
+                (let ((end (1+ (point))))
+                  (beginning-of-line)
+                  (delete-region (point) end)))
+            (add-text-properties (point) (1+ (point))
+                                 '(invisible t))
+            (forward-char)))
+         ((eq char ?\a)
+          (delete-char 1)
+          (beep))
+         ((eq char ?\C-h)
+          (delete-region (1- (point)) (1+ (point))))
+         (t
+          (forward-char)))))))
 
 (defmacro jupyter-repl-append-output (client req &rest body)
   "Switch to CLIENT's buffer, move to the end of REQ, and run BODY.
@@ -205,14 +233,22 @@ REQ is a `jupyter-request' previously made using CLIENT, a
 
 `point' is moved to the `jupyter-repl-cell-beginning-position' of
 the cell *after* REQ, this position is where any newly generated
-output of REQ should be inserted."
+output of REQ should be inserted.
+
+Also handles any terminal control codes in the appended output."
   (declare (indent 2) (debug (symbolp &rest form)))
   `(with-jupyter-repl-buffer ,client
      (jupyter-repl-without-continuation-prompts
       (save-excursion
         (jupyter-repl-goto-cell ,req)
         (jupyter-repl-next-cell)
-        ,@body))))
+        (let ((beg (point-marker))
+              (end (point-marker)))
+          (set-marker-insertion-type end t)
+          ,@body
+          (jupyter-repl-handle-control-codes beg end)
+          (set-marker beg nil)
+          (set-marker end nil))))))
 
 (defmacro with-jupyter-repl-lang-buffer (&rest body)
   "Run BODY in the `jupyter-repl-lang-buffer' of the `current-buffer'.
