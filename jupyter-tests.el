@@ -303,46 +303,84 @@ running BODY."
     (should (eq (oref (jupyter-stdin-channel) type) :stdin))
     (should (eq (oref (jupyter-iopub-channel) type) :iopub))
     (should (eq (oref (jupyter-hb-channel) type) :hb)))
-  (let ((channel (jupyter-sync-channel :endpoint "tcp://127.0.0.1:5555")))
-    (ert-info ("Starting a channel")
-      (should-not (jupyter-channel-alive-p channel))
-      (jupyter-start-channel channel :identity "foo")
-      (should (oref channel socket))
-      (should (equal (zmq-socket-get (oref channel socket) zmq-ROUTING-ID)
-                     "foo"))
-      (should (jupyter-channel-alive-p channel)))
-    (ert-info ("Stopping a channel")
-      (ring-insert (oref channel recv-queue) "bar")
-      (let ((sock (oref channel socket)))
-        (jupyter-stop-channel channel)
-        (should-not (oref channel socket))
-        ;; All pending messages are droped when a channel is stopped
-        (should (= (ring-length (oref channel recv-queue)) 0))
-        (should-not (jupyter-channel-alive-p channel))))
-    (ert-info ("Heartbeat channel")
-      (let ((channel (jupyter-hb-channel :endpoint "tcp://127.0.0.1:5556"))
-            (died-cb-called nil))
-        (oset channel time-to-dead 0.1)
+  (ert-info ("Synchronous channels")
+    (let ((channel (jupyter-sync-channel
+                    :type :shell
+                    :endpoint "tcp://127.0.0.1:5555")))
+      (ert-info ("Starting the channel")
         (should-not (jupyter-channel-alive-p channel))
-        (should-not (jupyter-hb-beating-p channel))
-        (should (oref channel paused))
-        (oset channel beating t)
-        (jupyter-start-channel channel)
-        (jupyter-hb-on-kernel-dead channel
-          (lambda () (setq died-cb-called t)))
-        (should (jupyter-channel-alive-p channel))
-        (should-not (oref channel paused))
-        ;; For some reason just calling `sleep-for'
-        ;; directly causes the timers to run after the
-        ;; `sleep-for' returns?
-        (with-timeout (1 (should (oref channel paused)))
-          (while (not (oref channel paused))
-            (sleep-for 0.1)))
-        (should (oref channel paused))
-        (should-not (oref channel beating))
-        (should died-cb-called)
-        (should (jupyter-channel-alive-p channel))
-        (should-not (jupyter-hb-beating-p channel))))))
+        (jupyter-start-channel channel :identity "foo")
+        (should (zmq-socket-p (oref channel socket)))
+        (should (equal (zmq-socket-get (oref channel socket)
+                                       zmq-ROUTING-ID)
+                       "foo"))
+        (should (jupyter-channel-alive-p channel)))
+      (ert-info ("Stopping the channel")
+        (let ((sock (oref channel socket)))
+          (jupyter-stop-channel channel)
+          (should (not (oref channel socket)))
+          (should-error (zmq-send sock "foo")
+                        :type 'zmq-ENOTSOCK)))))
+  (ert-info ("Asynchronous channels")
+    (let* ((channel (jupyter-async-channel
+                     :type :shell
+                     :endpoint "tcp://127.0.0.1:5555"))
+           (events)
+           (ioloop
+            (zmq-start-process
+             `(lambda ()
+                (while t
+                  (zmq-prin1 (zmq-subprocess-read))))
+             (lambda (event)
+               ;; FIXME: Remove dependence of the channel
+               ;; subprocess on having to set the channel's
+               ;; status slot
+               (when (eq (car event) 'start-channel)
+                 (oset channel status 'running))
+               (when (eq (car event) 'stop-channel)
+                 (oset channel status 'stopped))
+               (push event events)))))
+      (unwind-protect
+          (progn
+            (ert-info ("Starting the channel")
+              (oset channel ioloop ioloop)
+              (should-not (jupyter-channel-alive-p channel))
+              (jupyter-start-channel channel :identity "foo")
+              (should (jupyter-channel-alive-p channel)))
+            (jupyter-send channel :msg-type "msg" "id")
+            (ert-info ("Stopping the channel")
+              (jupyter-stop-channel channel)
+              (should-not (jupyter-channel-alive-p channel)))
+            (ert-info ("Channel events")
+              (should (equal (pop events) '(stop-channel :shell)))
+              (should (equal (pop events) '(send :shell :msg-type "msg" "id")))
+              (should (equal (pop events) '(start-channel :shell "tcp://127.0.0.1:5555" "foo")))))
+        (when (process-live-p ioloop)
+          (kill-process ioloop)))))
+  (ert-info ("Heartbeat channel")
+    (let ((channel (jupyter-hb-channel :endpoint "tcp://127.0.0.1:5556"))
+          (died-cb-called nil))
+      (oset channel time-to-dead 0.1)
+      (should-not (jupyter-channel-alive-p channel))
+      (should-not (jupyter-hb-beating-p channel))
+      (should (oref channel paused))
+      (oset channel beating t)
+      (jupyter-start-channel channel)
+      (jupyter-hb-on-kernel-dead channel
+        (lambda () (setq died-cb-called t)))
+      (should (jupyter-channel-alive-p channel))
+      (should-not (oref channel paused))
+      ;; For some reason just calling `sleep-for'
+      ;; directly causes the timers to run after the
+      ;; `sleep-for' returns?
+      (with-timeout (1 (should (oref channel paused)))
+        (while (not (oref channel paused))
+          (sleep-for 0.1)))
+      (should (oref channel paused))
+      (should-not (oref channel beating))
+      (should died-cb-called)
+      (should (jupyter-channel-alive-p channel))
+      (should-not (jupyter-hb-beating-p channel)))))
 
 (ert-deftest jupyter-client ()
   (let* ((ports (cl-loop
