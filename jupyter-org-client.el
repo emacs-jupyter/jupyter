@@ -207,6 +207,12 @@ METADATA has the same meaning as in
            (code (substring val 0 (1- (length val)))))
       (list code (min (- (point) beg) (length code))))))
 
+(defun jupyter-org-enable-completion ()
+  "Enable autocompletion in Jupyter source code blocks."
+  (add-hook 'completion-at-point-functions 'jupyter-completion-at-point nil t))
+
+(add-hook 'org-mode-hook 'jupyter-org-enable-completion)
+
 ;;; Inserting results
 
 (defun jupyter-org-image-file-name (data ext)
