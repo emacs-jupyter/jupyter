@@ -252,6 +252,7 @@ use `jupyter-hb-unpause'."))
 (cl-defmethod jupyter-hb-unpause ((channel jupyter-hb-channel))
   "Unpause checking for heatbeat events on CHANNEL."
   (when (oref channel paused)
+    (oset channel paused nil)
     (if (zmq-socket-p (oref channel socket))
         (jupyter-hb--send-ping channel)
       (jupyter-start-channel channel))))
@@ -274,30 +275,34 @@ a response after 5 `time-to-dead' periods."
 
 (defun jupyter-hb--send-ping (channel &optional counter)
   (unless (oref channel paused)
-    (let ((sock (oref channel socket)))
-      (when (zmq-socket-p sock)
-        (zmq-send sock "ping")
-        (run-with-timer
-         (oref channel time-to-dead) nil
-         (lambda ()
+    (zmq-send (oref channel socket) "ping")
+    ;; TODO: How to avoid running when idle for a long
+    ;; time? Would we even want that, when we keep checking
+    ;; and we are idle Emacs consistently spends a few
+    ;; percent of CPU time, but is this really necessary?
+    ;; Maybe extend the time by some factor when idle.
+    (run-with-timer
+     (oref channel time-to-dead) nil
+     (lambda ()
+       (let ((sock (oref channel socket)))
+         (when (zmq-socket-p sock)
            (unless (oset channel beating
                          (condition-case nil
-                             (and (zmq-recv sock zmq-NOBLOCK) t)
+                             (and (zmq-recv sock zmq-DONTWAIT) t)
                            ((zmq-EINTR zmq-EAGAIN) nil)))
              (let ((identity (zmq-socket-get sock zmq-IDENTITY)))
                (zmq-close sock)
                (oset channel socket
                      (jupyter-connect-channel
                       :hb (oref channel endpoint) identity)))
-             (when (and (integerp counter) (> counter 5))
+             (when (and (integerp counter) (>= counter 5))
                (oset channel paused t)
-               (when (oref channel kernel-died-cb)
+               (when (functionp (oref channel kernel-died-cb))
                  (funcall (oref channel kernel-died-cb)))))
            (jupyter-hb--send-ping
             channel
             (unless (oref channel beating)
-              (or (integerp counter) (setq counter 0))
-              (1+ counter)))))))))
+              (1+ (or counter 0))))))))))
 
 (cl-defmethod jupyter-start-channel ((channel jupyter-hb-channel) &key identity)
   "Start a heartbeat CHANNEL.
@@ -307,8 +312,8 @@ with a timer in the current Emacs session. Starting a heartbeat
 channel, starts the timer."
   (unless (jupyter-channel-alive-p channel)
     (oset channel socket (jupyter-connect-channel
-                          :hb (oref channel endpoint) identity))
-    (jupyter-hb--send-ping channel)))
+                          :hb (oref channel endpoint) identity)))
+  (jupyter-hb-unpause channel))
 
 (provide 'jupyter-channels)
 
