@@ -934,23 +934,27 @@ POS defaults to `point'."
 
 ;;; Modifying cell code, truncating REPL buffer
 
+(defun jupyter-repl-filter-substring (beg end delete)
+  "Return text between BEG and END with invisible text removed.
+If DELETE is non-nil, delete text between BEG and END also."
+  ;; Include the last character at END. `buffer-substring'
+  ;; excludes the last character.
+  (setq end (min (point-max) (1+ end)))
+  (let ((next beg)
+        (str ""))
+    (while (/= beg end)
+      (setq next (next-single-property-change beg 'invisible nil end))
+      (unless (invisible-p beg)
+        (setq str (concat str (buffer-substring beg next))))
+      (setq beg next))
+    (prog1 str
+      (when delete (delete-region beg end)))))
+
 (defun jupyter-repl-cell-code ()
   "Return the code of the current cell."
-  (if (= (point-min) (point-max)) ""
-    (let (lines pos)
-      (save-excursion
-        (goto-char (jupyter-repl-cell-code-beginning-position))
-        (push (buffer-substring-no-properties (point) (point-at-eol))
-              lines)
-        (while (and (= (forward-line 1) 0)
-                    (/= (point) (point-max))
-                    (jupyter-repl-cell-line-p))
-          (setq pos (next-single-property-change
-                     (point) 'invisible nil (point-at-eol)))
-          (when pos (goto-char pos))
-          (push (buffer-substring-no-properties (point) (point-at-eol))
-                lines))
-        (mapconcat #'identity (nreverse lines) "\n")))))
+  (filter-buffer-substring
+   (jupyter-repl-cell-code-beginning-position)
+   (jupyter-repl-cell-code-end-position)))
 
 (defun jupyter-repl-cell-code-position ()
   "Return the relative position of `point' with respect to the cell code."
@@ -1263,7 +1267,7 @@ Do this for the current cell."
           :comm-msg)
       (with-jupyter-repl-doc-buffer "traceback"
         (jupyter-repl-insert-ansi-coded-text traceback)
-        (goto-char (line-beginning-position))
+        (goto-char (point-min))
         (pop-to-buffer (current-buffer))))
      (t
       (jupyter-repl-append-output client req
@@ -2239,6 +2243,7 @@ in the appropriate direction, to the saved element."
   (setq-local truncate-lines t)
   (setq-local indent-line-function #'jupyter-repl-indent-line)
   (setq-local left-margin-width jupyter-repl-prompt-margin-width)
+  (setq-local filter-buffer-substring-function #'jupyter-repl-filter-substring)
   ;; Initialize a buffer using the major-mode correponding to the kernel's
   ;; language. This will be used for indentation and to capture font lock
   ;; properties.
