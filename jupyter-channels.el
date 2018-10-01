@@ -265,13 +265,12 @@ Stop the timer of the heartbeat channel."
     (zmq-close (oref channel socket))
     (oset channel socket nil)))
 
-(defun jupyter-hb-on-kernel-dead (hb-channel fun)
-  "When the kernel connected to HB-CHANNEL dies call FUN.
+(cl-defmethod jupyter-hb-on-kernel-dead ((channel jupyter-hb-channel) fun)
+  "When the kernel connected to CHANNEL dies call FUN.
 A kernel is considered dead when the HB-CHANNEL does not receive
 a response after 5 `time-to-dead' periods."
   (declare (indent 1))
-  (cl-check-type hb-channel jupyter-hb-channel)
-  (oset hb-channel kernel-died-cb fun))
+  (oset channel kernel-died-cb fun))
 
 (defun jupyter-hb--send-ping (channel &optional counter)
   (unless (oref channel paused)
