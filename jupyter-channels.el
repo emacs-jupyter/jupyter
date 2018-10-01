@@ -78,7 +78,11 @@ subprocess.")
     :initform (make-ring 10))
    (status
     :type symbol
-    :initform 'stopped)))
+    :initform 'stopped
+    :documentation "The current status of the channel in the
+channel subprocess. If this symbol is stopped and the ioloop slot
+corresponds to a live process, then `jupyter-channel-alive-p'
+will return nil.")))
 
 (cl-defgeneric jupyter-start-channel ((channel jupyter-channel) &key identity)
   "Start a Jupyter CHANNEL using IDENTITY as the routing ID.")
