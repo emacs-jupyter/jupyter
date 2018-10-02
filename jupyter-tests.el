@@ -132,8 +132,8 @@ If the `current-buffer' is not a REPL, this is identical to
      ;; Clear the REPL buffer before each new test section, but do this only if
      ;; the current client is a REPL client
      (when (and jupyter-current-client
-                (obj-of-class-p jupyter-current-client
-                                'jupyter-repl-client)
+                (object-of-class-p jupyter-current-client
+                                   'jupyter-repl-client)
                 (eq (current-buffer)
                     (oref jupyter-current-client buffer)))
        (let ((inhibit-read-only t))

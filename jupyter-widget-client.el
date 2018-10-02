@@ -127,7 +127,7 @@ callbacks."
   "Uninitialize the client whose widget-sock is WS."
   (cl-loop
    for client in jupyter--clients
-   when (and (obj-of-class-p client 'jupyter-widget-client)
+   when (and (object-of-class-p client 'jupyter-widget-client)
              (equal ws (oref client widget-sock)))
    do (oset client widget-sock nil)
    (jupyter-set client 'jupyter-widgets-initialized nil)))
