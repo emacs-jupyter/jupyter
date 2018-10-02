@@ -1713,7 +1713,7 @@ kernel, but the prefix used by `jupyter-completion-at-point'. See
 
 (cl-defmethod jupyter-completion-prefix (&context (major-mode jupyter-repl-mode))
   (and (not (get-text-property (point) 'read-only))
-       (cl-call-next-method "\\." 1)))
+       (cl-call-next-method)))
 
 (cl-defmethod jupyter-completion-prefix (&context (jupyter-lang julia))
   (cl-call-next-method "\\\\\\|\\.\\|::\\|->" 2))
