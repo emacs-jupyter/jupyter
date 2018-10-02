@@ -144,8 +144,12 @@ either \"idle\", \"busy\", or \"starting\".")
 (defvar jupyter-repl-lang-buffer nil
   "A buffer with the `major-mode' set to the REPL language's `major-mode'.")
 
+(make-variable-buffer-local 'jupyter-repl-lang-buffer)
+
 (defvar jupyter-repl-lang-mode nil
-  "The `major-mode' corresponding to the kernel's language.")
+  "The `major-mode' corresponding to the REPL's language.")
+
+(make-variable-buffer-local 'jupyter-repl-lang-mode)
 
 (defvar jupyter-repl-history nil
   "The history of the current Jupyter REPL.")
