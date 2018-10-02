@@ -84,7 +84,7 @@ expected by `jupyter-queue-message'."
                             type
                             message
                             &optional _flags)
-  (let ((req (make-jupyter-request :-id (jupyter-new-uuid))))
+  (let ((req (make-jupyter-request :id (jupyter-new-uuid))))
     (if (string-match "request" (symbol-name type))
         (setq type (intern (replace-match "reply" nil nil (symbol-name type))))
       (error "Not a request message type (%s)" type))
