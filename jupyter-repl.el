@@ -1730,7 +1730,8 @@ supplied by the kernel."
     (save-current-buffer
       (unwind-protect
           (while tail
-            (when (string-match jupyter-completion-argument-regexp (car tail))
+            (cond
+             ((string-match jupyter-completion-argument-regexp (car tail))
               (let* ((str (car tail))
                      (args-str (match-string 1 str))
                      (end (match-end 1))
@@ -1749,6 +1750,11 @@ supplied by the kernel."
                 (put-text-property 0 1 'snippet snippet (car tail))
                 (put-text-property 0 1 'location (cons path line) (car tail))
                 (put-text-property 0 1 'docsig (car tail) (car tail))))
+             ;; TODO: This is specific to the results that
+             ;; the python kernel returns, make a support
+             ;; function?
+             ((string-match-p "\\." (car tail))
+              (setcar tail (car (last (split-string (car tail) "\\."))))))
             (setq tail (cdr tail)))
         (when buf (kill-buffer buf))))
     ;; When a type is supplied add it as an annotation
