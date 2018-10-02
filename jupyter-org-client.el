@@ -44,7 +44,7 @@ See `jupyter-org-image-file-name'."
   ((block-params
     :initform nil
     :documentation "The parameters of the most recently executed
-source code block.")))
+source code block. Set by `org-babel-execute:jupyter'.")))
 
 (cl-defstruct (jupyter-org-request
                (:include jupyter-request))

@@ -1606,8 +1606,8 @@ begiining of the symbol at point to look for a match of RE."
 
 (defun jupyter-completion--arg-extract-1 (pos)
   "Helper function for `arg-extract-top'.
-Extract the arguments starting at POS and narrowing to the first
-SEXP."
+Extract the arguments starting at POS, narrowing to the first
+SEXP before extraction."
   (save-restriction
     (goto-char pos)
     (narrow-to-region

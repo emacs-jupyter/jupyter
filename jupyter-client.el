@@ -341,10 +341,9 @@ This method gives an opportunity for subclasses to initialize a
 `jupyter-request' based on the current context.
 
 The default implementation returns a new `jupyter-request' with
-the default value for all slots.
-
-Note, the `:id' and `:inhibited-handlers' fields are overwritten
-by the caller of this method."
+the default value for all slots. Note, the `:id' and
+`:inhibited-handlers' slots are overwritten by the caller of this
+method."
   (make-jupyter-request))
 
 (cl-defmethod jupyter-send ((client jupyter-kernel-client)
@@ -644,7 +643,7 @@ by `jupyter--ioloop'."
 (defun jupyter-ioloop-wait-until (event ioloop &optional timeout)
   "Wait until EVENT occurs in IOLOOP.
 Currently EVENT can be :start or :quit and this function will
-blocks for TIMEOUT seconds until IOLOOP starts or quits depending
+block for TIMEOUT seconds until IOLOOP starts or quits depending
 on EVENT. If TIMEOUT is nil it defaults to 1 s."
   (or timeout (setq timeout 1))
   (with-timeout (timeout nil)
@@ -653,7 +652,7 @@ on EVENT. If TIMEOUT is nil it defaults to 1 s."
     t))
 
 (defun jupyter--start-ioloop (client)
-  "Start CLIENT's channels."
+  "Start CLIENT's channel subprocess."
   (unless (oref client ioloop)
     (oset client ioloop
           (zmq-start-process
