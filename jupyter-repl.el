@@ -343,11 +343,12 @@ for the property."
 If OBJECT is non-nil, fixup the text properties of OBJECT. Fixing
 the text properties involves substituting any `face' property
 with `font-lock-face' for insertion into the REPL buffer."
-  (let (next)
-    (while (/= (setq next (next-property-change beg object end)) end)
-      (when (eq prop 'face)
-        (let ((val (get-text-property beg prop object)))
-          (put-text-property beg next 'font-lock-face (or val 'default) object)))
+  (let ((next beg) val)
+    (while (/= beg end)
+      (setq val (get-text-property beg 'face object)
+            next (next-single-property-change beg 'face object end))
+      (remove-text-properties beg next '(face) object)
+      (put-text-property beg next 'font-lock-face (or val 'default) object)
       (setq beg next))))
 
 (defun jupyter-repl-get-fontify-buffer (mode)
