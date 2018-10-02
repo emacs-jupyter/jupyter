@@ -94,23 +94,22 @@ NAME and PLIST is its kernelspec plist. Optional argument REFRESH
 has the same meaning as in `jupyter-available-kernelspecs'."
   (cdr (assoc name (jupyter-available-kernelspecs refresh))))
 
-(defun jupyter-find-kernelspecs (prefix &optional refresh)
-  "Find all specs of kernels that have names matching PREFIX.
-PREFIX is a string matching the beginning of a kernel's name.
+(defun jupyter-find-kernelspecs (re &optional refresh)
+  "Find all specs of kernels that have names matching matching RE.
+RE is a regular expression use to match the name of a kernel.
 Return an alist with elements of the form:
 
     (KERNEL-NAME . (DIRECTORY . PLIST))
 
-where KERNEL-NAME is a name of a kernel that begins with PREFIX,
+where KERNEL-NAME is the name of a kernel that matches RE,
 DIRECTORY is the kernel's resource directory, and PLIST is the
 kernelspec propery list read from the \"kernel.json\" file in the
 resource directory.
 
 Optional argument REFRESH has the same meaning as in
 `jupyter-available-kernelspecs'."
-  (when prefix
-    (delq nil (mapcar (lambda (s) (and (string-prefix-p prefix (car s)) s))
-                 (jupyter-available-kernelspecs refresh)))))
+  (delq nil (mapcar (lambda (s) (and (string-match-p re (car s)) s))
+               (jupyter-available-kernelspecs refresh))))
 
 (defun jupyter-completing-read-kernelspec (&optional specs refresh)
   "Use `completing-read' to select a kernel and return its kernelspec.
