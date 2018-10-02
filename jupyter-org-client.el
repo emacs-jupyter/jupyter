@@ -452,7 +452,8 @@ block for the request."
           (org-with-point-at (jupyter-org-request-marker req)
             (jupyter-org-clear-request-id req)
             (jupyter-org-insert-results result params))
-          (jupyter-org--inject-render-param "append" params))
+          (unless (member "append" (assq :result-params params))
+            (jupyter-org--inject-render-param "append" params)))
       (push result (jupyter-org-request-results req)))))
 
 (defun jupyter-org-insert-results (results params)
