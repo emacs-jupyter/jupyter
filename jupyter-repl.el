@@ -1889,6 +1889,9 @@ Do this only if STATUS is sole or finished."
     (when (and (require 'yasnippet nil t)
                (not yas-minor-mode))
       (yas-minor-mode 1))
+    ;; Due to packages like smartparens
+    (when (eq (char-after) ?\))
+      (delete-char 1))
     (yas-expand-snippet
      (get-text-property 0 'snippet arg)
      (save-excursion
