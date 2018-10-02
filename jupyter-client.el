@@ -156,21 +156,30 @@ buffer.")
     :initarg :hb-channel
     :documentation "The heartbeat channel.")))
 
-;; Since the `eql' generalizer has the highest precedence,
-;; `jupyter-lang' will be the first method called, then
-;; the `major-mode' generalizer.
-;;
-;; TODO: Make `jupyter-kernel-language' a symbol to avoid
-;; interning a constant string.
+;;; `jupyter-current-client' language method specializer
+
+(defvar jupyter--generic-lang-used (make-hash-table :test #'eql))
+
+(cl-generic-define-generalizer jupyter--generic-lang-generalizer
+  50 (lambda (name &rest _)
+       `(when (object-of-class-p ,name 'jupyter-kernel-client)
+          ;; TODO: Make `jupyter-kernel-language' a symbol
+          ;; to avoid interning a constant string.
+          (gethash (intern (jupyter-kernel-language ,name))
+                   jupyter--generic-lang-used)))
+  (lambda (tag &rest _)
+    (and (eq (car-safe tag) 'jupyter-lang)
+         (list tag))))
+
 (cl-generic-define-context-rewriter jupyter-lang (lang)
-  `((when jupyter-current-client
-      (list (intern (jupyter-kernel-language jupyter-current-client))))
-    ;; Using `head' here instead of `eql' since its
-    ;; priority is less than `major-mode' and `eql'. We
-    ;; would like any language methods to happen after
-    ;; checking the major mode and any specific eql
-    ;; specializers.
-    (head ,lang)))
+  `(jupyter-current-client (jupyter-lang ,lang)))
+
+(cl-defmethod cl-generic-generalizers ((specializer (head jupyter-lang)))
+  "Support for (jupyter-lang LANG) specializers.
+Matches if the kernel language of the `jupyter-kernel-client'
+passed as the argument has a language of LANG."
+  (puthash (cadr specializer) specializer jupyter--generic-lang-used)
+  (list jupyter--generic-lang-generalizer))
 
 (cl-defmethod initialize-instance ((client jupyter-kernel-client) &rest _slots)
   (cl-call-next-method)
