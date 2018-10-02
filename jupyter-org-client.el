@@ -337,6 +337,12 @@ an \"EXPORT markdown\" block. See `org-babel-insert-result'."
         (setcar render-result "scalar"))
       (unless (cdr render-result)
         (setcdr render-result "")))))
+
+;; NOTE: The parameters are destructively added to the result parameters passed
+;; to `org-babel-insert-result' in order to avoid advising
+;; `org-babel-execute-src-block', but this might be the way to go to avoid
+;; depending on the the priority of result parameters in
+;; `org-babel-insert-result'.
 (defun jupyter-org--inject-render-param (render-param params)
   "Destructively modify result parameters for `org-babel-insert-result'.
 RENDER-PARAM is the first element of the list returned by
@@ -481,8 +487,9 @@ it does not need to be added by the user."
   (unless (car-safe (car results))
     (setq results (list results)))
   (cl-loop
-   ;; FIXME: This is a hack that relies on `org-babel-insert-result' only
-   ;; caring about the parameters of the info and not anything else.
+   ;; NOTE: This relies on `org-babel-insert-result' only
+   ;; caring about the parameters of the info and not
+   ;; anything else.
    with info = (list nil nil params)
    with result-params = (alist-get :result-params params)
    for (render-param . result) in (mapcar #'jupyter-org-transform-result results)
