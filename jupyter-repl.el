@@ -45,7 +45,7 @@
 ;;
 ;;     C-c C-c `jupyter-repl-eval-line-or-region'
 ;;     C-c C-l `jupyter-repl-eval-file'
-;;     C-c C-f `jupyter-repl-inspect-at-point'
+;;     C-c C-f `jupyter-inspect-at-point'
 ;;     C-c C-r `jupyter-repl-restart-kernel'
 ;;     C-c C-i `jupyter-repl-interrupt-kernel'
 ;;     C-c C-z `jupyter-repl-pop-to-buffer'
@@ -281,6 +281,8 @@ be at the `jupyter-repl-cell-code-beginning-position'."
        (goto-char (jupyter-repl-cell-code-beginning-position))
        ,@body)))
 
+;; TODO: Rename to `jupyter-get-doc-buffer' since they are
+;; not limited to the REPL.
 (defun jupyter-repl-get-doc-buffer (name)
   "Return the REPL documentation buffer for NAME.
 A REPL documentation buffer has the following characteristics:
@@ -1868,15 +1870,16 @@ Run FUN when the completions are available."
          #'jupyter-completion--company-doc-buffer)))))
 
 (defun jupyter-completion--company-doc-buffer (arg)
-  (let* ((inhibit-read-only t)
-         (buf (jupyter-repl--inspect
-               arg (length arg) nil (company-doc-buffer)
-               company-async-timeout)))
-    (prog1 buf
-      (when buf
-        (with-current-buffer buf
+  "Send an inspect request for ARG to the kernel.
+Use the `company-doc-buffer' to insert the results."
+  (let ((buf (company-doc-buffer)))
+    (jupyter-inspect arg buf)
+    (with-current-buffer buf
+      (when (> (point-max) (point-min))
+        (let ((inhibit-read-only t))
           (remove-text-properties
-           (point-min) (point-max) '(read-only)))))))
+           (point-min) (point-max) '(read-only))
+          (current-buffer))))))
 
 (defun jupyter-completion--post-completion (arg status)
   "If ARG is a completion with a snippet, expand the snippet.
@@ -1894,62 +1897,59 @@ Do this only if STATUS is sole or finished."
      (point))))
 
 ;;; Inspection
+;; TODO: How to add hover documentation support
 
-(defun jupyter-repl--inspect (code pos &optional detail buffer timeout)
-  "Send an inspect request to a Jupyter kernel.
-POS is the position of `point' relative to the inspected CODE.
+(defun jupyter-inspect (code &optional pos buffer detail)
+  "Inspect CODE.
+Send an `:inspect-request' to the `jupyter-current-client' of the
+`current-buffer' and display the results in a BUFFER.
+
+CODE is the code to inspect and POS is your position in the CODE.
+If POS is nil, it defaults to the length of CODE.
+
+If BUFFER is nil, display the results in an inspect buffer.
+Otherwise insert the results in BUFFER but do not display it.
 
 DETAIL is the detail level to use for the request and defaults to
-0.
-
-If BUFFER is provided, the inspection text returned from the
-kernel is inserted into BUFFER and BUFFER is returned. Otherwise,
-when BUFFER is nil, the formated inspection string is returned.
-
-It the kernel doesn't respond within TIMEOUT seconds, return nil."
+0."
   (let* ((jupyter-inhibit-handlers '(:status))
          (msg (jupyter-wait-until-received :inspect-reply
                 (jupyter-send-inspect-request jupyter-current-client
-                  :code code :pos pos :detail detail)
-                timeout)))
-    (when msg
-      (cl-destructuring-bind (&key status found data metadata &allow-other-keys)
-          (jupyter-message-content msg)
-        (when (and (equal status "ok") found)
-          (with-current-buffer (or buffer (generate-new-buffer " *temp*"))
-            (unwind-protect
-                (progn
+                  :code code :pos (or pos (length code)) :detail detail))))
+    (if msg
+        (cl-destructuring-bind
+            (&key status found data metadata &allow-other-keys)
+            (jupyter-message-content msg)
+          (if (and (equal status "ok") found)
+              (let ((client jupyter-current-client)
+                    (display-p
+                     (unless buffer
+                       (setq buffer
+                             (with-jupyter-repl-doc-buffer "inspect"
+                               (current-buffer))))))
+                (with-current-buffer buffer
+                  (setq jupyter-current-client client)
                   (jupyter-repl-insert-data data metadata)
                   (goto-char (point-min))
-                  (or buffer (buffer-string)))
-              (unless buffer
-                (kill-buffer (current-buffer))))))))))
+                  (when display-p
+                    (display-buffer (current-buffer))
+                    (set-window-start (get-buffer-window) (point-min)))))
+            (message "Nothing found for %s" code)))
+      (message "Inspect timed out"))))
 
-(defun jupyter-repl-inspect-at-point ()
+(defun jupyter-inspect-at-point (&optional buffer detail)
   "Inspect the code at point.
-Send an inspect request to the `jupyter-current-client' of
-the `current-buffer' and display the results in a buffer."
-  (interactive)
+Send an `:inspect-request' to the `jupyter-current-client' of the
+`current-buffer' and display the results in a BUFFER. If BUFFER
+is nil, display the results in an inspect buffer. Otherwise
+insert the results in BUFFER but do not display them.
+
+DETAIL is the detail level to use for the request and defaults to
+0."
+  (interactive (list nil 0))
   (cl-destructuring-bind (code pos)
       (jupyter-code-context 'inspect)
-    (let ((buf (current-buffer)))
-      (with-jupyter-repl-doc-buffer "inspect"
-        ;; Set this in the inspect buffer so that
-        ;; `jupyter-repl-markdown-follow-link-at-point' works in the inspect
-        ;; buffer as well.
-        (setq-local jupyter-current-client
-                    (buffer-local-value 'jupyter-current-client buf))
-        ;; FIXME: Better way of inserting documentation into a buffer.
-        ;; Currently the way text is inserted is by inserting in a temp
-        ;; buffer and returning the string, but in cases where overlays may
-        ;; be inserted in the buffer (markdown), this fails. A better way
-        ;; would be to supply the buffer in which to insert text like what is
-        ;; done here, but how to make it more general for all insertion
-        ;; types?
-        (if (not (jupyter-repl--inspect code pos nil (current-buffer)))
-            (message "Inspect timed out")
-          (display-buffer (current-buffer))
-          (set-window-start (get-buffer-window) (point-min)))))))
+    (jupyter-inspect code pos buffer detail)))
 
 ;;; Evaluation
 
@@ -2433,7 +2433,7 @@ If CLIENT is a buffer or the name of a buffer, use the
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "C-c C-c") #'jupyter-repl-eval-line-or-region)
     (define-key map (kbd "C-c C-l") #'jupyter-repl-eval-file)
-    (define-key map (kbd "C-c C-f") #'jupyter-repl-inspect-at-point)
+    (define-key map (kbd "C-c C-f") #'jupyter-inspect-at-point)
     (define-key map (kbd "C-c C-r") #'jupyter-repl-restart-kernel)
     (define-key map (kbd "C-c C-i") #'jupyter-repl-interrupt-kernel)
     (define-key map (kbd "C-c C-z") #'jupyter-repl-pop-to-buffer)

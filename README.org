@@ -66,7 +66,7 @@ keybindings for interacting with the REPL:
 | Key binding | Command                            |
 |-------------+------------------------------------|
 | =C-c C-c=   | =jupyter-repl-eval-line-or-region= |
-| =C-c C-f=   | =jupyter-repl-inspect-at-point=    |
+| =C-c C-f=   | =jupyter-inspect-at-point=         |
 | =C-c C-z=   | =jupyter-repl-pop-to-buffer=       |
 | =C-c C-i=   | =jupyter-repl-interrupt-kernel=    |
 | =C-c C-r=   | =jupyter-repl-restart-kernel=      |

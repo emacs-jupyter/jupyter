@@ -1046,7 +1046,7 @@ CODE is the required context for TYPE (either `inspect' or
 CODE. Depending on the current context such as the current
 `major-mode', CODE and POS will be used for `:complete-request's
 originating from `jupyter-completion-at-point' and
-`:inspect-request's from `jupyter-repl-inspect-at-point'.")
+`:inspect-request's from `jupyter-inspect-at-point'.")
 
 (defun jupyter-line-context (&optional start)
   "Return the code context of the current line.
