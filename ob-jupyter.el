@@ -173,7 +173,7 @@ parameter will be used."
                          (connect-jupyter-repl session nil 'jupyter-org-client)
                        (run-jupyter-repl kernel nil 'jupyter-org-client))))
                 (jupyter-set client 'jupyter-include-other-output nil)
-                (with-jupyter-repl-buffer client
+                (jupyter-with-repl-buffer client
                   (let ((name (buffer-name)))
                     (when (string-match "^\\*\\(.+\\)\\*" name)
                       (rename-buffer

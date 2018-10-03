@@ -167,7 +167,7 @@ running BODY."
   (declare (indent 1) (debug (symbolp &rest form)))
   `(let ((,client (run-jupyter-repl "python")))
      (unwind-protect
-         (with-jupyter-repl-buffer ,client
+         (jupyter-with-repl-buffer ,client
            (progn ,@body))
        (cl-letf (((symbol-function 'yes-or-no-p)
                   (lambda (_prompt) t))

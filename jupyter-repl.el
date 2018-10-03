@@ -180,8 +180,8 @@ find the display in the REPL buffer. See
 
 ;;; Macros
 
-(defmacro with-jupyter-repl-buffer (client &rest body)
-  "Switch to CLIENT's buffer before running BODY.
+(defmacro jupyter-with-repl-buffer (client &rest body)
+  "Switch to CLIENT's REPL buffer before running BODY.
 This switches to CLIENT's buffer slot, sets `inhibit-read-only'
 to t, and then runs BODY. Afterwards, if CLIENT's buffer is
 currently being shown in a window, move windows `point' to the
@@ -241,7 +241,7 @@ output of REQ should be inserted.
 
 Also handles any terminal control codes in the appended output."
   (declare (indent 2) (debug (symbolp &rest form)))
-  `(with-jupyter-repl-buffer ,client
+  `(jupyter-with-repl-buffer ,client
      (jupyter-repl-without-continuation-prompts
       (save-excursion
         (jupyter-repl-goto-cell ,req)
@@ -254,7 +254,7 @@ Also handles any terminal control codes in the appended output."
           (set-marker beg nil)
           (set-marker end nil))))))
 
-(defmacro with-jupyter-repl-lang-buffer (&rest body)
+(defmacro jupyter-with-repl-lang-buffer (&rest body)
   "Run BODY in the `jupyter-repl-lang-buffer' of the `current-buffer'.
 The contents of `jupyter-repl-lang-buffer' is erased before
 running BODY."
@@ -267,7 +267,7 @@ running BODY."
            (erase-buffer)
            ,@body)))))
 
-(defmacro with-jupyter-repl-cell (&rest body)
+(defmacro jupyter-with-repl-cell (&rest body)
   "Narrow to the current cell, run BODY, then widen.
 The cell is narrowed to the region between and including
 `jupyter-repl-cell-code-beginning-position' and
@@ -283,7 +283,7 @@ be at the `jupyter-repl-cell-code-beginning-position'."
 
 ;; TODO: Rename to `jupyter-get-doc-buffer' since they are
 ;; not limited to the REPL.
-(defun jupyter-repl-get-doc-buffer (name)
+(defun jupyter-get-doc-buffer (name)
   "Return the REPL documentation buffer for NAME.
 A REPL documentation buffer has the following characteristics:
 
@@ -306,7 +306,7 @@ exists, it is returned."
         (local-set-key (kbd "<backtab>") #'scroll-up)))
     buffer))
 
-(defmacro with-jupyter-repl-doc-buffer (name &rest body)
+(defmacro jupyter-with-doc-buffer (name &rest body)
   "With the REPL documentation buffer corresponding to NAME, run BODY.
 NAME should be a string representing the purpose of the
 documentation buffer. The buffer corresponding to NAME will be
@@ -316,7 +316,7 @@ running BODY, the doc buffer is set as the
 erased."
   (declare (indent 1))
   (let ((buffer (make-symbol "buffer")))
-    `(let ((,buffer (jupyter-repl-get-doc-buffer ,name)))
+    `(let ((,buffer (jupyter-get-doc-buffer ,name)))
        (setq other-window-scroll-buffer ,buffer)
        (with-current-buffer ,buffer
          (let ((inhibit-read-only t))
@@ -327,7 +327,7 @@ erased."
 
 (defun jupyter-repl-language-mode (client)
   "Return the `major-mode' of CLIENT's kernel language."
-  (with-jupyter-repl-buffer client
+  (jupyter-with-repl-buffer client
     jupyter-repl-lang-mode))
 
 ;;; Text insertion
@@ -1026,7 +1026,7 @@ lines, truncate it to something less than
                                             (allow-stdin t)
                                             (stop-on-error nil))
   (if code (cl-call-next-method)
-    (with-jupyter-repl-buffer client
+    (jupyter-with-repl-buffer client
       (jupyter-repl-truncate-buffer)
       (setq code (string-trim (jupyter-repl-cell-code)))
       ;; Handle empty code cells as just an update of the prompt number
@@ -1053,7 +1053,7 @@ lines, truncate it to something less than
         ("page"
          (let ((text (plist-get (plist-get pl :data) :text/plain))
                (line (or (plist-get pl :start) 0)))
-           (with-jupyter-repl-doc-buffer "pager"
+           (jupyter-with-doc-buffer "pager"
              (jupyter-repl-insert-ansi-coded-text text)
              (goto-char (point-min))
              (forward-line line)
@@ -1076,7 +1076,7 @@ lines, truncate it to something less than
                                             _user-expressions
                                             payload)
   (oset client execution-count (1+ execution-count))
-  (with-jupyter-repl-buffer client
+  (jupyter-with-repl-buffer client
     (save-excursion
       (jupyter-repl-goto-cell req)
       (jupyter-repl-cell-unmark-busy))
@@ -1151,7 +1151,7 @@ message."
                  ;; For comm messages which produce a `:display-data' message,
                  ;; the request is assumed to be the most recently completed
                  ;; one.
-                 (with-jupyter-repl-buffer client
+                 (jupyter-with-repl-buffer client
                    (save-excursion
                      (goto-char (point-max))
                      (jupyter-repl-previous-cell 2)
@@ -1181,7 +1181,7 @@ message."
       transient
     (unless display_id
       (error "No display ID in `:update-display-data' message"))
-    (with-jupyter-repl-buffer client
+    (jupyter-with-repl-buffer client
       (let ((id (gethash display_id jupyter-repl-display-ids)))
         (unless id
           (error "Display ID not found (%s)" id))
@@ -1189,7 +1189,7 @@ message."
 
 (defun jupyter-repl-clear-last-cell-output (client)
   "In CLIENT's REPL buffer, clear the output of the last completed cell."
-  (with-jupyter-repl-buffer client
+  (jupyter-with-repl-buffer client
     (goto-char (point-max))
     (jupyter-repl-previous-cell 2)
     (delete-region (1+ (jupyter-repl-cell-end-position))
@@ -1272,7 +1272,7 @@ Do this for the current cell."
      ((eq (jupyter-message-parent-type
            (jupyter-request-last-message req))
           :comm-msg)
-      (with-jupyter-repl-doc-buffer "traceback"
+      (jupyter-with-doc-buffer "traceback"
         (jupyter-repl-insert-ansi-coded-text traceback)
         (goto-char (point-min))
         (pop-to-buffer (current-buffer))))
@@ -1357,13 +1357,13 @@ elements."
          (ring-ref jupyter-repl-history 0))))))
 
 (cl-defmethod jupyter-handle-history-reply ((client jupyter-repl-client) _req history)
-  (with-jupyter-repl-buffer client
+  (jupyter-with-repl-buffer client
     (cl-loop for elem across history
              for input-output = (aref elem 2)
              do (ring-remove+insert+extend jupyter-repl-history input-output))))
 
 (cl-defmethod jupyter-handle-is-complete-reply ((client jupyter-repl-client) _req status indent)
-  (with-jupyter-repl-buffer client
+  (jupyter-with-repl-buffer client
     (pcase status
       ("complete"
        (jupyter-send-execute-request client))
@@ -1377,7 +1377,7 @@ elements."
       ("unknown"))))
 
 (cl-defmethod jupyter-handle-shutdown-reply ((client jupyter-repl-client) _req restart)
-  (with-jupyter-repl-buffer client
+  (jupyter-with-repl-buffer client
     (goto-char (point-max))
     (add-text-properties (jupyter-repl-cell-beginning-position)
                          (jupyter-repl-cell-end-position)
@@ -1456,7 +1456,7 @@ Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
   (let* ((spos (jupyter-repl-cell-code-beginning-position))
          (pos (jupyter-repl-cell-code-position))
          (code (jupyter-repl-cell-code))
-         (replacement (with-jupyter-repl-lang-buffer
+         (replacement (jupyter-with-repl-lang-buffer
                         (insert code)
                         (goto-char pos)
                         (jupyter-indent-line)
@@ -1933,9 +1933,8 @@ DETAIL is the detail level to use for the request and defaults to
               (let ((client jupyter-current-client)
                     (display-p
                      (unless buffer
-                       (setq buffer
-                             (with-jupyter-repl-doc-buffer "inspect"
-                               (current-buffer))))))
+                       (setq buffer (jupyter-with-doc-buffer "inspect"
+                                      (current-buffer))))))
                 (with-current-buffer buffer
                   (setq jupyter-current-client client)
                   (jupyter-repl-insert-data data metadata)
@@ -1978,7 +1977,7 @@ are displayed."
   (unless (buffer-local-value
            'jupyter-current-client (current-buffer))
     (user-error "No `jupyter-current-client' set, see `jupyter-repl-associate-buffer'"))
-  (with-jupyter-repl-buffer jupyter-current-client
+  (jupyter-with-repl-buffer jupyter-current-client
     (goto-char (point-max))
     (unless (= (save-excursion (jupyter-repl-previous-cell)) 0)
       (jupyter-repl-insert-prompt 'in))
@@ -2007,7 +2006,7 @@ are displayed."
                           with nlines = 0
                           for c across res when (eq c ?\n) do (cl-incf nlines)
                           thereis (> nlines 10)))
-                    (with-jupyter-repl-doc-buffer "result"
+                    (jupyter-with-doc-buffer "result"
                       (insert res)
                       (goto-char (point-min))
                       (display-buffer (current-buffer)))
@@ -2066,7 +2065,7 @@ If the current region is active send the current region using
 If MSG is a startup message, insert the banner of the kernel,
 synchronize the execution state, and insert a new input prompt."
   (prog1 nil
-    (with-jupyter-repl-buffer client
+    (jupyter-with-repl-buffer client
       (when (jupyter-message-status-starting-p msg)
         ;; FIXME: Don't assume `jupyter-include-other-output' was previously nil
         (jupyter-set jupyter-current-client 'jupyter-include-other-output nil)
@@ -2272,7 +2271,7 @@ in the appropriate direction, to the saved element."
                    (format " *jupyter-repl-lang-%s*"
                            (plist-get language-info :name))))
       (set-syntax-table syntax)
-      (with-jupyter-repl-lang-buffer
+      (jupyter-with-repl-lang-buffer
         (unless (eq major-mode mode)
           (funcall mode))))
     ;; Get history from kernel
@@ -2340,7 +2339,7 @@ When the kernel restarts, insert a new prompt."
 (defun jupyter-repl-initialize-fontification ()
   "Initialize fontification for the current REPL buffer."
   (let (fld sff)
-    (with-jupyter-repl-lang-buffer
+    (jupyter-with-repl-lang-buffer
       (setq fld font-lock-defaults
             sff font-lock-syntactic-face-function))
     ;; Set `font-lock-defaults' to a copy of the font lock defaults for the
@@ -2394,7 +2393,7 @@ it."
   "Switch to the REPL buffer of the `jupyter-current-client'."
   (interactive)
   (if jupyter-current-client
-      (with-jupyter-repl-buffer jupyter-current-client
+      (jupyter-with-repl-buffer jupyter-current-client
         (goto-char (point-max))
         (pop-to-buffer (current-buffer)))
     (error "Buffer not associated with a REPL, see `jupyter-repl-associate-buffer'")))
@@ -2522,7 +2521,7 @@ buffer slot, raise an error."
               (generate-new-buffer
                (format "*jupyter-repl[%s]*"
                        (concat language-name " " language-version))))
-        (with-jupyter-repl-buffer client
+        (jupyter-with-repl-buffer client
           (setq-local jupyter-current-client client)
           (jupyter-repl-mode)
           (jupyter-repl-insert-banner banner)

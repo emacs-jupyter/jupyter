@@ -324,16 +324,13 @@ retrieve the client local value use =jupyter-get=
 (jupyter-get client 'jupyter-include-other-output)
 #+END_SRC
 
-The channel hook variables =jupyter-iopub-message-hook=,
-=jupyter-shell-message-hook=, and =jupyter-stdin-message-hook= are all client
-local hook variables and may hooks may be added to them using
-=jupyter-add-hook= or removed from them using =jupyter-remove-hook=.
-
-You may also use the macro =with-jupyter-client-buffer= to work with the client
-local variables of a client
+These functions just set/get the value of a buffer local variable in a private
+buffer of the client. You may work with these buffer local variables directly
+by using the =jupyter-with-client-buffer= macro, just be sure to use
+=setq-local= if you are setting a client local variable to a new value.
 
 #+BEGIN_SRC elisp
-(with-jupyter-client-buffer client
+(jupyter-with-client-buffer client
   (message "jupyter-include-other-output: %s" jupyter-include-other-output)
   (setq-local jupyter-include-other-output (not jupyter-include-other-output)))
 #+END_SRC

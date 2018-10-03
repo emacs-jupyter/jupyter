@@ -284,7 +284,7 @@ connection is terminated before initializing a new one."
 
 ;;; Client local variables
 
-(defmacro with-jupyter-client-buffer (client &rest body)
+(defmacro jupyter-with-client-buffer (client &rest body)
   "Run a form inside CLIENT's IOloop subprocess buffer.
 BODY is run with the current buffer set to CLIENT's IOloop
 subprocess buffer."
@@ -301,12 +301,12 @@ subprocess buffer."
 
 (defun jupyter-set (client symbol newval)
   "Set CLIENT's local value for SYMBOL to NEWVAL."
-  (with-jupyter-client-buffer client
+  (jupyter-with-client-buffer client
     (set (make-local-variable symbol) newval)))
 
 (defun jupyter-get (client symbol)
   "Get CLIENT's local value of SYMBOL."
-  (with-jupyter-client-buffer client
+  (jupyter-with-client-buffer client
     (symbol-value symbol)))
 
 ;;; Hooks
@@ -318,19 +318,19 @@ added to HOOK using `add-hook', but local only to CLIENT. Note
 that the CLIENT should have its channels already started before
 this is called."
   (declare (indent 2))
-  (with-jupyter-client-buffer client
+  (jupyter-with-client-buffer client
     (add-hook hook function append t)))
 
 (defun jupyter-run-hook-with-args-until-success (client hook &rest args)
   "Run CLIENT's value for HOOK with the arguments ARGS."
-  (with-jupyter-client-buffer client
+  (jupyter-with-client-buffer client
     (when jupyter--debug
       (message "RUN-HOOK: %s" hook))
     (apply #'run-hook-with-args-until-success hook args)))
 
 (defun jupyter-remove-hook (client hook function)
   "Remove from CLIENT's value of HOOK the function FUNCTION."
-  (with-jupyter-client-buffer client
+  (jupyter-with-client-buffer client
     (remove-hook hook function t)))
 
 ;;; Sending messages
