@@ -657,9 +657,9 @@ on EVENT. If TIMEOUT is nil it defaults to 1 s."
     (oset client ioloop
           (zmq-start-process
            (jupyter--ioloop client)
-           (apply-partially #'jupyter--ioloop-filter client)
-           (apply-partially #'jupyter--ioloop-sentinel client)
-           (oref client -buffer)))
+           :filter (apply-partially #'jupyter--ioloop-filter client)
+           :sentinel (apply-partially #'jupyter--ioloop-sentinel client)
+           :buffer (oref client -buffer)))
     (jupyter-ioloop-wait-until :start (oref client ioloop))))
 
 (cl-defmethod jupyter-start-channels ((client jupyter-kernel-client)
