@@ -614,7 +614,7 @@ When no valid mimetype is present in DATA, a warning is shown."
       (cl-destructuring-bind (&key width height)
           (plist-get metadata :image/svg+xml)
         (let* ((data (plist-get data :image/svg+xml))
-               (img (create-image data 'svg nil :width width :height height)))
+               (img (create-image data 'svg 'data :width width :height height)))
           (insert-image img (propertize " " 'read-only t)))))
      ((memq :text/plain mimetypes)
       (jupyter-repl-insert-ansi-coded-text
