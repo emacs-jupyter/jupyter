@@ -1336,7 +1336,8 @@ nil."
         (ring-insert-at-beginning
          jupyter-repl-history (ring-remove jupyter-repl-history 0))
         (jupyter-repl-history--previous (1- n)))
-    (ring-ref jupyter-repl-history 0)))
+    (unless (eq (ring-ref jupyter-repl-history 0) 'jupyter-repl-history)
+      (ring-ref jupyter-repl-history 0))))
 
 (defun jupyter-repl-history-previous (&optional n)
   "Go to the previous history element.
