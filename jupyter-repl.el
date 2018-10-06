@@ -1457,6 +1457,11 @@ Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
   (let* ((pos (jupyter-repl-cell-code-position))
          (code (jupyter-repl-cell-code))
          (replacement
+          ;; TODO: Convert to using indirect buffers if
+          ;; they are faster. We can keep an indirect
+          ;; buffer around with the languages major mode.
+          ;; This way we avoid copying the buffer strings
+          ;; back and forth between buffers.
           (jupyter-with-repl-lang-buffer
             (insert code)
             (goto-char pos)
