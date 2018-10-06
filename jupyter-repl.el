@@ -1454,20 +1454,22 @@ Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
 
 (defun jupyter-repl-indent-line ()
   "Indent the line according to the language of the REPL."
-  (let* ((spos (jupyter-repl-cell-code-beginning-position))
-         (pos (jupyter-repl-cell-code-position))
+  (let* ((pos (jupyter-repl-cell-code-position))
          (code (jupyter-repl-cell-code))
-         (replacement (jupyter-with-repl-lang-buffer
-                        (insert code)
-                        (goto-char pos)
-                        (jupyter-indent-line)
-                        (setq pos (point))
-                        (buffer-string))))
+         (replacement
+          (jupyter-with-repl-lang-buffer
+            (insert code)
+            (goto-char pos)
+            (let ((tick (buffer-chars-modified-tick)))
+              (jupyter-indent-line)
+              (unless (eq tick (buffer-chars-modified-tick))
+                (setq pos (point))
+                (buffer-string))))))
     ;; Don't modify the buffer when unnecessary, this allows
     ;; `company-indent-or-complete-common' to work.
-    (unless (equal code replacement)
+    (when replacement
       (jupyter-repl-replace-cell-code replacement)
-      (goto-char (+ pos spos)))))
+      (goto-char (+ pos (jupyter-repl-cell-code-beginning-position))))))
 
 ;;; Buffer change functions
 
