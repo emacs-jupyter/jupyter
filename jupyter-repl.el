@@ -442,19 +442,15 @@ can contain the following keywords along with their values:
    thereis (memq mimetype graphic-types)))
 
 (defun jupyter-repl-insert-html (html)
-  "Parse and insert the HTML string using `shr-insert-document'."
-  (jupyter-repl-insert
-   ;; `save-excursion' is necessary here since it seems that `with-temp-buffer'
-   ;; moves the REPL window's `point' when it is visible
-   (save-excursion
-     (with-temp-buffer
-       (insert html)
-       (let ((xml (libxml-parse-html-region
-                   (point-min) (point-max))))
-         (erase-buffer)
-         (shr-insert-document xml))
-       (jupyter-repl-fixup-font-lock-properties (point-min) (point-max))
-       (string-trim (buffer-string))))))
+  "Parse and insert the HTML string using `shr'."
+  (jupyter-repl-without-continuation-prompts
+   (let ((beg (point)))
+     (insert html)
+     ;; NOTE: Parsing takes a very long time when the text
+     ;; is > ~500000 characters.
+     (shr-render-region beg (point))
+     (jupyter-repl-add-font-lock-properties beg (point))
+     (add-text-properties beg (point) '(read-only t)))))
 
 ;; Markdown integration
 
