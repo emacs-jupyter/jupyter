@@ -2349,10 +2349,11 @@ When the kernel restarts, insert a new prompt."
 
 (defun jupyter-repl-initialize-fontification ()
   "Initialize fontification for the current REPL buffer."
-  (let (fld sff)
+  (let (fld sff spf)
     (jupyter-with-repl-lang-buffer
       (setq fld font-lock-defaults
-            sff font-lock-syntactic-face-function))
+            sff font-lock-syntactic-face-function
+            spf syntax-propertize-function))
     ;; Set `font-lock-defaults' to a copy of the font lock defaults for the
     ;; REPL language but with a modified syntactic fontification function
     (cl-destructuring-bind (kws &optional kws-only case-fold syntax-alist
@@ -2368,7 +2369,8 @@ When the kernel restarts, insert a new prompt."
                                   (lambda (state)
                                     (unless (get-text-property
                                              (nth 8 state) 'font-lock-face)
-                                      (when sff (funcall sff state))))))))))
+                                      (when sff (funcall sff state))))))))
+            syntax-propertize-function spf))
     (font-lock-mode)))
 
 (defun jupyter-repl-insert-banner (banner)
