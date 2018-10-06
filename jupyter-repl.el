@@ -580,7 +580,9 @@ When no valid mimetype is present in DATA, a warning is shown."
                              (not (memq k jupyter-repl-graphic-mimetypes))))
                     collect k)))
     (cond
-     ((memq :application/vnd.jupyter.widget-view+json mimetypes)
+     ((and (memq :application/vnd.jupyter.widget-view+json mimetypes)
+           (require 'websocket nil t)
+           (require 'simple-httpd nil t))
       (jupyter-widgets-display-model
        jupyter-current-client
        (plist-get (plist-get data :application/vnd.jupyter.widget-view+json)
