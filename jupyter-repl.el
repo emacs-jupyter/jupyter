@@ -1509,7 +1509,10 @@ BEG, END, and LEN have the same meaning as in
      ((= len 0)
       (goto-char beg)
       (when (jupyter-repl-cell-line-p)
-        (setq end (jupyter-repl-insert-continuation-prompts end))
+        ;; Avoid doing anything on self insertion
+        (unless (and (= (point) (1- end))
+                     (not (eq (char-after) ?\n)))
+          (setq end (jupyter-repl-insert-continuation-prompts end)))
         (jupyter-repl-mark-as-cell-code beg end))
       (goto-char end)))))
 
