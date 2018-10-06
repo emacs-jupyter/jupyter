@@ -1591,7 +1591,7 @@ done at point, return nil.
 
 MAX-LEN is the maximum number of characters to search behind the
 begiining of the symbol at point to look for a match of RE."
-  (let ((symbol (if (looking-at "\\>")
+  (let ((symbol (if (looking-at "\\>\\|\\_>")
                     (buffer-substring-no-properties
                      (point) (jupyter-completion-symbol-beginning))
                   (unless (and (char-after)
