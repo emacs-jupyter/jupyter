@@ -715,13 +715,11 @@ interpreted as `in'."
         :properties '(invisible t front-sticky t) " "))
       ((eq type 'continuation)
        (jupyter-repl--make-prompt
-        " " 'jupyter-repl-input-prompt
-        `(read-only nil rear-nonsticky t))
-       ;; Prevent prompt overlay from inheriting text properities of cell code.
-       ;; See the note for input prompts.
-       (jupyter-repl-insert
-        :read-only nil
-        :properties '(invisible t rear-nonsticky t front-sticky t) " "))))))
+        ;; This needs to be two characters wide for some
+        ;; reason, otherwise the continuation prompts will
+        ;; be missing one character.
+        "  " 'jupyter-repl-input-prompt
+        `(read-only nil rear-nonsticky t)))))))
 
 (defun jupyter-repl-cell-update-prompt (str)
   "Update the current cell's input prompt.
