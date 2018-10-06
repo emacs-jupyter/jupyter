@@ -2364,11 +2364,9 @@ When the kernel restarts, insert a new prompt."
                    (append vars
                            (list
                             (cons 'font-lock-syntactic-face-function
-                                  ;; Only fontify syntactically when the text
-                                  ;; does not have a font-lock-face property
                                   (lambda (state)
                                     (unless (get-text-property
-                                             (nth 8 state) 'font-lock-face)
+                                             (nth 8 state) 'font-lock-fontified)
                                       (when sff (funcall sff state))))))))
             syntax-propertize-function spf))
     (font-lock-mode)))
