@@ -2365,8 +2365,8 @@ When the kernel restarts, insert a new prompt."
                                   (lambda (state)
                                     (unless (get-text-property
                                              (nth 8 state) 'font-lock-fontified)
-                                      (when sff (funcall sff state))))))))
-            syntax-propertize-function spf))
+                                      (when sff (funcall sff state)))))))))
+      (setq-local syntax-propertize-function spf))
     (font-lock-mode)))
 
 (defun jupyter-repl-insert-banner (banner)
