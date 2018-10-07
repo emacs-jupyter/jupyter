@@ -1779,12 +1779,32 @@ supplied by the kernel."
 
 ;;; Completion at point interface
 
-(defvar jupyter-completion-last-prefix nil
-  "The last prefix used to fetch candidates.")
-
 (defvar jupyter-completion-cache nil
   "The cache for completion candidates.
-Can either be a Jupyter message plist or a list of candidates")
+A list that can take the following forms
+
+    (PREFIX . CANDIDATES)
+    (fetched PREFIX MESSAGE)
+
+The first form states that the list of CANDIDATES is for the
+prefix, PREFIX.
+
+The second form signifies that the CANDIDATES for PREFIX must be
+extracted from MESSAGE and converted to the first form.")
+
+(defun jupyter-completion-prefetch-p (prefix)
+  "Return non-nil if a prefetch for PREFIX should be performed.
+Looks at `jupyter-completion-cache' to determine if its
+candidates can be used for PREFIX."
+  (not (and jupyter-completion-cache
+            (if (eq (car jupyter-completion-cache) 'fetched)
+                (equal (nth 1 jupyter-completion-cache) prefix)
+              (or (equal (car jupyter-completion-cache) prefix)
+                  (and (not (string= (car jupyter-completion-cache) ""))
+                       (string-prefix-p (car jupyter-completion-cache) prefix))))
+            ;; Invalidate the cache when completing argument lists
+            (or (string= prefix "")
+                (not (eq (aref prefix (1- (length prefix))) ?\())))))
 
 (defun jupyter-completion-prefetch (fun)
   "Get completions for the current completion context.
@@ -1830,30 +1850,11 @@ Run FUN when the completions are available."
                        ;; syntax based auto completion
                        (when jupyter-completion-cache
                          (company-post-command))))))))
-        ;; Prefetch candidates
-        (when (or (not jupyter-completion-last-prefix)
-                  (not jupyter-completion-cache)
-                  (and
-                   ;; FIXME: We would like to manually get
-                   ;; completions for empty prefixes because
-                   ;; of things like from foo import |
-                   ;; Only when there is no whitespace before point since some
-                   ;; kernel's would give a list of all completions on every
-                   ;; space.
-                   ;; (not (eq (char-syntax (char-before)) ? ))
-                   (or
-                    ;; This case happens when completing things like foo.|
-                    (string= jupyter-completion-last-prefix "")
-                    ;; The obvious condition...
-                    (not (string-prefix-p jupyter-completion-last-prefix prefix))))
-                  ;; Invalidate the cache when completing argument lists
-                  (and (not (string= prefix ""))
-                       (eq (aref prefix (1- (length prefix))) ?\()))
-          (setq
-           jupyter-completion-last-prefix prefix
-           req (jupyter-completion-prefetch
-                (lambda (msg) (setq jupyter-completion-cache
-                               (cons 'fetched msg))))))
+        (when (jupyter-completion-prefetch-p prefix)
+          (setq jupyter-completion-cache nil
+                req (jupyter-completion-prefetch
+                     (lambda (msg) (setq jupyter-completion-cache
+                                    (list 'fetched prefix msg))))))
         (list
          (- (point) (length prefix)) (point)
          (completion-table-dynamic
@@ -1867,12 +1868,13 @@ Run FUN when the completions are available."
               (cl-destructuring-bind (&key status
                                            matches metadata
                                            &allow-other-keys)
-                  (jupyter-message-content (cdr jupyter-completion-cache))
+                  (jupyter-message-content (nth 2 jupyter-completion-cache))
                 (setq jupyter-completion-cache
-                      (when (equal status "ok")
-                        (jupyter-completion-construct-candidates
-                         matches metadata)))))
-            jupyter-completion-cache))
+                      (cons (nth 1 jupyter-completion-cache)
+                            (when (equal status "ok")
+                              (jupyter-completion-construct-candidates
+                               matches metadata))))))
+            (cdr jupyter-completion-cache)))
          :exit-function
          #'jupyter-completion--post-completion
          :company-location
