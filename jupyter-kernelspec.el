@@ -27,11 +27,11 @@
 
 ;;; Code:
 
+(require 'json)
+
 (defgroup jupyter-kernelspec nil
   "Jupyter kernelspecs"
   :group 'jupyter)
-
-(require 'json)
 
 (declare-function jupyter-read-plist "jupyter-base" (file))
 
@@ -135,6 +135,8 @@ Optional argument REFRESH has the same meaning as in
             (length (member name display-names)))
          specs)))
 
+;; TODO: Define a kernel-spec mode alist mapping languages
+;; to the modes that they may use.
 (defun jupyter-kernelspecs-for-mode (&optional mode refresh)
   "Attempt to find available kernelspecs for MODE.
 MODE should be a major mode symbol and defaults to `major-mode'.
