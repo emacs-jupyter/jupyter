@@ -2433,18 +2433,22 @@ If CLIENT is a buffer or the name of a buffer, use the
 `jupyter-current-client' local to the buffer."
   (interactive
    (list
-    (completing-read
-     "jupyter-repl: "
-     (or (jupyter-repl-available-repl-buffers major-mode)
-         (error "No live REPL for `current-buffer's `major-mode'"))
-     nil t)))
-  (setq client (if (or (bufferp client) (stringp client))
-                   (with-current-buffer client
-                     jupyter-current-client)
-                 client))
-  (cl-check-type client jupyter-repl-client)
-  (setq-local jupyter-current-client client)
-  (jupyter-repl-interaction-mode))
+    (let ((repls (jupyter-repl-available-repl-buffers major-mode)))
+      (if repls (completing-read "jupyter-repl: " repls nil t)
+        nil))))
+  (if (not client)
+      (when (y-or-n-p "No REPL for `major-mode' exists. Start one? ")
+        (call-interactively #'run-jupyter-repl))
+    (unless (eq (jupyter-repl-language-mode client) major-mode)
+      (error "Cannot associate buffer to REPL. Wrong `major-mode'"))
+    (setq client (if (or (bufferp client) (stringp client))
+                     (with-current-buffer client
+                       jupyter-current-client)
+                   client))
+    (cl-check-type client jupyter-repl-client)
+    (setq-local jupyter-current-client client)
+    (unless jupyter-repl-interaction-mode
+      (jupyter-repl-interaction-mode))))
 
 (defvar jupyter-repl-interaction-map
   (let ((map (make-sparse-keymap)))
