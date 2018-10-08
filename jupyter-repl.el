@@ -1581,7 +1581,7 @@ If POS is non-nil return the position of the symbol before POS
 otherwise return the position of the symbol before point."
   (save-excursion
     (and pos (goto-char pos))
-    (+ (point) (skip-syntax-backward "w_"))))
+    (+ (point) (skip-syntax-backward "w_."))))
 
 ;; Adapted from `company-grab-symbol-cons'
 (defun jupyter-completion-grab-symbol-cons (re &optional max-len)
@@ -1593,9 +1593,11 @@ done at point, return nil.
 
 MAX-LEN is the maximum number of characters to search behind the
 begiining of the symbol at point to look for a match of RE."
-  (let ((symbol (if (looking-at "\\>\\|\\_>")
+  (let ((symbol (if (or (looking-at "\\>\\|\\_>")
+                        ;; Complete operators
+                        (eq (char-syntax (char-before)) ?.))
                     (buffer-substring-no-properties
-                     (point) (jupyter-completion-symbol-beginning))
+                     (jupyter-completion-symbol-beginning) (point))
                   (unless (and (char-after)
                                (memq (char-syntax (char-after)) '(?w ?_)))
                     ""))))
