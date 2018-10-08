@@ -2086,8 +2086,8 @@ If the current region is active send the current region using
 If MSG is a startup message, insert the banner of the kernel,
 synchronize the execution state, and insert a new input prompt."
   (prog1 nil
-    (jupyter-with-repl-buffer client
-      (when (jupyter-message-status-starting-p msg)
+    (when (jupyter-message-status-starting-p msg)
+      (jupyter-with-repl-buffer client
         ;; FIXME: Don't assume `jupyter-include-other-output' was previously nil
         (jupyter-set jupyter-current-client 'jupyter-include-other-output nil)
         (jupyter-repl-without-continuation-prompts
