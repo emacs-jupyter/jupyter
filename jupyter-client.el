@@ -34,7 +34,6 @@
 (require 'jupyter-base)
 (require 'jupyter-channels)
 (require 'jupyter-messages)
-(require 'skewer-mode)
 
 (declare-function hash-table-values "subr-x" (hash-table))
 
