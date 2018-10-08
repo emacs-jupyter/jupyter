@@ -242,17 +242,19 @@ output of REQ should be inserted.
 Also handles any terminal control codes in the appended output."
   (declare (indent 2) (debug (symbolp &rest form)))
   `(jupyter-with-repl-buffer ,client
-     (jupyter-repl-without-continuation-prompts
-      (save-excursion
-        (jupyter-repl-goto-cell ,req)
-        (jupyter-repl-next-cell)
-        (let ((beg (point-marker))
-              (end (point-marker)))
-          (set-marker-insertion-type end t)
-          ,@body
-          (jupyter-repl-handle-control-codes beg end)
-          (set-marker beg nil)
-          (set-marker end nil))))))
+     ;; Don't mess with font-lock and don't insert
+     ;; continuation prompts
+     (with-silent-modifications
+       (save-excursion
+         (jupyter-repl-goto-cell ,req)
+         (jupyter-repl-next-cell)
+         (let ((beg (point-marker))
+               (end (point-marker)))
+           (set-marker-insertion-type end t)
+           ,@body
+           (jupyter-repl-handle-control-codes beg end)
+           (set-marker beg nil)
+           (set-marker end nil))))))
 
 (defmacro jupyter-with-repl-lang-buffer (&rest body)
   "Run BODY in the `jupyter-repl-lang-buffer' of the `current-buffer'.
