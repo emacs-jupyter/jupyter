@@ -1936,28 +1936,34 @@ Otherwise insert the results in BUFFER but do not display it.
 
 DETAIL is the detail level to use for the request and defaults to
 0."
+  (setq pos (or pos (length code)))
   (let* ((jupyter-inhibit-handlers '(:status))
          (msg (jupyter-wait-until-received :inspect-reply
                 (jupyter-send-inspect-request jupyter-current-client
-                  :code code :pos (or pos (length code)) :detail detail))))
+                  :code code :pos pos :detail detail))))
     (if msg
         (cl-destructuring-bind
             (&key status found data metadata &allow-other-keys)
             (jupyter-message-content msg)
-          (if (and (equal status "ok") found)
+          (if (and (equal status "ok") (eq found t))
               (let ((client jupyter-current-client)
-                    (display-p
-                     (unless buffer
-                       (setq buffer (jupyter-with-doc-buffer "inspect"
-                                      (current-buffer))))))
-                (with-current-buffer buffer
-                  (setq jupyter-current-client client)
-                  (jupyter-repl-insert-data data metadata)
-                  (goto-char (point-min))
-                  (when display-p
-                    (display-buffer (current-buffer))
-                    (set-window-start (get-buffer-window) (point-min)))))
-            (message "Nothing found for %s" code)))
+                    (inhibit-read-only t))
+                (if (buffer-live-p buffer)
+                    (with-current-buffer buffer
+                      (jupyter-repl-insert-data data metadata)
+                      (current-buffer))
+                  (with-help-window (help-buffer)
+                    (with-current-buffer standard-output
+                      (setq other-window-scroll-buffer (current-buffer))
+                      (help-setup-xref
+                       (list 'jupyter-inspect code pos nil detail) t)
+                      (setq jupyter-current-client client)
+                      (jupyter-repl-insert-data data metadata)))))
+            (message "Nothing found for %s"
+                     (with-temp-buffer
+                       (insert code)
+                       (goto-char pos)
+                       (symbol-at-point)))))
       (message "Inspect timed out"))))
 
 (defun jupyter-inspect-at-point (&optional buffer detail)
