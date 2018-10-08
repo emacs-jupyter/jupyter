@@ -478,9 +478,11 @@ Otherwise follow the link normally."
   (if (string= url "@ref")
       ;; Links have the form `fun`
       (let ((fun (substring link-text 1 -1)))
-        (goto-char (point-max))
-        (jupyter-repl-replace-cell-code (concat "?" fun))
-        (jupyter-repl-ret))
+        (if (not (eq major-mode 'jupyter-repl-mode))
+            (jupyter-inspect fun (1- (length fun)))
+          (goto-char (point-max))
+          (jupyter-repl-replace-cell-code (concat "?" fun))
+          (jupyter-repl-ret)))
     (cl-call-next-method)))
 
 (defun jupyter-repl-markdown-follow-link-at-point ()
