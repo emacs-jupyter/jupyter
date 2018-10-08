@@ -1982,6 +1982,26 @@ DETAIL is the detail level to use for the request and defaults to
 
 ;;; Evaluation
 
+(defvar jupyter-repl-eval-expression-history nil)
+
+(defun jupyter-repl--read-expression ()
+  (jupyter-with-repl-buffer jupyter-current-client
+    (let ((client jupyter-current-client)
+          (jupyter-repl-eval-expression-history
+           (ring-elements jupyter-repl-history)))
+      (minibuffer-with-setup-hook
+          (lambda ()
+            (setq jupyter-current-client client)
+            ;; TODO: Enable the kernel languages mode using
+            ;; `jupyter-repl-language-mode', but there are
+            ;; issues with enabling a major mode.
+            (add-hook 'completion-at-point-functions
+                      'jupyter-completion-at-point nil t))
+        (read-from-minibuffer
+         "Jupyter Eval: " nil
+         read-expression-map
+         nil 'jupyter-repl-eval-expression-history)))))
+
 (defun jupyter-repl-eval-string (str &optional silently)
   "Evaluate STR with the `jupyter-current-client's REPL.
 Replaces the contents of the last cell in the REPL buffer with
@@ -1994,9 +2014,8 @@ long, the result is displayed in the minibuffer.
 If a prefix argument is given, SILENTLY evaluate STR without any
 modification to the REPL buffer. Only the results of evaluation
 are displayed."
-  (interactive (list (read-string "Jupyter Eval: ") current-prefix-arg))
-  (unless (buffer-local-value
-           'jupyter-current-client (current-buffer))
+  (interactive (list (jupyter-repl--read-expression) current-prefix-arg))
+  (unless jupyter-current-client
     (user-error "No `jupyter-current-client' set, see `jupyter-repl-associate-buffer'"))
   (jupyter-with-repl-buffer jupyter-current-client
     (goto-char (point-max))
