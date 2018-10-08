@@ -1056,11 +1056,22 @@ START is the buffer position considered as the start of the line. See
         (pos (1+ (- (point) start))))
     (list code (min pos (length code)))))
 
+(defun jupyter-line-or-region-context (&optional start)
+  "Return the code context of the region or line.
+If the region is active, return the active region context.
+Otherwise return the line context. START has the same meaning as
+in `jupyter-line-context' and is ignored if the region is active."
+  (if (region-active-p)
+      (list (buffer-substring-no-properties (region-beginning) (region-end))
+            (min (- (region-end) (region-beginning))
+                 (1+ (- (point) (region-beginning)))))
+    (jupyter-line-context start)))
+
 (cl-defmethod jupyter-code-context ((_type (eql inspect)))
-  (jupyter-line-context))
+  (jupyter-line-or-region-context))
 
 (cl-defmethod jupyter-code-context ((_type (eql completion)))
-  (jupyter-line-context))
+  (jupyter-line-or-region-context))
 
 (cl-defgeneric jupyter-send-complete-request ((client jupyter-kernel-client)
                                               &key code
