@@ -1894,7 +1894,7 @@ Run FUN when the completions are available."
   "Send an inspect request for ARG to the kernel.
 Use the `company-doc-buffer' to insert the results."
   (let ((buf (company-doc-buffer)))
-    (jupyter-inspect arg buf)
+    (jupyter-inspect arg nil buf)
     (with-current-buffer buf
       (when (> (point-max) (point-min))
         (let ((inhibit-read-only t))
