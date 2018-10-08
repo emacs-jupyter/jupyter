@@ -1826,36 +1826,34 @@ Run FUN when the completions are available."
 
 (defvar jupyter-completion--company-timer nil)
 
+(defun jupyter-completion--company-idle-begin ()
+  "Trigger an idle completion."
+  (when jupyter-completion--company-timer
+    (cancel-timer jupyter-completion--company-timer))
+  (setq jupyter-completion--company-timer
+        ;; NOTE: When we reach here `company-idle-delay' is `now' since
+        ;; we are already inside a company completion so we can't use
+        ;; it, just use a sensible time value instead.
+        (run-with-idle-timer
+         0.1 nil
+         (lambda ()
+           (defvar company-minimum-prefix-length)
+           (let ((company-minimum-prefix-length 0))
+             (when (company-auto-begin)
+               (company-input-noop)
+               (let ((this-command 'company-idle-begin))
+                 (company-post-command))))))))
+
 (defun jupyter-completion-at-point ()
   "Function to add to `completion-at-point-functions'."
   (when jupyter-current-client
     (let ((prefix (jupyter-completion-prefix)) req)
-      (when jupyter-completion--company-timer
-        (cancel-timer jupyter-completion--company-timer))
       (when prefix
         (when (consp prefix)
           (setq prefix (car prefix))
           (when (and (bound-and-true-p company-mode)
-                     (not company-candidates)
                      (< (length prefix) company-minimum-prefix-length))
-            ;; Trigger completion similar to `company' when
-            ;; `jupyter-completion-prefix' returns a cons cell.
-            (setq jupyter-completion--company-timer
-                  ;; NOTE: When we reach here `company-idle-delay' is `now' since
-                  ;; we are already inside a company completion so we can't use
-                  ;; it, just use a sensible time value instead.
-                  (run-with-idle-timer
-                   0.01 nil
-                   (lambda ()
-                     (let ((company-minimum-prefix-length 0)
-                           (this-command 'company-manual-begin))
-                       (unless company-candidates
-                         (company-auto-begin))
-                       ;; Only call frontends when there are
-                       ;; completions from the kernel for
-                       ;; syntax based auto completion
-                       (when jupyter-completion-cache
-                         (company-post-command))))))))
+            (jupyter-completion--company-idle-begin)))
         (when (jupyter-completion-prefetch-p prefix)
           (setq jupyter-completion-cache nil
                 req (jupyter-completion-prefetch
