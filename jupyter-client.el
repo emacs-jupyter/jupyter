@@ -1053,9 +1053,7 @@ START is the buffer position considered as the start of the line. See
 `jupyter-code-context' for the form of the returned list."
   (or start (setq start (line-beginning-position)))
   (let ((code (buffer-substring-no-properties start (line-end-position)))
-        (pos (- (point) start)))
-    (unless (looking-at "\\_>")
-      (setq pos (1+ pos)))
+        (pos (1+ (- (point) start))))
     (list code (min pos (length code)))))
 
 (cl-defmethod jupyter-code-context ((_type (eql inspect)))
