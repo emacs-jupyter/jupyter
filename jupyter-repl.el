@@ -670,7 +670,8 @@ STR is used as the prompt string and FACE is its
         (md (jupyter-repl--prompt-display-value str face)))
     (overlay-put ov 'after-string (propertize " " 'display md))
     (overlay-put ov 'evaporate t)
-    (add-text-properties (overlay-start ov) (overlay-end ov) props)))
+    (add-text-properties (overlay-start ov) (overlay-end ov) props)
+    (overlay-recenter (point))))
 
 (defun jupyter-repl-insert-prompt (&optional type)
   "Insert a REPL prompt according to TYPE.
@@ -683,7 +684,6 @@ interpreted as `in'."
    (let ((inhibit-read-only t))
      ;; The newline that `jupyter-repl--make-prompt' will overlay.
      (jupyter-repl-newline)
-     (overlay-recenter (point))
      (cond
       ((eq type 'in)
        (let ((count (oref jupyter-current-client execution-count)))
