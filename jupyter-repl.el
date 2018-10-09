@@ -2487,7 +2487,10 @@ If CLIENT is a buffer or the name of a buffer, use the
 (defvar jupyter-repl-interaction-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "C-c C-c") #'jupyter-repl-eval-line-or-region)
+    (define-key map (kbd "C-c C-s") #'jupyter-repl-scratch-buffer)
+    (define-key map (kbd "C-c C-b") #'jupyter-repl-eval-buffer)
     (define-key map (kbd "C-c C-l") #'jupyter-repl-eval-file)
+    (define-key map (kbd "C-c M-:") #'jupyter-repl-eval-string)
     (define-key map (kbd "C-c C-f") #'jupyter-inspect-at-point)
     (define-key map (kbd "C-c C-r") #'jupyter-repl-restart-kernel)
     (define-key map (kbd "C-c C-i") #'jupyter-repl-interrupt-kernel)
