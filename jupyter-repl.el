@@ -2526,7 +2526,11 @@ Only intended to be added as advice to `switch-to-buffer',
                      (not jupyter-repl-interaction-mode))
             (jupyter-repl-associate-buffer client)))))))
 
-(advice-add 'switch-to-buffer :before #'jupyter-repl-propagate-client)
+(defun jupyter-repl-interaction-mode-reenable ()
+  (when (and (not jupyter-repl-interaction-mode)
+             (jupyter-repl-client-p jupyter-current-client)
+             (eq (jupyter-repl-language-mode jupyter-current-client) major-mode))
+    (jupyter-repl-interaction-mode)))
 
 (define-minor-mode jupyter-repl-interaction-mode
   "Minor mode for interacting with a Jupyter REPL.
@@ -2552,6 +2556,32 @@ the `current-buffer' will automatically have
     (remove-hook 'after-revert-hook 'jupyter-repl-interaction-mode t)
     (unless (eq major-mode 'jupyter-repl-mode)
       (kill-local-variable 'jupyter-current-client)))))
+
+;;; `jupyter-repl-persistent-mode'
+
+(define-minor-mode jupyter-repl-persistent-mode
+  "Global minor mode to persist Jupyter REPL connections.
+When this minor mode is enabled, the `jupyter-current-client' of
+a buffer in `jupyter-repl-interaction-mode' is propogated to any
+other buffers switched to that have the same `major-mode' as the
+`current-buffer'."
+  :group 'jupyter-repl
+  :global t
+  :keymap nil
+  :init-value nil
+  (cond
+   (jupyter-repl-persistent-mode
+    (advice-add 'switch-to-buffer :before #'jupyter-repl-propagate-client)
+    (advice-add 'display-buffer :before #'jupyter-repl-propagate-client)
+    (advice-add 'set-window-buffer :before #'jupyter-repl-propagate-client)
+    (add-hook 'after-change-major-mode-hook 'jupyter-repl-interaction-mode-reenable))
+   (t
+    (advice-remove 'switch-to-buffer #'jupyter-repl-propagate-client)
+    (advice-remove 'display-buffer #'jupyter-repl-propagate-client)
+    (advice-remove 'set-window-buffer #'jupyter-repl-propagate-client)
+    (remove-hook 'after-change-major-mode-hook 'jupyter-repl-interaction-mode-reenable))))
+
+;;; Starting a REPL
 
 (defun jupyter-repl-kernel-language-mode-properties (language-info)
   "Get the `major-mode' info of a kernel's language.
@@ -2580,6 +2610,7 @@ and has a non-nil kernel-info slot.
 A new REPL buffer communicating with CLIENT's kernel is created
 and set as CLIENT's buffer slot. If CLIENT already has a non-nil
 buffer slot, raise an error."
+  (unless jupyter-repl-persistent-mode (jupyter-repl-persistent-mode))
   (if (oref client buffer) (error "Client already has a REPL buffer")
     (cl-destructuring-bind (&key language_info
                                  banner
