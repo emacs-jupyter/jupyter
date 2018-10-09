@@ -2543,11 +2543,15 @@ the `current-buffer' will automatically have
   :lighter " JuPy"
   :init-value nil
   :keymap jupyter-repl-interaction-map
-  (if jupyter-repl-interaction-mode
-      (add-hook 'completion-at-point-functions 'jupyter-completion-at-point nil t)
+  (cond
+   (jupyter-repl-interaction-mode
+    (add-hook 'completion-at-point-functions 'jupyter-completion-at-point nil t)
+    (add-hook 'after-revert-hook 'jupyter-repl-interaction-mode nil t))
+   (t
     (remove-hook 'completion-at-point-functions 'jupyter-completion-at-point t)
+    (remove-hook 'after-revert-hook 'jupyter-repl-interaction-mode t)
     (unless (eq major-mode 'jupyter-repl-mode)
-      (kill-local-variable 'jupyter-current-client))))
+      (kill-local-variable 'jupyter-current-client)))))
 
 (defun jupyter-repl-kernel-language-mode-properties (language-info)
   "Get the `major-mode' info of a kernel's language.
