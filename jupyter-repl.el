@@ -2269,12 +2269,24 @@ in the appropriate direction, to the saved element."
   "Display a scratch buffer associated with the current REPL buffer."
   (interactive)
   (if (jupyter-repl-connected-p)
-      (let ((client jupyter-current-client))
-        (with-current-buffer (get-buffer-create
-                              (concat "*jupyter-scratch*"))
-          (funcall (jupyter-repl-language-mode client))
-          (jupyter-repl-associate-buffer client)
-          (pop-to-buffer (current-buffer))))
+      (let* ((client jupyter-current-client)
+             (name (format "*jupyter-scratch[session=%s]*"
+                           (truncate-string-to-width
+                            (jupyter-session-id (oref client session))
+                            9 nil nil "…"))))
+        (unless (get-buffer name)
+          (with-current-buffer (get-buffer-create name)
+            (funcall (jupyter-repl-language-mode client))
+            (jupyter-repl-associate-buffer client)
+            (insert
+             (substitute-command-keys
+              "Jupyter scratch buffer for evaluation.
+\\[jupyter-repl-eval-line-or-region] to evaluate the line or region.
+\\[jupyter-repl-eval-buffer] to evaluate the whole buffer.
+\\[jupyter-repl-pop-to-buffer] to show the REPL buffer."))
+            (comment-region (point-min) (point-max))
+            (insert "\n\n")))
+        (switch-to-buffer-other-window name))
     (error "Not in a valid REPL buffer")))
 
 (defvar jupyter-repl-mode-map
