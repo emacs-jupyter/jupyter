@@ -2037,29 +2037,26 @@ are displayed."
                                       (ansi-color-apply evalue)))))
         :execute-result
         (lambda (msg)
-          (let ((res (jupyter-message-data msg :text/plain))
-                (inhibit-read-only t))
-            ;; Prioritize the text representation
-            (if res
-                (if (and (jupyter-repl-multiline-p res)
-                         (cl-loop
-                          with nlines = 0
-                          for c across res when (eq c ?\n) do (cl-incf nlines)
-                          thereis (> nlines 10)))
-                    (jupyter-with-doc-buffer "result"
-                      (insert res)
-                      (goto-char (point-min))
-                      (display-buffer (current-buffer)))
-                  (if (equal res "") (message "jupyter: eval done")
-                    (message res)))
-              (with-current-buffer
-                  (get-buffer-create "*jupyter-repl-result*")
-                (erase-buffer)
+          (let (res)
+            (cond
+             ((setq res (jupyter-message-data msg :text/plain))
+              (if (cl-loop
+                   with nlines = 0
+                   for c across res when (eq c ?\n) do (cl-incf nlines)
+                   thereis (> nlines 10))
+                  (jupyter-with-doc-buffer "result"
+                    (insert res)
+                    (goto-char (point-min))
+                    (display-buffer (current-buffer)))
+                (if (equal res "") (message "jupyter: eval done")
+                  (message res))))
+             (t
+              (jupyter-with-doc-buffer "result"
                 (jupyter-repl-insert-data
                  (jupyter-message-get msg :data)
                  (jupyter-message-get msg :metadata))
                 (goto-char (point-min))
-                (switch-to-buffer-other-window (current-buffer)))))))
+                (display-buffer (current-buffer))))))))
       req)))
 
 (defun jupyter-repl-eval-file (file)
