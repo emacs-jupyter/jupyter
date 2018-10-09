@@ -2078,6 +2078,12 @@ are displayed."
           (kill-buffer)))
     (error "Not a file (%s)" file)))
 
+(defun jupyter-repl-eval-buffer (buffer)
+  "Send the contents of BUFFER using `jupyter-current-client'."
+  (interactive (list (current-buffer)))
+  (jupyter-repl-eval-string
+   (with-current-buffer buffer (buffer-string)) 'silently))
+
 (defun jupyter-repl-eval-region (beg end &optional silently)
   "Evaluate a region with the `jupyter-current-client'.
 BEG and END are the beginning and end of the region to evaluate.
