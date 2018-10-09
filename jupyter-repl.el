@@ -594,8 +594,6 @@ When no valid mimetype is present in DATA, a warning is shown."
      ((and (memq :text/html mimetypes)
            (functionp 'libxml-parse-html-region))
       (let ((html (plist-get data :text/html)))
-        (when (string-match-p "^<img" html)
-          (jupyter-repl-newline))
         (jupyter-repl-insert-html html)
         (jupyter-repl-newline)))
      ((and (memq :text/markdown mimetypes)
