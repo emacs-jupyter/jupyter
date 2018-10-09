@@ -2039,7 +2039,7 @@ are displayed."
                   (jupyter-repl-replace-cell-code str))))
     (let* ((jupyter-inhibit-handlers (or (and silently t) '(:execute-result)))
            (req (jupyter-send-execute-request jupyter-current-client
-                  :code str)))
+                  :code str :silent (and silently t))))
       (jupyter-add-callback req
         :execute-reply (lambda (msg)
                          (cl-destructuring-bind (&key status ename evalue
