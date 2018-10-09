@@ -2480,8 +2480,10 @@ If CLIENT is a buffer or the name of a buffer, use the
   (interactive
    (list
     (let ((repls (jupyter-repl-available-repl-buffers major-mode)))
-      (if repls (completing-read "jupyter-repl: " repls nil t)
-        nil))))
+      (when repls
+        (with-current-buffer
+            (completing-read "jupyter-repl: " repls nil t)
+          jupyter-current-client)))))
   (if (not client)
       (when (y-or-n-p "No REPL for `major-mode' exists. Start one? ")
         (call-interactively #'run-jupyter-repl))
