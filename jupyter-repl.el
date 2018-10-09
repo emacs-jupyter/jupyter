@@ -2511,20 +2511,22 @@ If CLIENT is a buffer or the name of a buffer, use the
     (define-key map (kbd "C-c C-z") #'jupyter-repl-pop-to-buffer)
     map))
 
-(defun jupyter-repl-propagate-client (orig-fun buffer-or-name &rest args)
-  "Propagate the `jupyter-current-client' to other buffers."
+(defun jupyter-repl-propagate-client (win-or-buffer &rest args)
+  "Propagate the `jupyter-current-client' to other buffers.
+Only intended to be added as advice to `switch-to-buffer',
+`display-buffer', or `set-window-buffer'."
   (when jupyter-repl-interaction-mode
-    (let ((client jupyter-current-client)
-          (buf (get-buffer buffer-or-name))
+    (let ((buffer (if (windowp win-or-buffer) (car args)
+                    win-or-buffer))
+          (client jupyter-current-client)
           (mode major-mode))
-      (when buf
-        (with-current-buffer buf
+      (when (buffer-live-p buffer)
+        (with-current-buffer buffer
           (when (and (eq mode major-mode)
                      (not jupyter-repl-interaction-mode))
-            (jupyter-repl-associate-buffer client))))))
-  (apply orig-fun buffer-or-name args))
+            (jupyter-repl-associate-buffer client)))))))
 
-(advice-add 'switch-to-buffer :around #'jupyter-repl-propagate-client)
+(advice-add 'switch-to-buffer :before #'jupyter-repl-propagate-client)
 
 (define-minor-mode jupyter-repl-interaction-mode
   "Minor mode for interacting with a Jupyter REPL.
