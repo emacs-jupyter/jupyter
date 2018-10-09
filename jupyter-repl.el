@@ -443,16 +443,31 @@ can contain the following keywords along with their values:
    for (mimetype _value) on (jupyter-message-get msg :data) by #'cddr
    thereis (memq mimetype graphic-types)))
 
+(defun jupyter-repl-delete-javascript-tags ()
+  (while (re-search-forward "<script type='text/javascript'>" nil t)
+    (delete-region
+     (match-beginning 0)
+     (progn
+       (re-search-forward "</script>")
+       (point)))))
+
 (defun jupyter-repl-insert-html (html)
   "Parse and insert the HTML string using `shr'."
-  (jupyter-repl-without-continuation-prompts
-   (let ((beg (point)))
-     (insert html)
-     ;; NOTE: Parsing takes a very long time when the text
-     ;; is > ~500000 characters.
-     (shr-render-region beg (point))
-     (jupyter-repl-add-font-lock-properties beg (point))
-     (add-text-properties beg (point) '(read-only t)))))
+  (let ((beg (point)))
+    (insert html)
+    (save-restriction
+      (narrow-to-region beg (point))
+      (goto-char (point-min))
+      ;; TODO: We can't really do much about javascript so
+      ;; delete those regions instead of trying to parse
+      ;; them. Maybe just re-direct to a browser like with
+      ;; widgets?
+      ;; NOTE: Parsing takes a very long time when the text
+      ;; is > ~500000 characters.
+      (jupyter-repl-delete-javascript-tags)
+      (shr-render-region (point-min) (point-max))
+      (jupyter-repl-add-font-lock-properties (point-min) (point-max))
+      (add-text-properties (point-min) (point-max) '(read-only t)))))
 
 ;; Markdown integration
 
