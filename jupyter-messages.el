@@ -428,7 +428,44 @@ FLAGS is passed to SOCKET according to `zmq-recv'."
 (cl-defun jupyter-message-shutdown-request (&key restart)
   (list :restart (if restart t jupyter--false)))
 
-;;; Convenience functions
+;;; Convenience functions and macros
+
+(defmacro jupyter-with-message-content (msg keys &rest body)
+  "For MSG, bind the corresponding KEYS of its contents then evaluate BODY.
+KEYS is a list of key names to bind where the values are obtained
+from the `jupyter-message-content' of MSG before evaluating BODY.
+
+So to bind the :status key of MSG you would do
+
+    (jupyter-with-message-content msg (status)
+      BODY)"
+  (declare (indent 2))
+  `(cl-destructuring-bind (&key ,@keys &allow-other-keys)
+       (jupyter-message-content ,msg)
+     ,@body))
+
+(defmacro jupyter-with-message-data (msg varlist &rest body)
+  "For MSG, bind the mimetypes in VARLIST and evaluate BODY.
+VARLIST has a similar form to the VARLIST of a `let' binding
+except the `cadr' of each binding is a mimetype that will be
+passed to `jupyter-message-data'.
+
+So to bind the :text/plain mimetype of MSG to a variable, res,
+you would do
+
+    (jupyter-with-message-data msg ((res text/plain))
+      BODY)"
+  (declare (indent 2))
+  (let* ((m (make-symbol "msg"))
+         (vars
+          (mapcar (lambda (el)
+               (list (car el)
+                     `(jupyter-message-data
+                       ,m ',(if (keywordp (cadr el)) (cadr el)
+                              (intern (concat  ":" (symbol-name (cadr el))))))))
+             varlist)))
+    `(let* ((,m ,msg) ,@vars)
+       ,@body)))
 
 (defmacro jupyter--decode-message-part (key msg)
   "Return a form to decode the value of KEY in MSG.

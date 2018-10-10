@@ -1895,10 +1895,8 @@ Run FUN when the completions are available."
                                 :complete-reply)))
               (jupyter-wait-until-received :complete-reply req))
             (when (eq (car jupyter-completion-cache) 'fetched)
-              (cl-destructuring-bind (&key status
-                                           matches metadata
-                                           &allow-other-keys)
-                  (jupyter-message-content (nth 2 jupyter-completion-cache))
+              (jupyter-with-message-content (nth 2 jupyter-completion-cache)
+                  (status matches metadata)
                 (setq jupyter-completion-cache
                       (cons (nth 1 jupyter-completion-cache)
                             (when (equal status "ok")
@@ -1968,9 +1966,8 @@ DETAIL is the detail level to use for the request and defaults to
                 (jupyter-send-inspect-request jupyter-current-client
                   :code code :pos pos :detail detail))))
     (if msg
-        (cl-destructuring-bind
-            (&key status found data metadata &allow-other-keys)
-            (jupyter-message-content msg)
+        (jupyter-with-message-content msg
+            (status found data metadata)
           (if (and (equal status "ok") (eq found t))
               (let ((client jupyter-current-client)
                     (inhibit-read-only t))
@@ -2055,34 +2052,30 @@ are displayed."
                   :code str :store-history (unless silently t))))
       (jupyter-add-callback req
         :execute-reply (lambda (msg)
-                         (cl-destructuring-bind (&key status ename evalue
-                                                      &allow-other-keys)
-                             (jupyter-message-content msg)
+                         (jupyter-with-message-content msg (status evalue)
                            (unless (equal status "ok")
-                             (message "jupyter (%s): %s" ename
-                                      (ansi-color-apply evalue)))))
+                             (message "%s" (ansi-color-apply evalue)))))
         :execute-result
         (lambda (msg)
-          (let (res)
-            (cond
-             ((setq res (jupyter-message-data msg :text/plain))
-              (if (cl-loop
-                   with nlines = 0
-                   for c across res when (eq c ?\n) do (cl-incf nlines)
-                   thereis (> nlines 10))
-                  (jupyter-with-doc-buffer "result"
-                    (insert res)
-                    (goto-char (point-min))
-                    (display-buffer (current-buffer)))
-                (if (equal res "") (message "jupyter: eval done")
-                  (message res))))
-             (t
-              (jupyter-with-doc-buffer "result"
-                (jupyter-repl-insert-data
-                 (jupyter-message-get msg :data)
-                 (jupyter-message-get msg :metadata))
-                (goto-char (point-min))
-                (display-buffer (current-buffer))))))))
+          (jupyter-with-message-data msg ((res text/plain))
+            (if (null res)
+                (jupyter-repl-with-doc-buffer "result"
+                  (jupyter-repl-insert-data
+                   (jupyter-message-get msg :data)
+                   (jupyter-message-get msg :metadata))
+                  (goto-char (point-min))
+                  (display-buffer (current-buffer))))
+            (setq res (ansi-color-apply res))
+            (if (cl-loop
+                 with nlines = 0
+                 for c across res when (eq c ?\n) do (cl-incf nlines)
+                 thereis (> nlines 10))
+                (jupyter-repl-with-doc-buffer "result"
+                  (insert res)
+                  (goto-char (point-min))
+                  (display-buffer (current-buffer)))
+              (if (equal res "") (message "jupyter: eval done")
+                (message res))))))
       req)))
 
 (defun jupyter-repl-eval-file (file)
