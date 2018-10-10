@@ -2116,7 +2116,22 @@ to the above explanation."
                       (goto-char (point-min))
                       (display-buffer (current-buffer)))
                   (if (equal res "") (message "jupyter: eval done")
-                    (message res)))))))
+                    (message res))))))
+        :error
+        (lambda (msg)
+          (jupyter-with-message-content msg (traceback)
+            ;; FIXME: Assumes the error in the
+            ;; execute-reply is good enough
+            (unless (<= (length traceback) 2)
+              (jupyter-repl-display-traceback traceback))))
+        :stream
+        (lambda (msg)
+          (jupyter-with-message-content msg (name text)
+            (when (equal name "stdout")
+              (jupyter-repl-with-output-buffer "output" req
+                (jupyter-repl-insert-ansi-coded-text text)
+                (display-buffer (current-buffer)
+                                '(display-buffer-below-selected)))))))
       req)))
 
 (defun jupyter-repl-eval-file (file)
