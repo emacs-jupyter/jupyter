@@ -245,7 +245,7 @@ kernel. Starting a kernel involves the following steps:
       (oset manager control-channel nil))))
 
 (cl-defgeneric jupyter-shutdown-kernel ((manager jupyter-kernel-manager) &optional restart timeout)
-  "Shutdown MANAGER's kernel with an optional RESTART.
+  "Shutdown MANAGER's kernel or restart instead if RESTART is non-nil.
 Wait until TIMEOUT before forcibly shutting down the kernel.")
 
 (cl-defmethod jupyter-shutdown-kernel ((manager jupyter-kernel-manager) &optional restart timeout)
