@@ -1595,7 +1595,13 @@ If POS is non-nil return the position of the symbol before POS
 otherwise return the position of the symbol before point."
   (save-excursion
     (and pos (goto-char pos))
-    (+ (point) (skip-syntax-backward "w_."))))
+    (if (and (eq (char-syntax (char-before)) ?.)
+             (not (eq (char-before) ?.)))
+        ;; Complete operators, but not the field/attribute
+        ;; accessor .
+        (skip-syntax-backward ".")
+      (skip-syntax-backward "w_"))
+    (point)))
 
 ;; Adapted from `company-grab-symbol-cons'
 (defun jupyter-completion-grab-symbol-cons (re &optional max-len)
