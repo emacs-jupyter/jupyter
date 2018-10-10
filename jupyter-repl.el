@@ -2632,14 +2632,17 @@ purposes and SYNTAX-TABLE is the syntax table of MODE."
         (delay-mode-hooks (set-auto-mode)))
       (list major-mode (syntax-table)))))
 
-(defun jupyter-repl--new-repl (client)
+(defun jupyter-repl--new-repl (client &optional repl-name)
   "Initialize a new REPL buffer based on CLIENT.
 CLIENT is a `jupyter-repl-client' already connected to its kernel
 and has a non-nil kernel-info slot.
 
 A new REPL buffer communicating with CLIENT's kernel is created
 and set as CLIENT's buffer slot. If CLIENT already has a non-nil
-buffer slot, raise an error."
+buffer slot, raise an error.
+
+REPL-NAME is a string that will be used to generate the buffer
+name. If nil or empty, a default will be used."
   (unless jupyter-repl-persistent-mode (jupyter-repl-persistent-mode))
   (if (oref client buffer) (error "Client already has a REPL buffer")
     (cl-destructuring-bind (&key language_info
@@ -2651,7 +2654,9 @@ buffer slot, raise an error."
         (oset client buffer
               (generate-new-buffer
                (format "*jupyter-repl[%s]*"
-                       (concat language-name " " language-version))))
+                       (if (zerop (length repl-name))
+                           (concat language-name " " language-version)
+                         repl-name))))
         (jupyter-with-repl-buffer client
           (setq-local jupyter-current-client client)
           (jupyter-repl-mode)
@@ -2659,10 +2664,12 @@ buffer slot, raise an error."
           (jupyter-repl-insert-prompt 'in))))))
 
 ;;;###autoload
-(defun run-jupyter-repl (kernel-name &optional associate-buffer client-class)
+(defun run-jupyter-repl (kernel-name &optional repl-name associate-buffer client-class)
   "Run a Jupyter REPL connected to a kernel with name, KERNEL-NAME.
 KERNEL-NAME will be passed to `jupyter-find-kernelspecs' and the
 first kernel found will be used to start the new kernel.
+
+With a prefix argument give a new REPL-NAME for the REPL.
 
 Optional argument ASSOCIATE-BUFFER, if non-nil, means to enable
 `jupyter-repl-interaction-mode' in the `current-buffer' and
@@ -2680,8 +2687,9 @@ Otherwise, in a non-interactive call, return the
 `jupyter-repl-client' connect to the kernel."
   (interactive (list (car (jupyter-completing-read-kernelspec
                            nil current-prefix-arg))
-                     t
-                     nil))
+                     (when current-prefix-arg
+                       (read-string "REPL Name: "))
+                     t nil))
   (or client-class (setq client-class 'jupyter-repl-client))
   (unless (called-interactively-p 'interactive)
     (setq kernel-name (caar (jupyter-find-kernelspecs kernel-name))))
@@ -2691,7 +2699,7 @@ Otherwise, in a non-interactive call, return the
     (error "Class should be a subclass of `jupyter-repl-client' (`%s')" client-class))
   (cl-destructuring-bind (_manager client)
       (jupyter-start-new-kernel kernel-name client-class)
-    (jupyter-repl--new-repl client)
+    (jupyter-repl--new-repl client repl-name)
     (when (and associate-buffer
                (eq major-mode (jupyter-repl-language-mode client)))
       (jupyter-repl-associate-buffer client))
@@ -2700,11 +2708,13 @@ Otherwise, in a non-interactive call, return the
     client))
 
 ;;;###autoload
-(defun connect-jupyter-repl (file-or-plist &optional associate-buffer client-class)
+(defun connect-jupyter-repl (file-or-plist &optional repl-name associate-buffer client-class)
   "Run a Jupyter REPL using a kernel's connection FILE-OR-PLIST.
 FILE-OR-PLIST can be either a file holding the connection
 information or a property list of connection information.
 ASSOCIATE-BUFFER has the same meaning as in `run-jupyter-repl'.
+
+With a prefix argument give a new REPL-NAME for the REPL.
 
 Optional argument CLIENT-CLASS is the class of the client that
 will be used to initialize the REPL and should be a subclass of
@@ -2712,14 +2722,17 @@ will be used to initialize the REPL and should be a subclass of
 
 Return the `jupyter-repl-client' connected to the kernel. When
 called interactively, display the new REPL buffer as well."
-  (interactive (list (read-file-name "Connection file: ") t nil))
+  (interactive (list (read-file-name "Connection file: ")
+                     (when current-prefix-arg
+                       (read-string "REPL Name: "))
+                     t nil))
   (or client-class (setq client-class 'jupyter-repl-client))
   (unless (child-of-class-p client-class 'jupyter-repl-client)
     (error "Class should be a subclass of `jupyter-repl-client' (`%s')" client-class))
   (let ((client (make-instance client-class)))
     (jupyter-initialize-connection client file-or-plist)
     (jupyter-start-channels client)
-    (jupyter-repl--new-repl client)
+    (jupyter-repl--new-repl client repl-name)
     (when (and associate-buffer
                (eq major-mode (jupyter-repl-language-mode client)))
       (jupyter-repl-associate-buffer client))
