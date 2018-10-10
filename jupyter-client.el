@@ -652,7 +652,7 @@ on EVENT. If TIMEOUT is nil it defaults to 1 s."
   (or timeout (setq timeout 1))
   (with-timeout (timeout nil)
     (while (null (process-get ioloop event))
-      (sleep-for 0.01))
+      (accept-process-output ioloop 1))
     t))
 
 (defun jupyter--start-ioloop (client)
