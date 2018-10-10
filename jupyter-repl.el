@@ -1297,7 +1297,8 @@ Do this for the current cell."
         (when (equal (jupyter-kernel-language client) "python")
           (jupyter-repl-fix-python-traceback-spacing ename)))))))
 
-(cl-defmethod jupyter-handle-input-reply ((client jupyter-repl-client) req prompt _password)
+
+(cl-defmethod jupyter-handle-input-request ((client jupyter-repl-client) req prompt _password)
   (jupyter-repl-append-output client req
     (let ((value (cl-call-next-method)))
       (jupyter-repl-insert (concat prompt value))

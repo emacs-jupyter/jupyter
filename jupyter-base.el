@@ -136,7 +136,8 @@ directory is where kernel connection files are written to."
         :error "error"
         :status "status"
         :clear-output "clear_output"
-        :input-reply "input_reply")
+        :input-reply "input_reply"
+        :input-request "input_request")
   "A plist mapping keywords to Jupyter message type strings.
 The plist values are the message types either sent or received
 from the kernel.")

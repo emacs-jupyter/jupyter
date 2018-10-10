@@ -948,12 +948,13 @@ will be transformed to
   (unless (jupyter-run-hook-with-args-until-success
            client 'jupyter-stdin-message-hook msg)
     (jupyter-dispatch-message-cases client req msg
-      ((input-reply prompt password)))))
+      ((input-reply prompt password)
+       (input-request prompt password)))))
 
-(cl-defgeneric jupyter-handle-input-reply ((client jupyter-kernel-client)
-                                           _req
-                                           prompt
-                                           password)
+(cl-defgeneric jupyter-handle-input-request ((client jupyter-kernel-client)
+                                             _req
+                                             prompt
+                                             password)
   "Handle an input request from CLIENT's kernel.
 PROMPT is the prompt the kernel would like to show the user. If
 PASSWORD is non-nil, then `read-passwd' is used to get input from
@@ -963,11 +964,13 @@ the user. Otherwise `read-from-minibuffer' is used."
          (value nil)
          (msg (jupyter-message-input-reply
                :value (condition-case nil
-                          (if password (read-passwd prompt)
+                          (if (eq password t) (read-passwd prompt)
                             (setq value (read-from-minibuffer prompt)))
                         (quit "")))))
     (jupyter-send client channel :input-reply msg)
     (or value "")))
+
+(defalias 'jupyter-handle-input-reply 'jupyter-handle-input-request)
 
 ;;; SHELL handlers
 
