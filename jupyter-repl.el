@@ -1741,11 +1741,6 @@ Works for Julia and Python."
 
 ;;; Getting the completion context
 
-(cl-defmethod jupyter-code-context ((_type (eql inspect))
-                                    &context (major-mode jupyter-repl-mode))
-  (jupyter-line-context (next-single-property-change
-                         (line-beginning-position) 'invisible)))
-
 (cl-defmethod jupyter-code-context ((_type (eql completion))
                                     &context (major-mode jupyter-repl-mode))
   (list (jupyter-repl-cell-code)
