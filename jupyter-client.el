@@ -488,6 +488,7 @@ crashes without properly cleaning up its child processes."
                           (:iopub . ,iopub)))
               (messages nil)
               (poller nil)
+              (events nil)
               (read-command-from-parent
                (lambda ()
                  (when (alist-get 0 events)
@@ -514,16 +515,20 @@ crashes without properly cleaning up its child processes."
                (zmq-poller-add poller 0 zmq-POLLIN)
                (zmq-prin1 '(start))
                (while t
-                 (let ((events
-                        (condition-case nil
-                            (zmq-poller-wait-all
-                             poller (1+ (length channels)) 5000)
-                          ((zmq-EAGAIN zmq-EINTR zmq-ETIMEDOUT) nil))))
-                   (unless (or events (file-locked-p ,lock))
-                     (signal 'quit nil))
-                   (funcall read-command-from-parent)
-                   (funcall queue-messages)
-                   (funcall send-messages-to-parent))))
+                 (setq events (condition-case nil
+                                  (zmq-poller-wait-all
+                                   poller (1+ (length channels)) 5000)
+                                ((zmq-EAGAIN zmq-EINTR zmq-ETIMEDOUT) nil)))
+                 (unless (or events (file-locked-p ,lock))
+                   ;; TODO: The parent process probably
+                   ;; crashed, cleanup the kernel
+                   ;; connection file if there is one.
+                   ;; Since the parent Emacs crashed, all
+                   ;; of the kernel processes are gone to.
+                   (signal 'quit nil))
+                 (funcall read-command-from-parent)
+                 (funcall queue-messages)
+                 (funcall send-messages-to-parent)))
            (quit
             (mapc #'jupyter-stop-channel (mapcar #'cdr channels))
             (zmq-prin1 '(quit))))))))
