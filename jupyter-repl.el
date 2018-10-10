@@ -119,7 +119,7 @@ timeout, the built-in is-complete handler is used."
 
 ;;; Implementation
 
-(defclass jupyter-repl-client (jupyter-widget-client)
+(defclass jupyter-repl-client (jupyter-widget-client jupyter-kernel-client)
   ((buffer
     :type (or null buffer)
     :initform nil
