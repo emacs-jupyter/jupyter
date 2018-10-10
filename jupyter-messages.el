@@ -51,7 +51,7 @@ dictionaries.")
 
 (defun jupyter--sign-message (session parts)
   "Use SESSION to sign message PARTS.
-Return the signature of PARTS. PARTS should be in the orde of a
+Return the signature of PARTS. PARTS should be in the order of a
 valid Jupyter message, see `jupyter--decode-message'."
   (if (> (length (jupyter-session-key session)) 0)
       (cl-loop
@@ -70,7 +70,8 @@ valid Jupyter message, see `jupyter--decode-message'."
     ""))
 
 (defun jupyter--split-identities (parts)
-  "Extract the identities from a list of message PARTS."
+  "Extract the identities from a list of message PARTS.
+Return a cons cell (IDENTS . REST-PARTS)."
   (let ((idents nil))
     (if (catch 'found-delim
           (while (car parts)
@@ -116,7 +117,6 @@ If PART is a list whose first element is the symbol,
 is non-nil. If it is nil, then set the list's second element to
 the result of calling `jupyter--encode' on the third element and
 return the result."
-  ;; TODO: Handle date fields, they get turned into list
   (if (eq (car-safe part) 'message-part)
       (cl-destructuring-bind (_ encoded-rep decoded-rep) part
         (or encoded-rep (setf (nth 1 part) (jupyter--encode decoded-rep))))
