@@ -323,6 +323,52 @@ erased."
            (erase-buffer)
            ,@body)))))
 
+(defvar-local jupyter-repl-output-buffer-marker nil
+  "The marker to store the last output position of an output buffer.
+See `jupyter-with-output-buffer'.")
+
+(defvar-local jupyter-repl-output-buffer-last-request-id nil
+  "The last `jupyter-request' message ID that generated output.")
+
+(defmacro jupyter-repl-with-output-buffer (name reset &rest body)
+  "With the REPL output buffer corrsponding to NAME, run BODY.
+The buffer corresponding to NAME will be obtained by a call to
+`jupyter-get-special-buffer'. An output buffer differs from a
+documentation buffer by maintaining its previous output and
+moving `point' to the end of the last output.
+
+RESET should be a form or symbol to determine if the output
+buffer should be reset before evaluating BODY. If RESET is nil,
+no reset is ever performed. If RESET evaluates to a
+`jupyter-request' object, reset the buffer if the previous
+request that generated output in the buffer is not the same
+request. Otherwise if RESET evaluates to any non-nil value, reset
+the output buffer."
+  (declare (indent 2))
+  (let ((buffer (make-symbol "buffer"))
+        (reset-p (make-symbol "reset")))
+    `(let ((,buffer (jupyter-repl-get-special-buffer ,name))
+           (,reset-p ,reset))
+       (setq other-window-scroll-buffer ,buffer)
+       (with-current-buffer ,buffer
+         (let ((inhibit-read-only t))
+           (when (if (jupyter-request-p ,reset-p)
+                     (let ((id (jupyter-request-id ,reset-p)))
+                       (and (not (equal id jupyter-repl-output-buffer-last-request-id))
+                            (setq jupyter-repl-output-buffer-last-request-id id)
+                            t))
+                   ,reset-p)
+             (setq jupyter-repl-output-buffer-marker
+                   (when (markerp jupyter-repl-output-buffer-marker)
+                     (prog1 nil
+                       (set-marker jupyter-repl-output-buffer-marker nil))))
+             (erase-buffer))
+           (unless jupyter-repl-output-buffer-marker
+             (setq jupyter-repl-output-buffer-marker (point-marker)))
+           (goto-char jupyter-repl-output-buffer-marker)
+           ,@body
+           (move-marker jupyter-repl-output-buffer-marker (point)))))))
+
 ;;; Convenience functions
 
 (defun jupyter-repl-language-mode (client)
@@ -1226,25 +1272,18 @@ message."
 (cl-defmethod jupyter-handle-status ((client jupyter-repl-client) _req execution-state)
   (oset client execution-state execution-state))
 
-(defvar jupyter-repl--output-marker nil)
-
 (defun jupyter-repl-display-other-output (client stream text)
   "Display output not originating from CLIENT.
 STREAM is the name of a stream which will be used to select the
 buffer to display TEXT."
   (let* ((bname (buffer-name (oref client buffer)))
-         (inhibit-read-only t)
          (stream-buffer
-          (concat (substring bname 0 (1- (length bname)))
-                  "-" stream "*")))
-    (with-current-buffer (get-buffer-create stream-buffer)
-      (unless jupyter-repl--output-marker
-        (setq-local jupyter-repl--output-marker (set-marker (make-marker) (point-max))))
-      (goto-char jupyter-repl--output-marker)
+          (concat (substring bname 0 (1- (length bname))) "-" stream "*")))
+    ;; FIXME: Reset this on the next request
+    (jupyter-repl-with-output-buffer stream-buffer nil
       (let ((pos (point)))
         (jupyter-repl-insert-ansi-coded-text text)
         (fill-region pos (point)))
-      (set-marker jupyter-repl--output-marker (point))
       (display-buffer (current-buffer) '(display-buffer-pop-up-window
                                          (pop-up-windows . t))))))
 
@@ -1255,10 +1294,9 @@ buffer to display TEXT."
      ((eq (jupyter-message-parent-type
            (jupyter-request-last-message req))
           :comm-msg)
-      (with-current-buffer (get-buffer-create "*jupyter-repl-output*")
-        (let ((inhibit-read-only t))
-          (jupyter-repl-insert-ansi-coded-text text)
-          (display-buffer (current-buffer)))))
+      (jupyter-repl-with-output-buffer "output" req
+        (jupyter-repl-insert-ansi-coded-text text)
+        (display-buffer (current-buffer))))
      (t
       (jupyter-repl-append-output client req
         (jupyter-repl-insert-ansi-coded-text text))))))
