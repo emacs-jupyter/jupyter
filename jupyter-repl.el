@@ -283,9 +283,7 @@ be at the `jupyter-repl-cell-code-beginning-position'."
        (goto-char (jupyter-repl-cell-code-beginning-position))
        ,@body)))
 
-;; TODO: Rename to `jupyter-get-doc-buffer' since they are
-;; not limited to the REPL.
-(defun jupyter-get-doc-buffer (name)
+(defun jupyter-repl-get-special-buffer (name)
   "Return the REPL documentation buffer for NAME.
 A REPL documentation buffer has the following characteristics:
 
@@ -308,17 +306,17 @@ exists, it is returned."
         (local-set-key (kbd "<backtab>") #'scroll-up)))
     buffer))
 
-(defmacro jupyter-with-doc-buffer (name &rest body)
+(defmacro jupyter-repl-with-doc-buffer (name &rest body)
   "With the REPL documentation buffer corresponding to NAME, run BODY.
 NAME should be a string representing the purpose of the
 documentation buffer. The buffer corresponding to NAME will be
-obtained by a call to `jupyter-repl-get-doc-buffer'. Before
+obtained by a call to `jupyter-repl-get-special-buffer'. Before
 running BODY, the doc buffer is set as the
 `other-window-scroll-buffer' and the contents of the buffer are
 erased."
   (declare (indent 1))
   (let ((buffer (make-symbol "buffer")))
-    `(let ((,buffer (jupyter-get-doc-buffer ,name)))
+    `(let ((,buffer (jupyter-repl-get-special-buffer ,name)))
        (setq other-window-scroll-buffer ,buffer)
        (with-current-buffer ,buffer
          (let ((inhibit-read-only t))
@@ -1068,7 +1066,7 @@ lines, truncate it to something less than
         ("page"
          (let ((text (plist-get (plist-get pl :data) :text/plain))
                (line (or (plist-get pl :start) 0)))
-           (jupyter-with-doc-buffer "pager"
+           (jupyter-repl-with-doc-buffer "pager"
              (jupyter-repl-insert-ansi-coded-text text)
              (goto-char (point-min))
              (forward-line line)
