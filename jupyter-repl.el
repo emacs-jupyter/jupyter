@@ -2197,6 +2197,13 @@ current buffer."
       (jupyter-repl-eval-region
        (line-beginning-position) (line-end-position) 'silently cb))))
 
+(defun jupyter-repl-eval-defun ()
+  "Evaluate the function at `point'."
+  (interactive)
+  (cl-destructuring-bind (beg . end)
+      (bounds-of-thing-at-point 'defun)
+    (jupyter-repl-eval-region beg end 'silently)))
+
 ;;; Kernel management
 
 (defun jupyter-repl-on-kernel-restart (client msg)
@@ -2600,6 +2607,7 @@ If CLIENT is a buffer or the name of a buffer, use the
 (defvar jupyter-repl-interaction-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "C-c C-c") #'jupyter-repl-eval-line-or-region)
+    (define-key map (kbd "C-M-x") #'jupyter-repl-eval-defun)
     (define-key map (kbd "C-c C-s") #'jupyter-repl-scratch-buffer)
     (define-key map (kbd "C-c C-b") #'jupyter-repl-eval-buffer)
     (define-key map (kbd "C-c C-l") #'jupyter-repl-eval-file)
