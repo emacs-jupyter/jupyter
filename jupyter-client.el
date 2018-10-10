@@ -1053,11 +1053,14 @@ CODE is the required context for TYPE (either `inspect' or
 CODE. Depending on the current context such as the current
 `major-mode', CODE and POS will be used for `:complete-request's
 originating from `jupyter-completion-at-point' and
-`:inspect-request's from `jupyter-inspect-at-point'.")
+`:inspect-request's from `jupyter-inspect-at-point'.
+
+The default methods return the `jupyter-line-or-region-context'.")
 
 (defun jupyter-line-context (&optional start)
   "Return the code context of the current line.
-START is the buffer position considered as the start of the line. See
+START is the buffer position considered as the start of the line
+and defaults to the `line-beginning-position'. See
 `jupyter-code-context' for the form of the returned list."
   (or start (setq start (line-beginning-position)))
   (let ((code (buffer-substring-no-properties start (line-end-position)))
