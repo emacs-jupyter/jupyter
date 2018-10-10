@@ -1279,21 +1279,27 @@ Do this for the current cell."
         (jupyter-repl-insert
          (make-string (if (> len 4) len 4) ? ))))))
 
+(defun jupyter-repl-display-traceback (traceback)
+  "Display TRACEBACK in its own buffer."
+  (when (or (vectorp traceback) (listp traceback))
+    (setq traceback (concat (mapconcat #'identity traceback "\n") "\n")))
+  (jupyter-repl-with-doc-buffer "traceback"
+    (jupyter-repl-insert-ansi-coded-text traceback)
+    (goto-char (point-min))
+    (display-buffer (current-buffer) '(display-buffer-below-selected))))
+
 (cl-defmethod jupyter-handle-error ((client jupyter-repl-client)
                                     req ename _evalue traceback)
   (when req
-    (setq traceback (concat (mapconcat #'identity traceback "\n") "\n"))
     (cond
      ((eq (jupyter-message-parent-type
            (jupyter-request-last-message req))
           :comm-msg)
-      (jupyter-with-doc-buffer "traceback"
-        (jupyter-repl-insert-ansi-coded-text traceback)
-        (goto-char (point-min))
-        (pop-to-buffer (current-buffer))))
+      (jupyter-repl-display-traceback traceback))
      (t
       (jupyter-repl-append-output client req
-        (jupyter-repl-insert-ansi-coded-text traceback)
+        (jupyter-repl-insert-ansi-coded-text
+         (concat (mapconcat #'identity traceback "\n") "\n"))
         (when (equal (jupyter-kernel-language client) "python")
           (jupyter-repl-fix-python-traceback-spacing ename)))))))
 
