@@ -214,7 +214,7 @@ kernel. Starting a kernel involves the following steps:
             (unless (process-live-p proc)
               (error "Kernel process exited:\n%s"
                      (with-current-buffer (process-buffer proc)
-                       (buffer-string)))))
+                       (ansi-color-apply (buffer-string))))))
           (jupyter-start-channels manager)
           (progress-reporter-done reporter)
           manager)))))
