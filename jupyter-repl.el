@@ -2524,7 +2524,8 @@ it."
    (let ((start (point)))
      (jupyter-repl-insert banner)
      (jupyter-repl-newline)
-     (add-text-properties start (point) '(font-lock-face shadow fontified t)))))
+     (add-text-properties start (point) '(font-lock-face
+                                          shadow fontified t font-lock-fontified t)))))
 
 (defun jupyter-repl-sync-execution-state ()
   "Synchronize the `jupyter-current-client's kernel state."
