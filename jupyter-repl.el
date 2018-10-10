@@ -2061,7 +2061,7 @@ DETAIL is the detail level to use for the request and defaults to
          read-expression-map
          nil 'jupyter-repl-eval-expression-history)))))
 
-(defun jupyter-repl-eval-string (str &optional silently)
+(defun jupyter-repl-eval-string (str &optional silently cb)
   "Evaluate STR with the `jupyter-current-client's REPL.
 Replaces the contents of the last cell in the REPL buffer with
 STR before evaluating.
@@ -2072,8 +2072,12 @@ long, the result is displayed in the minibuffer.
 
 If a prefix argument is given, SILENTLY evaluate STR without any
 modification to the REPL buffer. Only the results of evaluation
-are displayed."
-  (interactive (list (jupyter-repl--read-expression) current-prefix-arg))
+are displayed.
+
+CB is a function to call with the `:execute-result' message when
+the evalution is succesful. When CB is nil, its behavior defaults
+to the above explanation."
+  (interactive (list (jupyter-repl--read-expression) current-prefix-arg nil))
   (unless jupyter-current-client
     (user-error "No `jupyter-current-client' set, see `jupyter-repl-associate-buffer'"))
   (jupyter-with-repl-buffer jupyter-current-client
@@ -2092,26 +2096,27 @@ are displayed."
                            (unless (equal status "ok")
                              (message "%s" (ansi-color-apply evalue)))))
         :execute-result
-        (lambda (msg)
-          (jupyter-with-message-data msg ((res text/plain))
-            (if (null res)
-                (jupyter-repl-with-doc-buffer "result"
-                  (jupyter-repl-insert-data
-                   (jupyter-message-get msg :data)
-                   (jupyter-message-get msg :metadata))
-                  (goto-char (point-min))
-                  (display-buffer (current-buffer))))
-            (setq res (ansi-color-apply res))
-            (if (cl-loop
-                 with nlines = 0
-                 for c across res when (eq c ?\n) do (cl-incf nlines)
-                 thereis (> nlines 10))
-                (jupyter-repl-with-doc-buffer "result"
-                  (insert res)
-                  (goto-char (point-min))
-                  (display-buffer (current-buffer)))
-              (if (equal res "") (message "jupyter: eval done")
-                (message res))))))
+        (or (and (functionp cb) cb)
+            (lambda (msg)
+              (jupyter-with-message-data msg ((res text/plain))
+                (if (null res)
+                    (jupyter-repl-with-doc-buffer "result"
+                      (jupyter-repl-insert-data
+                       (jupyter-message-get msg :data)
+                       (jupyter-message-get msg :metadata))
+                      (goto-char (point-min))
+                      (display-buffer (current-buffer))))
+                (setq res (ansi-color-apply res))
+                (if (cl-loop
+                     with nlines = 0
+                     for c across res when (eq c ?\n) do (cl-incf nlines)
+                     thereis (> nlines 10))
+                    (jupyter-repl-with-doc-buffer "result"
+                      (insert res)
+                      (goto-char (point-min))
+                      (display-buffer (current-buffer)))
+                  (if (equal res "") (message "jupyter: eval done")
+                    (message res)))))))
       req)))
 
 (defun jupyter-repl-eval-file (file)
@@ -2139,22 +2144,48 @@ are displayed."
   (jupyter-repl-eval-string
    (with-current-buffer buffer (buffer-string)) 'silently))
 
-(defun jupyter-repl-eval-region (beg end &optional silently)
+(defun jupyter-repl-eval-region (beg end &optional silently cb)
   "Evaluate a region with the `jupyter-current-client'.
 BEG and END are the beginning and end of the region to evaluate.
-SILENTLY has the same meaning as in `jupyter-repl-eval-string'."
+SILENTLY and CB has the same meaning as in `jupyter-repl-eval-string'.
+CB is ignored when called interactively."
   (interactive "rP")
   (jupyter-repl-eval-string
-   (buffer-substring-no-properties beg end) silently))
+   (buffer-substring-no-properties beg end) silently cb))
 
-(defun jupyter-repl-eval-line-or-region ()
+(defun jupyter-repl-eval-line-or-region (insert)
   "Evaluate the current line or region with the `jupyter-current-client'.
 If the current region is active send the current region using
-`jupyter-repl-eval-region', otherwise send the current line."
-  (interactive)
-  (if (use-region-p)
-      (jupyter-repl-eval-region (region-beginning) (region-end))
-    (jupyter-repl-eval-region (line-beginning-position) (line-end-position))))
+`jupyter-repl-eval-region', otherwise send the current line.
+
+With a prefix argument, evaluate and INSERT the results in the
+current buffer."
+  (interactive "P")
+  (let ((cb (when insert
+              (let ((pos (point-marker))
+                    (region (when (use-region-p)
+                              (car (region-bounds)))))
+                (lambda (msg)
+                  (let ((res (jupyter-message-data msg :text/plain)))
+                    (when res
+                      (with-current-buffer (marker-buffer pos)
+                        (save-excursion
+                          (cond
+                           (region
+                            (goto-char (car region))
+                            (delete-region (car region) (cdr region)))
+                           (t
+                            (goto-char pos)
+                            (end-of-line)
+                            (insert "\n")))
+                          (set-marker pos nil)
+                          (insert res)
+                          (when region (push-mark)))))))))))
+    (if (use-region-p)
+        (jupyter-repl-eval-region
+         (region-beginning) (region-end) 'silently cb)
+      (jupyter-repl-eval-region
+       (line-beginning-position) (line-end-position) 'silently cb))))
 
 ;;; Kernel management
 
