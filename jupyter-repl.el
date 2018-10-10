@@ -2473,19 +2473,21 @@ it."
         (pop-to-buffer (current-buffer)))
     (error "Buffer not associated with a REPL, see `jupyter-repl-associate-buffer'")))
 
-(defun jupyter-repl-available-repl-buffers (&optional mode)
+(defun jupyter-repl-available-repl-buffers (&optional mode first)
   "Return a list of REPL buffers that are connected to live kernels.
 If MODE is non-nil, return all REPL buffers whose
-`jupyter-repl-lang-mode' is MODE."
-  (delq
-   nil
-   (mapcar (lambda (b)
-        (with-current-buffer b
-          (and (eq major-mode 'jupyter-repl-mode)
-               (if mode (eq mode jupyter-repl-lang-mode) t)
-               (jupyter-repl-connected-p)
-               (buffer-name b))))
-      (buffer-list))))
+`jupyter-repl-lang-mode' is MODE.
+
+If FIRST is non-nil, only return the first REPL buffer that matches."
+  (cl-loop
+   for buf in (buffer-list)
+   for match = (with-current-buffer buf
+                 (and (eq major-mode 'jupyter-repl-mode)
+                      (if mode (eq mode jupyter-repl-lang-mode) t)
+                      (jupyter-repl-connected-p)
+                      (buffer-name)))
+   if (and match first) return buf
+   else if match collect buf))
 
 ;;;###autoload
 (defun jupyter-repl-associate-buffer (client)
