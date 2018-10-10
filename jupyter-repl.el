@@ -2537,16 +2537,24 @@ If CLIENT is a buffer or the name of a buffer, use the
   "Propagate the `jupyter-current-client' to other buffers.
 Only intended to be added as advice to `switch-to-buffer',
 `display-buffer', or `set-window-buffer'."
-  (when jupyter-repl-interaction-mode
-    (let ((buffer (if (windowp win-or-buffer) (car args)
-                    win-or-buffer))
-          (client jupyter-current-client)
-          (mode major-mode))
-      (when (buffer-live-p buffer)
-        (with-current-buffer buffer
-          (when (and (eq mode major-mode)
-                     (not jupyter-repl-interaction-mode))
-            (jupyter-repl-associate-buffer client)))))))
+  (let* ((other-buffer (if (or (null win-or-buffer)
+                               (windowp win-or-buffer))
+                           (car args)
+                         win-or-buffer))
+         (buffer (or (and jupyter-repl-interaction-mode (current-buffer))
+                     (jupyter-repl-available-repl-buffers
+                      (with-current-buffer other-buffer major-mode)
+                      'first))))
+    (when buffer
+      (with-current-buffer buffer
+        (let ((client jupyter-current-client)
+              (mode (if (eq major-mode 'jupyter-repl-mode)
+                        (jupyter-repl-language-mode jupyter-current-client)
+                      major-mode)))
+          (with-current-buffer other-buffer
+            (when (and (eq mode major-mode)
+                       (not jupyter-repl-interaction-mode))
+              (jupyter-repl-associate-buffer client))))))))
 
 (defun jupyter-repl-interaction-mode-reenable ()
   (when (and (not jupyter-repl-interaction-mode)
