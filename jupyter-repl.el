@@ -1709,7 +1709,7 @@ Works for Julia and Python."
   (list (jupyter-repl-cell-code)
         (1- (jupyter-repl-cell-code-position))))
 
-(cl-defgeneric jupyter-completion-prefix (&optional (re string) max-len)
+(cl-defgeneric jupyter-completion-prefix (&optional re max-len)
   "Return the prefix for the current completion context.
 The default method calls `jupyter-completion-grab-symbol-cons'
 with RE and MAX-LEN as arguments, RE defaulting to \"\\\\.\". It
