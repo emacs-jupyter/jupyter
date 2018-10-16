@@ -2596,13 +2596,13 @@ If CLIENT is a buffer or the name of a buffer, use the
   (if (not client)
       (when (y-or-n-p "No REPL for `major-mode' exists. Start one? ")
         (call-interactively #'run-jupyter-repl))
-    (unless (eq (jupyter-repl-language-mode client) major-mode)
-      (error "Cannot associate buffer to REPL. Wrong `major-mode'"))
     (setq client (if (or (bufferp client) (stringp client))
                      (with-current-buffer client
                        jupyter-current-client)
                    client))
     (cl-check-type client jupyter-repl-client)
+    (unless (eq (jupyter-repl-language-mode client) major-mode)
+      (error "Cannot associate buffer to REPL. Wrong `major-mode'"))
     (setq-local jupyter-current-client client)
     (unless jupyter-repl-interaction-mode
       (jupyter-repl-interaction-mode))))
