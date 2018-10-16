@@ -42,6 +42,8 @@
   :group 'org-babel)
 
 (require 'jupyter-org-client)
+;; For `jupyter-with-repl-buffer'
+(eval-when-compile (require 'jupyter-repl))
 
 (declare-function org-element-at-point "org-element")
 (declare-function org-link-set-parameters "org" (type &rest parameters))
