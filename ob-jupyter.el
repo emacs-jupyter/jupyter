@@ -170,8 +170,8 @@ parameter will be used."
           (or (gethash key org-babel-jupyter-session-clients)
               (let ((client
                      (if (string-suffix-p ".json" session)
-                         (connect-jupyter-repl session nil 'jupyter-org-client)
-                       (run-jupyter-repl kernel nil 'jupyter-org-client))))
+                         (connect-jupyter-repl session nil nil 'jupyter-org-client)
+                       (run-jupyter-repl kernel nil nil 'jupyter-org-client))))
                 (jupyter-set client 'jupyter-include-other-output nil)
                 (jupyter-with-repl-buffer client
                   (let ((name (buffer-name)))
