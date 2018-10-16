@@ -56,6 +56,11 @@ Clients are removed from this list when their `destructor' is called.")
 (defvar jupyter-default-timeout 1
   "The default timeout in seconds for `jupyter-wait-until'.")
 
+(defvar jupyter-startup-timeout 10
+  "The default timeout in seconds to wait for a response during startup.
+Currently this is used when retrieving the kernel info in
+`jupyter-kernel-info'.")
+
 (defvar jupyter-inhibit-handlers nil
   "Whether or not new requests inhibit client handlers.
 If set to t, prevent new requests from running any of the client
@@ -1234,10 +1239,7 @@ If the kernel CLIENT is connected to does not respond to a
                      (jupyter-message-content
                       (jupyter-wait-until-received :kernel-info-reply
                         (jupyter-send-kernel-info-request client)
-                        ;; TODO: Make this timeout configurable? The
-                        ;; python kernel starts up fast, but the Julia
-                        ;; kernel not so much.
-                        5)))
+                        jupyter-startup-timeout)))
           (unless (oref client kernel-info)
             (error "Kernel did not respond to kernel-info request"))
           (progress-reporter-done reporter)))))
