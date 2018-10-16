@@ -2589,7 +2589,7 @@ If CLIENT is a buffer or the name of a buffer, use the
 `jupyter-current-client' local to the buffer."
   (interactive
    (list
-    (let ((repls (jupyter-repl-available-repl-buffers major-mode)))
+    (let ((repls (mapcar 'buffer-name (jupyter-repl-available-repl-buffers major-mode))))
       (when repls
         (with-current-buffer
             (completing-read "jupyter-repl: " repls nil t)
