@@ -360,23 +360,21 @@ running BODY."
           (kill-process ioloop)))))
   (ert-info ("Heartbeat channel")
     (let ((channel (jupyter-hb-channel :endpoint "tcp://127.0.0.1:5556"))
-          (died-cb-called nil))
+          (died-cb-called nil)
+          (jupyter-hb-consider-dead-periods 1))
       (oset channel time-to-dead 0.1)
       (should-not (jupyter-channel-alive-p channel))
       (should-not (jupyter-hb-beating-p channel))
       (should (oref channel paused))
       (oset channel beating t)
       (jupyter-start-channel channel)
-      (jupyter-hb-on-kernel-dead channel
-        (lambda () (setq died-cb-called t)))
+      (jupyter-hb-on-kernel-dead channel (lambda () (setq died-cb-called t)))
       (should (jupyter-channel-alive-p channel))
       (should-not (oref channel paused))
-      ;; For some reason just calling `sleep-for'
-      ;; directly causes the timers to run after the
-      ;; `sleep-for' returns?
-      (with-timeout (1 (should (oref channel paused)))
-        (while (not (oref channel paused))
-          (sleep-for 0.1)))
+      (sleep-for 0.2)
+      ;; It seems the timers are run after returning from the first `sleep-for'
+      ;; call.
+      (sleep-for 0.1)
       (should (oref channel paused))
       (should-not (oref channel beating))
       (should died-cb-called)

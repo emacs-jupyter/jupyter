@@ -32,6 +32,19 @@
   "Jupyter channels"
   :group 'jupyter)
 
+(defvar jupyter-hb-consider-dead-periods 5
+  "Number of `time-to-dead' periods until the `kernel-died-cb' is called.
+A `jupyter-hb-channel' sends a ping to the kernel on the
+heartbeat channel and waits until `time-to-dead' seconds to see
+if the kernel sent a ping back. If the kernel does not send a
+ping back for
+
+    (* `time-to-dead'`jupyter-hb-consider-dead-periods')
+
+seconds, consider the kernel dead and call the callback in the
+`kernel-died-cb' slot of a `jupyter-hb-channel'. See
+`jupyter-hb-on-kernel-dead'.")
+
 ;;; Basic channel types
 
 (defclass jupyter-channel ()
@@ -214,7 +227,7 @@ call `jupyter-get-message'.")
     :initform :hb
     :documentation "The type of this channel is `:hb'.")
    (time-to-dead
-    :type integer
+    :type number
     :initform 1
     :documentation "The time in seconds to wait for a response
 from the kernel until the connection is assumed to be dead. Note
@@ -271,8 +284,9 @@ Stop the timer of the heartbeat channel."
 
 (cl-defmethod jupyter-hb-on-kernel-dead ((channel jupyter-hb-channel) fun)
   "When the kernel connected to CHANNEL dies call FUN.
-A kernel is considered dead when the HB-CHANNEL does not receive
-a response after 5 `time-to-dead' periods."
+A kernel is considered dead when CHANNEL does not receive a
+response after `jupyter-hb-consider-dead-periods' of
+`time-to-dead' seconds."
   (declare (indent 1))
   (oset channel kernel-died-cb fun))
 
@@ -293,7 +307,8 @@ a response after 5 `time-to-dead' periods."
                (oset channel socket
                      (jupyter-connect-channel
                       :hb (oref channel endpoint) identity)))
-             (when (and (integerp counter) (>= counter 5))
+             (when (and (integerp counter)
+                        (>= counter jupyter-hb-consider-dead-periods))
                (oset channel paused t)
                (when (functionp (oref channel kernel-died-cb))
                  (funcall (oref channel kernel-died-cb)))))
