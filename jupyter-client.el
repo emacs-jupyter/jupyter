@@ -196,6 +196,13 @@ passed as the argument has a language of LANG."
       (set-buffer-modified-p nil))
     (kill-buffer (oref client -buffer))))
 
+(defun jupyter-kill-kernel-clients ()
+  "Call the destructor for all live Jupyter clients."
+  (dolist (client jupyter--clients)
+    (destructor client)))
+
+(add-hook 'kill-emacs-hook 'jupyter-kill-kernel-clients)
+
 (defun jupyter-find-client-for-session (session-id)
   "Return the `jupyter-kernel-client' for SESSION-ID."
   (or (catch 'found

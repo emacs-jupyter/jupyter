@@ -37,8 +37,13 @@
   "Jupyter kernel manager"
   :group 'jupyter)
 
-(defclass jupyter-kernel-manager ()
-  ((name
+(defvar jupyter--managers nil
+  "A list of all live kernel managers.
+Managers are removed from this list when their `destructor' is called.")
+
+(defclass jupyter-kernel-manager (eieio-instance-tracker)
+  ((tracking-symbol :initform 'jupyter--managers)
+   (name
     :initarg :name
     :type string
     :documentation "The name of the kernel that is being managed.")
@@ -81,7 +86,15 @@ default kernel is a python kernel."
   ;; See `jupyter--kernel-sentinel' for other cleanup
   (when (processp (oref manager kernel))
     (delete-process (oref manager kernel)))
+  (delete-instance manager)
   (jupyter-stop-channels manager))
+
+(defun jupyter-kill-kernel-managers ()
+  (dolist (manager jupyter--managers)
+    (jupyter-shutdown-kernel manager)
+    (destructor manager)))
+
+(add-hook 'kill-emacs-hook 'jupyter-kill-kernel-managers)
 
 (cl-defgeneric jupyter-make-client ((manager jupyter-kernel-manager) class &rest slots)
   "Make a new client from CLASS connected to MANAGER's kernel.
