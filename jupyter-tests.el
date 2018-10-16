@@ -332,15 +332,15 @@ running BODY."
              `(lambda ()
                 (while t
                   (zmq-prin1 (zmq-subprocess-read))))
-             (lambda (event)
-               ;; FIXME: Remove dependence of the channel
-               ;; subprocess on having to set the channel's
-               ;; status slot
-               (when (eq (car event) 'start-channel)
-                 (oset channel status 'running))
-               (when (eq (car event) 'stop-channel)
-                 (oset channel status 'stopped))
-               (push event events)))))
+             :filter (lambda (event)
+                       ;; FIXME: Remove dependence of the channel
+                       ;; subprocess on having to set the channel's
+                       ;; status slot
+                       (when (eq (car event) 'start-channel)
+                         (oset channel status 'running))
+                       (when (eq (car event) 'stop-channel)
+                         (oset channel status 'stopped))
+                       (push event events)))))
       (unwind-protect
           (progn
             (ert-info ("Starting the channel")
