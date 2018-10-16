@@ -2114,7 +2114,7 @@ to the above explanation."
                       (goto-char (point-min))
                       (display-buffer (current-buffer)))
                   (if (equal res "") (message "jupyter: eval done")
-                    (message res))))))
+                    (message "%s" res))))))
         :error
         (lambda (msg)
           (jupyter-with-message-content msg (traceback)
@@ -2179,8 +2179,9 @@ current buffer."
                     (region (when (use-region-p)
                               (car (region-bounds)))))
                 (lambda (msg)
-                  (let ((res (jupyter-message-data msg :text/plain)))
+                  (jupyter-with-message-data msg ((res text/plain))
                     (when res
+                      (setq res (ansi-color-apply res))
                       (with-current-buffer (marker-buffer pos)
                         (save-excursion
                           (cond
@@ -2609,6 +2610,7 @@ If CLIENT is a buffer or the name of a buffer, use the
 
 (defvar jupyter-repl-interaction-map
   (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "C-x C-e") #'jupyter-repl-eval-line-or-region)
     (define-key map (kbd "C-c C-c") #'jupyter-repl-eval-line-or-region)
     (define-key map (kbd "C-M-x") #'jupyter-repl-eval-defun)
     (define-key map (kbd "C-c C-s") #'jupyter-repl-scratch-buffer)
