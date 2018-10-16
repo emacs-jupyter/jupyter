@@ -636,6 +636,13 @@ by `jupyter--ioloop'."
      (when jupyter--debug
        (message "STOPPING-CHANNEL: %s" ctype))
      (let ((channel (jupyter--get-channel client ctype)))
+       ;; TODO: Wrap this in an async channel method, maybe
+       ;; re-use `jupyter-stop-channel'. On the first call,
+       ;; when we send a stop channel message to the
+       ;; subprocess we set the status to pending, then
+       ;; here once we know the channel was stopped, we
+       ;; call `jupyter-stop-channel' again and it updates
+       ;; the status to stopped. Seems too complicated.
        (oset channel status 'stopped)))
     ('(start)
      (when jupyter--debug

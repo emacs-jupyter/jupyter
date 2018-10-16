@@ -279,11 +279,6 @@ a response after 5 `time-to-dead' periods."
 (defun jupyter-hb--send-ping (channel &optional counter)
   (unless (oref channel paused)
     (zmq-send (oref channel socket) "ping")
-    ;; TODO: How to avoid running when idle for a long
-    ;; time? Would we even want that, when we keep checking
-    ;; and we are idle Emacs consistently spends a few
-    ;; percent of CPU time, but is this really necessary?
-    ;; Maybe extend the time by some factor when idle.
     (run-with-timer
      (oref channel time-to-dead) nil
      (lambda ()

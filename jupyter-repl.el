@@ -683,6 +683,8 @@ When no valid mimetype is present in DATA, a warning is shown."
       (jupyter-repl-newline))
      (t (warn "No supported mimetype found %s" mimetypes)))))
 
+;; FIXME: The support for display IDs has not really been tested.
+
 (defun jupyter-repl-insert-data-with-id (display-id data metadata)
   "Associate DISPLAY-ID with DATA when inserting DATA.
 DATA and METADATA have the same meaning as in
@@ -2790,6 +2792,13 @@ Otherwise, in a non-interactive call, return the
   (cl-destructuring-bind (_manager client)
       (jupyter-start-new-kernel kernel-name client-class)
     (jupyter-repl--new-repl client repl-name)
+    ;; TODO: An alist mapping kernel languages to their
+    ;; corresponding major modes in Emacs. This ways we can
+    ;; error out earlier before starting the REPL. The
+    ;; reason why this can't be done is because we use the
+    ;; extension key of the kernel-info to get the major
+    ;; mode using `auto-mode-alist'. See
+    ;; `jupyter-repl-kernel-language-mode-properties'.
     (when (and associate-buffer
                (eq major-mode (jupyter-repl-language-mode client)))
       (jupyter-repl-associate-buffer client))
