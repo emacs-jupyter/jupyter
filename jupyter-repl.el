@@ -1955,6 +1955,8 @@ Use the `company-doc-buffer' to insert the results."
         (let ((inhibit-read-only t))
           (remove-text-properties
            (point-min) (point-max) '(read-only))
+          (font-lock-mode 1)
+          (goto-char (point-min))
           (current-buffer))))))
 
 (defun jupyter-completion--post-completion (arg status)
