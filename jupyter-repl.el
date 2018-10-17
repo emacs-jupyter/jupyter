@@ -1795,7 +1795,12 @@ kernel, but the prefix used by `jupyter-completion-at-point'. See
        (cl-call-next-method)))
 
 (cl-defmethod jupyter-completion-prefix (&context (jupyter-lang julia))
-  (cl-call-next-method "\\\\\\|\\.\\|::\\|->" 2))
+  (let ((prefix (cl-call-next-method "\\\\\\|\\.\\|::\\|->" 2)))
+    (prog1 prefix
+      (when (and (consp prefix) (eq (char-before) ?\\))
+        ;; Include the \ in the prefix so it gets replaced if a canidate is
+        ;; selected.
+        (setcar prefix "\\")))))
 
 (defun jupyter-completion-construct-candidates (matches metadata)
   "Construct candidates for completion.
