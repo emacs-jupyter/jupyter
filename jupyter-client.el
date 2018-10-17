@@ -166,7 +166,7 @@ buffer.")
 
 (cl-generic-define-generalizer jupyter--generic-lang-generalizer
   50 (lambda (name &rest _)
-       `(when (object-of-class-p ,name 'jupyter-kernel-client)
+       `(when (and ,name (object-of-class-p ,name 'jupyter-kernel-client))
           ;; TODO: Make `jupyter-kernel-language' a symbol
           ;; to avoid interning a constant string.
           (gethash (intern (jupyter-kernel-language ,name))
