@@ -165,7 +165,7 @@ client and delete the kernel process after running BODY."
 CLIENT is bound to the Python REPL. Delete the REPL buffer after
 running BODY."
   (declare (indent 1) (debug (symbolp &rest form)))
-  `(let ((,client (run-jupyter-repl "python")))
+  `(let ((,client (jupyter-run-repl "python")))
      (unwind-protect
          (jupyter-with-repl-buffer ,client
            (progn ,@body))

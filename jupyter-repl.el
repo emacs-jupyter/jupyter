@@ -25,12 +25,12 @@
 
 ;; A Jupyter REPL for Emacs.
 ;;
-;; The main entry points are `run-jupyter-repl' and `connect-jupyter-repl'.
+;; The main entry points are `jupyter-run-repl' and `jupyter-connect-repl'.
 ;;
-;; When called interactively, `run-jupyter-repl' asks for a kernel to start
+;; When called interactively, `jupyter-run-repl' asks for a kernel to start
 ;; (based on the kernels found using `jupyter-available-kernelspecs'), connects
 ;; a `jupyter-repl-client' to the selected kernel, and pops up a REPL buffer.
-;; The main difference of `connect-jupyter-repl' is that it will obtain the
+;; The main difference of `jupyter-connect-repl' is that it will obtain the
 ;; kernel's connection info by asking for the JSON file containing it to start
 ;; connection to a kernel.
 ;;
@@ -2606,7 +2606,7 @@ If CLIENT is a buffer or the name of a buffer, use the
           jupyter-current-client)))))
   (if (not client)
       (when (y-or-n-p "No REPL for `major-mode' exists. Start one? ")
-        (call-interactively #'run-jupyter-repl))
+        (call-interactively #'jupyter-run-repl))
     (setq client (if (or (bufferp client) (stringp client))
                      (with-current-buffer client
                        jupyter-current-client)
@@ -2764,7 +2764,7 @@ name. If nil or empty, a default will be used."
           (jupyter-repl-insert-prompt 'in))))))
 
 ;;;###autoload
-(defun run-jupyter-repl (kernel-name &optional repl-name associate-buffer client-class)
+(defun jupyter-run-repl (kernel-name &optional repl-name associate-buffer client-class)
   "Run a Jupyter REPL connected to a kernel with name, KERNEL-NAME.
 KERNEL-NAME will be passed to `jupyter-find-kernelspecs' and the
 first kernel found will be used to start the new kernel.
@@ -2815,11 +2815,11 @@ Otherwise, in a non-interactive call, return the
     client))
 
 ;;;###autoload
-(defun connect-jupyter-repl (file-or-plist &optional repl-name associate-buffer client-class)
+(defun jupyter-connect-repl (file-or-plist &optional repl-name associate-buffer client-class)
   "Run a Jupyter REPL using a kernel's connection FILE-OR-PLIST.
 FILE-OR-PLIST can be either a file holding the connection
 information or a property list of connection information.
-ASSOCIATE-BUFFER has the same meaning as in `run-jupyter-repl'.
+ASSOCIATE-BUFFER has the same meaning as in `jupyter-run-repl'.
 
 With a prefix argument give a new REPL-NAME for the REPL.
 

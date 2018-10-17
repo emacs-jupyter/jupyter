@@ -18,8 +18,8 @@ where =<path>= is the path to the directory containing this =README.org= file.
 * Jupyter REPL
 
 To start a new kernel on the =localhost= and connect a REPL client to it, run
-the command =run-jupyter-repl=. Alternatively you can connect to an existing
-kernel by supplying the kernel's connection file to =connect-jupyter-repl=.
+the command =jupyter-run-repl=. Alternatively you can connect to an existing
+kernel by supplying the kernel's connection file to =jupyter-connect-repl=.
 
 The REPL supports most of the rich output that a kernel may send to a client.
 If the kernel sends image data, the image will be displayed in the REPL buffer.
