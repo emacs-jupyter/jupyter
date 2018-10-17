@@ -1910,47 +1910,46 @@ Run FUN when the completions are available."
 
 (defun jupyter-completion-at-point ()
   "Function to add to `completion-at-point-functions'."
-  (when jupyter-current-client
-    (let ((prefix (jupyter-completion-prefix)) req)
-      (when prefix
-        (when (consp prefix)
-          (setq prefix (car prefix))
-          (when (and (bound-and-true-p company-mode)
-                     (< (length prefix) company-minimum-prefix-length))
-            (jupyter-completion--company-idle-begin)))
-        (when (jupyter-completion-prefetch-p prefix)
-          (setq jupyter-completion-cache nil
-                req (jupyter-completion-prefetch
-                     (lambda (msg) (setq jupyter-completion-cache
-                                    (list 'fetched prefix msg))))))
-        (list
-         (- (point) (length prefix)) (point)
-         (completion-table-dynamic
-          (lambda (_)
-            (when (and req (not (jupyter-request-idle-received-p req))
-                       (not (eq (jupyter-message-type
-                                 (jupyter-request-last-message req))
-                                :complete-reply)))
-              (jupyter-wait-until-received :complete-reply req))
-            (when (eq (car jupyter-completion-cache) 'fetched)
-              (jupyter-with-message-content (nth 2 jupyter-completion-cache)
-                  (status matches metadata)
-                (setq jupyter-completion-cache
-                      (cons (nth 1 jupyter-completion-cache)
-                            (when (equal status "ok")
-                              (jupyter-completion-construct-candidates
-                               matches metadata))))))
-            (cdr jupyter-completion-cache)))
-         :exit-function
-         #'jupyter-completion--post-completion
-         :company-location
-         (lambda (arg) (get-text-property 0 'location arg))
-         :annotation-function
-         (lambda (arg) (get-text-property 0 'annot arg))
-         :company-docsig
-         (lambda (arg) (get-text-property 0 'docsig arg))
-         :company-doc-buffer
-         #'jupyter-completion--company-doc-buffer)))))
+  (let ((prefix (jupyter-completion-prefix)) req)
+    (when (and prefix jupyter-current-client)
+      (when (consp prefix)
+        (setq prefix (car prefix))
+        (when (and (bound-and-true-p company-mode)
+                   (< (length prefix) company-minimum-prefix-length))
+          (jupyter-completion--company-idle-begin)))
+      (when (jupyter-completion-prefetch-p prefix)
+        (setq jupyter-completion-cache nil
+              req (jupyter-completion-prefetch
+                   (lambda (msg) (setq jupyter-completion-cache
+                                  (list 'fetched prefix msg))))))
+      (list
+       (- (point) (length prefix)) (point)
+       (completion-table-dynamic
+        (lambda (_)
+          (when (and req (not (jupyter-request-idle-received-p req))
+                     (not (eq (jupyter-message-type
+                               (jupyter-request-last-message req))
+                              :complete-reply)))
+            (jupyter-wait-until-received :complete-reply req))
+          (when (eq (car jupyter-completion-cache) 'fetched)
+            (jupyter-with-message-content (nth 2 jupyter-completion-cache)
+                (status matches metadata)
+              (setq jupyter-completion-cache
+                    (cons (nth 1 jupyter-completion-cache)
+                          (when (equal status "ok")
+                            (jupyter-completion-construct-candidates
+                             matches metadata))))))
+          (cdr jupyter-completion-cache)))
+       :exit-function
+       #'jupyter-completion--post-completion
+       :company-location
+       (lambda (arg) (get-text-property 0 'location arg))
+       :annotation-function
+       (lambda (arg) (get-text-property 0 'annot arg))
+       :company-docsig
+       (lambda (arg) (get-text-property 0 'docsig arg))
+       :company-doc-buffer
+       #'jupyter-completion--company-doc-buffer))))
 
 (defun jupyter-completion--company-doc-buffer (arg)
   "Send an inspect request for ARG to the kernel.
