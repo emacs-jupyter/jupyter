@@ -1889,6 +1889,7 @@ Run FUN when the completions are available."
         (jupyter-add-callback req :complete-reply fun)))))
 
 (defvar jupyter-completion--company-timer nil)
+(defvar company-minimum-prefix-length)
 
 (defun jupyter-completion--company-idle-begin ()
   "Trigger an idle completion."
@@ -1901,7 +1902,6 @@ Run FUN when the completions are available."
         (run-with-idle-timer
          0.1 nil
          (lambda ()
-           (defvar company-minimum-prefix-length)
            (let ((company-minimum-prefix-length 0))
              (when (company-auto-begin)
                (company-input-noop)
