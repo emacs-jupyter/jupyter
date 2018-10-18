@@ -780,24 +780,42 @@ interpreted as `in'."
         "  " 'jupyter-repl-input-prompt
         `(read-only nil rear-nonsticky t)))))))
 
-(defun jupyter-repl-cell-update-prompt (str)
-  "Update the current cell's input prompt.
-STR is the replacement prompt string."
+(defun jupyter-repl-prompt-string ()
+  "Return the prompt string of the current input cell."
   (let ((ov (car (overlays-at (jupyter-repl-cell-beginning-position)))))
     (when ov
-      (overlay-put ov 'after-string
-                   (propertize
-                    " " 'display (jupyter-repl--prompt-display-value
-                                  str 'jupyter-repl-input-prompt))))))
+      (cadr (get-text-property 0 'display (overlay-get ov 'after-string))))))
+
+(defun jupyter-repl-cell-update-prompt (str &optional face)
+  "Update the current cell's input prompt.
+STR is the replacement prompt string. If FACE is non-nil, it
+should be a face that the prompt will use and defaults to
+`jupyter-repl-input-prompt'."
+  (let ((ov (car (overlays-at (jupyter-repl-cell-beginning-position)))))
+    (when ov
+      (overlay-put
+       ov 'after-string
+       (propertize
+        " " 'display (jupyter-repl--prompt-display-value
+                      str (or face 'jupyter-repl-input-prompt)))))))
 
 (defun jupyter-repl-cell-mark-busy ()
   "Mark the current cell as busy."
-  (jupyter-repl-cell-update-prompt "In [*] "))
+  ;; FIXME: Have a way of determining if the input prompt should be marked
+  ;; busy. Languages like Julia have REPL modes which can change the prompt
+  ;; string, and we emulate that here. In those cases, the prompt should be
+  ;; kept how it was without marking it busy.
+  (let ((str (jupyter-repl-prompt-string)))
+    (when (equal (string-trim str)
+                 (format "In [%d]" (jupyter-repl-cell-count)))
+      (jupyter-repl-cell-update-prompt "In [*] "))))
 
 (defun jupyter-repl-cell-unmark-busy ()
   "Un-mark the current cell as busy."
-  (jupyter-repl-cell-update-prompt
-   (format "In [%d] " (jupyter-repl-cell-count))))
+  (let ((str (jupyter-repl-prompt-string)))
+    (when (equal (string-trim str) "In [*]")
+      (jupyter-repl-cell-update-prompt
+       (format "In [%d] " (jupyter-repl-cell-count))))))
 
 (defun jupyter-repl-cell-count ()
   "Return the cell count of the cell at `point'."
