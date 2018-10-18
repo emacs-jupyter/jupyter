@@ -2189,18 +2189,18 @@ to the above explanation."
                        (jupyter-message-get msg :data)
                        (jupyter-message-get msg :metadata))
                       (goto-char (point-min))
-                      (display-buffer (current-buffer))))
-                (setq res (ansi-color-apply res))
-                (if (cl-loop
-                     with nlines = 0
-                     for c across res when (eq c ?\n) do (cl-incf nlines)
-                     thereis (> nlines 10))
-                    (jupyter-repl-with-doc-buffer "result"
-                      (insert res)
-                      (goto-char (point-min))
                       (display-buffer (current-buffer)))
-                  (if (equal res "") (message "jupyter: eval done")
-                    (message "%s" res))))))
+                  (setq res (ansi-color-apply res))
+                  (if (cl-loop
+                       with nlines = 0
+                       for c across res when (eq c ?\n) do (cl-incf nlines)
+                       thereis (> nlines 10))
+                      (jupyter-repl-with-doc-buffer "result"
+                        (insert res)
+                        (goto-char (point-min))
+                        (display-buffer (current-buffer)))
+                    (if (equal res "") (message "jupyter: eval done")
+                      (message "%s" res)))))))
         :error
         (lambda (msg)
           (jupyter-with-message-content msg (traceback)
