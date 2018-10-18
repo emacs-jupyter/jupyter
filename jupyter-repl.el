@@ -1488,12 +1488,12 @@ execute the current cell."
             (error "Kernel busy"))
           (if force (jupyter-send-execute-request jupyter-current-client)
             (if (not jupyter-repl-use-builtin-is-complete)
-                (let* ((jupyter-inhibit-handlers '(:status))
-                       (res (jupyter-wait-until-received :is-complete-reply
-                              (jupyter-send-is-complete-request
-                                  jupyter-current-client
-                                :code (jupyter-repl-cell-code))
-                              jupyter-repl-maximum-is-complete-timeout)))
+                (let ((res (jupyter-wait-until-received :is-complete-reply
+                             (let ((jupyter-inhibit-handlers '(:status)))
+                               (jupyter-send-is-complete-request
+                                   jupyter-current-client
+                                 :code (jupyter-repl-cell-code)))
+                             jupyter-repl-maximum-is-complete-timeout)))
                   (unless res
                     (message "Kernel did not respond to is-complete-request, using built-in is-complete.
 Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
