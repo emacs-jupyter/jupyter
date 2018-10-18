@@ -2171,7 +2171,7 @@ to the above explanation."
     (setq str (if silently (string-trim str)
                 (prog1 nil
                   (jupyter-repl-replace-cell-code str))))
-    (let* ((jupyter-inhibit-handlers (or (and silently t) '(:execute-result)))
+    (let* ((jupyter-inhibit-handlers '(not :status))
            (req (jupyter-send-execute-request jupyter-current-client
                   :code str :store-history (unless silently t))))
       (jupyter-add-callback req
