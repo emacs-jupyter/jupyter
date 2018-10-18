@@ -1596,6 +1596,51 @@ kernel."
     (jupyter-repl-mark-as-cell-code beg end))
   (goto-char end))
 
+(defvar ansi-color-names-vector)
+
+(cl-defmethod jupyter-repl-after-change ((_type (eql insert)) beg _end
+                                         &context (jupyter-lang julia))
+  (when (= beg (jupyter-repl-cell-code-beginning-position))
+    (cl-case (char-after beg)
+      (?\]
+       (let ((pkg-prompt (jupyter-eval "import Pkg; Pkg.REPLMode.promptf()")))
+         (when pkg-prompt
+           (put-text-property beg (1+ beg) 'syntax-table '(3 . ?_))
+           (setq pkg-prompt (substring pkg-prompt 1 (1- (length pkg-prompt))))
+           (add-text-properties beg (1+ beg) '(invisible t rear-nonsticky t))
+           (jupyter-repl-cell-update-prompt
+            pkg-prompt
+            `((:foreground
+               ;; magenta
+               ,(aref ansi-color-names-vector 5))
+              jupyter-repl-input-prompt)))))
+      (?\;
+       (add-text-properties beg (1+ beg) '(invisible t rear-nonsticky t))
+       (jupyter-repl-cell-update-prompt
+        "shell> "
+        `((:foreground
+           ;; red
+           ,(aref ansi-color-names-vector 1))
+          jupyter-repl-input-prompt)))
+      (?\?
+       (add-text-properties beg (1+ beg) '(invisible t rear-nonsticky t))
+       (jupyter-repl-cell-update-prompt
+        "help?> "
+        `((:foreground
+           ;; yellow
+           ,(aref ansi-color-names-vector 3))
+          jupyter-repl-input-prompt)))))
+  (cl-call-next-method))
+
+(cl-defmethod jupyter-repl-after-change ((_type (eql delete)) beg _len
+                                         &context (jupyter-lang julia))
+  (when (= beg (jupyter-repl-cell-code-beginning-position))
+    ;; Reset the cell prompt if it contained any other kind of prompt
+    ;; TODO: Implement `jupyter-repl-before-change'
+    ;; TODO: Rename this to `jupyter-repl-reset-prompt'
+    (jupyter-repl-cell-update-prompt
+     (format "In [%d] " (jupyter-repl-cell-count)))))
+
 (defun jupyter-repl-kill-buffer-query-function ()
   "Ask before killing a Jupyter REPL buffer.
 If the REPL buffer is killed, stop the client. If the REPL client
