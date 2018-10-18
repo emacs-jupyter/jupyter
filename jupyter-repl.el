@@ -141,17 +141,13 @@ either \"idle\", \"busy\", or \"starting\".")
     :initform 1
     :documentation "The current execution count of the kernel.")))
 
-(defvar jupyter-repl-lang-buffer nil
+(defvar-local jupyter-repl-lang-buffer nil
   "A buffer with the `major-mode' set to the REPL language's `major-mode'.")
 
-(make-variable-buffer-local 'jupyter-repl-lang-buffer)
-
-(defvar jupyter-repl-lang-mode nil
+(defvar-local jupyter-repl-lang-mode nil
   "The `major-mode' corresponding to the REPL's language.")
 
-(make-variable-buffer-local 'jupyter-repl-lang-mode)
-
-(defvar jupyter-repl-history nil
+(defvar-local jupyter-repl-history nil
   "The history of the current Jupyter REPL.")
 
 (defvar jupyter-repl-fontify-buffers nil
@@ -2258,7 +2254,7 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
   (unless shutdown
     ;; This may have been set to t due to a non-responsive kernel so make sure
     ;; that we try again when restarting.
-    (setq-local jupyter-repl-use-builtin-is-complete nil)
+    (setq jupyter-repl-use-builtin-is-complete nil)
     ;; When restarting, the startup message is not associated with any request
     ;; so ensure that we are able to capture it.
     (jupyter-set jupyter-current-client 'jupyter-include-other-output t))
@@ -2437,18 +2433,17 @@ in the appropriate direction, to the saved element."
          (language (plist-get language-info :name)))
     (cl-destructuring-bind (mode syntax)
         (jupyter-repl-kernel-language-mode-properties language-info)
-      (setq-local jupyter-repl-lang-mode mode)
-      (setq-local jupyter-repl-lang-buffer
-                  (get-buffer-create
-                   (format " *jupyter-repl-lang-%s*"
-                           (plist-get language-info :name))))
+      (setq jupyter-repl-lang-mode mode)
+      (setq jupyter-repl-lang-buffer
+            (get-buffer-create
+             (format " *jupyter-repl-lang-%s*" language)))
       (set-syntax-table syntax)
       (jupyter-with-repl-lang-buffer
         (unless (eq major-mode mode)
           (funcall mode))))
     ;; Get history from kernel
-    (setq-local jupyter-repl-history
-                (make-ring (1+ jupyter-repl-history-maximum-length)))
+    (setq jupyter-repl-history
+          (make-ring (1+ jupyter-repl-history-maximum-length)))
     ;; The sentinel value keeps track of the newest/oldest elements of the
     ;; history since next/previous navigation is implemented by rotations on the
     ;; ring.
