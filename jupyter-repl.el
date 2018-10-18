@@ -2425,6 +2425,9 @@ in the appropriate direction, to the saved element."
   (setq-local indent-line-function #'jupyter-repl-indent-line)
   (setq-local left-margin-width jupyter-repl-prompt-margin-width)
   (setq-local filter-buffer-substring-function #'jupyter-repl-filter-substring)
+  ;; So that " characters in output aren't considered the start and end of
+  ;; strings, see `jupyter-repl-insert-ansi-coded-text'
+  (setq-local parse-sexp-lookup-properties t)
   ;; Initialize a buffer using the major-mode correponding to the kernel's
   ;; language. This will be used for indentation and to capture font lock
   ;; properties.
