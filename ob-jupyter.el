@@ -281,8 +281,10 @@ Optional argument REFRESH has the same meaning as in
    for lang = (plist-get spec :language)
    unless (member lang languages) collect lang into languages and
    do (org-babel-jupyter-make-language-alias kernel lang)
-   ;; (add-to-list 'org-babel-tangle-lang-exts
-   ;;              (cons (concat "jupyter-" lang) file_extension))
+   (when (assoc lang org-babel-tangle-lang-exts)
+     (add-to-list 'org-babel-tangle-lang-exts
+                  (cons (concat "jupyter-" lang)
+                        (cdr (assoc lang org-babel-tangle-lang-exts)))))
    (add-to-list 'org-src-lang-modes
                 (cons (concat "jupyter-" lang)
                       (intern (or (cdr (assoc lang org-src-lang-modes))
