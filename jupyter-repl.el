@@ -1016,25 +1016,9 @@ POS defaults to `point'."
 
 ;;; Modifying cell code, truncating REPL buffer
 
-(defun jupyter-repl-filter-substring (beg end delete)
-  "Return text between BEG and END with invisible text removed.
-If DELETE is non-nil, delete text between BEG and END also."
-  ;; Include the last character at END. `buffer-substring'
-  ;; excludes the last character.
-  (setq end (min (point-max) (1+ end)))
-  (let ((next beg)
-        (str ""))
-    (while (/= beg end)
-      (setq next (next-single-property-change beg 'invisible nil end))
-      (unless (invisible-p beg)
-        (setq str (concat str (buffer-substring beg next))))
-      (setq beg next))
-    (prog1 str
-      (when delete (delete-region beg end)))))
-
 (defun jupyter-repl-cell-code ()
   "Return the code of the current cell."
-  (filter-buffer-substring
+  (buffer-substring
    (jupyter-repl-cell-code-beginning-position)
    (jupyter-repl-cell-code-end-position)))
 
@@ -2442,7 +2426,6 @@ in the appropriate direction, to the saved element."
   (setq-local truncate-lines t)
   (setq-local indent-line-function #'jupyter-repl-indent-line)
   (setq-local left-margin-width jupyter-repl-prompt-margin-width)
-  (setq-local filter-buffer-substring-function #'jupyter-repl-filter-substring)
   ;; So that " characters in output aren't considered the start and end of
   ;; strings, see `jupyter-repl-insert-ansi-coded-text'
   (setq-local parse-sexp-lookup-properties t)
