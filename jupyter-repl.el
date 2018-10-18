@@ -2739,6 +2739,20 @@ Only intended to be added as advice to `switch-to-buffer',
              (eq (jupyter-repl-language-mode jupyter-current-client) major-mode))
     (jupyter-repl-interaction-mode)))
 
+(defun jupyter-repl-interaction-mode-line ()
+  "Return a mode line string with the status of the kernel.
+'*' means the kernel is busy, '-' means the kernel is idle and
+the REPL is connected, 'x' means the REPL is disconnected
+from the kernel."
+  (and (jupyter-repl-client-p jupyter-current-client)
+       (concat " JuPy["
+               (if (equal (oref jupyter-current-client execution-state) "busy")
+                   "*"
+                 (if (jupyter-hb-beating-p jupyter-current-client)
+                     "-"
+                   "x"))
+               "]")))
+
 (define-minor-mode jupyter-repl-interaction-mode
   "Minor mode for interacting with a Jupyter REPL.
 When this minor mode is enabled you may evaluate code from the
@@ -2751,7 +2765,7 @@ the `current-buffer' will automatically have
 
 \\{jupyter-repl-interaction-map}"
   :group 'jupyter-repl
-  :lighter " JuPy"
+  :lighter '(:eval (jupyter-repl-interaction-mode-line))
   :init-value nil
   :keymap jupyter-repl-interaction-map
   (cond
