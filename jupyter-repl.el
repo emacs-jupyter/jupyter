@@ -530,14 +530,19 @@ can contain the following keywords along with their values:
                                                       &context (jupyter-lang julia))
   "Send a help query to the Julia REPL for LINK-TEXT if URL is \"@ref\".
 Otherwise follow the link normally."
-  (if (string= url "@ref")
-      ;; Links have the form `fun`
-      (let ((fun (substring link-text 1 -1)))
-        (if (not (eq major-mode 'jupyter-repl-mode))
-            (jupyter-inspect fun (1- (length fun)))
-          (goto-char (point-max))
-          (jupyter-repl-replace-cell-code (concat "?" fun))
-          (jupyter-repl-ret)))
+  (if (string-prefix-p "@ref" url)
+      (if (string= url "@ref")
+          ;; Links have the form `fun`
+          (let ((fun (substring link-text 1 -1)))
+            (if (not (eq major-mode 'jupyter-repl-mode))
+                (jupyter-inspect fun (1- (length fun)))
+              (goto-char (point-max))
+              (jupyter-repl-replace-cell-code (concat "?" fun))
+              (jupyter-repl-ret)))
+        (let* ((ref (split-string url))
+               (section (cadr ref)))
+          (browse-url
+           (format "https://docs.julialang.org/en/latest/manual/%s/" section))))
     (cl-call-next-method)))
 
 (defun jupyter-repl-markdown-follow-link-at-point ()
