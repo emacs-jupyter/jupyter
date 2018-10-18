@@ -74,6 +74,9 @@ handler:
     (let ((jupyter-inhibit-handlers '(:execute-reply)))
       (jupyter-send-execute-request client ...))
 
+In addition, if the first element of the list is the symbol
+`not', then inhibit handlers not in the list.
+
 Do not set this variable directly, let bind it around specific
 requests like the above example.")
 
@@ -376,7 +379,9 @@ response to the sent message, see `jupyter-add-callback' and
       (signal 'wrong-type-argument (list 'process ioloop 'ioloop)))
     (or (eq jupyter-inhibit-handlers t)
         (cl-loop
-         for msg-type in jupyter-inhibit-handlers
+         for msg-type in (if (eq (car jupyter-inhibit-handlers) 'not)
+                             (cdr jupyter-inhibit-handlers)
+                           jupyter-inhibit-handlers)
          unless (plist-member jupyter-message-types msg-type)
          do (error "Not a valid message type (`%s')" msg-type)))
     (when jupyter--debug
@@ -863,7 +868,9 @@ received for it and it is not the most recently sent request."
   "Possibly run CLIENT's CHANNEL handler on REQ's received MSG."
   (let ((inhibited-handlers (and req (jupyter-request-inhibited-handlers req))))
     (unless (or (eq inhibited-handlers t)
-                (memq (jupyter-message-type msg) inhibited-handlers))
+                (let ((type (memq (jupyter-message-type msg) inhibited-handlers)))
+                  (if (eq (car inhibited-handlers) 'not) (not type)
+                    type)))
       (jupyter-handle-message channel client req msg))))
 
 (cl-defmethod jupyter-handle-message ((client jupyter-kernel-client) channel)
