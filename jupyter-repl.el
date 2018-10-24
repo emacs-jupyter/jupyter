@@ -2418,9 +2418,6 @@ in the appropriate direction, to the saved element."
   (setq-local truncate-lines t)
   (setq-local indent-line-function #'jupyter-repl-indent-line)
   (setq-local left-margin-width jupyter-repl-prompt-margin-width)
-  ;; So that " characters in output aren't considered the start and end of
-  ;; strings, see `jupyter-repl-insert-ansi-coded-text'
-  (setq-local parse-sexp-lookup-properties t)
   ;; Initialize a buffer using the major-mode correponding to the kernel's
   ;; language. This will be used for indentation and to capture font lock
   ;; properties.
@@ -2494,16 +2491,23 @@ When the kernel restarts, insert a new prompt."
     (cl-destructuring-bind (kws &optional kws-only case-fold syntax-alist
                                 &rest vars)
         fld
+      (setq vars (append vars
+                         (list
+                          (cons 'font-lock-syntactic-face-function
+                                (lambda (state)
+                                  (unless (get-text-property
+                                           (nth 8 state) 'font-lock-fontified)
+                                    (when sff (funcall sff state)))))
+                          ;; Needed to ensure that " characters are not treated
+                          ;; syntactically in cell output
+                          (cons 'parse-sexp-lookup-properties t)
+                          (cons 'syntax-propertize-function
+                                (lambda (beg end)
+                                  (when (text-property-any
+                                         beg end 'field 'cell-code)
+                                    (funcall spf beg end)))))))
       (setq font-lock-defaults
-            (apply #'list kws kws-only case-fold syntax-alist
-                   (append vars
-                           (list
-                            (cons 'font-lock-syntactic-face-function
-                                  (lambda (state)
-                                    (unless (get-text-property
-                                             (nth 8 state) 'font-lock-fontified)
-                                      (when sff (funcall sff state)))))))))
-      (setq-local syntax-propertize-function spf))
+            (apply #'list kws kws-only case-fold syntax-alist vars)))
     (font-lock-mode)))
 
 (defun jupyter-repl-insert-banner (banner)
