@@ -583,15 +583,23 @@ image."
      org-preview-latex-default-process)
     (goto-char end)))
 
+(defun jupyter-repl-propertize-output (beg end)
+  "Remove string syntax from quote characters between BEG and END."
+  (save-excursion
+    (save-restriction
+      (narrow-to-region beg end)
+      (goto-char (point-min))
+      (while (search-forward "\"" nil t)
+        (put-text-property (1- (point)) (point)
+                           'syntax-table '(3 . ?_))))))
+
 (defun jupyter-repl-insert-ansi-coded-text (text)
   "Insert TEXT, converting ANSI color codes to font lock faces."
   (setq text (ansi-color-apply text))
   (jupyter-repl-add-font-lock-properties 0 (length text) text)
-  ;; NOTE: Mark text with a specific syntax class so that string characters do
-  ;; not get registered as strings. This requires
-  ;; `parse-sexp-lookup-properties' to be non-nil.
-  (add-text-properties 0 (length text) '(syntax-table (3)) text)
-  (jupyter-repl-insert text))
+  (let ((beg (point)))
+    (jupyter-repl-insert text)
+    (jupyter-repl-propertize-output beg (point))))
 
 (defun jupyter-repl-insert-data (data metadata)
   "Insert DATA into the REPL buffer in order of decreasing richness.
