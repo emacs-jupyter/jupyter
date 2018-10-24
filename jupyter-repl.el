@@ -1345,16 +1345,6 @@ Do this for the current cell."
           (jupyter-repl-fix-python-traceback-spacing ename)))))))
 
 
-(cl-defmethod jupyter-handle-input-request ((client jupyter-repl-client) req prompt _password)
-  (jupyter-repl-append-output client req
-    (let ((value (cl-call-next-method)))
-      ;; FIXME: Maybe the prompt shouldn't be inserted,
-      ;; since for some output it doesn't look good. Like
-      ;; calling license() in the python kernel.
-      ;; (jupyter-repl-insert-ansi-coded-text (concat prompt value))
-      ;; (jupyter-repl-newline)
-      )))
-
 (defun jupyter-repl-history--next (n)
   "Helper function for `jupyter-repl-history-next'.
 Rotates `jupyter-repl-history' N times in the forward direction,
