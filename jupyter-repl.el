@@ -527,25 +527,6 @@ can contain the following keywords along with their values:
   "Follow the markdown link at `point'."
   (markdown-follow-link-at-point))
 
-(cl-defmethod jupyter-markdown-follow-link (link-text url _ref-label _title-text _bang
-                                                      &context (jupyter-lang julia))
-  "Send a help query to the Julia REPL for LINK-TEXT if URL is \"@ref\".
-Otherwise follow the link normally."
-  (if (string-prefix-p "@ref" url)
-      (if (string= url "@ref")
-          ;; Links have the form `fun`
-          (let ((fun (substring link-text 1 -1)))
-            (if (not (eq major-mode 'jupyter-repl-mode))
-                (jupyter-inspect fun (1- (length fun)))
-              (goto-char (point-max))
-              (jupyter-repl-replace-cell-code (concat "?" fun))
-              (jupyter-repl-ret)))
-        (let* ((ref (split-string url))
-               (section (cadr ref)))
-          (browse-url
-           (format "https://docs.julialang.org/en/latest/manual/%s/" section))))
-    (cl-call-next-method)))
-
 (defun jupyter-repl-markdown-follow-link-at-point ()
   "Handle markdown links specially."
   (interactive)
@@ -1507,9 +1488,6 @@ Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
 (cl-defgeneric jupyter-indent-line ()
   (call-interactively #'indent-for-tab-command))
 
-(cl-defmethod jupyter-indent-line (&context (major-mode julia-mode))
-  (call-interactively #'julia-latexsub-or-indent))
-
 (defun jupyter-repl-indent-line ()
   "Indent the line according to the language of the REPL."
   (let* ((pos (jupyter-repl-cell-code-position))
@@ -1591,51 +1569,6 @@ kernel."
       (setq end (jupyter-repl-insert-continuation-prompts end)))
     (jupyter-repl-mark-as-cell-code beg end))
   (goto-char end))
-
-(defvar ansi-color-names-vector)
-
-(cl-defmethod jupyter-repl-after-change ((_type (eql insert)) beg _end
-                                         &context (jupyter-lang julia))
-  (when (= beg (jupyter-repl-cell-code-beginning-position))
-    (cl-case (char-after beg)
-      (?\]
-       (let ((pkg-prompt (jupyter-eval "import Pkg; Pkg.REPLMode.promptf()")))
-         (when pkg-prompt
-           (put-text-property beg (1+ beg) 'syntax-table '(3 . ?_))
-           (setq pkg-prompt (substring pkg-prompt 1 (1- (length pkg-prompt))))
-           (add-text-properties beg (1+ beg) '(invisible t rear-nonsticky t))
-           (jupyter-repl-cell-update-prompt
-            pkg-prompt
-            `((:foreground
-               ;; magenta
-               ,(aref ansi-color-names-vector 5))
-              jupyter-repl-input-prompt)))))
-      (?\;
-       (add-text-properties beg (1+ beg) '(invisible t rear-nonsticky t))
-       (jupyter-repl-cell-update-prompt
-        "shell> "
-        `((:foreground
-           ;; red
-           ,(aref ansi-color-names-vector 1))
-          jupyter-repl-input-prompt)))
-      (?\?
-       (add-text-properties beg (1+ beg) '(invisible t rear-nonsticky t))
-       (jupyter-repl-cell-update-prompt
-        "help?> "
-        `((:foreground
-           ;; yellow
-           ,(aref ansi-color-names-vector 3))
-          jupyter-repl-input-prompt)))))
-  (cl-call-next-method))
-
-(cl-defmethod jupyter-repl-after-change ((_type (eql delete)) beg _len
-                                         &context (jupyter-lang julia))
-  (when (= beg (jupyter-repl-cell-code-beginning-position))
-    ;; Reset the cell prompt if it contained any other kind of prompt
-    ;; TODO: Implement `jupyter-repl-before-change'
-    ;; TODO: Rename this to `jupyter-repl-reset-prompt'
-    (jupyter-repl-cell-update-prompt
-     (format "In [%d] " (jupyter-repl-cell-count)))))
 
 (defun jupyter-repl-kill-buffer-query-function ()
   "Ask before killing a Jupyter REPL buffer.
@@ -1850,14 +1783,6 @@ kernel, but the prefix used by `jupyter-completion-at-point'. See
 (cl-defmethod jupyter-completion-prefix (&context (major-mode jupyter-repl-mode))
   (and (not (get-text-property (point) 'read-only))
        (cl-call-next-method)))
-
-(cl-defmethod jupyter-completion-prefix (&context (jupyter-lang julia))
-  (let ((prefix (cl-call-next-method "\\\\\\|\\.\\|::\\|->" 2)))
-    (prog1 prefix
-      (when (and (consp prefix) (eq (char-before) ?\\))
-        ;; Include the \ in the prefix so it gets replaced if a canidate is
-        ;; selected.
-        (setcar prefix "\\")))))
 
 (defun jupyter-completion-construct-candidates (matches metadata)
   "Construct candidates for completion.
@@ -2502,6 +2427,7 @@ in the appropriate direction, to the saved element."
   (let* ((info (jupyter-kernel-info jupyter-current-client))
          (language-info (plist-get info :language_info))
          (language (plist-get language-info :name)))
+    (jupyter-load-language-support jupyter-current-client)
     (cl-destructuring-bind (mode syntax)
         (jupyter-repl-kernel-language-mode-properties language-info)
       (setq jupyter-repl-lang-mode mode)
@@ -2544,24 +2470,6 @@ would be
 
     (cl-defmethod jupyter-repl-after-init (&context (jupyter-lang python)))"
   nil)
-
-(cl-defmethod jupyter-repl-after-init (&context (jupyter-lang javascript)
-                                                (jupyter-repl-mode js2-mode))
-  "If `js2-mode' is used for Javascript kernels, enable syntax highlighting.
-`js2-mode' does not use `font-lock-defaults', but their own
-custom method."
-  (add-hook 'after-change-functions
-            (lambda (_beg _end len)
-              ;; Insertions only
-              (when (= len 0)
-                (unless (jupyter-repl-cell-finalized-p)
-                  (let ((cbeg (jupyter-repl-cell-code-beginning-position))
-                        (cend (jupyter-repl-cell-code-end-position)))
-                    (save-restriction
-                      (narrow-to-region cbeg cend)
-                      (js2-parse)
-                      (js2-mode-apply-deferred-properties))))))
-            t t))
 
 (add-hook 'jupyter-repl-mode-hook 'jupyter-repl-after-init)
 

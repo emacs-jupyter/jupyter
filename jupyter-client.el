@@ -1271,6 +1271,16 @@ If the kernel CLIENT is connected to does not respond to a
   "Return the language of the kernel CLIENT is connected to."
   (plist-get (plist-get (jupyter-kernel-info client) :language_info) :name))
 
+;;; Load kernel language support definitions
+
+(defun jupyter-load-language-support (client)
+  "Load language support definitions for CLIENT.
+CLIENT is a `jupyter-kernel-client'."
+  (cl-assert (jupyter-kernel-client-p client))
+  (let* ((lang (jupyter-kernel-language client))
+         (support (intern (concat "jupyter-" lang))))
+    (require support nil t)))
+
 (cl-defgeneric jupyter-send-kernel-info-request ((client jupyter-kernel-client))
   "Send a kernel-info request."
   (let ((channel (oref client shell-channel))

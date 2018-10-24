@@ -414,13 +414,6 @@ if it is a scalar, otherwise it just returns RENDER-RESULT."
     (cons "scalar" (org-babel-script-escape (cdr render-result))))
    (t render-result)))
 
-(cl-defmethod jupyter-org-transform-result (render-result
-                                            &context (jupyter-lang python))
-  (cond
-   ((equal (car render-result) "scalar")
-    (cons "scalar" (org-babel-python-table-or-string (cdr render-result))))
-   (t render-result)))
-
 (defun jupyter-org-add-result (client req result)
   "For a request made with CLIENT, add RESULT.
 REQ is a `jupyter-org-request' and if the request is a
