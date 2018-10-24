@@ -2132,21 +2132,6 @@ DETAIL is the detail level to use for the request and defaults to
          read-expression-map
          nil 'jupyter-repl-eval-expression-history)))))
 
-;; Simple eval
-(defun jupyter-eval (code &optional mime)
-  "Send an execute request for CODE, wait for the execute result.
-The `jupyter-current-client' is used to send the execute request.
-All client handlers except the status handler are inhibited for
-the request. In addition, the history of the request is not
-stored. Return the MIME representation of the result. If MIME is
-nil, return the text/plain representation."
-  (let ((msg (jupyter-wait-until-received :execute-result
-               (let ((jupyter-inhibit-handlers '(not :status)))
-                 (jupyter-send-execute-request jupyter-current-client
-                   :code code :store-history nil)))))
-    (when msg
-      (jupyter-message-data msg (or mime :text/plain)))))
-
 (defun jupyter-repl-eval-string (str &optional silently cb)
   "Evaluate STR with the `jupyter-current-client's REPL.
 Replaces the contents of the last cell in the REPL buffer with
