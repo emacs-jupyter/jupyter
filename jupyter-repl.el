@@ -2355,7 +2355,9 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
   (interactive)
   (if (jupyter-repl-client-has-manager-p)
       (let ((manager (oref jupyter-current-client manager)))
-        (display-buffer (process-buffer (oref manager kernel))))
+        (if (jupyter-kernel-alive-p manager)
+            (display-buffer (process-buffer (oref manager kernel)))
+          (error "Kernel is not alive")))
     (user-error "Kernel not a subprocess")))
 
 ;;; Isearch
