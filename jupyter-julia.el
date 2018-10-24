@@ -75,6 +75,9 @@ manual for <section>. Otherwise follow the link normally."
   "Call `julia-latexsub-or-indent'."
   (call-interactively #'julia-latexsub-or-indent))
 
+(cl-defmethod jupyter-load-file-code (file &context (jupyter-lang julia))
+  (format "include(\"%s\");" file))
+
 (defvar ansi-color-names-vector)
 
 (cl-defmethod jupyter-repl-after-change ((_type (eql insert)) beg _end

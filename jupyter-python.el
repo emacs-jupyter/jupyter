@@ -27,9 +27,13 @@
 
 ;;; Code:
 
+(require 'jupyter-repl)
 (require 'jupyter-org-client)
 
 (declare-function org-babel-python-table-or-string "ob-python")
+
+(cl-defmethod jupyter-load-file-code (file &context (jupyter-lang python))
+  (concat "%run " file))
 
 (cl-defmethod jupyter-org-transform-result (render-result
                                             &context (jupyter-lang python))

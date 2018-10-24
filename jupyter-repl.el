@@ -2142,6 +2142,13 @@ to the above explanation."
                                 '(display-buffer-below-selected)))))))
       req)))
 
+(cl-defgeneric jupyter-load-file-code (_file)
+  "Return a string suitable to send as code to a kernel for loading FILE.
+Use the jupyter-lang method specializer to add a method for a
+particular language."
+  (error "Kernel language (%s) not supported yet"
+         (jupyter-kernel-language jupyter-current-client)))
+
 (defun jupyter-repl-eval-file (file)
   "Send the contents of FILE using `jupyter-current-client'."
   (interactive
@@ -2151,14 +2158,8 @@ to the above explanation."
   (message "Evaluating %s..." file)
   (setq file (expand-file-name file))
   (if (file-exists-p file)
-      (let* ((buf (find-buffer-visiting file))
-             (killp (null buf)))
-        (when (null buf)
-          (setq buf (delay-mode-hooks (find-file-noselect file))))
-        (with-current-buffer buf
-          (jupyter-repl-eval-string (buffer-string) 'silently))
-        (when killp
-          (kill-buffer)))
+      (jupyter-repl-eval-string
+       (jupyter-load-file-code file) 'silently)
     (error "Not a file (%s)" file)))
 
 (defun jupyter-repl-eval-buffer (buffer)
