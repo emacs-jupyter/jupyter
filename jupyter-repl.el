@@ -2030,16 +2030,22 @@ Use the `company-doc-buffer' to insert the results."
 (defun jupyter-completion--post-completion (arg status)
   "If ARG is a completion with a snippet, expand the snippet.
 Do this only if STATUS is sole or finished."
-  (when (and (memq status '(sole finished))
-             (get-text-property 0 'snippet arg))
-    (when (and (require 'yasnippet nil t)
-               (not yas-minor-mode))
+  (when (memq status '(sole finished))
+    (jupyter-completion-post-completion arg)))
+
+(cl-defgeneric jupyter-completion-post-completion (candidate)
+  "Called when CANDIDATE was selected as the completion candidate.
+The default implementation expands the snippet in CANDIDATE's
+snippet text property, if any, and if `yasnippet' is available."
+  (when (and (get-text-property 0 'snippet candidate)
+             (require 'yasnippet nil t))
+    (unless yas-minor-mode
       (yas-minor-mode 1))
     ;; Due to packages like smartparens
     (when (eq (char-after) ?\))
       (delete-char 1))
     (yas-expand-snippet
-     (get-text-property 0 'snippet arg)
+     (get-text-property 0 'snippet candidate)
      (save-excursion
        (forward-sexp -1)
        (point))
