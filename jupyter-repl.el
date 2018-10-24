@@ -2131,8 +2131,8 @@ DETAIL is the detail level to use for the request and defaults to
 The `jupyter-current-client' is used to send the execute request.
 All client handlers except the status handler are inhibited for
 the request. In addition, the history of the request is not
-stored. Return the MIME type of the result. If MIME is nil,
-return the text/plain representation."
+stored. Return the MIME representation of the result. If MIME is
+nil, return the text/plain representation."
   (let ((msg (jupyter-wait-until-received :execute-result
                (let ((jupyter-inhibit-handlers '(not :status)))
                  (jupyter-send-execute-request jupyter-current-client
