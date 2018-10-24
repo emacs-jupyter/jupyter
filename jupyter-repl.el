@@ -2470,8 +2470,8 @@ in the appropriate direction, to the saved element."
   "Hook function called whenever `jupyter-repl-mode' is enabled/disabled.
 You may override this function for a particular language using a
 jupyter-lang &context specializer. For example, to do something
-when the language if the REPL is python the method signature
-would be
+when the language of the REPL is python the method signature
+would look like
 
     (cl-defmethod jupyter-repl-after-init (&context (jupyter-lang python)))"
   nil)
