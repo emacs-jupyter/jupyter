@@ -1987,6 +1987,9 @@ snippet text property, if any, and if `yasnippet' is available."
 
 ;;; Inspection
 ;; TODO: How to add hover documentation support
+;;
+;; TODO: Generalize insertion and inspection code and move to `jupyter-client'.
+;; These routines are not limited to a REPL client.
 
 (defun jupyter-inspect (code &optional pos buffer detail)
   "Inspect CODE.
