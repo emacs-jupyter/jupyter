@@ -521,7 +521,8 @@ can contain the following keywords along with their values:
     (define-key map [return] 'jupyter-repl-markdown-follow-link-at-point)
     (define-key map [follow-link] 'mouse-face)
     (define-key map [mouse-2] 'jupyter-repl-markdown-follow-link-at-point)
-    map))
+    map)
+  "Keymap when `point' is over a markdown link in the REPL buffer.")
 
 (cl-defgeneric jupyter-markdown-follow-link (_link-text _url _ref-label _title-text _bang)
   "Follow the markdown link at `point'."
