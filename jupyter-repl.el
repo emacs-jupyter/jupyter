@@ -385,7 +385,7 @@ font lock. Any text between START and END that does not have a
 for the property."
   (jupyter-repl-fixup-font-lock-properties start end object)
   (add-text-properties
-   start end '(fontified t font-lock-fontified t font-lock-multiline t) object))
+   start end '(fontified t font-lock-fontified t) object))
 
 (defun jupyter-repl-fixup-font-lock-properties (beg end &optional object)
   "Fixup the text properties in the `current-buffer' between BEG END.
