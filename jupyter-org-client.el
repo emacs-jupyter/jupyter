@@ -194,20 +194,7 @@ METADATA has the same meaning as in
 (cl-defmethod jupyter-code-context ((_type (eql completion))
                                     &context (major-mode org-mode))
   (when (org-in-src-block-p 'inside)
-    (jupyter-line-context)
-    ;; (let* ((el (org-element-at-point))
-    ;;        (post (org-element-property :post-affiliated el))
-    ;;        (beg (save-excursion
-    ;;               (goto-char (if post post
-    ;;                            (org-element-property :begin el)))
-    ;;               (forward-line)
-    ;;               (line-beginning-position)))
-    ;;        (val (org-element-property :value el))
-    ;;        ;; Remove the last \n that is always present in
-    ;;        ;; code blocks
-    ;;        (code (substring val 0 (1- (length val)))))
-    ;;   (list code (min (- (point) beg) (length code))))
-    ))
+    (jupyter-line-context)))
 
 (defun jupyter-org-enable-completion ()
   "Enable autocompletion in Jupyter source code blocks."
