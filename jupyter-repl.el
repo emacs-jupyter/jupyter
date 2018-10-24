@@ -2707,7 +2707,24 @@ If CLIENT is a buffer or the name of a buffer, use the
 
 (defun jupyter-repl-propagate-client (win-or-buffer &rest args)
   "Propagate the `jupyter-current-client' to other buffers.
-Only intended to be added as advice to `switch-to-buffer',
+WIN-OR-BUFFER is either a window that will display the buffer
+that should be checked or the buffer itself. In the case that
+WIN-OR-BUFFER is a window, the first element of ARGS is assumed
+to be the buffer to check.
+
+If the checked buffer is not in `jupyter-repl-interaction-mode'
+and has the same `major-mode' as the `jupyter-current-client's
+language mode, set `jupyter-current-client' in the checked buffer
+to the same value as the `jupyter-current-client' of the
+`current-buffer'.
+
+If the `current-buffer' is not in
+`jupyter-repl-interaction-mode', use the first buffer returned by
+`jupyter-repl-available-repl-buffers' for the checked buffer's
+`major-mode' as the buffer from which to propagate its value of
+`jupyter-current-client'.
+
+NOTE: Only intended to be added as advice to `switch-to-buffer',
 `display-buffer', or `set-window-buffer'."
   (let* ((other-buffer (if (or (null win-or-buffer)
                                (windowp win-or-buffer))
