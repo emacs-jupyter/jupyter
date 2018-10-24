@@ -1125,16 +1125,13 @@ lines, truncate it to something less than
          (jupyter-repl-replace-cell-code (plist-get pl :text))))))
 
 (cl-defmethod jupyter-handle-execute-reply ((client jupyter-repl-client)
-                                            req
+                                            _req
                                             _status
                                             execution-count
                                             _user-expressions
                                             payload)
   (oset client execution-count (1+ execution-count))
   (jupyter-with-repl-buffer client
-    (save-excursion
-      (jupyter-repl-goto-cell req)
-      (jupyter-repl-cell-unmark-busy))
     (when payload
       (jupyter-repl--handle-payload payload))))
 
@@ -1265,8 +1262,13 @@ message."
      (t
       (jupyter-repl-clear-last-cell-output client)))))
 
-(cl-defmethod jupyter-handle-status ((client jupyter-repl-client) _req execution-state)
-  (oset client execution-state execution-state))
+(cl-defmethod jupyter-handle-status ((client jupyter-repl-client) req execution-state)
+  (oset client execution-state execution-state)
+  (when (equal execution-state "idle")
+    (jupyter-with-repl-buffer client
+      (save-excursion
+        (jupyter-repl-goto-cell req)
+        (jupyter-repl-cell-unmark-busy)))))
 
 (defun jupyter-repl-display-other-output (client stream text)
   "Display output not originating from CLIENT.
