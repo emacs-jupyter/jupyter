@@ -1689,7 +1689,7 @@ begiining of the symbol at point to look for a match of RE."
 ;;; Extracting arguments from argument strings
 
 (defun jupyter-completion--arg-extract-1 (pos)
-  "Helper function for `arg-extract-top'.
+  "Helper function for `jupyter-completion--arg-extract'.
 Extract the arguments starting at POS, narrowing to the first
 SEXP before extraction."
   (save-restriction
