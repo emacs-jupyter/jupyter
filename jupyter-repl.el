@@ -2126,7 +2126,7 @@ to the above explanation."
           (jupyter-with-message-content msg (traceback)
             ;; FIXME: Assumes the error in the
             ;; execute-reply is good enough
-            (unless (<= (length traceback) 2)
+            (when (> (apply '+ (mapcar 'length traceback)) 250)
               (jupyter-repl-display-traceback traceback))))
         :stream
         (lambda (msg)
