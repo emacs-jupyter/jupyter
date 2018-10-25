@@ -32,7 +32,11 @@
 
 (declare-function org-at-drawer-p "org")
 (declare-function org-in-regexp "org" (regexp &optional nlines visually))
+(declare-function org-in-src-block-p "org" (&optional inside))
+(declare-function org-element-at-point "org-element")
+(declare-function org-element-property "org-element")
 (declare-function org-babel-python-table-or-string "ob-python" (results))
+(declare-function org-babel-jupyter-initiate-session "ob-jupyter" (&optional session params))
 
 (defcustom jupyter-org-resource-directory "./.ob-jupyter/"
   "Directory used to store automatically generated image files.

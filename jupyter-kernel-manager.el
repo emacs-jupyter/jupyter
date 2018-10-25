@@ -33,6 +33,8 @@
 (require 'jupyter-messages)
 (require 'jupyter-client)
 
+(declare-function ansi-color-apply "ansi-color" (string))
+
 (defgroup jupyter-kernel-manager nil
   "Jupyter kernel manager"
   :group 'jupyter)

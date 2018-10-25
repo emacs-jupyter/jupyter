@@ -38,6 +38,10 @@
 (require 'hmac-def)
 (require 'jupyter-kernelspec)
 
+(declare-function tramp-dissect-file-name "tramp" (name &optional nodefault))
+(declare-function tramp-tramp-file-p "tramp" (name))
+(declare-function tramp-file-name-user "tramp")
+(declare-function tramp-file-name-host "tramp")
 
 (defcustom jupyter-include-other-output nil
   "Whether or not to handle IOPub messages from other clients.

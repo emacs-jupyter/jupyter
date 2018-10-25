@@ -64,12 +64,21 @@
 (require 'ring)
 (require 'ansi-color)
 
-(declare-function company-begin-backend "company" (backend &optional callback))
-(declare-function company-doc-buffer "company" (&optional string))
-(declare-function company-grab-symbol-cons "company" (idle-begin-after-re &optional max-len))
+(declare-function company-begin-backend "ext:company" (backend &optional callback))
+(declare-function company-doc-buffer "ext:company" (&optional string))
+(declare-function company-post-command "ext:company")
+(declare-function company-input-noop "ext:company")
+(declare-function company-auto-begin "ext:company")
+
 (declare-function org-format-latex "org" (prefix &optional beg end dir overlays msg forbuffer processing-type))
-(declare-function markdown-link-at-pos "markdown-mode" (pos))
-(declare-function markdown-follow-link-at-point "markdown-mode")
+
+(declare-function markdown-link-at-pos "ext:markdown-mode" (pos))
+(declare-function markdown-follow-link-at-point "ext:markdown-mode")
+
+(declare-function yas-minor-mode "ext:yasnippet" (&optional arg))
+(declare-function yas-expand-snippet "ext:yasnippet" (content &optional start end expand-env))
+
+(declare-function string-trim "subr-x")
 
 ;; TODO: Fallbacks for when the language doesn't have a major mode installed.
 
