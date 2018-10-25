@@ -328,7 +328,7 @@ See `jupyter-with-output-buffer'.")
   "The last `jupyter-request' message ID that generated output.")
 
 (defmacro jupyter-repl-with-output-buffer (name reset &rest body)
-  "With the REPL output buffer corrsponding to NAME, run BODY.
+  "With the REPL output buffer corresponding to NAME, run BODY.
 The buffer corresponding to NAME will be obtained by a call to
 `jupyter-get-special-buffer'. An output buffer differs from a
 documentation buffer by maintaining its previous output and
