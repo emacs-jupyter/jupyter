@@ -42,7 +42,7 @@
 
 (defvar jupyter--clients nil
   "A list of all live clients.
-Clients are removed from this list when their `destructor' is called.")
+Clients are removed from this list when their `jupyter-finalizer' is called.")
 
 ;; This is mainly used by the REPL code, but is also set by
 ;; the `org-mode' client whenever `point' is inside a code
@@ -193,7 +193,7 @@ passed as the argument has a language of LANG."
   (push client jupyter--clients)
   (oset client -buffer (generate-new-buffer " *jupyter-kernel-client*")))
 
-(cl-defmethod destructor ((client jupyter-kernel-client) &rest _params)
+(cl-defmethod jupyter-finalize ((client jupyter-kernel-client))
   "Close CLIENT's channels and cleanup internal resources."
   (jupyter-stop-channels client)
   (delete-instance client)
@@ -205,9 +205,9 @@ passed as the argument has a language of LANG."
     (kill-buffer (oref client -buffer))))
 
 (defun jupyter-kill-kernel-clients ()
-  "Call the destructor for all live Jupyter clients."
+  "Call the finalizer for all live Jupyter clients."
   (dolist (client jupyter--clients)
-    (destructor client)))
+    (jupyter-finalize client)))
 
 (add-hook 'kill-emacs-hook 'jupyter-kill-kernel-clients)
 

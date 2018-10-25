@@ -157,8 +157,8 @@ client and delete the kernel process after running BODY."
        (unwind-protect
            (progn ,@body)
          (when (jupyter-kernel-alive-p ,manager)
-           (destructor ,manager))
-         (destructor ,client)))))
+           (jupyter-finalizer ,manager))
+         (jupyter-finalizer ,client)))))
 
 (defmacro jupyter-with-python-repl (client &rest body)
   "Start a new Python REPL and run BODY.
@@ -296,7 +296,7 @@ running BODY."
                 (should (file-locked-p lock))
                 (should (equal (jupyter--ioloop-lock-file client) lock))
                 (should (file-locked-p lock)))))
-        (destructor client)))))
+        (jupyter-finalizer client)))))
 
 (ert-deftest jupyter-channels ()
   (ert-info ("Channel types should match their class")
@@ -434,10 +434,10 @@ running BODY."
                        '(:stream)))
         (setq jupyter-inhibit-handlers '(:foo))
         (should-error (jupyter-send-kernel-info-request client))))
-    (ert-info ("Destructor")
+    (ert-info ("Finalizer")
       (should (buffer-live-p (oref client -buffer)))
       (should (jupyter-channels-running-p client))
-      (destructor client)
+      (jupyter-finalizer client)
       (should-not (jupyter-channels-running-p client))
       (should-not (buffer-live-p (oref client -buffer))))))
 

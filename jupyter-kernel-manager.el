@@ -39,7 +39,7 @@
 
 (defvar jupyter--managers nil
   "A list of all live kernel managers.
-Managers are removed from this list when their `destructor' is called.")
+Managers are removed from this list when their `jupyter-finalizer' is called.")
 
 (defclass jupyter-kernel-manager (eieio-instance-tracker)
   ((tracking-symbol :initform 'jupyter--managers)
@@ -81,18 +81,15 @@ default kernel is a python kernel."
   (unless (slot-boundp manager 'name)
     (oset manager name "python")))
 
-(cl-defmethod destructor ((manager jupyter-kernel-manager) &rest _params)
+(cl-defmethod jupyter-finalize ((manager jupyter-kernel-manager))
   "Kill the kernel of MANAGER and stop its channels."
   ;; See `jupyter--kernel-sentinel' for other cleanup
-  (when (processp (oref manager kernel))
-    (delete-process (oref manager kernel)))
-  (delete-instance manager)
-  (jupyter-stop-channels manager))
+  (jupyter-shutdown-kernel manager)
+  (delete-instance manager))
 
 (defun jupyter-kill-kernel-managers ()
   (dolist (manager jupyter--managers)
-    (jupyter-shutdown-kernel manager)
-    (destructor manager)))
+    (jupyter-finalize manager)))
 
 (add-hook 'kill-emacs-hook 'jupyter-kill-kernel-managers)
 
@@ -384,8 +381,8 @@ instance, see `jupyter-make-client'."
                   started (jupyter-kernel-info client))
             (list manager client))
         (unless started
-          (destructor client)
-          (destructor manager))))))
+          (jupyter-finalize client)
+          (jupyter-finalize manager))))))
 
 (provide 'jupyter-kernel-manager)
 
