@@ -432,8 +432,9 @@ FLAGS is passed to SOCKET according to `zmq-recv'."
 
 (defmacro jupyter-with-message-content (msg keys &rest body)
   "For MSG, bind the corresponding KEYS of its contents then evaluate BODY.
-KEYS is a list of key names to bind where the values are obtained
-from the `jupyter-message-content' of MSG before evaluating BODY.
+KEYS is a list of key names found in the
+`jupyter-message-content' of MSG. The values are bound to their
+key names while evaluating BODY.
 
 So to bind the :status key of MSG you would do
 
