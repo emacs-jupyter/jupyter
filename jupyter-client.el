@@ -1276,7 +1276,7 @@ If the kernel CLIENT is connected to does not respond to a
 (defun jupyter-load-language-support (client)
   "Load language support definitions for CLIENT.
 CLIENT is a `jupyter-kernel-client'."
-  (cl-assert (jupyter-kernel-client-p client))
+  (cl-assert (object-of-class-p client 'jupyter-kernel-client))
   (let* ((lang (jupyter-kernel-language client))
          (support (intern (concat "jupyter-" lang))))
     (require support nil t)))
