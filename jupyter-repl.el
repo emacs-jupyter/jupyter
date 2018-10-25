@@ -584,23 +584,11 @@ image."
      org-preview-latex-default-process)
     (goto-char end)))
 
-(defun jupyter-repl-propertize-output (beg end)
-  "Remove string syntax from quote characters between BEG and END."
-  (save-excursion
-    (save-restriction
-      (narrow-to-region beg end)
-      (goto-char (point-min))
-      (while (search-forward "\"" nil t)
-        (put-text-property (1- (point)) (point)
-                           'syntax-table '(3 . ?_))))))
-
 (defun jupyter-repl-insert-ansi-coded-text (text)
   "Insert TEXT, converting ANSI color codes to font lock faces."
   (setq text (ansi-color-apply text))
   (jupyter-repl-add-font-lock-properties 0 (length text) text)
-  (let ((beg (point)))
-    (jupyter-repl-insert text)
-    (jupyter-repl-propertize-output beg (point))))
+  (jupyter-repl-insert text))
 
 (defun jupyter-repl-insert-data (data metadata)
   "Insert DATA into the REPL buffer in order of decreasing richness.
@@ -2492,10 +2480,22 @@ When the kernel restarts, insert a new prompt."
     (apply-partially
      #'jupyter-repl-on-kernel-restart jupyter-current-client)))
 
+(defun jupyter-repl-propertize-output (beg end)
+  "Remove string syntax from quote characters between BEG and END."
+  (save-excursion
+    (save-restriction
+      (narrow-to-region beg end)
+      (goto-char (point-min))
+      (while (re-search-forward "\"\\|'" nil t)
+        (put-text-property (1- (point)) (point)
+                           'syntax-table '(3 . ?_))))))
+
 (defun jupyter-repl-initialize-fontification ()
   "Initialize fontification for the current REPL buffer."
   (let (fld sff spf)
     (jupyter-with-repl-lang-buffer
+      ;; TODO: Take into account minor modes that may add to
+      ;; `font-lock-keywords', e.g. `rainbow-delimiters-mode'.
       (setq fld font-lock-defaults
             sff font-lock-syntactic-face-function
             spf syntax-propertize-function))
@@ -2506,19 +2506,21 @@ When the kernel restarts, insert a new prompt."
         fld
       (setq vars (append vars
                          (list
-                          (cons 'font-lock-syntactic-face-function
-                                (lambda (state)
-                                  (unless (get-text-property
-                                           (nth 8 state) 'font-lock-fontified)
-                                    (when sff (funcall sff state)))))
                           ;; Needed to ensure that " characters are not treated
                           ;; syntactically in cell output
                           (cons 'parse-sexp-lookup-properties t)
                           (cons 'syntax-propertize-function
                                 (lambda (beg end)
-                                  (when (text-property-any
-                                         beg end 'field 'cell-code)
-                                    (funcall spf beg end)))))))
+                                  (let ((cell-pos (text-property-any beg end 'field 'cell-code)))
+                                    (if (not cell-pos)
+                                        ;; Currently this just adds a different
+                                        ;; syntax to quote characters in output
+                                        (jupyter-repl-propertize-output beg end)
+                                      (when (functionp spf)
+                                        (goto-char cell-pos)
+                                        (jupyter-with-repl-cell
+                                          (funcall spf (point-min) (point-max))))))))
+                          (cons 'font-lock-syntactic-face-function sff))))
       (setq font-lock-defaults
             (apply #'list kws kws-only case-fold syntax-alist vars)))
     (font-lock-mode)))
