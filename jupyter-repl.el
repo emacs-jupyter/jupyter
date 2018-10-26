@@ -599,6 +599,17 @@ image."
   (jupyter-repl-add-font-lock-properties 0 (length text) text)
   (jupyter-repl-insert text))
 
+(defun jupyter-repl--insert-image (data type metadata)
+  "Insert image DATA as TYPE.
+TYPE has the same meaning as in `create-image'. METADATA is a
+plist containing :width and :height keys that will be used as the
+width and height of the image."
+  (cl-destructuring-bind (&key width height &allow-other-keys)
+      metadata
+    (let ((img (create-image data type 'data :width width :height height)))
+      (insert-image img (propertize " " 'read-only t))))
+  (jupyter-repl-newline))
+
 (defun jupyter-repl-insert-data (data metadata)
   "Insert DATA into the REPL buffer in order of decreasing richness.
 DATA is a plist mapping mimetypes to their content. METADATA is a
@@ -653,19 +664,13 @@ When no valid mimetype is present in DATA, a warning is shown."
       (jupyter-repl-newline))
      ((and (memq :image/svg+xml mimetypes)
            (image-type-available-p 'svg))
-      (cl-destructuring-bind (&key width height)
-          (plist-get metadata :image/svg+xml)
-        (let* ((data (plist-get data :image/svg+xml))
-               (img (create-image data 'svg 'data :width width :height height)))
-          (insert-image img (propertize " " 'read-only t))))
-      (jupyter-repl-newline))
+      (jupyter-repl--insert-image
+       (plist-get data :image/svg+xml)
+       'svg (plist-get metadata :image/svg+xml)))
      ((memq :image/png mimetypes)
-      (cl-destructuring-bind (&key width height)
-          (plist-get metadata :image/png)
-        (let* ((data (base64-decode-string (plist-get data :image/png)))
-               (img (create-image data nil 'data :width width :height height)))
-          (insert-image img (propertize " " 'read-only t))))
-      (jupyter-repl-newline))
+      (jupyter-repl--insert-image
+       (base64-decode-string (plist-get data :image/png))
+       'png (plist-get metadata :image/png)))
      ((memq :text/plain mimetypes)
       (jupyter-repl-insert-ansi-coded-text
        (plist-get data :text/plain))
