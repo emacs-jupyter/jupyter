@@ -1216,7 +1216,7 @@ message."
           transient
         (if display_id
             (jupyter-repl-insert-data-with-id display_id data metadata)
-          (let ((inhibit-redisplay t))
+          (let ((inhibit-redisplay (not debug-on-error)))
             (when clear
               (jupyter-repl-clear-last-cell-output client)
               ;; Prevent slight flickering of prompt margin and text, this is
