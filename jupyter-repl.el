@@ -1269,8 +1269,9 @@ message."
   (when (equal execution-state "idle")
     (jupyter-with-repl-buffer client
       (save-excursion
-        (jupyter-repl-goto-cell req)
-        (jupyter-repl-cell-unmark-busy)))))
+        (when (ignore-errors
+                (progn (jupyter-repl-goto-cell req) t))
+          (jupyter-repl-cell-unmark-busy))))))
 
 (defun jupyter-repl-display-other-output (client stream text)
   "Display output not originating from CLIENT.
