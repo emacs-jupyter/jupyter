@@ -32,6 +32,28 @@
 
 (declare-function org-babel-python-table-or-string "ob-python")
 
+(cl-defmethod jupyter-handle-error :after ((client jupyter-repl-client)
+                                           req ename _evalue _traceback
+                                           &context (jupyter-lang python))
+  "Add spacing between the first occurance of ENAME and \"Traceback\".
+Do this only when the traceback of REQ was inserted into the REPL
+buffer."
+  (unless (eq (jupyter-message-parent-type
+               (jupyter-request-last-message req))
+              :comm-msg)
+    (jupyter-with-repl-buffer client
+      (save-excursion
+        (jupyter-repl-goto-cell req)
+        (goto-char (jupyter-repl-cell-code-end-position))
+        (when (and (search-forward ename nil t)
+                   (looking-at "Traceback"))
+          (let ((len (- fill-column
+                        jupyter-repl-prompt-margin-width
+                        (- (point) (line-beginning-position))
+                        (- (line-end-position) (point)))))
+            (jupyter-repl-insert
+             (make-string (if (> len 4) len 4) ? ))))))))
+
 (cl-defmethod jupyter-load-file-code (file &context (jupyter-lang python))
   (concat "%run " file))
 

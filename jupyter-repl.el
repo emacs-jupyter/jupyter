@@ -1302,20 +1302,6 @@ buffer to display TEXT."
       (jupyter-repl-append-output client req
         (jupyter-repl-insert-ansi-coded-text text))))))
 
-(defun jupyter-repl-fix-python-traceback-spacing (ename)
-  "Add spacing between the first occurance of ENAME and \"Traceback\".
-Do this for the current cell."
-  (save-excursion
-    (jupyter-repl-previous-cell)
-    (when (and (search-forward ename nil t)
-               (looking-at "Traceback"))
-      (let ((len (- fill-column
-                    jupyter-repl-prompt-margin-width
-                    (- (point) (line-beginning-position))
-                    (- (line-end-position) (point)))))
-        (jupyter-repl-insert
-         (make-string (if (> len 4) len 4) ? ))))))
-
 (defun jupyter-repl-display-traceback (traceback)
   "Display TRACEBACK in its own buffer."
   (when (or (vectorp traceback) (listp traceback))
@@ -1326,7 +1312,7 @@ Do this for the current cell."
     (display-buffer (current-buffer) '(display-buffer-below-selected))))
 
 (cl-defmethod jupyter-handle-error ((client jupyter-repl-client)
-                                    req ename _evalue traceback)
+                                    req _ename _evalue traceback)
   (when req
     (cond
      ((eq (jupyter-message-parent-type
@@ -1336,10 +1322,7 @@ Do this for the current cell."
      (t
       (jupyter-repl-append-output client req
         (jupyter-repl-insert-ansi-coded-text
-         (concat (mapconcat #'identity traceback "\n") "\n"))
-        (when (equal (jupyter-kernel-language client) "python")
-          (jupyter-repl-fix-python-traceback-spacing ename)))))))
-
+         (concat (mapconcat #'identity traceback "\n") "\n")))))))
 
 (defun jupyter-repl-history--next (n)
   "Helper function for `jupyter-repl-history-next'.
