@@ -9,12 +9,34 @@ If you would like to try this package out, in your Emacs configuration add
 (require 'jupyter)
 #+END_SRC
 
-where =<path>= is the path to the directory containing this =README.org= file.
+where =<path>= is the root directory for this project.
 ** Dependencies
 
 - markdown-mode (optional) :: https://jblevins.org/projects/markdown-mode/
 - company-mode (optional) :: http://company-mode.github.io/
+- emacs-websocket (optional) :: https://github.com/ahyatt/emacs-websocket
+- simple-httpd (optional) :: https://github.com/skeeto/emacs-web-server
 - emacs-zmq :: http://github.com/dzop/emacs-zmq
+*** Widget support (EXPERIMENTAL)
+:PROPERTIES:
+:ID:       59559FA3-59AD-453F-93E7-113B43F85493
+:END:
+
+There is also support for interacting with Jupyter widgets through an external
+browser. If a widget is to be displayed, an external browser is opened first to
+display the widget. In this case, Emacs acts as a relay for passing messages
+between the kernel and the external browser.
+
+If you would like to try out this limited support, you will need to have =node=
+installed on your system to build the necessary javascript. Then you will have
+to run the following commands from the root project directory:
+
+#+BEGIN_SRC shell
+cd js
+npm install -g yarn
+npm install
+yarn run build --progress
+#+END_SRC
 * Jupyter REPL
 
 To start a new kernel on the =localhost= and connect a REPL client to it, run
@@ -101,7 +123,7 @@ opened and the widget is displayed in the browser. There is only one browser
 per client.
 
 This feature is currently considered experimental and has only been tested for
-simple uses of widgets.
+simple uses of widgets. See [[id:B15FF43B-114C-4D73-B69C-2095F108EBBB][=jupyter-widget-client=]].
 * Integration with =org-mode=
 
 For users of =org-mode=, integration with =org-babel= is provided through the
@@ -603,14 +625,40 @@ To interrupt a kernel, use =jupyter-interrupt-kernel=.
 Once you have a kernel manager you can make new =jupyter-kernel-client= (or a
 subclass of one) instances using =jupyter-make-client=.
 ** =jupyter-widget-client=
+:PROPERTIES:
+:ID:       F8C2EB90-1DF3-4880-B684-31FE4784FAD1
+:END:
 
-There is also rudimentary widget support available. The default implementation
-of =jupyter-kernel-client= only keeps track of open comms through a client's
-=comms= slot. The =jupyter-widget-client= subclass adds the functionality to
-display and interact with widgets through an external browser. This works by
-relaying the comm messages between the browser and the kernel through a
-websocket. For this to work, you will also need to have the =simple-httpd= and
-=websocket= Emacs packages available.
+This class adds support for interacting with Jupyter widgets using an external
+browser for the widget display. In order for this to work properly you will
+need to have =simple-httpd= and the =websocket= packages installed, in
+addition, you will have to build the required javascript files as described in
+[[id:59559FA3-59AD-453F-93E7-113B43F85493][Widget support]].
+
+The default implementation of =jupyter-widget-client= overrides the following
+methods of a =jupyter-kernel-client=
+
+#+BEGIN_SRC elisp
+(jupyter-handle-comm-close)
+(jupyter-handle-comm-open)
+(jupyter-handle-comm-msg)
+#+END_SRC
+
+Comm messages in Jupyter are a way to allow for custom messages between the
+kernel and a client. In the case of Jupyter widgets they are used to sync
+widget state between the kernel and client.
+
+It would be amazing to add custom Jupyter widgets to Emacs using the built
+=widget= library which would work for widgets such as text boxes, buttons, and
+other simple widgets, but there doesn't seem to be a way to support more
+complex widgets in Emacs that require embedded javascript.
+
+The default implementation of =jupyter-kernel-client= only keeps track of open
+comms through a client's =comms= slot. The =jupyter-widget-client= subclass
+adds the functionality to display and interact with widgets through an external
+browser. This works by relaying the comm messages between the browser and the
+kernel through a websocket. For this to work, you will also need to have the
+=simple-httpd= and =websocket= Emacs packages available.
 
 This feature is currently experimental, but seems to work well. I was able to
 interact with an [[https://github.com/jupyter-widgets/ipyleaflet][ipyleaflet]] map without any noticeable delay.
