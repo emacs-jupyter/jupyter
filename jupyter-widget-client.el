@@ -43,7 +43,7 @@
 (require 'jupyter-client)
 
 (defvar jupyter-widgets-initialized nil
-  "A client local that is non-nil if a browser for widgets is opened.")
+  "A client local variable that is non-nil if a browser for widgets is opened.")
 
 (defvar jupyter-widgets-server nil
   "The `websocket-server' redirecting kernel messages.")
@@ -56,7 +56,7 @@
 
 (defvar jupyter-widgets-url-format
   "http://127.0.0.1:%d/jupyter/widgets?username=%s&clientId=%s&port=%d"
-  "Format of the URL that will visited to display widgets.")
+  "Format of the URL that will be visited to display widgets.")
 
 (defclass jupyter-widget-client (jupyter-kernel-client)
   ((widget-sock
