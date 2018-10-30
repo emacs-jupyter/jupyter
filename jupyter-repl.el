@@ -2011,7 +2011,9 @@ DETAIL is the detail level to use for the request and defaults to
                     (with-current-buffer standard-output
                       (setq other-window-scroll-buffer (current-buffer))
                       (help-setup-xref
-                       (list 'jupyter-inspect code pos nil detail) t)
+                       (list (let ((jupyter-current-client client))
+                               (lambda () (jupyter-inspect code pos nil detail))))
+                       nil)
                       (setq jupyter-current-client client)
                       (jupyter-repl-insert-data data metadata)))))
             (message "Nothing found for %s"
