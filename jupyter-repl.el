@@ -612,6 +612,8 @@ width and height of the image."
 
 (defun jupyter-repl-insert-data (data metadata)
   "Insert DATA into the REPL buffer in order of decreasing richness.
+Return the mimetype of the data inserted.
+
 DATA is a plist mapping mimetypes to their content. METADATA is a
 plist similar to data, but with values describing extra
 information for inserting each kind of mimetype. For example the
@@ -635,7 +637,8 @@ insert it into the buffer. Instead the widget is displayed in a
 browser.
 
 When no valid mimetype is present in DATA, a warning is shown."
-  (let ((mimetypes (cl-loop
+  (let ((mimetype-inserted nil)
+        (mimetypes (cl-loop
                     for (k d) on data by #'cddr
                     when
                     (and d (not (equal d ""))
@@ -646,36 +649,72 @@ When no valid mimetype is present in DATA, a warning is shown."
      ((and (memq :application/vnd.jupyter.widget-view+json mimetypes)
            (require 'websocket nil t)
            (require 'simple-httpd nil t))
+      (setq mimetype-inserted :application/vnd.jupyter.widget-view+json)
       (jupyter-widgets-display-model
        jupyter-current-client
        (plist-get (plist-get data :application/vnd.jupyter.widget-view+json)
                   :model_id)))
      ((and (memq :text/html mimetypes)
            (functionp 'libxml-parse-html-region))
+      (setq mimetype-inserted :text/html)
       (let ((html (plist-get data :text/html)))
         (jupyter-repl-insert-html html)
         (jupyter-repl-newline)))
      ((and (memq :text/markdown mimetypes)
            (require 'markdown-mode nil t))
+      (setq mimetype-inserted :text/markdown)
       (jupyter-repl-insert-markdown (plist-get data :text/markdown)))
      ((and (memq :text/latex mimetypes)
            (require 'org nil t))
+      (setq mimetype-inserted :text/latex)
       (jupyter-repl-insert-latex (plist-get data :text/latex))
       (jupyter-repl-newline))
      ((and (memq :image/svg+xml mimetypes)
            (image-type-available-p 'svg))
+      (setq mimetype-inserted :image/svg+xml)
       (jupyter-repl--insert-image
        (plist-get data :image/svg+xml)
        'svg (plist-get metadata :image/svg+xml)))
      ((memq :image/png mimetypes)
+      (setq mimetype-inserted :image/png)
       (jupyter-repl--insert-image
        (base64-decode-string (plist-get data :image/png))
        'png (plist-get metadata :image/png)))
      ((memq :text/plain mimetypes)
+      (setq mimetype-inserted :text/plain)
       (jupyter-repl-insert-ansi-coded-text
        (plist-get data :text/plain))
       (jupyter-repl-newline))
-     (t (warn "No supported mimetype found %s" mimetypes)))))
+     (t (warn "No supported mimetype found %s" mimetypes)))
+    mimetype-inserted))
+
+(defun jupyter-repl-insert-message (msg)
+  "Insert a messages contents in the current buffer.
+MSG is the message to be inserted. A message is inserted only if
+its content has a status key of \"ok\" and has a found key of t.
+
+Calls the method `jupyter-repl-after-insert-message', if the
+message was inserted."
+  (jupyter-with-message-content msg
+      (status found data metadata)
+    (when (and (equal status "ok") (eq found t))
+      (let ((beg (point))
+            (mime (jupyter-repl-insert-data data metadata)))
+        (when mime
+          (save-excursion
+            (save-restriction
+              (narrow-to-region beg (point))
+              (goto-char beg)
+              (jupyter-repl-after-insert-message
+               (jupyter-message-type msg) mime))))))))
+
+(cl-defgeneric jupyter-repl-after-insert-message (_type _mime)
+  "Called after a message has been inserted for certain message types.
+If a message with TYPE causes output to be inserted into a
+buffer, the buffer is narrowed to the inserted output before this
+function is called. MIME will be the mimetype of the data
+inserted."
+  (ignore))
 
 ;; FIXME: The support for display IDs has not really been tested.
 
@@ -1999,13 +2038,13 @@ DETAIL is the detail level to use for the request and defaults to
                   :code code :pos pos :detail detail))))
     (if msg
         (jupyter-with-message-content msg
-            (status found data metadata)
+            (status found)
           (if (and (equal status "ok") (eq found t))
               (let ((client jupyter-current-client)
                     (inhibit-read-only t))
                 (if (buffer-live-p buffer)
                     (with-current-buffer buffer
-                      (jupyter-repl-insert-data data metadata)
+                      (jupyter-repl-insert-message msg)
                       (current-buffer))
                   (with-help-window (help-buffer)
                     (with-current-buffer standard-output
@@ -2015,7 +2054,7 @@ DETAIL is the detail level to use for the request and defaults to
                                (lambda () (jupyter-inspect code pos nil detail))))
                        nil)
                       (setq jupyter-current-client client)
-                      (jupyter-repl-insert-data data metadata)))))
+                      (jupyter-repl-insert-message msg)))))
             (message "Nothing found for %s"
                      (with-temp-buffer
                        (insert code)
