@@ -290,6 +290,19 @@ response after `jupyter-hb-consider-dead-periods' of
   (declare (indent 1))
   (oset channel kernel-died-cb fun))
 
+(defun jupyter-channel--reset-socket (channel &optional identity)
+  "Set CHANNEL's socket slot to a new socket with IDENTITY.
+If CHANNEL already has a socket in its socket slot, close it and
+open and connect a new one, re-using the IDENTITY of the socket.
+In this case the IDENTITY argument is ignored."
+  (cl-assert (object-of-class-p channel 'jupyter-channel))
+  ;; TODO: More places to use `with-slots'
+  (with-slots (socket endpoint) channel
+    (when (zmq-socket-p socket)
+      (setq identity (zmq-socket-get socket zmq-IDENTITY))
+      (zmq-close socket))
+    (oset channel socket (jupyter-connect-channel :hb endpoint identity))))
+
 (defun jupyter-hb--send-ping (channel &optional counter)
   (unless (oref channel paused)
     (zmq-send (oref channel socket) "ping")
@@ -302,11 +315,7 @@ response after `jupyter-hb-consider-dead-periods' of
                          (condition-case nil
                              (and (zmq-recv sock zmq-DONTWAIT) t)
                            ((zmq-EINTR zmq-EAGAIN) nil)))
-             (let ((identity (zmq-socket-get sock zmq-IDENTITY)))
-               (zmq-close sock)
-               (oset channel socket
-                     (jupyter-connect-channel
-                      :hb (oref channel endpoint) identity)))
+             (jupyter-channel--reset-socket channel)
              (when (and (integerp counter)
                         (>= counter jupyter-hb-consider-dead-periods))
                (oset channel paused t)
@@ -324,8 +333,7 @@ heartbeat channel is handled specially in that it is implemented
 with a timer in the current Emacs session. Starting a heartbeat
 channel, starts the timer."
   (unless (jupyter-channel-alive-p channel)
-    (oset channel socket (jupyter-connect-channel
-                          :hb (oref channel endpoint) identity)))
+    (jupyter-channel--reset-socket channel identity))
   (jupyter-hb-unpause channel))
 
 (provide 'jupyter-channels)
