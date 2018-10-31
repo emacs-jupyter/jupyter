@@ -146,26 +146,39 @@ If the `current-buffer' is not a REPL, this is identical to
   `(let ((,client (jupyter-echo-client)))
      ,@body))
 
-(defmacro jupyter-with-python-client (client &rest body)
-  "Start a new Python kernel and run BODY.
-CLIENT is bound to the Python client of the kernel. Cleanup the
-client and delete the kernel process after running BODY."
-  (declare (indent 1) (debug (symbolp &rest form)))
+(defun jupyter-error-if-no-kernelspec (kernel)
+  (prog1 kernel
+    (unless (car (jupyter-find-kernelspecs
+                  (regexp-quote kernel)))
+      (error "Kernel not found (%s)" kernel))))
+
+(defmacro jupyter-with-kernel-client (kernel client &rest body)
+  "Start a new KERNEL client, bind it to CLIENT, evaluate BODY.
+Cleanup the client and delete the kernel process after running
+BODY."
+  (declare (indent 2) (debug (stringp symbolp &rest form)))
   (let ((manager (make-symbol "--manager")))
     `(cl-destructuring-bind (,manager ,client)
-         (jupyter-start-new-kernel "python")
+         (jupyter-start-new-kernel
+          (jupyter-error-if-no-kernelspec ,kernel))
        (unwind-protect
            (progn ,@body)
-         (when (jupyter-kernel-alive-p ,manager)
-           (jupyter-finalizer ,manager))
+         (jupyter-finalizer ,manager)
          (jupyter-finalizer ,client)))))
 
-(defmacro jupyter-with-python-repl (client &rest body)
-  "Start a new Python REPL and run BODY.
-CLIENT is bound to the Python REPL. Delete the REPL buffer after
-running BODY."
+(defmacro jupyter-with-python-client (client &rest body)
+  "Start a new Python kernel, bind it to CLIENT, evaluate BODY.
+Do cleanup of the kernel process afterwards."
   (declare (indent 1) (debug (symbolp &rest form)))
-  `(let ((,client (jupyter-run-repl "python")))
+  `(jupyter-with-kernel-client "python" ,client
+     ,@body))
+
+(defmacro jupyter-with-kernel-repl (kernel client &rest body)
+  "Start a new KERNEL REPL, bind the client to CLIENT, evaluate BODY.
+Delete the REPL buffer after running BODY."
+  (declare (indent 2) (debug (stringp symbolp &rest form)))
+  `(let ((,client (jupyter-run-repl
+                   (jupyter-error-if-no-kernelspec ,kernel))))
      (unwind-protect
          (jupyter-with-repl-buffer ,client
            (progn ,@body))
@@ -174,6 +187,14 @@ running BODY."
                  ((symbol-function 'y-or-n-p)
                   (lambda (_prompt) t)))
          (kill-buffer (oref client buffer))))))
+
+(defmacro jupyter-with-python-repl (client &rest body)
+  "Start a new Python REPL and run BODY.
+CLIENT is bound to the Python REPL. Delete the REPL buffer after
+running BODY."
+  (declare (indent 1) (debug (symbolp &rest form)))
+  `(jupyter-with-kernel-repl "python" ,client
+     ,@body))
 
 (defun jupyter-test-wait-until-idle-repl (client)
   "Wait until the execution state of a REPL CLIENT is idle."
