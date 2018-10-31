@@ -118,7 +118,7 @@ expected by `jupyter-queue-message'."
                       'grow)
   (cl-call-next-method))
 
-(cl-defmacro jupyter-test-info ((message-form &key ((:prefix prefix-form) "Info: "))
+(cl-defmacro jupyter-ert-info ((message-form &key ((:prefix prefix-form) "Info: "))
                                 &body body)
   "Identical to `ert-info', but clear the REPL buffer before running BODY.
 In a REPL buffer, the contents are erased and an input prompt is
@@ -624,7 +624,7 @@ last element being the newest element added to the history."
 
 (ert-deftest jupyter-repl-cell-motions ()
   (jupyter-with-python-repl client
-    (jupyter-test-info ("`jupyter-repl-goto-cell'")
+    (jupyter-ert-info ("`jupyter-repl-goto-cell'")
       (let (cell-pos req)
         (setq cell-pos (jupyter-repl-cell-beginning-position))
         (jupyter-test-repl-ret-sync)
@@ -635,7 +635,7 @@ last element being the newest element added to the history."
         (should (/= (point) cell-pos))
         (jupyter-repl-goto-cell req)
         (should (= (point) cell-pos))))
-    (jupyter-test-info ("`jupyter-repl-previous-cell'")
+    (jupyter-ert-info ("`jupyter-repl-previous-cell'")
       (let (cell-pos1)
         (setq cell-pos1 (jupyter-repl-cell-beginning-position))
         (goto-char cell-pos1)
@@ -655,14 +655,14 @@ last element being the newest element added to the history."
           (goto-char cell-pos1)
           (should (= (jupyter-repl-previous-cell) 1))
           (should (= (point) (point-min))))))
-    (jupyter-test-info ("`jupyter-repl-backward-cell'")
+    (jupyter-ert-info ("`jupyter-repl-backward-cell'")
       (let (cell-pos1)
         (setq cell-pos1 (jupyter-repl-cell-code-beginning-position))
         (jupyter-test-repl-ret-sync)
         (should-not (= (point) cell-pos1))
         (jupyter-repl-backward-cell)
         (should (= (point) cell-pos1))))
-    (jupyter-test-info ("`jupyter-repl-next-cell'")
+    (jupyter-ert-info ("`jupyter-repl-next-cell'")
       (let (cell-pos1 cell-pos2)
         (setq cell-pos1 (jupyter-repl-cell-beginning-position))
         (ert-info ("Motion with count")
@@ -676,7 +676,7 @@ last element being the newest element added to the history."
           (goto-char cell-pos2)
           (should (= (jupyter-repl-next-cell) 1))
           (should (= (point) (point-max))))))
-    (jupyter-test-info ("`jupyter-repl-forward-cell'")
+    (jupyter-ert-info ("`jupyter-repl-forward-cell'")
       (let (cell-pos1 cell-pos2)
         (setq cell-pos1 (jupyter-repl-cell-code-beginning-position))
         (jupyter-test-repl-ret-sync)
