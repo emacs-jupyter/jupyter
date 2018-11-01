@@ -308,7 +308,7 @@ running BODY."
       ;; Lock file names are based on session IDs
       (oset client session (jupyter-session))
       (unwind-protect
-          (with-current-buffer (oref client -buffer)
+          (jupyter-with-client-buffer client
             (should (not buffer-file-name))
             (let ((lock (jupyter--ioloop-lock-file client)))
               (should (file-locked-p lock))
@@ -332,17 +332,14 @@ running BODY."
       (ert-info ("Starting the channel")
         (should-not (jupyter-channel-alive-p channel))
         (jupyter-start-channel channel :identity "foo")
-        (should (zmq-socket-p (oref channel socket)))
+        (should (jupyter-channel-alive-p channel))
         (should (equal (zmq-socket-get (oref channel socket)
                                        zmq-ROUTING-ID)
-                       "foo"))
-        (should (jupyter-channel-alive-p channel)))
+                       "foo")))
       (ert-info ("Stopping the channel")
         (let ((sock (oref channel socket)))
           (jupyter-stop-channel channel)
-          (should (not (oref channel socket)))
-          (should-error (zmq-send sock "foo")
-                        :type 'zmq-ENOTSOCK)))))
+          (should-error (zmq-send sock "foo") :type 'zmq-ENOTSOCK)))))
   (ert-info ("Asynchronous channels")
     (let* ((channel (jupyter-async-channel
                      :type :shell
