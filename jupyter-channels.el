@@ -278,9 +278,9 @@ use `jupyter-hb-unpause'."))
   "Stop the heartbeat CHANNEL.
 Stop the timer of the heartbeat channel."
   (when (jupyter-channel-alive-p channel)
-    (oset channel paused t)
     (zmq-close (oref channel socket))
-    (oset channel socket nil)))
+    (oset channel socket nil)
+    (oset channel paused t)))
 
 (cl-defmethod jupyter-hb-on-kernel-dead ((channel jupyter-hb-channel) fun)
   "When the kernel connected to CHANNEL dies call FUN.
