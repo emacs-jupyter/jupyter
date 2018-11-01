@@ -56,6 +56,7 @@ Managers are removed from this list when their `jupyter-finalizer' is called.")
 send/receive messages.")
    (conn-file
     :type (or null string)
+    :initform nil
     :documentation "The absolute path of the connection file when
 the kernel is alive.")
    (kernel
@@ -119,11 +120,11 @@ buffer and delete MANAGER's connection file from the
 `jupyter-runtime-directory'."
   (cond
    ((not (process-live-p kernel))
-    (when (and (slot-boundp manager 'conn-file)
-               (file-exists-p (oref manager conn-file)))
-      (delete-file (oref manager conn-file)))
-    (oset manager kernel nil)
-    (oset manager conn-file nil))))
+    (with-slots (conn-file) manager
+      (when (and conn-file (file-exists-p conn-file))
+        (delete-file conn-file))
+      (oset manager kernel nil)
+      (oset manager conn-file nil)))))
 
 (defun jupyter--start-kernel (manager kernel-name env args)
   "Start a kernel.
