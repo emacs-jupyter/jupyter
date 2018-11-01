@@ -267,12 +267,12 @@ use `jupyter-hb-unpause'."))
   (oset channel paused t))
 
 (cl-defmethod jupyter-hb-unpause ((channel jupyter-hb-channel))
-  "Unpause checking for heatbeat events on CHANNEL."
+  "Un-pause checking for heatbeat events on CHANNEL."
   (when (oref channel paused)
-    (oset channel paused nil)
-    (if (zmq-socket-p (oref channel socket))
-        (jupyter-hb--send-ping channel)
-      (jupyter-start-channel channel))))
+    (if (not (zmq-socket-p (oref channel socket)))
+        (jupyter-start-channel channel)
+      (oset channel paused nil)
+      (jupyter-hb--send-ping channel))))
 
 (cl-defmethod jupyter-stop-channel ((channel jupyter-hb-channel))
   "Stop the heartbeat CHANNEL.
