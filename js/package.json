@@ -5,13 +5,13 @@
     "description": "Integrate emacs-jupyter with widgets in a browser.",
     "main": "index.js",
     "scripts": {
-        "clean": "rimraf built",
+        "clean": "rm -rf built",
         "build": "webpack",
         "test": "npm run test:default",
         "test:default": "echo \"No test specified\""
     },
     "author": "Nathaniel Nicandro",
-    "license": "BSD-3-Clause",
+    "license": "GPL-2.0-or-later",
     "dependencies": {
         "@jupyter-widgets/base": "^1.1.10",
         "@jupyter-widgets/controls": "^1.2.1",
