@@ -1,7 +1,7 @@
 {
     "private": true,
     "name": "emacs-jupyter",
-    "version": "0.1",
+    "version": "0.3.0",
     "description": "Integrate emacs-jupyter with widgets in a browser.",
     "main": "index.js",
     "scripts": {
@@ -13,12 +13,12 @@
     "author": "Nathaniel Nicandro",
     "license": "GPL-2.0-or-later",
     "dependencies": {
-        "@jupyter-widgets/base": "^1.1.10",
+        "@jupyter-widgets/base": "^1.2.2",
         "@jupyter-widgets/controls": "^1.2.1",
         "@jupyter-widgets/output": "^1.0.10",
         "codemirror": "^5.9.0",
         "font-awesome": "^4.7.0",
-        "npm": "^6.0.1"
+        "npm": "^6.4.1"
     },
     "devDependencies": {
         "css-loader": "^0.28.4",
@@ -26,7 +26,7 @@
         "json-loader": "^0.5.4",
         "raw-loader": "^0.5.1",
         "style-loader": "^0.18.1",
-        "url-loader": "^0.5.9",
+        "url-loader": "^1.1.2",
         "webpack": "^3.5.5"
     }
 }
