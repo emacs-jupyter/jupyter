@@ -120,6 +120,7 @@ buffer and delete MANAGER's connection file from the
 `jupyter-runtime-directory'."
   (cond
    ((not (process-live-p kernel))
+    (kill-buffer (process-buffer kernel))
     (with-slots (conn-file) manager
       (when (and conn-file (file-exists-p conn-file))
         (delete-file conn-file))
