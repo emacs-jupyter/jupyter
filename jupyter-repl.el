@@ -286,7 +286,7 @@ be at the `jupyter-repl-cell-code-beginning-position'."
      (save-restriction
        (narrow-to-region (jupyter-repl-cell-code-beginning-position)
                          (jupyter-repl-cell-code-end-position))
-       (goto-char (jupyter-repl-cell-code-beginning-position))
+       (goto-char (point-min))
        ,@body)))
 
 (defun jupyter-repl-get-special-buffer (name)
