@@ -2107,9 +2107,10 @@ to the above explanation."
     (goto-char (point-max))
     (unless (= (save-excursion (jupyter-repl-previous-cell)) 0)
       (jupyter-repl-insert-prompt 'in))
-    (setq str (if silently (string-trim str)
-                (prog1 nil
-                  (jupyter-repl-replace-cell-code str))))
+    (unless silently
+      (jupyter-repl-replace-cell-code str)
+      ;; Allow the REPL to evaluate the current cell
+      (setq str nil))
     (let* ((jupyter-inhibit-handlers '(not :status))
            (req (jupyter-send-execute-request jupyter-current-client
                   :code str :store-history (unless silently t))))
