@@ -312,12 +312,29 @@ exists, it is returned."
         (local-set-key (kbd "<backtab>") #'scroll-up)))
     buffer))
 
-(defvar-local jupyter-repl-output-buffer-marker nil
+(defvar-local jupyter-output-buffer-marker nil
   "The marker to store the last output position of an output buffer.
 See `jupyter-with-output-buffer'.")
 
-(defvar-local jupyter-repl-output-buffer-last-request-id nil
+(defvar-local jupyter-output-buffer-request-id nil
   "The last `jupyter-request' message ID that generated output.")
+
+(defun jupyter--reset-output-buffer-p (arg)
+  "Return non-nil if the current output buffer should be reset.
+If ARG is a `jupyter-request', reset the buffer if ARG's
+`jupyter-request-id' is no equal to the
+`jupyter-buffer-last-request-id'. If ARG is not a
+`jupyter-request-id', return ARG."
+  (if (jupyter-request-p arg)
+      ;; Reset the output buffer is the last request ID does not
+      ;; match the current request's ID.
+      (let ((id (jupyter-request-id arg)))
+        (and (not (equal id jupyter-output-buffer-request-id))
+             (setq jupyter-output-buffer-request-id id)
+             t))
+    ;; Otherwise reset the output buffer if RESET evaluates to a
+    ;; non-nil value
+    arg))
 
 (defmacro jupyter-with-output-buffer (name reset &rest body)
   "With the REPL output buffer corresponding to NAME, run BODY.
@@ -333,30 +350,18 @@ no reset is ever performed. If RESET evaluates to a
 request that generated output in the buffer is not the same
 request. Otherwise if RESET evaluates to any non-nil value, reset
 the output buffer."
-  (declare (indent 2))
-  (let ((buffer (make-symbol "buffer"))
-        (reset-p (make-symbol "reset")))
-    `(let ((,buffer (jupyter-repl-get-special-buffer ,name))
-           (,reset-p ,reset))
+  (declare (indent 2) (debug (stringp [&or atom form] body)))
+  (let ((buffer (make-symbol "buffer")))
+    `(let ((,buffer (jupyter-repl-get-special-buffer ,name)))
        (setq other-window-scroll-buffer ,buffer)
        (with-current-buffer ,buffer
          (let ((inhibit-read-only t))
-           (when (if (jupyter-request-p ,reset-p)
-                     (let ((id (jupyter-request-id ,reset-p)))
-                       (and (not (equal id jupyter-repl-output-buffer-last-request-id))
-                            (setq jupyter-repl-output-buffer-last-request-id id)
-                            t))
-                   ,reset-p)
-             (setq jupyter-repl-output-buffer-marker
-                   (when (markerp jupyter-repl-output-buffer-marker)
-                     (prog1 nil
-                       (set-marker jupyter-repl-output-buffer-marker nil))))
-             (erase-buffer))
-           (unless jupyter-repl-output-buffer-marker
-             (setq jupyter-repl-output-buffer-marker (point-marker)))
-           (goto-char jupyter-repl-output-buffer-marker)
+           (when (jupyter--reset-output-buffer-p ,reset)
+             (erase-buffer)
+             (set-marker jupyter-output-buffer-marker (point)))
+           (goto-char jupyter-output-buffer-marker)
            ,@body
-           (move-marker jupyter-repl-output-buffer-marker (point)))))))
+           (set-marker jupyter-output-buffer-marker (point)))))))
 
 ;;; Convenience functions
 
