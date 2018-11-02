@@ -801,9 +801,7 @@ interpreted as `in'."
        ;; for the request. The end of the ouput for a request is at the
        ;; beginning of the next cell after the request which is why we get the
        ;; cell count of the previous cell
-       (let ((count (save-excursion
-                      (jupyter-repl-previous-cell)
-                      (jupyter-repl-cell-count))))
+       (let ((count (jupyter-repl-previous-cell-count)))
          (jupyter-repl--make-prompt
           (format "Out [%d] " count) 'jupyter-repl-output-prompt
           `(jupyter-cell (out ,count))))
@@ -867,6 +865,12 @@ should be a face that the prompt will use and defaults to
                  (jupyter-repl-previous-cell)
                  (point)))))
     (nth 1 (get-text-property pos 'jupyter-cell))))
+
+(defun jupyter-repl-previous-cell-count ()
+  "Return the cell count of the previous cell before `point'."
+  (save-excursion
+    (jupyter-repl-previous-cell)
+    (jupyter-repl-cell-count)))
 
 (defun jupyter-repl-cell-request ()
   "Return the `jupyter-request' of the current cell."
