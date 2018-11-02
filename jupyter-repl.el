@@ -824,6 +824,11 @@ interpreted as `in'."
     (when ov
       (cadr (get-text-property 0 'display (overlay-get ov 'after-string))))))
 
+(defun jupyter-repl-cell-reset-prompt ()
+  "Reset the current prompt back to its default."
+  (jupyter-repl-cell-update-prompt
+   (format "In [%d] " (jupyter-repl-cell-count))))
+
 (defun jupyter-repl-cell-update-prompt (str &optional face)
   "Update the current cell's input prompt.
 STR is the replacement prompt string. If FACE is non-nil, it
