@@ -805,43 +805,59 @@ multiple callbacks you would do
 
 ;;; Waiting for messages
 
-(defun jupyter-wait-until (req msg-type cb &optional timeout)
+(defun jupyter-wait-until (req msg-type cb &optional timeout progress-msg)
   "Wait until conditions for a request are satisfied.
 REQ, MSG-TYPE, and CB have the same meaning as in
 `jupyter-add-callback'. If CB returns non-nil within TIMEOUT
 seconds, return the message that caused CB to return non-nil. If
 CB never returns a non-nil value within TIMEOUT, return nil. Note
-that if no TIMEOUT is given, `jupyter-default-timeout' is used."
+that if no TIMEOUT is given, `jupyter-default-timeout' is used.
+
+If PROGRESS-MSG is non-nil, it should be a message string to
+display for reporting progress to the user while waiting."
   (declare (indent 2))
   (setq timeout (or timeout jupyter-default-timeout))
   (cl-check-type timeout number)
-  (let (msg)
+  (let ((progress (and (stringp progress-msg)
+                       (make-progress-reporter progress-msg)))
+        msg)
     (jupyter-add-callback req
       msg-type (lambda (m) (setq msg (when (funcall cb m) m))))
     (with-timeout (timeout nil)
       (while (null msg)
-        (sleep-for 0.01))
-      msg)))
+        (sleep-for 0.01)
+        (when progress
+          (progress-reporter-update progress))))
+    (prog1 msg
+      (when progress
+        (progress-reporter-done progress)))))
 
-(defun jupyter-wait-until-idle (req &optional timeout)
+(defun jupyter-wait-until-idle (req &optional timeout progress-msg)
   "Wait until a status: idle message is received for a request.
 REQ has the same meaning as in `jupyter-add-callback'. If an idle
 message for REQ is received within TIMEOUT seconds, return the
 message. Otherwise return nil if the message was not received
 within TIMEOUT. Note that if no TIMEOUT is given, it defaults to
-`jupyter-default-timeout'."
-  (jupyter-wait-until req :status #'jupyter-message-status-idle-p timeout))
+`jupyter-default-timeout'.
 
-(defun jupyter-wait-until-received (msg-type req &optional timeout)
+If PROGRESS-MSG is non-nil, it is a message string to display for
+reporting progress to the user while waiting."
+  (jupyter-wait-until req :status
+    #'jupyter-message-status-idle-p timeout progress-msg))
+
+(defun jupyter-wait-until-received (msg-type req &optional timeout progress-msg)
   "Wait until a message of a certain type is received for a request.
 MSG-TYPE and REQ have the same meaning as their corresponding
 arguments in `jupyter-add-callback'. If no message that matches
 MSG-TYPE is received for REQ within TIMEOUT seconds, return nil.
 Otherwise return the first message that matched MSG-TYPE. Note
 that if no TIMEOUT is given, it defaults to
-`jupyter-default-timeout'."
+`jupyter-default-timeout'.
+
+If PROGRESS-MSG is non-nil, it is a message string to display for
+reporting progress to the user while waiting."
   (declare (indent 1))
-  (jupyter-wait-until req msg-type #'identity timeout))
+  (jupyter-wait-until req msg-type #'identity timeout progress-msg))
 
 ;;; Client handlers
 
@@ -1256,16 +1272,15 @@ return it.
 If the kernel CLIENT is connected to does not respond to a
 `:kernel-info-request', raise an error."
   (or (oref client kernel-info)
-      (let ((reporter (make-progress-reporter "Requesting kernel info..."))
-            (jupyter-inhibit-handlers t))
+      (let ((jupyter-inhibit-handlers t))
         (prog1 (oset client kernel-info
                      (jupyter-message-content
                       (jupyter-wait-until-received :kernel-info-reply
                         (jupyter-send-kernel-info-request client)
-                        jupyter-startup-timeout)))
+                        jupyter-startup-timeout
+                        "Requesting kernel info...")))
           (unless (oref client kernel-info)
-            (error "Kernel did not respond to kernel-info request"))
-          (progress-reporter-done reporter)))))
+            (error "Kernel did not respond to kernel-info request"))))))
 
 (cl-defmethod jupyter-kernel-language ((client jupyter-kernel-client))
   "Return the language of the kernel CLIENT is connected to."
