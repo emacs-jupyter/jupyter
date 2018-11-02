@@ -80,39 +80,37 @@ manual for <section>. Otherwise follow the link normally."
 
 (defvar ansi-color-names-vector)
 
+(defun jupyter-julia-update-prompt (prompt color)
+  "Display PROMPT as the cell prompt using COLOR as the foreground.
+Make the character after `point' invisible."
+  (add-text-properties (point) (1+ (point)) '(invisible t rear-nonsticky t))
+  ;; TODO: Handle `jupyter-repl-prompt-margin-width', specifically if a prompt
+  ;; is longer than that width, widen the margin and right align all strings.
+  (jupyter-repl-cell-update-prompt
+   prompt `((:foreground ,color) jupyter-repl-input-prompt)))
+
 (cl-defmethod jupyter-repl-after-change ((_type (eql insert)) beg _end
                                          &context (jupyter-lang julia))
   (when (= beg (jupyter-repl-cell-code-beginning-position))
-    (cl-case (char-after beg)
-      (?\]
-       (let ((pkg-prompt (jupyter-eval "import Pkg; Pkg.REPLMode.promptf()")))
-         (when pkg-prompt
-           (put-text-property beg (1+ beg) 'syntax-table '(3 . ?_))
-           (setq pkg-prompt (substring pkg-prompt 1 (1- (length pkg-prompt))))
-           (add-text-properties beg (1+ beg) '(invisible t rear-nonsticky t))
-           (jupyter-repl-cell-update-prompt
-            ;; TODO: Handle `jupyter-repl-prompt-margin-width'
-            pkg-prompt
-            `((:foreground
-               ;; magenta
-               ,(aref ansi-color-names-vector 5))
-              jupyter-repl-input-prompt)))))
-      (?\;
-       (add-text-properties beg (1+ beg) '(invisible t rear-nonsticky t))
-       (jupyter-repl-cell-update-prompt
-        "shell> "
-        `((:foreground
-           ;; red
-           ,(aref ansi-color-names-vector 1))
-          jupyter-repl-input-prompt)))
-      (?\?
-       (add-text-properties beg (1+ beg) '(invisible t rear-nonsticky t))
-       (jupyter-repl-cell-update-prompt
-        "help?> "
-        `((:foreground
-           ;; yellow
-           ,(aref ansi-color-names-vector 3))
-          jupyter-repl-input-prompt)))))
+    (save-excursion
+      (goto-char beg)
+      (cl-case (char-after)
+        (?\]
+         ;; TODO: Get rid of the "No matching paren" message caused by
+         ;; `blink-paren-function' which is called in `post-self-insert-hook'.
+         ;; Maybe remap `self-insert-command' to handle this case?
+         (let ((pkg-prompt (jupyter-eval "import Pkg; Pkg.REPLMode.promptf()")))
+           (when pkg-prompt
+             (put-text-property (point) (1+ (point)) 'syntax-table '(3 . ?_))
+             (jupyter-julia-update-prompt
+              (substring pkg-prompt 1 (1- (length pkg-prompt)))
+              (aref ansi-color-names-vector 5))))) ; magenta
+        (?\;
+         (jupyter-julia-update-prompt
+          "shell> " (aref ansi-color-names-vector 1))) ; red
+        (?\?
+         (jupyter-julia-update-prompt
+          "help?> " (aref ansi-color-names-vector 3)))))) ; yellow
   (cl-call-next-method))
 
 (cl-defmethod jupyter-repl-after-change ((_type (eql delete)) beg _len
