@@ -250,7 +250,7 @@ Also handles any terminal control codes in the appended output."
      ;; Don't mess with font-lock and don't insert
      ;; continuation prompts
      (with-silent-modifications
-       (let (jit-lock-mode)
+       (let ((buffer-undo-list t) jit-lock-mode)
          (save-excursion
            (jupyter-repl-goto-cell ,req)
            (jupyter-repl-next-cell)
@@ -458,7 +458,8 @@ can contain the following keywords along with their values:
   (let ((arg nil)
         (read-only t)
         (properties nil)
-        (insert-fun #'insert))
+        (insert-fun #'insert)
+        (buffer-undo-list t))
     (while (keywordp (setq arg (car args)))
       (cl-case arg
         (:read-only (setq read-only (cadr args)))
@@ -1080,7 +1081,9 @@ REQ is the `jupyter-request' to associate with the current cell."
     (remove-text-properties beg (point) '(rear-nonsticky))
     ;; font-lock-multiline to avoid improper syntactic elements from
     ;; spilling over to the rest of the buffer.
-    (add-text-properties beg (point) '(read-only t font-lock-multiline t))))
+    (add-text-properties beg (point) '(read-only t font-lock-multiline t))
+    ;; reset the undo list so that a completed cell doesn't get undone.
+    (setq buffer-undo-list '(nil))))
 
 (defun jupyter-repl-replace-cell-code (new-code)
   "Replace the current cell code with NEW-CODE."
@@ -2493,7 +2496,6 @@ in the appropriate direction, to the saved element."
     (add-hook 'after-change-functions 'jupyter-repl-do-after-change nil t)
     (add-hook 'pre-redisplay-functions 'jupyter-repl-preserve-window-margins nil t)
     ;; Initialize the REPL
-    (buffer-disable-undo)
     (jupyter-repl-initialize-hooks)
     (jupyter-repl-initialize-fontification)
     (jupyter-repl-isearch-setup)
