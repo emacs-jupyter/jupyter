@@ -312,23 +312,6 @@ exists, it is returned."
         (local-set-key (kbd "<backtab>") #'scroll-up)))
     buffer))
 
-(defmacro jupyter-repl-with-doc-buffer (name &rest body)
-  "With the REPL documentation buffer corresponding to NAME, run BODY.
-NAME should be a string representing the purpose of the
-documentation buffer. The buffer corresponding to NAME will be
-obtained by a call to `jupyter-repl-get-special-buffer'. Before
-running BODY, the doc buffer is set as the
-`other-window-scroll-buffer' and the contents of the buffer are
-erased."
-  (declare (indent 1))
-  (let ((buffer (make-symbol "buffer")))
-    `(let ((,buffer (jupyter-repl-get-special-buffer ,name)))
-       (setq other-window-scroll-buffer ,buffer)
-       (with-current-buffer ,buffer
-         (let ((inhibit-read-only t))
-           (erase-buffer)
-           ,@body)))))
-
 (defvar-local jupyter-repl-output-buffer-marker nil
   "The marker to store the last output position of an output buffer.
 See `jupyter-with-output-buffer'.")
@@ -336,7 +319,7 @@ See `jupyter-with-output-buffer'.")
 (defvar-local jupyter-repl-output-buffer-last-request-id nil
   "The last `jupyter-request' message ID that generated output.")
 
-(defmacro jupyter-repl-with-output-buffer (name reset &rest body)
+(defmacro jupyter-with-output-buffer (name reset &rest body)
   "With the REPL output buffer corresponding to NAME, run BODY.
 The buffer corresponding to NAME will be obtained by a call to
 `jupyter-get-special-buffer'. An output buffer differs from a
@@ -1152,7 +1135,7 @@ lines, truncate it to something less than
         ("page"
          (let ((text (plist-get (plist-get pl :data) :text/plain))
                (line (or (plist-get pl :start) 0)))
-           (jupyter-repl-with-doc-buffer "pager"
+           (jupyter-with-output-buffer "pager" 'reset
              (jupyter-repl-insert-ansi-coded-text text)
              (goto-char (point-min))
              (forward-line line)
@@ -1323,7 +1306,7 @@ buffer to display TEXT."
          (stream-buffer
           (concat (substring bname 0 (1- (length bname))) "-" stream "*")))
     ;; FIXME: Reset this on the next request
-    (jupyter-repl-with-output-buffer stream-buffer nil
+    (jupyter-with-output-buffer stream-buffer nil
       (let ((pos (point)))
         (jupyter-repl-insert-ansi-coded-text text)
         (fill-region pos (point)))
@@ -1337,7 +1320,7 @@ buffer to display TEXT."
      ((eq (jupyter-message-parent-type
            (jupyter-request-last-message req))
           :comm-msg)
-      (jupyter-repl-with-output-buffer "output" req
+      (jupyter-with-output-buffer "output" req
         (jupyter-repl-insert-ansi-coded-text text)
         (display-buffer (current-buffer))))
      (t
@@ -1348,7 +1331,7 @@ buffer to display TEXT."
   "Display TRACEBACK in its own buffer."
   (when (or (vectorp traceback) (listp traceback))
     (setq traceback (concat (mapconcat #'identity traceback "\n") "\n")))
-  (jupyter-repl-with-doc-buffer "traceback"
+  (jupyter-with-output-buffer "traceback" 'reset
     (jupyter-repl-insert-ansi-coded-text traceback)
     (goto-char (point-min))
     (display-buffer (current-buffer) '(display-buffer-below-selected))))
@@ -2140,7 +2123,7 @@ to the above explanation."
             (lambda (msg)
               (jupyter-with-message-data msg ((res text/plain))
                 (if (null res)
-                    (jupyter-repl-with-doc-buffer "result"
+                    (jupyter-with-output-buffer "result" 'reset
                       (jupyter-repl-insert-data
                        (jupyter-message-get msg :data)
                        (jupyter-message-get msg :metadata))
@@ -2151,7 +2134,7 @@ to the above explanation."
                        with nlines = 0
                        for c across res when (eq c ?\n) do (cl-incf nlines)
                        thereis (> nlines 10))
-                      (jupyter-repl-with-doc-buffer "result"
+                      (jupyter-with-output-buffer "result" 'reset
                         (insert res)
                         (goto-char (point-min))
                         (display-buffer (current-buffer)))
@@ -2168,7 +2151,7 @@ to the above explanation."
         (lambda (msg)
           (jupyter-with-message-content msg (name text)
             (when (equal name "stdout")
-              (jupyter-repl-with-output-buffer "output" req
+              (jupyter-with-output-buffer "output" req
                 (jupyter-repl-insert-ansi-coded-text text)
                 (display-buffer (current-buffer)
                                 '(display-buffer-below-selected)))))))
