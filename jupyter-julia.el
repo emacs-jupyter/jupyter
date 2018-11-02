@@ -117,12 +117,9 @@ manual for <section>. Otherwise follow the link normally."
 
 (cl-defmethod jupyter-repl-after-change ((_type (eql delete)) beg _len
                                          &context (jupyter-lang julia))
+  "Reset the prompt if needed."
   (when (= beg (jupyter-repl-cell-code-beginning-position))
-    ;; Reset the cell prompt if it contained any other kind of prompt
-    ;; TODO: Implement `jupyter-repl-before-change'
-    ;; TODO: Rename this to `jupyter-repl-reset-prompt'
-    (jupyter-repl-cell-update-prompt
-     (format "In [%d] " (jupyter-repl-cell-count)))))
+    (jupyter-repl-cell-reset-prompt)))
 
 (provide 'jupyter-julia)
 
