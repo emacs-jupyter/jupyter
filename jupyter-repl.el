@@ -2124,9 +2124,8 @@ to the above explanation."
               (jupyter-with-message-data msg ((res text/plain))
                 (if (null res)
                     (jupyter-with-output-buffer "result" 'reset
-                      (jupyter-repl-insert-data
-                       (jupyter-message-get msg :data)
-                       (jupyter-message-get msg :metadata))
+                      (jupyter-with-message-content msg (data metadata)
+                        (jupyter-repl-insert-data data metadata))
                       (goto-char (point-min))
                       (display-buffer (current-buffer)))
                   (setq res (ansi-color-apply res))
