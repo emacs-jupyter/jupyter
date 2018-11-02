@@ -56,10 +56,10 @@ Clients are removed from this list when their `jupyter-finalizer' is called.")
 (defvar jupyter-default-timeout 1
   "The default timeout in seconds for `jupyter-wait-until'.")
 
-(defvar jupyter-startup-timeout 10
-  "The default timeout in seconds to wait for a response during startup.
-Currently this is used when retrieving the kernel info in
-`jupyter-kernel-info'.")
+(defvar jupyter-long-timeout 10
+  "A longer timeout that `jupyter-default-timeout' used for some operations.
+A longer timeout is needed, for example, when retrieving the
+`jupyter-kernel-info' to allow for the kernel to startup.")
 
 (defvar jupyter-inhibit-handlers nil
   "Whether or not new requests inhibit client handlers.
@@ -1277,7 +1277,7 @@ If the kernel CLIENT is connected to does not respond to a
                      (jupyter-message-content
                       (jupyter-wait-until-received :kernel-info-reply
                         (jupyter-send-kernel-info-request client)
-                        jupyter-startup-timeout
+                        jupyter-long-timeout
                         "Requesting kernel info...")))
           (unless (oref client kernel-info)
             (error "Kernel did not respond to kernel-info request"))))))

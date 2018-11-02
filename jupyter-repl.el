@@ -2603,10 +2603,10 @@ it."
       :execute-reply (lambda (msg)
                        (oset client execution-count
                              (1+ (jupyter-message-get msg :execution_count)))))
-    ;; FIXME: Waiting longer here to account for initial startup of the Jupyter
+    ;; Waiting longer here to account for initial startup of the Jupyter
     ;; kernel. Sometimes the idle message won't be received if another long
     ;; running execute request is sent right after.
-    (jupyter-wait-until-idle req 2)))
+    (jupyter-wait-until-idle req jupyter-long-timeout)))
 
 ;;; `jupyter-repl-interaction-mode'
 
