@@ -1313,7 +1313,8 @@ message."
       (save-excursion
         (when (ignore-errors
                 (progn (jupyter-repl-goto-cell req) t))
-          (jupyter-repl-cell-unmark-busy))))))
+          (jupyter-repl-cell-unmark-busy)))))
+  (force-mode-line-update))
 
 (defun jupyter-repl-display-other-output (client stream text)
   "Display output not originating from CLIENT.
