@@ -2527,9 +2527,11 @@ When the kernel restarts, insert a new prompt."
     (save-restriction
       (narrow-to-region beg end)
       (goto-char (point-min))
-      (while (re-search-forward "\"\\|'" nil t)
-        (put-text-property (1- (point)) (point)
-                           'syntax-table '(3 . ?_))))))
+      (let ((re (concat "\"\\|'\\|" comment-start)))
+        (while (re-search-forward re nil t)
+          (put-text-property
+           (match-beginning 0) (point)
+           'syntax-table '(3 . ?_)))))))
 
 (defun jupyter-repl-initialize-fontification ()
   "Initialize fontification for the current REPL buffer."
