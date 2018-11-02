@@ -267,7 +267,8 @@ Also handles any terminal control codes in the appended output."
          (save-excursion
            (jupyter-repl-goto-cell ,req)
            (jupyter-repl-next-cell)
-           (jupyter-with-control-code-handling ,@body))))))
+           (jupyter-with-control-code-handling ,@body)
+           (set-buffer-modified-p nil))))))
 
 (defmacro jupyter-with-repl-lang-buffer (&rest body)
   "Run BODY in the `jupyter-repl-lang-buffer' of the `current-buffer'.
@@ -790,7 +791,11 @@ interpreted as `in'."
        ;; field is so that text motions will not move past this invisible
        ;; character.
        (jupyter-repl-insert
-        :properties '(invisible t rear-nonsticky t front-sticky t) " "))
+        :properties '(invisible t rear-nonsticky t front-sticky t) " ")
+       ;; The insertion of a new prompt starts a new cell, don't consider the
+       ;; buffer modified anymore. This is also an indicator for when undo's
+       ;; can be made in the buffer.
+       (set-buffer-modified-p nil))
       ((eq type 'out)
        ;; Output is normally inserted by first going to the end of the output
        ;; for the request. The end of the ouput for a request is at the
