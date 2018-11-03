@@ -163,8 +163,8 @@ BODY."
           (jupyter-error-if-no-kernelspec ,kernel))
        (unwind-protect
            (progn ,@body)
-         (jupyter-finalizer ,manager)
-         (jupyter-finalizer ,client)))))
+         (jupyter-finalize ,manager)
+         (jupyter-finalize ,client)))))
 
 (defmacro jupyter-with-python-client (client &rest body)
   "Start a new Python kernel, bind it to CLIENT, evaluate BODY.
@@ -317,7 +317,7 @@ running BODY."
                 (should (file-locked-p lock))
                 (should (equal (jupyter--ioloop-lock-file client) lock))
                 (should (file-locked-p lock)))))
-        (jupyter-finalizer client)))))
+        (jupyter-finalize client)))))
 
 (ert-deftest jupyter-channels ()
   (ert-info ("Channel types should match their class")
@@ -455,7 +455,7 @@ running BODY."
     (ert-info ("Finalizer")
       (should (buffer-live-p (oref client -buffer)))
       (should (jupyter-channels-running-p client))
-      (jupyter-finalizer client)
+      (jupyter-finalize client)
       (should-not (jupyter-channels-running-p client))
       (should-not (buffer-live-p (oref client -buffer))))))
 
