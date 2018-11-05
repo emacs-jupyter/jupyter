@@ -488,6 +488,7 @@ crashes without properly cleaning up its child processes."
 
 (defun jupyter--ioloop (client)
   "Return the function used for communicating with CLIENT's kernel."
+  (cl-assert (zmq-has "draft") nil "ZMQ built without poller support.")
   (let ((sid (jupyter-session-id (oref client session)))
         (skey (jupyter-session-key (oref client session)))
         (lock (jupyter--ioloop-lock client)))
