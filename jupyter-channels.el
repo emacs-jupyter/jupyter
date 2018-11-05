@@ -52,7 +52,7 @@ seconds, consider the kernel dead and call the callback in the
     :type keyword
     :initarg :type
     :documentation "The type of this channel. Should be one of
-the keys in `jupyter-channel-socket-types'.")
+the keys in `jupyter-socket-types'.")
    (session
     :type jupyter-session
     :initarg :session
