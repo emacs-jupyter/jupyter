@@ -96,6 +96,12 @@ requests like the above example.")
 
 (defclass jupyter-kernel-client (eieio-instance-tracker)
   ((tracking-symbol :initform 'jupyter--clients)
+   (pending-requests
+    :type ring
+    :initform (make-ring 10)
+    :documentation "A ring of pending `jupyter-request's.
+A request is pending if it has not been sent to the kernel via the
+client's ioloop slot.")
    (requests
     :type hash-table
     :initform (make-hash-table :test 'equal)
@@ -398,8 +404,7 @@ response to the sent message, see `jupyter-add-callback' and
         (let ((req (jupyter-generate-request client message)))
           (setf (jupyter-request-id req) msg-id)
           (setf (jupyter-request-inhibited-handlers req) jupyter-inhibit-handlers)
-          (jupyter--ioloop-push-request client req)
-          req)))))
+          (jupyter--push-pending-request client req))))))
 
 ;;; Channel subprocess (receiving messages)
 
@@ -555,25 +560,19 @@ crashes without properly cleaning up its child processes."
             (mapc #'jupyter-stop-channel (mapcar #'cdr channels))
             (zmq-prin1 '(quit))))))))
 
-(defun jupyter--ioloop-pop-request (client)
-  "Remove a pending request from CLIENT's ioloop subprocess.
-Specifically remove the oldest element of the ring located in the
-`:pending-requests' property of CLIENT's ioloop
-subprocess."
-  (let ((ring (process-get (oref client ioloop) :pending-requests)))
-    (unless (ring-empty-p ring)
-      (ring-remove ring))))
+(defun jupyter--pop-pending-request (client)
+  "Return the oldest pending request CLIENT sent to its ioloop."
+  (with-slots (pending-requests) client
+    (unless (ring-empty-p pending-requests)
+      (ring-remove pending-requests))))
 
-(defun jupyter--ioloop-push-request (client req)
-  "Insert a request into CLIENT's pending requests.
-Pending requests are stored in a ring located in the
-`:pending-requests' property of an ioloop subprocess. REQ is
-added as the newest element in this ring."
-  (let ((ring (or (process-get (oref client ioloop) :pending-requests)
-                  (let ((ring (make-ring 10)))
-                    (process-put (oref client ioloop) :pending-requests ring)
-                    ring))))
-    (ring-insert+extend ring req 'grow)))
+(defun jupyter--push-pending-request (client req)
+  "For CLIENT, mark REQ as the newest pending request.
+Return REQ. A request is pending if it has not been sent to the
+kernel via CLIENT's ioloop."
+  (with-slots (pending-requests) client
+    (prog1 req
+      (ring-insert+extend pending-requests req 'grow))))
 
 ;;; HB channel methods
 
@@ -625,7 +624,7 @@ by `jupyter--ioloop'."
      (unless (eq ctype :stdin)
        ;; Anything sent on stdin is a reply and therefore never added to
        ;; `:pending-requests'
-       (let ((req (jupyter--ioloop-pop-request client))
+       (let ((req (jupyter--pop-pending-request client))
              (requests (oref client requests)))
          (cl-assert (equal (jupyter-request-id req) msg-id)
                     nil "Message request sent out of order to the kernel.")
