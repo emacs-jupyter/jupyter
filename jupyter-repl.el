@@ -2539,21 +2539,24 @@ When the kernel restarts, insert a new prompt."
     (save-restriction
       (narrow-to-region beg end)
       (goto-char (point-min))
-      (let ((re (concat "\"\\|'\\|" comment-start)))
-        (while (re-search-forward re nil t)
+      (let ((re (concat "\"\\|'" (when comment-start
+                                   (concat "\\|" comment-start)))))
+        (while (and (re-search-forward re nil t)
+                    (/= (point) (point-max)))
           (put-text-property
            (match-beginning 0) (point)
            'syntax-table '(3 . ?_)))))))
 
 (defun jupyter-repl-initialize-fontification ()
   "Initialize fontification for the current REPL buffer."
-  (let (fld sff spf)
+  (let (fld sff spf comment)
     (jupyter-with-repl-lang-buffer
       ;; TODO: Take into account minor modes that may add to
       ;; `font-lock-keywords', e.g. `rainbow-delimiters-mode'.
       (setq fld font-lock-defaults
             sff font-lock-syntactic-face-function
-            spf syntax-propertize-function))
+            spf syntax-propertize-function
+            comment comment-start))
     ;; Set `font-lock-defaults' to a copy of the font lock defaults for the
     ;; REPL language but with a modified syntactic fontification function
     (cl-destructuring-bind (kws &optional kws-only case-fold syntax-alist
@@ -2577,7 +2580,9 @@ When the kernel restarts, insert a new prompt."
                                           (funcall spf (point-min) (point-max))))))))
                           (cons 'font-lock-syntactic-face-function sff))))
       (setq font-lock-defaults
-            (apply #'list kws kws-only case-fold syntax-alist vars)))
+            (apply #'list kws kws-only case-fold syntax-alist vars))
+      ;; Set the comment start character for `jupyter-repl-propertize-output'
+      (setq-local comment-start comment))
     (font-lock-mode)))
 
 (defun jupyter-repl-insert-banner (banner)
