@@ -370,6 +370,17 @@ the default value for all slots. Note, the `:id' and
 method."
   (make-jupyter-request))
 
+(defun jupyter-verify-inhibited-handlers ()
+  "Verify the value of `jupyter-inhibit-handlers'.
+If it does not contain a valid value, raise an error."
+  (or (eq jupyter-inhibit-handlers t)
+      (cl-loop
+       for msg-type in (if (eq (car jupyter-inhibit-handlers) 'not)
+                           (cdr jupyter-inhibit-handlers)
+                         jupyter-inhibit-handlers)
+       unless (plist-member jupyter-message-types msg-type)
+       do (error "Not a valid message type (`%s')" msg-type))))
+
 (cl-defmethod jupyter-send ((client jupyter-kernel-client)
                             channel
                             type
@@ -387,13 +398,7 @@ response to the sent message, see `jupyter-add-callback' and
   (let ((ioloop (oref client ioloop)))
     (unless ioloop
       (signal 'wrong-type-argument (list 'process ioloop 'ioloop)))
-    (or (eq jupyter-inhibit-handlers t)
-        (cl-loop
-         for msg-type in (if (eq (car jupyter-inhibit-handlers) 'not)
-                             (cdr jupyter-inhibit-handlers)
-                           jupyter-inhibit-handlers)
-         unless (plist-member jupyter-message-types msg-type)
-         do (error "Not a valid message type (`%s')" msg-type)))
+    (jupyter-verify-inhibited-handlers)
     (when jupyter--debug
       (message "SENDING: %s %s" type message))
     (let ((msg-id (or msg-id (jupyter-new-uuid))))
