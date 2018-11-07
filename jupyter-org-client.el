@@ -112,7 +112,7 @@ source code block. Set by `org-babel-execute:jupyter'.")))
     (let ((params (jupyter-org-request-block-params req)))
       (setcar (member "file" (assq :result-params params)) "scalar")))
   (let ((emsg (format "%s: %s" ename (ansi-color-apply evalue))))
-    (jupyter-repl-with-doc-buffer "traceback"
+    (jupyter-with-output-buffer "traceback" 'reset
       (jupyter-repl-insert-ansi-coded-text
        (mapconcat #'identity traceback "\n"))
       (goto-char (line-beginning-position))
