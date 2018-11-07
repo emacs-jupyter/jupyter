@@ -488,10 +488,10 @@ it does not need to be added by the user."
   "For CLIENT, insert the results of REQ.
 Meant to be used as the return value of `org-babel-execute:jupyter'."
   (let ((results (nreverse (jupyter-org-request-results req)))
-        (params (jupyter-org-request-block-params req))
-        (kernel-lang (jupyter-kernel-language client)))
+        (params (jupyter-org-request-block-params req)))
     (cl-destructuring-bind (render-param . result)
-        (jupyter-org--transform-result (car results) kernel-lang)
+        (let ((jupyter-current-client client))
+          (jupyter-org-transform-result (car results)))
       (jupyter-org--inject-render-param render-param params)
       (prog1 result
         ;; Insert remaining results after the first one has been
