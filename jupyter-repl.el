@@ -366,7 +366,9 @@ the output buffer."
          (let ((inhibit-read-only t))
            (when (jupyter--reset-output-buffer-p ,reset)
              (erase-buffer)
-             (set-marker jupyter-output-buffer-marker (point)))
+             (if jupyter-output-buffer-marker
+                 (set-marker jupyter-output-buffer-marker (point))
+               (setq jupyter-output-buffer-marker (point-marker))))
            (goto-char jupyter-output-buffer-marker)
            (jupyter-with-control-code-handling ,@body)
            (set-marker jupyter-output-buffer-marker (point)))))))
