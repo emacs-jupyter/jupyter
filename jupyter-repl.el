@@ -1059,9 +1059,7 @@ POS defaults to `point'."
              ;; Check if the kernel is local
              (jupyter-kernel-alive-p
               (oref jupyter-current-client manager)))
-        (let ((hb (oref jupyter-current-client hb-channel)))
-          (and (jupyter-channel-alive-p hb)
-               (jupyter-hb-beating-p hb))))))
+        (jupyter-hb-beating-p jupyter-current-client))))
 
 ;;; Modifying cell code, truncating REPL buffer
 
