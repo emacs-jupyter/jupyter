@@ -82,47 +82,8 @@ send/receive messages.")
     :initform nil
     :documentation "The socket used for communicating with the kernel.")))
 
-(defclass jupyter-async-channel (jupyter-channel)
-  ((ioloop
-    :type (or null process)
-    :initform nil
-    :documentation "The process responsible for sending and
-receiving messages on this channel.
-
-This subprocess is responsible for receiving message
-s-expressions sent by the `jupyter-send' method for a
-`jupyter-async-channel', encoding the message, and sending the
-encoded message to the kernel.
-
-The parent Emacs process is then responsible for calling
-`jupyter-queue-message' when a message is received from the
-subprocess.")
-   (recv-queue
-    :type ring
-    :initform (make-ring 10))
-   (status
-    :type symbol
-    :initform 'stopped
-    :documentation "The current status of the channel in the
-channel subprocess. If this symbol is stopped and the ioloop slot
-corresponds to a live process, then `jupyter-channel-alive-p'
-will return nil.")))
-
 (cl-defgeneric jupyter-start-channel ((channel jupyter-channel) &key identity)
   "Start a Jupyter CHANNEL using IDENTITY as the routing ID.")
-
-(cl-defmethod jupyter-start-channel ((channel jupyter-async-channel)
-                                     &key (identity (jupyter-session-id
-                                                     (oref channel session))))
-  ;; TODO: Define a mechanism to attach a callback for each type of command in
-  ;; an IOLoop so that the IOLoop filter is not responsible for setting the
-  ;; status slot of a channel.
-  (unless (jupyter-channel-alive-p channel)
-    (zmq-subprocess-send (oref channel ioloop)
-      (list 'start-channel (oref channel type) (oref channel endpoint) identity))
-    (with-timeout (0.5 (error "Channel not started in ioloop subprocess"))
-      (while (not (jupyter-channel-alive-p channel))
-        (accept-process-output (oref channel ioloop) 0.1 nil 0)))))
 
 (cl-defmethod jupyter-start-channel ((channel jupyter-sync-channel)
                                      &key (identity (jupyter-session-id
@@ -144,91 +105,17 @@ will return nil.")))
     (zmq-close (oref channel socket))
     (oset channel socket nil)))
 
-(cl-defmethod jupyter-stop-channel ((channel jupyter-async-channel))
-  (when (jupyter-channel-alive-p channel)
-    (zmq-subprocess-send (oref channel ioloop)
-      (list 'stop-channel (oref channel type)))
-    (with-timeout (0.5 (warn "Channel not stopped in ioloop subprocess"))
-      (while (jupyter-channel-alive-p channel)
-        (accept-process-output (oref channel ioloop) 0.1 nil 0)))))
-
-(cl-defgeneric jupyter-get-message ((channel jupyter-channel) &rest _args)
-  "Receive a message on CHANNEL.")
-
-(cl-defmethod jupyter-get-message ((channel jupyter-sync-channel))
-  "Block until a message is received on CHANNEL.
-Return the received message."
-  (cl-destructuring-bind (_idents . msg)
-      (jupyter-recv channel)
-    msg))
-
-(cl-defmethod jupyter-get-message ((channel jupyter-async-channel) &optional timeout)
-  "Get a message from CHANNEL's recv-queue.
-If no message is available, return nil. Otherwise return the
-oldest message in CHANNEL's recv-queue. If TIMEOUT is non-nil,
-wait until TIMEOUT for a message."
-  (let ((idents-msg (jupyter-recv channel timeout)))
-    (when idents-msg
-      (cl-destructuring-bind (_idents . msg)
-          idents-msg
-        msg))))
-
-(cl-defmethod jupyter-send ((channel jupyter-async-channel) type message &optional msg-id)
-  "Send an asynchronous MESSAGE on CHANNEL.
-MESSAGE is sent to the subprocess in CHANNEL's ioloop slot which
-is expected to send the message to the kernel. The list sent to
-the subprocess has the following form
-
-    (send CHANNEL-TYPE TYPE MESSAGE MSG-ID)
-
-where CHANNEL-TYPE is either `:iopub', `:shell', `:hb',
-`:control', TYPE is the message type (one of the keys in
-`jupyter-message-types'), MESSAGE is the message plist to send,
-and MSG-ID is the unique message ID to associate with the message
-with nil meaning to generate a new ID.
-
-When a message is received from the kernel, the subprocess is
-responsible for placing the message in CHANNEL's message queue
-using `jupyter-queue-message'."
-  (zmq-subprocess-send (oref channel ioloop)
-    (list 'send (oref channel type) type message msg-id)))
-
 (cl-defmethod jupyter-send ((channel jupyter-sync-channel) type message &optional msg-id)
   (jupyter-send (oref channel session) (oref channel socket) type message msg-id))
 
 (cl-defmethod jupyter-recv ((channel jupyter-sync-channel))
   (jupyter-recv (oref channel session) (oref channel socket)))
 
-(cl-defmethod jupyter-recv ((channel jupyter-async-channel) &optional timeout)
-  (let ((ring (oref channel recv-queue)))
-    (when timeout
-      (with-timeout (timeout
-                     (error "Message not received on channel within timeout"))
-        (while (ring-empty-p ring)
-          (sleep-for 0.01))))
-    (unless (ring-empty-p ring)
-      (ring-remove ring))))
-
-(cl-defgeneric jupyter-queue-message ((channel jupyter-async-channel) msg)
-  "Queue MSG in CHANNEL's recv-queue.
-MSG is a cons pair (IDENTS . MSG) which will be added to the
-recv-queue slot of CHANNEL. To receive a message from the channel
-call `jupyter-get-message'.")
-
-(cl-defmethod jupyter-queue-message ((channel jupyter-async-channel) msg)
-  "Queue MSG in CHANNEL's recv-queue."
-  (let ((ring (oref channel recv-queue)))
-    (ring-insert+extend ring msg 'grow)))
-
 (cl-defgeneric jupyter-channel-alive-p ((channel jupyter-channel))
   "Determine if a CHANNEL is alive.")
 
 (cl-defmethod jupyter-channel-alive-p ((channel jupyter-sync-channel))
   (not (null (oref channel socket))))
-
-(cl-defmethod jupyter-channel-alive-p ((channel jupyter-async-channel))
-  (and (process-live-p (oref channel ioloop))
-       (not (eq (oref channel status) 'stopped))))
 
 ;;; Heartbeat channel
 

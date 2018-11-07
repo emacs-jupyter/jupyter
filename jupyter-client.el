@@ -32,6 +32,7 @@
   :group 'jupyter)
 
 (require 'jupyter-base)
+(require 'jupyter-ioloop)
 (require 'jupyter-channels)
 (require 'jupyter-messages)
 
@@ -79,18 +80,6 @@ requests like the above example.")
 
 ;; Define channel classes for method dispatching based on the channel type
 
-(defclass jupyter-shell-channel (jupyter-async-channel)
-  ((type
-    :initform :shell)))
-
-(defclass jupyter-iopub-channel (jupyter-async-channel)
-  ((type
-    :initform :iopub)))
-
-(defclass jupyter-stdin-channel (jupyter-async-channel)
-  ((type
-    :initform :stdin)))
-
 (defclass jupyter-kernel-client (eieio-instance-tracker)
   ((tracking-symbol :initform 'jupyter--clients)
    (pending-requests
@@ -120,7 +109,8 @@ initializing this client. When `jupyter-start-channels' is
 called, this will be set to the kernel info plist returned
 from an initial `:kernel-info-request'.")
    (ioloop
-    :type (or null process)
+    ;; Have a default value of this that we add to
+    :type (or null jupyter-ioloop)
     :initform nil
     :documentation "The process which receives events from channels.")
    (session
@@ -145,26 +135,14 @@ initialized the client.")
 variables and intermediate ioloop process output. When the ioloop
 slot is non-nil, its `process-buffer' will be `eq' to this
 buffer.")
-   (shell-channel
-    :type (or null jupyter-shell-channel)
+   (channels
+    :type list
     :initform nil
-    :initarg :shell-channel
-    :documentation "The shell channel.")
-   (iopub-channel
-    :type (or null jupyter-iopub-channel)
-    :initform nil
-    :initarg :iopub-channel
-    :documentation "The IOPub channel.")
-   (stdin-channel
-    :type (or null jupyter-stdin-channel)
-    :initform nil
-    :initarg :stdin-channel
-    :documentation "The stdin channel.")
-   (hb-channel
-    :type (or null jupyter-hb-channel)
-    :initform nil
-    :initarg :hb-channel
-    :documentation "The heartbeat channel.")))
+    :initarg :channels
+    :documentation "A property list describing the channels.
+The keys are channel types whose values are the status of the
+channels. The exception is the heartbeat channel. The value of
+the :hb key is a `jupyter-hb-channel'.")))
 
 ;;; `jupyter-current-client' language method specializer
 
@@ -283,27 +261,23 @@ connection is terminated before initializing a new one."
         (setq session (jupyter-session :key key :conn-info conn-info)))
       (oset client session session)
       (let ((addr (lambda (port) (format "%s://%s:%d" transport ip port))))
-        (oset client hb-channel (make-instance
-                                 'jupyter-hb-channel
-                                 :session session
-                                 :endpoint (funcall addr hb_port)))
-        (cl-loop
-         for (channel . port) in `((stdin-channel . ,stdin_port)
-                                   (shell-channel . ,shell_port)
-                                   (iopub-channel . ,iopub_port))
-         do (setf (slot-value client channel)
-                  (make-instance
-                   (cl-case channel
-                     (stdin-channel 'jupyter-stdin-channel)
-                     (shell-channel 'jupyter-shell-channel)
-                     (iopub-channel 'jupyter-iopub-channel)
-                     (otherwise (error "Wrong channel type")))
-                   ;; So channels have access to the client's session
-                   ;;
-                   ;; See `jupyter-start-channels' for when the :ioloop slot of
-                   ;; a channel is set
-                   :session session
-                   :endpoint (funcall addr port))))))))
+        (setf (oref client channels)
+              ;; Construct the channel plist
+              (cl-loop
+               collect :hb
+               and collect (make-instance
+                            'jupyter-hb-channel
+                            :session session
+                            :endpoint (funcall addr hb_port))
+               for (channel . port) in `((:stdin . ,stdin_port)
+                                         (:shell . ,shell_port)
+                                         (:iopub . ,iopub_port))
+               collect channel
+               and collect
+               ;; The session will be associated with these channels in the
+               ;; ioloop subprocess.
+               (list :endpoint (funcall addr port)
+                     :alive-p nil)))))))
 
 ;;; Client local variables
 
@@ -405,171 +379,19 @@ response to the sent message, see `jupyter-add-callback' and
   (declare (indent 1))
   (let ((ioloop (oref client ioloop)))
     (unless ioloop
-      (signal 'wrong-type-argument (list 'process ioloop 'ioloop)))
+      (signal 'wrong-type-argument (list 'jupyter-ioloop ioloop 'ioloop)))
     (jupyter-verify-inhibited-handlers)
     (let ((msg-id (or msg-id (jupyter-new-uuid))))
-      (jupyter-send channel type message msg-id)
-      ;; Anything sent to stdin is a reply not a request so don't add it to
-      ;; `:pending-requests'.
-      (unless (eq (oref channel type) :stdin)
+      (jupyter-send ioloop 'send channel type message msg-id)
+      ;; Anything sent to stdin is a reply not a request so don't add it as a
+      ;; pending request
+      (unless (eq channel :stdin)
         (let ((req (jupyter-generate-request client message)))
           (setf (jupyter-request-id req) msg-id)
           (setf (jupyter-request-inhibited-handlers req) jupyter-inhibit-handlers)
           (jupyter--push-pending-request client req))))))
 
-;;; Channel subprocess (receiving messages)
-
-(defmacro jupyter--ioloop-do-command (poller channels)
-  "Read and execute a command from stdin.
-POLLER is a variable bound to a `zmq-poller' object. and CHANNELS
-is a variable bound to an alist of (SOCK . CTYPE) pairs where
-SOCK is a `zmq-socket' representing a `jupyter-channel' that has
-a channel type of CTYPE.
-
-The parent Emacs process should send the ioloop subprocess cons
-cells of the form:
-
-    (CMD . DATA)
-
-where CMD is a symbol representing the command to perform and
-DATA is any information needed to run the command. The available
-commands that an ioloop subprocess can perform are:
-
-- '(quit) :: Terminate the ioloop.
-
-- '(start-channel . CTYPE) :: Re-connect the socket in CHANNELS
-  that represents a `jupyter-channel' whose type is CTYPE.
-
-- '(stop-channel . CTYPE) :: Disconnect the socket that
-  corresponds to a channel with type CTYPE in CHANNELS.
-
-- '(send CTYPE . ARGS) :: Call `jupyter-send' with arguments
-  SESSION, the socket corresponding to CTYPE, and ARGS. Where
-  ARGS is a list of the remaining arguments necessary for the
-  `jupyter-send' call.
-
-Any other command sent to the subprocess will be ignored."
-  `(cl-destructuring-bind (cmd . args)
-       (zmq-subprocess-read)
-     (cl-case cmd
-       (send
-        (cl-destructuring-bind (ctype . args) args
-          (let ((channel (cdr (assoc ctype ,channels))))
-            (zmq-prin1 (list 'sent ctype (apply #'jupyter-send channel args))))))
-       (start-channel
-        (cl-destructuring-bind (ctype endpoint identity) args
-          (let ((channel (cdr (assoc ctype ,channels))))
-            (oset channel endpoint endpoint)
-            (jupyter-start-channel channel :identity identity)
-            (zmq-poller-add ,poller (oref channel socket) zmq-POLLIN)
-            ;; Let the channel start. This avoids problems with the initial
-            ;; startup message for the python kernel. Sometimes we arent fast
-            ;; enough to get this message.
-            (sleep-for 0.1)
-            (zmq-prin1 (list 'start-channel ctype)))))
-       (stop-channel
-        (cl-destructuring-bind (ctype) args
-          (let ((channel (cdr (assoc ctype ,channels))))
-            (zmq-poller-remove ,poller (oref channel socket))
-            (jupyter-stop-channel channel)
-            (zmq-prin1 (list 'stop-channel ctype)))))
-       (quit
-        (signal 'quit nil))
-       (otherwise (error "Unhandled command (%s)" cmd)))))
-
-(defmacro jupyter--ioloop-with-lock-file (client &rest body)
-  "In CLIENT's IOLoop buffer run BODY, ensuring the lock file mechanism works.
-This makes sure that when `set-buffer-modified-p' is called, it
-properly locks or unlocks the associated lock file for the IOLoop
-process."
-  (declare (indent 1))
-  (let ((lock (make-symbol "--lock")))
-    `(with-current-buffer (oref ,client -buffer)
-       (let* ((create-lockfiles t)
-              (,lock (concat "jupyter-lock" (jupyter-session-id (oref ,client session))))
-              (buffer-file-name (expand-file-name ,lock temporary-file-directory))
-              (buffer-file-truename (file-truename buffer-file-name)))
-         ,@body))))
-
-(defun jupyter--ioloop-unlock (client)
-  "Unlock CLIENT's file lock."
-  (jupyter--ioloop-with-lock-file client
-    (set-buffer-modified-p nil)))
-
-(defun jupyter--ioloop-lock (client)
-  "Return the file name of CLIENT's file lock.
-Acquire the lock first. Unlock the lock if one exists. The lock
-file serves as a proxy for the case when the parent Emacs process
-crashes without properly cleaning up its child processes."
-  (jupyter--ioloop-with-lock-file client
-    (jupyter--ioloop-unlock client)
-    (set-buffer-modified-p t)
-    (buffer-file-name)))
-
-(defun jupyter--ioloop (client)
-  "Return the function used for communicating with CLIENT's kernel."
-  (cl-assert (zmq-has "draft") nil "ZMQ built without poller support.")
-  (let ((sid (jupyter-session-id (oref client session)))
-        (skey (jupyter-session-key (oref client session)))
-        (lock (jupyter--ioloop-lock client)))
-    `(lambda (ctx)
-       (push ,(file-name-directory (locate-library "jupyter-base")) load-path)
-       (require 'jupyter-base)
-       (require 'jupyter-channels)
-       (require 'jupyter-messages)
-       (let* ((session (jupyter-session :id ,sid :key ,skey))
-              (iopub (jupyter-sync-channel :type :iopub :session session))
-              (shell (jupyter-sync-channel :type :shell :session session))
-              (stdin (jupyter-sync-channel :type :stdin :session session))
-              (channels `((:stdin . ,stdin)
-                          (:shell . ,shell)
-                          (:iopub . ,iopub)))
-              (messages nil)
-              (poller nil)
-              (events nil)
-              (read-command-from-parent
-               (lambda ()
-                 (when (alist-get 0 events)
-                   (setf (alist-get 0 events nil 'remove) nil)
-                   (jupyter--ioloop-do-command poller channels))))
-              (queue-messages
-               (lambda ()
-                 (dolist (type-channel channels)
-                   (cl-destructuring-bind (type . channel) type-channel
-                     (when (zmq-assoc (oref channel socket) events)
-                       (push (cons type (jupyter-recv channel)) messages))))))
-              (send-messages-to-parent
-               (lambda ()
-                 ;; TODO: Throttle messages if they are coming in too hot
-                 (when messages
-                   (setq messages (nreverse messages))
-                   (while messages
-                     (prin1 (cons 'recvd (pop messages))))
-                   (zmq-flush 'stdout)))))
-         (condition-case nil
-             (progn
-               (setq poller (zmq-poller))
-               ;; Poll for stdin messages
-               (zmq-poller-add poller 0 zmq-POLLIN)
-               (zmq-prin1 '(start))
-               (while t
-                 (setq events (condition-case nil
-                                  (zmq-poller-wait-all
-                                   poller (1+ (length channels)) 5000)
-                                ((zmq-EAGAIN zmq-EINTR zmq-ETIMEDOUT) nil)))
-                 (unless (or events (file-locked-p ,lock))
-                   ;; TODO: The parent process probably
-                   ;; crashed, cleanup the kernel
-                   ;; connection file if there is one.
-                   ;; Since the parent Emacs crashed, all
-                   ;; of the kernel processes are gone to.
-                   (signal 'quit nil))
-                 (funcall read-command-from-parent)
-                 (funcall queue-messages)
-                 (funcall send-messages-to-parent)))
-           (quit
-            (mapc #'jupyter-stop-channel (mapcar #'cdr channels))
-            (zmq-prin1 '(quit))))))))
+;;; Pending requests
 
 (defun jupyter--pop-pending-request (client)
   "Return the oldest pending request CLIENT sent to its ioloop."
@@ -589,121 +411,229 @@ kernel via CLIENT's ioloop."
 
 (cl-defmethod jupyter-hb-pause ((client jupyter-kernel-client))
   "Pause CLIENT's heartbeeat channel."
-  (jupyter-hb-pause (oref client hb-channel)))
+  (jupyter-hb-pause (plist-get (oref client channels) :hb)))
 
 (cl-defmethod jupyter-hb-unpause ((client jupyter-kernel-client))
   "Unpause CLIENT's heartbeat channel."
-  (jupyter-hb-unpause (oref client hb-channel)))
+  (jupyter-hb-unpause (plist-get (oref client channels) :hb)))
 
 (cl-defmethod jupyter-hb-beating-p ((client jupyter-kernel-client))
   "Is CLIENT still connected to its kernel?"
-  (jupyter-hb-beating-p (oref client hb-channel)))
+  (jupyter-hb-beating-p (plist-get (oref client channels) :hb)))
 
-;;; Channel subprocess filter/sentinel
+;;; IOLoop for Jupyter clients
 
-(defun jupyter--ioloop-sentinel (client ioloop _event)
-  "The process sentinel for CLIENT's IOLOOP subprocess.
-When EVENT is one of the events signifying that the process is
-dead, stop the heartbeat channel and set the IOLOOP slot to nil
-in CLIENT."
-  (cond
-   ((not (process-live-p ioloop))
-    (jupyter-stop-channel (oref client hb-channel))
-    (jupyter--ioloop-unlock client)
-    (oset client kernel-info nil)
-    (oset client ioloop nil))))
+(defconst jupyter-client--ioloop-setup-form
+  `(progn
+     (require 'jupyter-channels)
+     (defvar jupyter-ioloop-channels nil)
+     (defvar jupyter-ioloop-channels nil)
+     (defun jupyter-ioloop-recv-messages (events)
+       "Print the received messages described in EVENTS.
+EVENTS is a list of socket events as returned by
+`zmq-poller-wait-all'. If any of the sockets in EVENTS matches
+one of the sockets in `jupyter-ioloop-channels', receive a
+message on the channel and print a list with the form
 
-(defun jupyter--get-channel (client ctype)
-  "Get CLIENT's channel based on CTYPE."
-  (catch 'found
-    (dolist (channel (mapcar (lambda (sym) (slot-value client sym))
-                        '(hb-channel
-                          stdin-channel
-                          shell-channel
-                          iopub-channel)))
-      (when (eq (oref channel type) ctype)
-        (throw 'found channel)))))
+    (message . msg...)
 
-(defun jupyter--ioloop-filter (client event)
-  "The process filter for CLIENT's ioloop subprocess.
-EVENT will be an s-expression emitted from the function returned
-by `jupyter--ioloop'."
-  (pcase event
-    (`(sent ,ctype ,msg-id)
-     (when jupyter--debug
-       (message "SENT: %s" msg-id))
-     (unless (eq ctype :stdin)
-       ;; Anything sent on stdin is a reply and therefore never added to
-       ;; `:pending-requests'
-       (let ((req (jupyter--pop-pending-request client))
-             (requests (oref client requests)))
-         (cl-assert (equal (jupyter-request-id req) msg-id)
-                    nil "Message request sent out of order to the kernel.")
-         (puthash msg-id req requests)
-         (puthash "last-sent" req requests))))
-    (`(recvd ,ctype ,idents . ,msg)
-     (when jupyter--debug
-       (message "RECV: %s %s %s %s"
-                idents
-                (jupyter-message-type msg)
-                (jupyter-message-parent-id msg)
-                (jupyter-message-content msg)))
-     (let ((channel (jupyter--get-channel client ctype)))
-       (if (not channel) (warn "No handler for channel type (%s)" ctype)
-         (jupyter-queue-message channel (cons idents msg))
-         (run-with-timer 0.0001 nil #'jupyter-handle-message client channel))))
-    (`(start-channel ,ctype)
-     (when jupyter--debug
-       (message "STARTING-CHANNEL: %s" ctype))
-     (let ((channel (jupyter--get-channel client ctype)))
-       (oset channel status 'running)))
-    (`(stop-channel ,ctype)
-     (when jupyter--debug
-       (message "STOPPING-CHANNEL: %s" ctype))
-     (let ((channel (jupyter--get-channel client ctype)))
-       ;; TODO: Wrap this in an async channel method, maybe
-       ;; re-use `jupyter-stop-channel'. On the first call,
-       ;; when we send a stop channel message to the
-       ;; subprocess we set the status to pending, then
-       ;; here once we know the channel was stopped, we
-       ;; call `jupyter-stop-channel' again and it updates
-       ;; the status to stopped. Seems too complicated.
-       (oset channel status 'stopped)))
-    ('(start)
-     (when jupyter--debug
-       (message "CLIENT STARTING"))
-     ;; TODO: Generalize setting flag variables for IOLoop events and having
-     ;; event callbacks.
-     (process-put (oref client ioloop) :start t))
-    ('(quit)
-     ;; Cleanup handled in sentinel
-     (process-put (oref client ioloop) :quit t)
-     (when jupyter--debug
-       (message "CLIENT CLOSED")))))
+to stdout."
+       (let (messages)
+         (dolist (channel jupyter-ioloop-channels)
+           (with-slots (type socket) channel
+             (when (zmq-assoc socket events)
+               (push (cons type (jupyter-recv channel)) messages))))
+         (setq jupyter-ioloop-messages (nreverse messages))
+         (when messages
+           ;; Send messages
+           (mapc (lambda (msg) (prin1 (cons 'message msg))) messages)
+           (zmq-flush 'stdout))))
+     (push 'jupyter-ioloop-recv-messages jupyter-ioloop-post-hook))
+  "Form to setup a `jupyter-ioloop' to receive messages on Jupyter channels.")
 
-;;; Starting the channel subprocess
+(jupyter-ioloop-add-arg-type jupyter-channel
+  (lambda (arg)
+    `(or (object-assoc ,arg :type jupyter-ioloop-channels)
+         (error "Channel not alive (%s)" ,arg))))
 
-(defun jupyter-ioloop-wait-until (event ioloop &optional timeout)
-  "Wait until EVENT occurs in IOLOOP.
-Currently EVENT can be :start or :quit and this function will
-block for TIMEOUT seconds until IOLOOP starts or quits depending
-on EVENT. If TIMEOUT is nil it defaults to 1 s."
-  (or timeout (setq timeout 1))
-  (with-timeout (timeout nil)
-    (while (null (process-get ioloop event))
-      (accept-process-output ioloop 1))
-    t))
+;;;; Client events
 
-(defun jupyter--start-ioloop (client)
-  "Start CLIENT's channel subprocess."
-  (unless (oref client ioloop)
-    (oset client ioloop
-          (zmq-start-process
-           (jupyter--ioloop client)
-           :filter (apply-partially #'jupyter--ioloop-filter client)
-           :sentinel (apply-partially #'jupyter--ioloop-sentinel client)
-           :buffer (oref client -buffer)))
-    (jupyter-ioloop-wait-until :start (oref client ioloop))))
+(defun jupyter-ioloop-add-start-channel-event (ioloop)
+  "Add a start-channel event handler to IOLOOP.
+The event fires when the IOLOOP receives a list with the form
+
+    (start-channel CHANNEL-TYPE ENDPOINT)
+
+and shall stop any existing channel with CHANNEL-TYPE and start a
+new channel with CHANNEL-TYPE connected to ENDPOINT. The
+underlying socket IDENTITY is derived from
+`jupyter-ioloop-session' in the IOLOOP environment. The channel
+will be added to the variable `jupyter-ioloop-channels' in the
+IOLOOP environment.
+
+The handler also takes care of removing/adding the channel's
+socket from/to `jupyter-ioloop-poller' in the IOLOOP environment.
+
+A list with the form
+
+    (start-channel CHANNEL-TYPE)
+
+is returned to the parent process."
+  (jupyter-ioloop-add-event ioloop start-channel (type endpoint)
+    (cl-assert (memq type jupyter-socket-types))
+    (let ((channel (object-assoc type :type jupyter-ioloop-channels)))
+      (unless channel
+        (setq channel (jupyter-sync-channel
+                       :session jupyter-ioloop-session
+                       :type type :endpoint endpoint))
+        (push channel jupyter-ioloop-channels))
+      ;; Stop the channel if it is already alive
+      (when (jupyter-channel-alive-p channel)
+        (jupyter-ioloop-poller-remove (oref channel socket))
+        (jupyter-stop-channel channel))
+      ;; Start the channel, add it to the poller
+      (oset channel endpoint endpoint)
+      (jupyter-start-channel channel :identity (jupyter-session-id jupyter-ioloop-session))
+      (jupyter-ioloop-poller-add (oref channel socket) zmq-POLLIN)
+      ;; Let the channel start. This avoids problems with the initial startup
+      ;; message for the python kernel. Sometimes we arent fast enough to get
+      ;; this message.
+      (sleep-for 0.1)
+      (list 'start-channel type))))
+
+(defun jupyter-ioloop-add-stop-channel-event (ioloop)
+  "Add a stop-channel event handler to IOLOOP.
+The event fires when the IOLOOP receives a list with the form
+
+    (stop-channel CHANNEL-TYPE)
+
+If a channel with CHANNEL-TYPE exists and is alive, it is stopped
+and remove from `jupyter-ioloop-poller'.
+
+A list with the form
+
+    (stop-channel CHANNEL-TYPE)
+
+is returned to the parent process."
+  (jupyter-ioloop-add-event ioloop stop-channel (type)
+    (cl-assert (memq type jupyter-socket-types))
+    (let ((channel (object-assoc type :type jupyter-ioloop-channels)))
+      (when (and channel (jupyter-channel-alive-p channel))
+        (jupyter-ioloop-poller-remove (oref channel socket))
+        (jupyter-stop-channel channel))
+      (list 'stop-channel type))))
+
+(defun jupyter-ioloop-add-send-event (ioloop)
+  "Add a send event handler to IOLOOP.
+The event fires when the IOLOOP receives a list with the form
+
+    (send CHANNEL-TYPE MSG-TYPE MSG MSG-ID)
+
+and calls (jupyter-send CHANNEL MSG-TYPE MSG MSG-ID) using the
+channel corresponding to CHANNEL-TYPE in the IOLOOP environment.
+
+A list with the form
+
+    (sent CHANNEL-TYPE MSG-ID)
+
+is returned to the parent process."
+  (jupyter-ioloop-add-event ioloop send ((channel jupyter-channel) msg-type msg msg-id)
+    (list 'sent (oref channel type)
+          (jupyter-send channel msg-type msg msg-id))))
+
+;;;; Starting the IOLoop
+
+(cl-defmethod jupyter-ioloop-start ((ioloop jupyter-ioloop) (client jupyter-kernel-client))
+  "Setup IOLOOP to communicate with CLIENT's kernel.
+If IOLOOP is not already setup, add the necessary setup/teardown
+forms and events in order to send and receive messages with
+CLIENT's kernel.
+
+By default, no channels will be alive the `jupyter-start-channel'
+method of CLIENT will have to be called to start one of the
+channels."
+  (cl-assert (jupyter-session-p (oref client session)))
+  ;; Initialize the ioloop if not already initialized
+  (unless (jupyter-ioloop-setup ioloop)
+    (setf (jupyter-ioloop-setup ioloop)
+          (list jupyter-client--ioloop-setup-form
+                `(defvar jupyter-ioloop-session
+                   (jupyter-session
+                    :id ,(jupyter-session-id (oref client session))
+                    :key ,(jupyter-session-key (oref client session))))))
+    (jupyter-ioloop-add-send-event ioloop)
+    (jupyter-ioloop-add-start-channel-event ioloop)
+    (jupyter-ioloop-add-stop-channel-event ioloop)
+    (jupyter-ioloop-add-teardown ioloop
+      (mapcar #'jupyter-stop-channel jupyter-ioloop-channels)))
+  (cl-call-next-method ioloop client :buffer (oref client -buffer)))
+
+;;;; IOLoop handlers (receiving messages, starting/stopping channels)
+
+(cl-defmethod jupyter-ioloop-handler ((_ioloop jupyter-ioloop)
+                                      (client jupyter-kernel-client)
+                                      (event (head sent)))
+  (cl-destructuring-bind (_ channel-type msg-id) event
+    (unless (eq channel-type :stdin)
+      ;; Anything sent on stdin is a reply and therefore never added as a
+      ;; pending request
+      (let ((req (jupyter--pop-pending-request client))
+            (requests (oref client requests)))
+        (cl-assert (equal (jupyter-request-id req) msg-id)
+                   nil "Message request sent out of order to the kernel.")
+        (puthash msg-id req requests)
+        (puthash "last-sent" req requests)))))
+
+(cl-defmethod jupyter-ioloop-handler ((_ioloop jupyter-ioloop)
+                                      (client jupyter-kernel-client)
+                                      (event (head message)))
+  "For CLIENT, queue a message EVENT to be handled."
+  (cl-destructuring-bind (_ channel _idents . msg) event
+    ;; Run immediately after handling this event, i.e. on the next command loop
+    (run-at-time 0 nil #'jupyter-handle-message client channel msg)))
+
+(cl-defmethod jupyter-channel-alive-p ((client jupyter-kernel-client) channel)
+  (with-slots (channels) client
+    ;; The hb channel is implemented locally in the current process whereas the
+    ;; other channels are implemented in subprocesses and the current process
+    ;; acts as a proxy.
+    (if (eq channel :hb)
+        (and (plist-get channels :hb)
+             (jupyter-channel-alive-p (plist-get channels :hb)))
+      (plist-get (plist-get channels channel) :alive-p))))
+
+(cl-defmethod jupyter-ioloop-handler ((_ioloop jupyter-ioloop)
+                                      (client jupyter-kernel-client)
+                                      (event (head start-channel)))
+  (with-slots (channels) client
+    (plist-put (plist-get channels (cadr event)) :alive-p t)))
+
+(cl-defmethod jupyter-start-channel ((client jupyter-kernel-client) channel)
+  (with-slots (ioloop channels) client
+    (if (eq channel :hb) (jupyter-start-channel (plist-get channels :hb))
+      (let ((endpoint (plist-get (plist-get channels channel) :endpoint)))
+        (unless (jupyter-channel-alive-p client channel)
+          (jupyter-send ioloop 'start-channel channel endpoint)
+          (with-timeout (0.5 (error "Channel not started in ioloop subprocess"))
+            (while (not (jupyter-channel-alive-p client channel))
+              (accept-process-output (jupyter-ioloop-process ioloop) 0.1 nil 0))))))))
+
+(cl-defmethod jupyter-ioloop-handler ((_ioloop jupyter-ioloop)
+                                      (client jupyter-kernel-client)
+                                      (event (head stop-channel)))
+  (with-slots (channels) client
+    (plist-put (plist-get channels (cadr event)) :alive-p nil)))
+
+(cl-defmethod jupyter-stop-channel ((client jupyter-kernel-client) channel)
+  (with-slots (ioloop channels) client
+    (when (jupyter-channel-alive-p client channel)
+      (if (eq channel :hb) (jupyter-stop-channel (plist-get channels :hb))
+        (jupyter-send ioloop 'stop-channel channel)
+        (with-timeout (0.5 (warn "Channel not stopped in ioloop subprocess"))
+          (while (jupyter-channel-alive-p client channel)
+            (accept-process-output (jupyter-ioloop-process ioloop) 0.1 nil 0)))))))
+
+;;; Starting/stopping channels
 
 (cl-defmethod jupyter-start-channels ((client jupyter-kernel-client)
                                       &key (shell t)
@@ -721,37 +651,32 @@ non-nil value passed to this function.
 If the shell channel is started, send an initial
 `:kernel-info-request' to set the kernel-info slot of CLIENT if
 necessary."
-  (jupyter--start-ioloop client)
-  (when hb
-    (jupyter-start-channel (oref client hb-channel)))
-  (cl-loop
-   for (sym . start) in `((shell-channel . ,shell)
-                          (iopub-channel . ,iopub)
-                          (stdin-channel . ,stdin))
-   for channel = (slot-value client sym)
-   do (oset channel ioloop (oref client ioloop))
-   and if start do (jupyter-start-channel channel)))
+  (with-slots (ioloop) client
+    (jupyter-stop-channels client)
+    (unless ioloop
+      (setq ioloop (oset client ioloop (jupyter-ioloop))))
+    (jupyter-ioloop-start ioloop client)
+    (cl-loop
+     for (channel . start) in `((:hb . ,hb)
+                                (:shell . ,shell)
+                                (:iopub . ,iopub)
+                                (:stdin . ,stdin))
+     when start do (jupyter-start-channel client channel))))
 
 (cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
   "Stop any running channels of CLIENT."
   (cl-loop
-   for sym in '(hb-channel shell-channel iopub-channel stdin-channel)
-   for channel = (slot-value client sym)
-   when channel do (jupyter-stop-channel channel))
-  (let ((ioloop (oref client ioloop)))
-    (when (process-live-p ioloop)
-      (zmq-subprocess-send ioloop (cons 'quit nil))
-      (with-timeout (1 (delete-process ioloop)
-                       (message "IOloop process not killed by request"))
-        (while (oref client ioloop)
-          (sleep-for 0 100))))))
+   for channel in '(:shell :iopub :stdin :hb)
+   do (jupyter-stop-channel client channel))
+  (with-slots (ioloop) client
+    (when (jupyter-ioloop-p ioloop)
+      (jupyter-ioloop-stop ioloop))))
 
 (cl-defmethod jupyter-channels-running-p ((client jupyter-kernel-client))
   "Are any channels of CLIENT running?"
   (cl-loop
-   for sym in '(hb-channel shell-channel iopub-channel stdin-channel)
-   for channel = (slot-value client sym)
-   thereis (jupyter-channel-alive-p channel)))
+   for channel in '(:shell :iopub :stdin :hb)
+   thereis (jupyter-channel-alive-p client channel)))
 
 ;;; Message callbacks
 
@@ -904,7 +829,7 @@ received for it and it is not the most recently sent request."
                     type)))
       (jupyter-handle-message channel client req msg))))
 
-(cl-defmethod jupyter-handle-message ((client jupyter-kernel-client) channel)
+(cl-defmethod jupyter-handle-message ((client jupyter-kernel-client) channel msg)
   "Process a message on CLIENT's CHANNEL.
 When a message is received from the kernel, the
 `jupyter-handle-message' method is called on the client. The
@@ -925,22 +850,21 @@ are taken:
          `jupyter-handle-execute-result',
          `jupyter-handle-kernel-info-reply', ...
    - Remove request from client request table when idle message is received"
-  (let ((msg (jupyter-get-message channel)))
-    (when msg
-      (let* ((pmsg-id (jupyter-message-parent-id msg))
-             (requests (oref client requests))
-             (req (gethash pmsg-id requests)))
-        (if (not req)
-            (when (jupyter-get client 'jupyter-include-other-output)
-              (jupyter--run-handler-maybe client channel req msg))
-          (setf (jupyter-request-last-message req) msg)
+  (when msg
+    (let* ((pmsg-id (jupyter-message-parent-id msg))
+           (requests (oref client requests))
+           (req (gethash pmsg-id requests)))
+      (if (not req)
+          (when (jupyter-get client 'jupyter-include-other-output)
+            (jupyter--run-handler-maybe client channel req msg))
+        (setf (jupyter-request-last-message req) msg)
+        (unwind-protect
+            (jupyter--run-callbacks req msg)
           (unwind-protect
-              (jupyter--run-callbacks req msg)
-            (unwind-protect
-                (jupyter--run-handler-maybe client channel req msg)
-              (when (jupyter-message-status-idle-p msg)
-                (setf (jupyter-request-idle-received-p req) t))
-              (jupyter--drop-idle-requests client))))))))
+              (jupyter--run-handler-maybe client channel req msg)
+            (when (jupyter-message-status-idle-p msg)
+              (setf (jupyter-request-idle-received-p req) t))
+            (jupyter--drop-idle-requests client)))))))
 
 ;;; Channel handler macros
 
@@ -998,7 +922,7 @@ will be transformed to
 
 ;;; STDIN handlers
 
-(cl-defmethod jupyter-handle-message ((_channel jupyter-stdin-channel)
+(cl-defmethod jupyter-handle-message ((_channel (eql :stdin))
                                       client
                                       req
                                       msg)
@@ -1017,14 +941,13 @@ PROMPT is the prompt the kernel would like to show the user. If
 PASSWORD is non-nil, then `read-passwd' is used to get input from
 the user. Otherwise `read-from-minibuffer' is used."
   (declare (indent 1))
-  (let* ((channel (oref client stdin-channel))
-         (value nil)
+  (let* ((value nil)
          (msg (jupyter-message-input-reply
                :value (condition-case nil
                           (if (eq password t) (read-passwd prompt)
                             (setq value (read-from-minibuffer prompt)))
                         (quit "")))))
-    (jupyter-send client channel :input-reply msg)
+    (jupyter-send client :stdin :input-reply msg)
     (or value "")))
 
 (defalias 'jupyter-handle-input-reply 'jupyter-handle-input-request)
@@ -1032,7 +955,7 @@ the user. Otherwise `read-from-minibuffer' is used."
 ;;; SHELL handlers
 
 ;; http://jupyter-client.readthedocs.io/en/latest/messaging.html#messages-on-the-shell-router-dealer-channel
-(cl-defmethod jupyter-handle-message ((_channel jupyter-shell-channel)
+(cl-defmethod jupyter-handle-message ((_channel (eql :shell))
                                       client
                                       req
                                       msg)
@@ -1072,20 +995,18 @@ nil, return the text/plain representation."
                                              (store-history t)
                                              (user-expressions nil)
                                              (allow-stdin
-                                              (jupyter-channel-alive-p
-                                               (oref client stdin-channel)))
+                                              (jupyter-channel-alive-p client :stdin))
                                              (stop-on-error nil))
   "Send an execute request."
   (declare (indent 1))
-  (let ((channel (oref client shell-channel))
-        (msg (jupyter-message-execute-request
+  (let ((msg (jupyter-message-execute-request
               :code code
               :silent silent
               :store-history store-history
               :user-expressions user-expressions
               :allow-stdin allow-stdin
               :stop-on-error stop-on-error)))
-    (jupyter-send client channel :execute-request msg)))
+    (jupyter-send client :shell :execute-request msg)))
 
 (cl-defgeneric jupyter-handle-execute-reply ((_client jupyter-kernel-client)
                                              _req
@@ -1105,10 +1026,9 @@ nil, return the text/plain representation."
                                              (detail 0))
   "Send an inspect request."
   (declare (indent 1))
-  (let ((channel (oref client shell-channel))
-        (msg (jupyter-message-inspect-request
+  (let ((msg (jupyter-message-inspect-request
               :code code :pos pos :detail detail)))
-    (jupyter-send client channel :inspect-request msg)))
+    (jupyter-send client :shell :inspect-request msg)))
 
 (cl-defgeneric jupyter-handle-inspect-reply ((_client jupyter-kernel-client)
                                              _req
@@ -1164,10 +1084,9 @@ in `jupyter-line-context' and is ignored if the region is active."
                                               (pos 0))
   "Send a complete request."
   (declare (indent 1))
-  (let ((channel (oref client shell-channel))
-        (msg (jupyter-message-complete-request
+  (let ((msg (jupyter-message-complete-request
               :code code :pos pos)))
-    (jupyter-send client channel :complete-request msg)))
+    (jupyter-send client :shell :complete-request msg)))
 
 (cl-defgeneric jupyter-handle-complete-reply ((_client jupyter-kernel-client)
                                               _req
@@ -1194,8 +1113,7 @@ in `jupyter-line-context' and is ignored if the region is active."
                                              unique)
   "Send a history request."
   (declare (indent 1))
-  (let ((channel (oref client shell-channel))
-        (msg (jupyter-message-history-request
+  (let ((msg (jupyter-message-history-request
               :output output
               :raw raw
               :hist-access-type hist-access-type
@@ -1205,7 +1123,7 @@ in `jupyter-line-context' and is ignored if the region is active."
               :n n
               :pattern pattern
               :unique unique)))
-    (jupyter-send client channel :history-request msg)))
+    (jupyter-send client :shell :history-request msg)))
 
 (cl-defgeneric jupyter-handle-history-reply ((_client jupyter-kernel-client)
                                              _req
@@ -1220,10 +1138,9 @@ in `jupyter-line-context' and is ignored if the region is active."
                                                  &key code)
   "Send an is-complete request."
   (declare (indent 1))
-  (let ((channel (oref client shell-channel))
-        (msg (jupyter-message-is-complete-request
+  (let ((msg (jupyter-message-is-complete-request
               :code code)))
-    (jupyter-send client channel :is-complete-request msg)))
+    (jupyter-send client :shell :is-complete-request msg)))
 
 (cl-defgeneric jupyter-handle-is-complete-reply ((_client jupyter-kernel-client)
                                                  _req
@@ -1239,42 +1156,38 @@ in `jupyter-line-context' and is ignored if the region is active."
                                                &key target-name)
   "Send a comm-info request."
   (declare (indent 1))
-  (let ((channel (oref client shell-channel))
-        (msg (jupyter-message-comm-info-request
+  (let ((msg (jupyter-message-comm-info-request
               :target-name target-name)))
-    (jupyter-send client channel :comm-info-request msg)))
+    (jupyter-send client :shell :comm-info-request msg)))
 
 (cl-defgeneric jupyter-send-comm-open ((client jupyter-kernel-client)
                                        &key id
                                        target-name
                                        data)
   (declare (indent 1))
-  (let ((channel (oref client shell-channel))
-        (msg (jupyter-message-comm-open
+  (let ((msg (jupyter-message-comm-open
               :id id
               :target-name target-name
               :data data)))
-    (jupyter-send client channel :comm-open msg)))
+    (jupyter-send client :shell :comm-open msg)))
 
 (cl-defgeneric jupyter-send-comm-msg ((client jupyter-kernel-client)
                                       &key id
                                       data)
   (declare (indent 1))
-  (let ((channel (oref client shell-channel))
-        (msg (jupyter-message-comm-msg
+  (let ((msg (jupyter-message-comm-msg
               :id id
               :data data)))
-    (jupyter-send client channel :comm-msg msg)))
+    (jupyter-send client :shell :comm-msg msg)))
 
 (cl-defgeneric jupyter-send-comm-close ((client jupyter-kernel-client)
                                         &key id
                                         data)
   (declare (indent 1))
-  (let ((channel (oref client shell-channel))
-        (msg (jupyter-message-comm-close
+  (let ((msg (jupyter-message-comm-close
               :id id
               :data data)))
-    (jupyter-send client channel :comm-close msg)))
+    (jupyter-send client :shell :comm-close msg)))
 
 (cl-defgeneric jupyter-handle-comm-info-reply ((_client jupyter-kernel-client)
                                                _req
@@ -1319,9 +1232,8 @@ CLIENT is a `jupyter-kernel-client'."
 
 (cl-defgeneric jupyter-send-kernel-info-request ((client jupyter-kernel-client))
   "Send a kernel-info request."
-  (let ((channel (oref client shell-channel))
-        (msg (jupyter-message-kernel-info-request)))
-    (jupyter-send client channel :kernel-info-request msg)))
+  (let ((msg (jupyter-message-kernel-info-request)))
+    (jupyter-send client :shell :kernel-info-request msg)))
 
 (cl-defgeneric jupyter-handle-kernel-info-reply ((_client jupyter-kernel-client)
                                                  _req
@@ -1342,9 +1254,8 @@ CLIENT is a `jupyter-kernel-client'."
   "Request a shutdown of CLIENT's kernel.
 If RESTART is non-nil, request a restart instead of a complete shutdown."
   (declare (indent 1))
-  (let ((channel (oref client shell-channel))
-        (msg (jupyter-message-shutdown-request :restart restart)))
-    (jupyter-send client channel :shutdown-request msg)))
+  (let ((msg (jupyter-message-shutdown-request :restart restart)))
+    (jupyter-send client :shell :shutdown-request msg)))
 
 (cl-defgeneric jupyter-handle-shutdown-reply ((_client jupyter-kernel-client)
                                               _req
@@ -1355,7 +1266,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
 
 ;;; IOPUB handlers
 
-(cl-defmethod jupyter-handle-message ((_channel jupyter-iopub-channel)
+(cl-defmethod jupyter-handle-message ((_channel (eql :iopub))
                                       client
                                       req
                                       msg)
