@@ -211,6 +211,10 @@ passed as the argument has a language of LANG."
 
 (add-hook 'kill-emacs-hook 'jupyter-kill-kernel-clients)
 
+(defun jupyter-clients ()
+  "Return a list of all `jupyter-kernel-clients'."
+  jupyter--clients)
+
 (defun jupyter-find-client-for-session (session-id)
   "Return the `jupyter-kernel-client' for SESSION-ID."
   (or (catch 'found
