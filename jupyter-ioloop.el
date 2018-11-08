@@ -351,10 +351,6 @@ evaluation using `zmq-start-process'."
 (cl-defgeneric jupyter-ioloop-start ((ioloop jupyter-ioloop) &rest _args)
   "Start an IOLOOP.")
 
-(cl-defmethod jupyter-ioloop-start :before ((ioloop jupyter-ioloop) _obj)
-  (cl-assert (jupyter-session-p (jupyter-ioloop-session ioloop)) nil
-             "An IOLoop needs a session to start."))
-
 (cl-defmethod jupyter-ioloop-start ((ioloop jupyter-ioloop) object &key buffer)
   "Start an IOLOOP.
 OBJECT is an object which is used to dispatch on when the current

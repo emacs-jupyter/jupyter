@@ -32,8 +32,8 @@
   :group 'jupyter)
 
 (require 'jupyter-base)
-(require 'jupyter-ioloop)
 (require 'jupyter-channels)
+(require 'jupyter-channel-ioloop)
 (require 'jupyter-messages)
 
 (declare-function hash-table-values "subr-x" (hash-table))
@@ -109,8 +109,7 @@ initializing this client. When `jupyter-start-channels' is
 called, this will be set to the kernel info plist returned
 from an initial `:kernel-info-request'.")
    (ioloop
-    ;; Have a default value of this that we add to
-    :type (or null jupyter-ioloop)
+    :type (or null jupyter-channel-ioloop)
     :initform nil
     :documentation "The process which receives events from channels.")
    (session
@@ -421,154 +420,7 @@ kernel via CLIENT's ioloop."
   "Is CLIENT still connected to its kernel?"
   (jupyter-hb-beating-p (plist-get (oref client channels) :hb)))
 
-;;; IOLoop for Jupyter clients
-
-(defconst jupyter-client--ioloop-setup-form
-  `(progn
-     (require 'jupyter-channels)
-     (defvar jupyter-ioloop-channels nil)
-     (defvar jupyter-ioloop-channels nil)
-     (defun jupyter-ioloop-recv-messages (events)
-       "Print the received messages described in EVENTS.
-EVENTS is a list of socket events as returned by
-`zmq-poller-wait-all'. If any of the sockets in EVENTS matches
-one of the sockets in `jupyter-ioloop-channels', receive a
-message on the channel and print a list with the form
-
-    (message . msg...)
-
-to stdout."
-       (let (messages)
-         (dolist (channel jupyter-ioloop-channels)
-           (with-slots (type socket) channel
-             (when (zmq-assoc socket events)
-               (push (cons type (jupyter-recv channel)) messages))))
-         (setq jupyter-ioloop-messages (nreverse messages))
-         (when messages
-           ;; Send messages
-           (mapc (lambda (msg) (prin1 (cons 'message msg))) messages)
-           (zmq-flush 'stdout))))
-     (push 'jupyter-ioloop-recv-messages jupyter-ioloop-post-hook))
-  "Form to setup a `jupyter-ioloop' to receive messages on Jupyter channels.")
-
-(jupyter-ioloop-add-arg-type jupyter-channel
-  (lambda (arg)
-    `(or (object-assoc ,arg :type jupyter-ioloop-channels)
-         (error "Channel not alive (%s)" ,arg))))
-
-;;;; Client events
-
-(defun jupyter-ioloop-add-start-channel-event (ioloop)
-  "Add a start-channel event handler to IOLOOP.
-The event fires when the IOLOOP receives a list with the form
-
-    (start-channel CHANNEL-TYPE ENDPOINT)
-
-and shall stop any existing channel with CHANNEL-TYPE and start a
-new channel with CHANNEL-TYPE connected to ENDPOINT. The
-underlying socket IDENTITY is derived from
-`jupyter-ioloop-session' in the IOLOOP environment. The channel
-will be added to the variable `jupyter-ioloop-channels' in the
-IOLOOP environment.
-
-The handler also takes care of removing/adding the channel's
-socket from/to `jupyter-ioloop-poller' in the IOLOOP environment.
-
-A list with the form
-
-    (start-channel CHANNEL-TYPE)
-
-is returned to the parent process."
-  (jupyter-ioloop-add-event ioloop start-channel (type endpoint)
-    (cl-assert (memq type jupyter-socket-types))
-    (let ((channel (object-assoc type :type jupyter-ioloop-channels)))
-      (unless channel
-        (setq channel (jupyter-sync-channel
-                       :session jupyter-ioloop-session
-                       :type type :endpoint endpoint))
-        (push channel jupyter-ioloop-channels))
-      ;; Stop the channel if it is already alive
-      (when (jupyter-channel-alive-p channel)
-        (jupyter-ioloop-poller-remove (oref channel socket))
-        (jupyter-stop-channel channel))
-      ;; Start the channel, add it to the poller
-      (oset channel endpoint endpoint)
-      (jupyter-start-channel channel :identity (jupyter-session-id jupyter-ioloop-session))
-      (jupyter-ioloop-poller-add (oref channel socket) zmq-POLLIN)
-      ;; Let the channel start. This avoids problems with the initial startup
-      ;; message for the python kernel. Sometimes we arent fast enough to get
-      ;; this message.
-      (sleep-for 0.1)
-      (list 'start-channel type))))
-
-(defun jupyter-ioloop-add-stop-channel-event (ioloop)
-  "Add a stop-channel event handler to IOLOOP.
-The event fires when the IOLOOP receives a list with the form
-
-    (stop-channel CHANNEL-TYPE)
-
-If a channel with CHANNEL-TYPE exists and is alive, it is stopped
-and remove from `jupyter-ioloop-poller'.
-
-A list with the form
-
-    (stop-channel CHANNEL-TYPE)
-
-is returned to the parent process."
-  (jupyter-ioloop-add-event ioloop stop-channel (type)
-    (cl-assert (memq type jupyter-socket-types))
-    (let ((channel (object-assoc type :type jupyter-ioloop-channels)))
-      (when (and channel (jupyter-channel-alive-p channel))
-        (jupyter-ioloop-poller-remove (oref channel socket))
-        (jupyter-stop-channel channel))
-      (list 'stop-channel type))))
-
-(defun jupyter-ioloop-add-send-event (ioloop)
-  "Add a send event handler to IOLOOP.
-The event fires when the IOLOOP receives a list with the form
-
-    (send CHANNEL-TYPE MSG-TYPE MSG MSG-ID)
-
-and calls (jupyter-send CHANNEL MSG-TYPE MSG MSG-ID) using the
-channel corresponding to CHANNEL-TYPE in the IOLOOP environment.
-
-A list with the form
-
-    (sent CHANNEL-TYPE MSG-ID)
-
-is returned to the parent process."
-  (jupyter-ioloop-add-event ioloop send ((channel jupyter-channel) msg-type msg msg-id)
-    (list 'sent (oref channel type)
-          (jupyter-send channel msg-type msg msg-id))))
-
-;;;; Starting the IOLoop
-
-(cl-defmethod jupyter-ioloop-start ((ioloop jupyter-ioloop) (client jupyter-kernel-client))
-  "Setup IOLOOP to communicate with CLIENT's kernel.
-If IOLOOP is not already setup, add the necessary setup/teardown
-forms and events in order to send and receive messages with
-CLIENT's kernel.
-
-By default, no channels will be alive the `jupyter-start-channel'
-method of CLIENT will have to be called to start one of the
-channels."
-  (cl-assert (jupyter-session-p (oref client session)))
-  ;; Initialize the ioloop if not already initialized
-  (unless (jupyter-ioloop-setup ioloop)
-    (setf (jupyter-ioloop-setup ioloop)
-          (list jupyter-client--ioloop-setup-form
-                `(defvar jupyter-ioloop-session
-                   (jupyter-session
-                    :id ,(jupyter-session-id (oref client session))
-                    :key ,(jupyter-session-key (oref client session))))))
-    (jupyter-ioloop-add-send-event ioloop)
-    (jupyter-ioloop-add-start-channel-event ioloop)
-    (jupyter-ioloop-add-stop-channel-event ioloop)
-    (jupyter-ioloop-add-teardown ioloop
-      (mapcar #'jupyter-stop-channel jupyter-ioloop-channels)))
-  (cl-call-next-method ioloop client :buffer (oref client -buffer)))
-
-;;;; IOLoop handlers (receiving messages, starting/stopping channels)
+;;; IOLoop handlers (receiving messages, starting/stopping channels)
 
 (cl-defmethod jupyter-ioloop-handler ((_ioloop jupyter-ioloop)
                                       (client jupyter-kernel-client)
@@ -651,11 +503,12 @@ non-nil value passed to this function.
 If the shell channel is started, send an initial
 `:kernel-info-request' to set the kernel-info slot of CLIENT if
 necessary."
-  (with-slots (ioloop) client
+  (with-slots (ioloop session -buffer) client
     (jupyter-stop-channels client)
     (unless ioloop
-      (setq ioloop (oset client ioloop (jupyter-ioloop))))
-    (jupyter-ioloop-start ioloop client)
+      (oset client ioloop (jupyter-channel-ioloop))
+      (setq ioloop (oref client ioloop)))
+    (jupyter-ioloop-start ioloop session client :buffer -buffer)
     (cl-loop
      for (channel . start) in `((:hb . ,hb)
                                 (:shell . ,shell)
