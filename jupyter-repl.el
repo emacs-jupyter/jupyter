@@ -2539,8 +2539,8 @@ When the kernel restarts, insert a new prompt."
     (save-restriction
       (narrow-to-region beg end)
       (goto-char (point-min))
-      (let ((re (concat "\"\\|'" (when comment-start
-                                   (concat "\\|" comment-start)))))
+      (let ((re (concat "\"\\|'\\|`" (when comment-start
+                                       (concat "\\|" comment-start)))))
         (while (and (re-search-forward re nil t)
                     (/= (point) (point-max)))
           (put-text-property
