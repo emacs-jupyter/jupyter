@@ -309,17 +309,17 @@ an \"EXPORT markdown\" block. See `org-babel-insert-result'."
             (cons (unless (member "raw" result-params) "latex")
                   (plist-get data :text/latex)))
            ((setq itype (cl-find-if (lambda (x) (memq x '(:image/png
-                                                     :image/jpg
+                                                     :image/jpeg
                                                      :image/svg+xml)))
                                     mimetypes))
             (let* ((data (plist-get data itype))
                    (overwrite (not (null (alist-get :file params))))
-                   (encoded (memq itype '(:image/png :image/jpg)))
+                   (encoded (memq itype '(:image/png :image/jpeg)))
                    (file (or (alist-get :file params)
                              (jupyter-org-image-file-name
                               data (cl-case itype
                                      (:image/png "png")
-                                     (:image/jpg "jpg")
+                                     (:image/jpeg "jpg")
                                      (:image/svg+xml "svg"))))))
               (jupyter-org--image-result data file overwrite encoded)))
            ((memq :text/plain mimetypes)
