@@ -146,6 +146,9 @@ directory is where kernel connection files are written to."
 The plist values are the message types either sent or received
 from the kernel.")
 
+(defvar jupyter--debug nil
+  "When non-nil, some parts of Jupyter will emit debug statements.")
+
 (defun jupyter-sha256 (object)
   "Return the SHA256 hash of OBJECT."
   (secure-hash 'sha256 object nil nil t))

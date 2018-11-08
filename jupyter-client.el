@@ -37,9 +37,6 @@
 
 (declare-function hash-table-values "subr-x" (hash-table))
 
-(defvar jupyter--debug nil
-  "Set to non-nil to emit sent and received messages to *Messages*.")
-
 (defvar jupyter--clients nil
   "A list of all live clients.
 Clients are removed from this list when their `jupyter-finalizer' is called.")
