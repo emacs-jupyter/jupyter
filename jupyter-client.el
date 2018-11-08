@@ -380,6 +380,14 @@ If it does not contain a valid value, raise an error."
        unless (plist-member jupyter-message-types msg-type)
        do (error "Not a valid message type (`%s')" msg-type))))
 
+(cl-defmethod jupyter-send :before ((_client jupyter-kernel-client)
+                                    _channel
+                                    type
+                                    message
+                                    &optional _msg-id)
+  (when jupyter--debug
+    (message "SENDING: %s %s" type message)))
+
 (cl-defmethod jupyter-send ((client jupyter-kernel-client)
                             channel
                             type
@@ -399,8 +407,6 @@ response to the sent message, see `jupyter-add-callback' and
     (unless ioloop
       (signal 'wrong-type-argument (list 'process ioloop 'ioloop)))
     (jupyter-verify-inhibited-handlers)
-    (when jupyter--debug
-      (message "SENDING: %s %s" type message))
     (let ((msg-id (or msg-id (jupyter-new-uuid))))
       (jupyter-send channel type message msg-id)
       ;; Anything sent to stdin is a reply not a request so don't add it to
