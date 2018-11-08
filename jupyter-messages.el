@@ -29,7 +29,6 @@
 ;;; Code:
 
 (require 'jupyter-base)
-(require 'jupyter-channels)
 
 (defgroup jupyter-messages nil
   "Jupyter messages"
