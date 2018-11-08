@@ -191,6 +191,8 @@ passed as the argument has a language of LANG."
   (puthash (cadr specializer) specializer jupyter--generic-lang-used)
   (list jupyter--generic-lang-generalizer))
 
+;;; Initializing a `jupyter-kernel-client'
+
 (cl-defmethod initialize-instance ((client jupyter-kernel-client) &rest _slots)
   (cl-call-next-method)
   (push client jupyter--clients)
@@ -385,8 +387,9 @@ If it does not contain a valid value, raise an error."
                             &optional msg-id)
   "Send a message on CLIENT's CHANNEL.
 Return a `jupyter-request' representing the sent message. CHANNEL
-is one of the channel's of CLIENT. TYPE is one of the
-`jupyter-message-types'. MESSAGE is the message sent on CHANNEL.
+is one of the channel keywords, either (:stdin or :shell).
+TYPE is one of the `jupyter-message-types'. MESSAGE is the
+message sent on CHANNEL.
 
 Note that you can manipulate how to handle messages received in
 response to the sent message, see `jupyter-add-callback' and
@@ -1041,7 +1044,7 @@ the user. Otherwise `read-from-minibuffer' is used."
                           implementation_version language_info
                           banner help_links)))))
 
-;;; Evaluation
+;;;; Evaluation
 
 (defun jupyter-eval (code &optional mime)
   "Send an execute request for CODE, wait for the execute result.
@@ -1088,6 +1091,8 @@ nil, return the text/plain representation."
   (declare (indent 1))
   nil)
 
+;;;; Inspection
+
 (cl-defgeneric jupyter-send-inspect-request ((client jupyter-kernel-client)
                                              &key code
                                              (pos 0)
@@ -1108,7 +1113,7 @@ nil, return the text/plain representation."
   (declare (indent 1))
   nil)
 
-;;; Completion contexts
+;;;; Completion
 
 (cl-defgeneric jupyter-code-context (type)
   "Return a list, (CODE POS), for the context around `point'.
@@ -1168,6 +1173,8 @@ in `jupyter-line-context' and is ignored if the region is active."
   (declare (indent 1))
   nil)
 
+;;;; History
+
 (cl-defgeneric jupyter-send-history-request ((client jupyter-kernel-client)
                                              &key
                                              output
@@ -1201,6 +1208,8 @@ in `jupyter-line-context' and is ignored if the region is active."
   (declare (indent 1))
   nil)
 
+;;;; Is Complete
+
 (cl-defgeneric jupyter-send-is-complete-request ((client jupyter-kernel-client)
                                                  &key code)
   "Send an is-complete request."
@@ -1217,6 +1226,8 @@ in `jupyter-line-context' and is ignored if the region is active."
   "Default is complete reply handler."
   (declare (indent 1))
   nil)
+
+;;;; Comms
 
 (cl-defgeneric jupyter-send-comm-info-request ((client jupyter-kernel-client)
                                                &key target-name)
@@ -1266,7 +1277,7 @@ in `jupyter-line-context' and is ignored if the region is active."
   (declare (indent 1))
   nil)
 
-;;; Accessing kernel info properties
+;;;; Kernel info
 
 (cl-defmethod jupyter-kernel-info ((client jupyter-kernel-client))
   "Return the kernel info plist of CLIENT.
@@ -1291,8 +1302,6 @@ If the kernel CLIENT is connected to does not respond to a
 (cl-defmethod jupyter-kernel-language ((client jupyter-kernel-client))
   "Return the language of the kernel CLIENT is connected to."
   (plist-get (plist-get (jupyter-kernel-info client) :language_info) :name))
-
-;;; Load kernel language support definitions
 
 (defun jupyter-load-language-support (client)
   "Load language support definitions for CLIENT.
@@ -1319,6 +1328,8 @@ CLIENT is a `jupyter-kernel-client'."
   "Default kernel-info reply handler."
   (declare (indent 1))
   nil)
+
+;;;; Shutdown
 
 (cl-defgeneric jupyter-send-shutdown-request ((client jupyter-kernel-client)
                                               &key restart)

@@ -246,14 +246,14 @@ Jupyter message, i.e. a list of the form
     (signature header parent-header metadata content buffers...)
 
 If SESSION supports signing messages, then the signature
-resulting from signing of PARTS using SESSION should be equal to
-SIGNATURE. An error is thrown if it is not.
+resulting from the signing of (cdr PARTS) using SESSION should be
+equal to SIGNATURE. An error is thrown if it is not.
 
 The returned plist has elements of the form
 
     (message-part JSON PLIST)
 
-for the keys `:header', `:parent-header', `:metadata',
+for the keys `:header', `:parent-header', `:metadata', and
 `:content'. JSON is the JSON encoded string of the message part.
 For `:header' and `:parent-header', PLIST will be the decoded
 message PLIST for the part. The other message parts are decoded
@@ -315,7 +315,14 @@ message ID will be generated. FLAGS has the same meaning as in
 
 (cl-defmethod jupyter-recv ((session jupyter-session) socket &optional flags)
   "For SESSION, receive a message on SOCKET with FLAGS.
-FLAGS is passed to SOCKET according to `zmq-recv'."
+FLAGS is passed to SOCKET according to `zmq-recv'. Return a cons cell
+
+    (IDENTS . MSG)
+
+where IDENTS are the ZMQ identities associated with MSG and MSG
+is the message property list whose fields can be accessed through
+calls to `jupyter-message-content', `jupyter-message-parent-id',
+and other such functions."
   (let ((msg (zmq-recv-multipart socket flags)))
     (when msg
       (cl-destructuring-bind (idents . parts)

@@ -23,6 +23,16 @@
 
 ;;; Commentary:
 
+;; Implements synchronous channel types. Each channel is essentially a wrapper
+;; around a `zmq-socket' constrained to a socket type by the type of the
+;; channel and with an associated `zmq-IDENTITY' obtained from the
+;; `jupyter-session' that must be associated with the channel. A heartbeat
+;; channel is distinct from the other channels in that it is implemented using
+;; a timer which periodically pings the kernel depending on how its configured.
+;; In order for communication to occur on the other channels, one of
+;; `jupyter-send' or `jupyter-recv' must be called after starting the channel
+;; with `jupyter-start-channel'.
+
 ;;; Code:
 
 (require 'jupyter-base)
