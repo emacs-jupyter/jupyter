@@ -66,18 +66,11 @@ expected by `jupyter-queue-message'."
 (cl-defmethod initialize-instance ((client jupyter-echo-client) &rest _slots)
   (cl-call-next-method)
   (oset client messages (make-ring 10))
-  (cl-loop
-   for channel in (list 'shell-channel
-                        'iopub-channel
-                        'hb-channel
-                        'stdin-channel)
-   unless (slot-value client channel)
-   do (setf (slot-value client channel)
-            (make-instance
-             (intern (concat
-                      "jupyter-"
-                      (symbol-name channel)))
-             :endpoint "foo://bar"))))
+  (oset client channels
+        (list :hb (jupyter-hb-channel)
+              :shell (list :alive-p nil :endpoint "foo://bar")
+              :stdin (list :alive-p nil :endpoint "foo://bar")
+              :iopub (list :alive-p nil :endpoint "foo://bar"))))
 
 (cl-defmethod jupyter-send ((client jupyter-echo-client)
                             channel
@@ -92,30 +85,18 @@ expected by `jupyter-queue-message'."
     ;; - status: busy
     ;; - reply message
     ;; - status: idle
-    (jupyter-queue-message
-     (oref client iopub-channel)
-     (jupyter-test-message req :status (list :execution_state "busy")))
-    (jupyter-queue-message
-     channel (jupyter-test-message req type message))
-    (jupyter-queue-message
-     (oref client iopub-channel)
-     (jupyter-test-message req :status (list :execution_state "idle")))
-    (run-at-time
-     0.01 nil
-     (lambda (client channel)
-       (jupyter-handle-message client (oref client iopub-channel))
-       (jupyter-handle-message client channel)
-       (jupyter-handle-message client (oref client iopub-channel)))
-     client channel)
+    (jupyter-handle-message
+     client :iopub (jupyter-test-message req :status (list :execution_state "busy")))
+    (jupyter-handle-message client channel (jupyter-test-message req type message))
+    (jupyter-handle-message
+     client :iopub (jupyter-test-message req :status (list :execution_state "idle")))
     ;; Needed internally by a `jupyter-kernel-client', this is mainly handled
     ;; by the eventloop.
     (puthash (jupyter-request-id req) req (oref client requests))
     req))
 
-(cl-defmethod jupyter-handle-message ((client jupyter-echo-client) channel)
-  (ring-insert+extend (oref client messages)
-                      (cdr (ring-ref (oref channel recv-queue) -1))
-                      'grow)
+(cl-defmethod jupyter-handle-message ((client jupyter-echo-client) _channel msg)
+  (ring-insert+extend (oref client messages) (cdr msg) 'grow)
   (cl-call-next-method))
 
 (cl-defmacro jupyter-ert-info ((message-form &key ((:prefix prefix-form) "Info: "))
@@ -143,8 +124,10 @@ If the `current-buffer' is not a REPL, this is identical to
 
 (defmacro jupyter-with-echo-client (client &rest body)
   (declare (indent 1) (debug (symbolp &rest form)))
-  `(let ((,client (jupyter-echo-client)))
-     ,@body))
+  `(unwind-protect
+       (let ((,client (jupyter-echo-client)))
+         ,@body)
+     (jupyter-finalize ,client)))
 
 (defun jupyter-error-if-no-kernelspec (kernel)
   (prog1 kernel
@@ -214,9 +197,7 @@ running BODY."
   (jupyter-with-echo-client client
     (ert-info ("Mock echo client echo's messages back to channel.")
       (let* ((msg (jupyter-message-execute-request :code "foo"))
-             (req (jupyter-send client (oref client shell-channel)
-                                :execute-request msg)))
-        (sleep-for 1.0)
+             (req (jupyter-send client :shell :execute-request msg)))
         (setq msgs (nreverse (ring-elements (oref client messages))))
         (should (= (length msgs) 3))
         (should (equal (jupyter-message-type (first msgs)) :status))
@@ -288,7 +269,39 @@ running BODY."
     (should (equal (jupyter--decode-time "2018-07-26T01:37:44")
                    '(23385 27704 0 0)))
     (should (equal (jupyter--decode-time "2018-07-26")
-                   '(23385 21840 0 0)))))
+                   '(23385 21840 0 0))))
+  (ert-info ("Signing messages")
+    (let ((session (jupyter-session :key "foo"))
+          (msg (list "" "{\"msg_id\":\"1\",\"msg_type\":\"execute_reply\"}" "{}" "{}" "{}"))
+          (signature "f9080fb30e80a1b424895b557b8249157d5f83d6fc897cb96a4d2fa54a1280e6"))
+      (should (equal signature
+                     (jupyter-sign-message session msg #'jupyter-hmac-sha256)))))
+  (ert-info ("Decoding messages")
+    (let ((session (jupyter-session)))
+      (ert-info ("Minimum message length")
+        (should-error (jupyter-decode-message session (list "1" "2" "3"))))
+      (ert-info ("Form of decoded message")
+        (let* ((session (jupyter-session :key "foo"))
+               (msg (list "f9080fb30e80a1b424895b557b8249157d5f83d6fc897cb96a4d2fa54a1280e6"
+                          "{\"msg_id\":\"1\",\"msg_type\":\"execute_reply\"}" "{}" "{}" "{}"))
+               (plist (jupyter-decode-message session msg)))
+          (cl-loop
+           with true-msg = (list
+                            :header '(message-part
+                                      "{\"msg_id\":\"1\",\"msg_type\":\"execute_reply\"}"
+                                      (:msg_id "1" :msg_type :execute-reply))
+                            :msg_id "1"
+                            :msg_type :execute-reply
+                            :parent_header '(message-part "{}" nil)
+                            :content '(message-part "{}" nil)
+                            :metadata '(message-part "{}" nil)
+                            :buffers nil)
+           for key in '(:header :msg_id :msg_type :content
+                                :parent_header :metadata :buffers)
+           do (should (equal (plist-get true-msg key) (plist-get plist key))))))))
+  (ert-info ("Encoding messages")
+    ;; TODO
+    ))
 
 (ert-deftest jupyter-channel-subprocess-lock ()
   (ert-info ("Locking and unlocking a file")
@@ -319,145 +332,281 @@ running BODY."
                 (should (file-locked-p lock)))))
         (jupyter-finalize client)))))
 
-(ert-deftest jupyter-channels ()
-  (ert-info ("Channel types should match their class")
-    (should (eq (oref (jupyter-shell-channel) type) :shell))
-    (should (eq (oref (jupyter-stdin-channel) type) :stdin))
-    (should (eq (oref (jupyter-iopub-channel) type) :iopub))
-    (should (eq (oref (jupyter-hb-channel) type) :hb)))
-  (ert-info ("Synchronous channels")
-    (let ((channel (jupyter-sync-channel
-                    :type :shell
-                    :endpoint "tcp://127.0.0.1:5555")))
-      (ert-info ("Starting the channel")
-        (should-not (jupyter-channel-alive-p channel))
-        (jupyter-start-channel channel :identity "foo")
-        (should (jupyter-channel-alive-p channel))
-        (should (equal (zmq-socket-get (oref channel socket)
-                                       zmq-ROUTING-ID)
-                       "foo")))
-      (ert-info ("Stopping the channel")
-        (let ((sock (oref channel socket)))
-          (jupyter-stop-channel channel)
-          (should-error (zmq-send sock "foo") :type 'zmq-ENOTSOCK)))))
-  (ert-info ("Asynchronous channels")
-    (let* ((channel (jupyter-async-channel
-                     :type :shell
-                     :endpoint "tcp://127.0.0.1:5555"))
-           (events)
-           (ioloop
-            (zmq-start-process
-             `(lambda ()
-                (while t
-                  (zmq-prin1 (zmq-subprocess-read))))
-             :filter (lambda (event)
-                       ;; FIXME: Remove dependence of the channel
-                       ;; subprocess on having to set the channel's
-                       ;; status slot
-                       (when (eq (car event) 'start-channel)
-                         (oset channel status 'running))
-                       (when (eq (car event) 'stop-channel)
-                         (oset channel status 'stopped))
-                       (push event events)))))
-      (unwind-protect
-          (progn
-            (ert-info ("Starting the channel")
-              (oset channel ioloop ioloop)
-              (should-not (jupyter-channel-alive-p channel))
-              (jupyter-start-channel channel :identity "foo")
-              (should (jupyter-channel-alive-p channel)))
-            (jupyter-send channel :msg-type "msg" "id")
-            (ert-info ("Stopping the channel")
-              (jupyter-stop-channel channel)
-              (should-not (jupyter-channel-alive-p channel)))
-            (ert-info ("Channel events")
-              (should (equal (pop events) '(stop-channel :shell)))
-              (should (equal (pop events) '(send :shell :msg-type "msg" "id")))
-              (should (equal (pop events) '(start-channel :shell "tcp://127.0.0.1:5555" "foo")))))
-        (when (process-live-p ioloop)
-          (kill-process ioloop)))))
-  (ert-info ("Heartbeat channel")
-    (let ((channel (jupyter-hb-channel :endpoint "tcp://127.0.0.1:5556"))
-          (died-cb-called nil)
-          (jupyter-hb-consider-dead-periods 1))
-      (oset channel time-to-dead 0.1)
+(ert-deftest jupyter-sync-channel ()
+  (let ((channel (jupyter-sync-channel
+                  :type :shell
+                  :endpoint "tcp://127.0.0.1:5555")))
+    (ert-info ("Starting the channel")
       (should-not (jupyter-channel-alive-p channel))
-      (should-not (jupyter-hb-beating-p channel))
-      (should (oref channel paused))
-      (oset channel beating t)
-      (jupyter-start-channel channel)
-      (jupyter-hb-on-kernel-dead channel (lambda () (setq died-cb-called t)))
+      (jupyter-start-channel channel :identity "foo")
       (should (jupyter-channel-alive-p channel))
-      (should-not (oref channel paused))
-      (sleep-for 0.2)
-      ;; It seems the timers are run after returning from the first `sleep-for'
-      ;; call.
-      (sleep-for 0.1)
-      (should (oref channel paused))
-      (should-not (oref channel beating))
-      (should died-cb-called)
-      (should (jupyter-channel-alive-p channel))
-      (should-not (jupyter-hb-beating-p channel)))))
+      (should (equal (zmq-socket-get (oref channel socket)
+                                     zmq-ROUTING-ID)
+                     "foo")))
+    (ert-info ("Stopping the channel")
+      (let ((sock (oref channel socket)))
+        (jupyter-stop-channel channel)
+        (should-error (zmq-send sock "foo") :type 'zmq-ENOTSOCK)))))
 
-(ert-deftest jupyter-client ()
+(ert-deftest jupyter-hb-channel ()
+  (should (eq (oref (jupyter-hb-channel) type) :hb))
+  (let ((channel (jupyter-hb-channel :endpoint "tcp://127.0.0.1:5556"))
+        (died-cb-called nil)
+        (jupyter-hb-consider-dead-periods 1))
+    (oset channel time-to-dead 0.1)
+    (should-not (jupyter-channel-alive-p channel))
+    (should-not (jupyter-hb-beating-p channel))
+    (should (oref channel paused))
+    (oset channel beating t)
+    (jupyter-start-channel channel)
+    (jupyter-hb-on-kernel-dead channel (lambda () (setq died-cb-called t)))
+    (should (jupyter-channel-alive-p channel))
+    (should-not (oref channel paused))
+    (sleep-for 0.2)
+    ;; It seems the timers are run after returning from the first `sleep-for'
+    ;; call.
+    (sleep-for 0.1)
+    (should (oref channel paused))
+    (should-not (oref channel beating))
+    (should died-cb-called)
+    (should (jupyter-channel-alive-p channel))
+    (should-not (jupyter-hb-beating-p channel))))
+
+(defun jupyter-test-conn-info-plist ()
+  "Return a connection info plist suitable for testing."
   (let* ((ports (cl-loop
                  with sock = (zmq-socket (zmq-current-context) zmq-PUB)
                  for c in '(:shell :hb :iopub :stdin :control)
                  collect c and
                  collect (zmq-bind-to-random-port sock "tcp://127.0.0.1")
-                 finally (zmq-close sock)))
-         (conn-info `(:shell_port
-                      ,(plist-get ports :shell)
-                      :key  "8671b7e4-5656e6c9d24edfce81916780"
-                      :hb_port
-                      ,(plist-get ports :hb)
-                      :kernel_name "python"
-                      :control_port
-                      ,(plist-get ports :control)
-                      :signature_scheme "hmac-sha256"
-                      :ip "127.0.0.1"
-                      :stdin_port
-                      ,(plist-get ports :stdin)
-                      :transport "tcp"
-                      :iopub_port
-                      ,(plist-get ports :iopub)))
-         (client (jupyter-kernel-client)))
-    (ert-info ("`jupyter-initialize-connection'")
+                 finally (zmq-close sock))))
+    `(:shell_port
+      ,(plist-get ports :shell)
+      :key  "8671b7e4-5656e6c9d24edfce81916780"
+      :hb_port
+      ,(plist-get ports :hb)
+      :kernel_name "python"
+      :control_port
+      ,(plist-get ports :control)
+      :signature_scheme "hmac-sha256"
+      :ip "127.0.0.1"
+      :stdin_port
+      ,(plist-get ports :stdin)
+      :transport "tcp"
+      :iopub_port
+      ,(plist-get ports :iopub))))
+
+;; TODO: Different values of the session argument
+(ert-deftest jupyter-initialize-connection ()
+  (let ((conn-info (jupyter-test-conn-info-plist))
+        (client (jupyter-kernel-client)))
+    (jupyter-initialize-connection client conn-info)
+    (unwind-protect
+        (with-slots (session channels) client
+          (ert-info ("Client session")
+            (should (string= (jupyter-session-key session)
+                             (plist-get conn-info :key)))
+            (should (equal (jupyter-session-conn-info session)
+                           conn-info)))
+          (ert-info ("Heartbeat channel initialized")
+            (should (eq session (oref (plist-get channels :hb) session)))
+            (should (string= (oref (plist-get channels :hb) endpoint)
+                             (format "tcp://127.0.0.1:%d"
+                                     (plist-get conn-info :hb_port)))))
+          (ert-info ("Shell, iopub, stdin initialized")
+            (cl-loop
+             for channel in '(:shell :iopub :stdin)
+             for port_sym = (intern (concat (symbol-name channel) "_port"))
+             do
+             (should (plist-member (plist-get channels channel) :alive-p))
+             (should (plist-member (plist-get channels channel) :endpoint))
+             (should
+              (string= (plist-get (plist-get channels channel) :endpoint)
+                       (format "tcp://127.0.0.1:%d"
+                               (plist-get conn-info port_sym))))))
+          (ert-info ("Initialization stops any running channels")
+            (should-not (jupyter-channels-running-p client))
+            (jupyter-start-channels client)
+            (should (jupyter-channels-running-p client))
+            (jupyter-initialize-connection client conn-info)
+            (should-not (jupyter-channels-running-p client)))
+          (ert-info ("Invalid signature scheme")
+            (plist-put conn-info :signature_scheme "hmac-foo")
+            (should-error (jupyter-initialize-connection client conn-info))))
+      (jupyter-finalize client))))
+
+(ert-deftest jupyter-client-channels ()
+  (ert-info ("Starting/stopping channels")
+    (let ((conn-info (jupyter-test-conn-info-plist))
+          (client (jupyter-kernel-client)))
       (jupyter-initialize-connection client conn-info)
-      (let ((session (oref client session)))
-        (should (string= (jupyter-session-key session)
-                         (plist-get conn-info :key)))
-        (should (eq session (oref (oref client shell-channel) session)))
-        (should (eq session (oref (oref client stdin-channel) session)))
-        (should (eq session (oref (oref client iopub-channel) session)))
-        (should (eq session (oref (oref client hb-channel) session))))
-      (should (string= (oref (oref client shell-channel) endpoint)
-                       (format "tcp://127.0.0.1:%d" (plist-get ports :shell))))
-      (should (string= (oref (oref client stdin-channel) endpoint)
-                       (format "tcp://127.0.0.1:%d" (plist-get ports :stdin))))
-      (should (string= (oref (oref client iopub-channel) endpoint)
-                       (format "tcp://127.0.0.1:%d" (plist-get ports :iopub))))
-      (should (string= (oref (oref client hb-channel) endpoint)
-                       (format "tcp://127.0.0.1:%d" (plist-get ports :hb))))
-      (ert-info ("Re-initializing stops running channels")
-        (jupyter-start-channels client)
-        (should (jupyter-channels-running-p client))
-        (jupyter-initialize-connection client conn-info)
-        (should-not (jupyter-channels-running-p client))
-        (jupyter-start-channels client)))
-    (ert-info ("`jupyter-inhibit-handlers'")
-      (let* ((jupyter-inhibit-handlers '(:stream))
-             (req (jupyter-send-kernel-info-request client)))
-        (should (equal (jupyter-request-inhibited-handlers req)
-                       '(:stream)))
-        (setq jupyter-inhibit-handlers '(:foo))
-        (should-error (jupyter-send-kernel-info-request client))))
-    (ert-info ("Finalizer")
-      (should (buffer-live-p (oref client -buffer)))
-      (should (jupyter-channels-running-p client))
-      (jupyter-finalize client)
-      (should-not (jupyter-channels-running-p client))
-      (should-not (buffer-live-p (oref client -buffer))))))
+      (unwind-protect
+          (progn
+            (cl-loop
+             for channel in '(:hb :shell :iopub :stdin)
+             do (should-not (jupyter-channel-alive-p client channel)))
+            (jupyter-start-channels client)
+            (cl-loop
+             for channel in '(:hb :shell :iopub :stdin)
+             do (should (jupyter-channel-alive-p client channel)))
+            (jupyter-stop-channels client)
+            (cl-loop
+             for channel in '(:hb :shell :iopub :stdin)
+             do (should-not (jupyter-channel-alive-p client channel))))
+        (jupyter-finalize client)))))
+
+(ert-deftest jupyter-inhibited-handlers ()
+  (jupyter-with-python-client client
+    (let* ((jupyter-inhibit-handlers '(:stream))
+           (req (jupyter-send-kernel-info-request client)))
+      (should (equal (jupyter-request-inhibited-handlers req)
+                     '(:stream)))
+      (setq jupyter-inhibit-handlers '(:foo))
+      (should-error (jupyter-send-kernel-info-request client)))))
+
+(ert-deftest jupyter-ioloop-lifetime ()
+  (let ((ioloop (jupyter-ioloop)))
+    (should-not (process-live-p (jupyter-ioloop-process ioloop)))
+    (jupyter-ioloop-start ioloop :tag1)
+    (should (eq (jupyter-ioloop-object ioloop) :tag1))
+    (should (process-live-p (jupyter-ioloop-process ioloop)))
+    (let ((proc (jupyter-ioloop-process ioloop)))
+      (jupyter-ioloop-stop ioloop)
+      (should-not (process-live-p proc))
+      ;; The object used for dispatch is reset once the ioloop stops since it
+      ;; may itself contain a reference to the ioloop which would create a
+      ;; reference cycle so ensure that we break it.
+      (should-not (jupyter-ioloop-object ioloop)))))
+
+(defvar jupyter-ioloop-test-handler-called nil
+  "Flag variable used for testing the `juyter-ioloop'.")
+
+(cl-defmethod jupyter-ioloop-handler ((_ioloop jupyter-ioloop) (_tag (eql :test)) (event (head test)))
+  (should (equal (cadr event) "message"))
+  (setq jupyter-ioloop-test-handler-called t))
+
+(ert-deftest jupyter-ioloop-callbacks ()
+  (ert-info ("Callback added before starting the ioloop")
+    (let ((ioloop (jupyter-ioloop)))
+      (setq jupyter-ioloop-test-handler-called nil)
+      (jupyter-ioloop-add-callback ioloop
+        `(lambda () (zmq-prin1 (list 'test "message"))))
+      (jupyter-ioloop-start ioloop :test)
+      (jupyter-ioloop-stop ioloop)
+      (should jupyter-ioloop-test-handler-called)))
+  (ert-info ("Callback added after starting the ioloop")
+    (let ((ioloop (jupyter-ioloop)))
+      (setq jupyter-ioloop-test-handler-called nil)
+      (jupyter-ioloop-start ioloop :test)
+      (jupyter-ioloop-add-callback ioloop
+        `(lambda () (zmq-prin1 (list 'test "message"))))
+      (jupyter-ioloop-stop ioloop)
+      (should jupyter-ioloop-test-handler-called))))
+
+(ert-deftest jupyter-ioloop-setup ()
+  (let ((ioloop (jupyter-ioloop)))
+    (setq jupyter-ioloop-test-handler-called nil)
+    (jupyter-ioloop-add-setup ioloop
+      (zmq-prin1 (list 'test "message")))
+    (jupyter-ioloop-start ioloop :test)
+    (jupyter-ioloop-stop ioloop)
+    (should jupyter-ioloop-test-handler-called)))
+
+(ert-deftest jupyter-ioloop-teardown ()
+  (let ((ioloop (jupyter-ioloop)))
+    (setq jupyter-ioloop-test-handler-called nil)
+    (jupyter-ioloop-add-teardown ioloop
+      (zmq-prin1 (list 'test "message")))
+    (jupyter-ioloop-start ioloop :test)
+    (jupyter-ioloop-stop ioloop)
+    (should jupyter-ioloop-test-handler-called)))
+
+(ert-deftest jupyter-ioloop-add-event ()
+  (let ((ioloop (jupyter-ioloop)))
+    (setq jupyter-ioloop-test-handler-called nil)
+    (jupyter-ioloop-add-event ioloop test (data)
+      "Echo DATA back to the parent process."
+      (list 'test data))
+    (jupyter-ioloop-start ioloop :test)
+    (jupyter-send ioloop 'test "message")
+    (jupyter-ioloop-stop ioloop)
+    (should jupyter-ioloop-test-handler-called)))
+
+(defun jupyter-ioloop-test-eval-ioloop (ioloop ex)
+  (eval
+   `(progn
+      ,@(jupyter-ioloop-setup ioloop)
+      ,(jupyter-ioloop--event-dispatcher ioloop ex))))
+
+(ert-deftest jupyter-channel-ioloop-send-event ()
+  (with-temp-buffer
+    (cl-letf ((ioloop (jupyter-channel-ioloop))
+              (standard-output (current-buffer))
+              (jupyter-ioloop-channels (list (jupyter-sync-channel :type :shell)))
+              ((symbol-function #'jupyter-send)
+               (lambda (_channel _msg-type _msg msg-id) msg-id)))
+      (jupyter-channel-ioloop-add-send-event ioloop)
+      (let ((msg-id (jupyter-new-uuid)))
+        (jupyter-ioloop-test-eval-ioloop
+         ioloop `(list 'send :shell :execute-request '(msg) ,msg-id))
+        (ert-info ("Return value to parent process")
+          (let ((result (read (buffer-string))))
+            (should (equal result `(send :shell ,msg-id)))))))))
+
+(ert-deftest jupyter-channel-ioloop-start-channel-event ()
+  (with-temp-buffer
+    (let* ((ioloop (jupyter-channel-ioloop))
+           (standard-output (current-buffer))
+           (jupyter-ioloop-channels nil)
+           (jupyter-ioloop-session nil)
+           (jupyter-ioloop-poller (zmq-poller))
+           (channel-endpoint "tcp://127.0.0.1:5555"))
+      (jupyter-channel-ioloop-add-session ioloop (jupyter-session :key "foo"))
+      (jupyter-channel-ioloop-add-start-channel-event ioloop)
+      (jupyter-ioloop-test-eval-ioloop
+       ioloop `(list 'start-channel :shell ,channel-endpoint))
+      (should (not (null jupyter-ioloop-channels)))
+      (should (jupyter-sync-channel-p (car jupyter-ioloop-channels)))
+      (let ((channel (car jupyter-ioloop-channels)))
+        (with-slots (type socket endpoint) channel
+          (ert-info ("Verify the requested channel was started")
+            (should (eq type :shell))
+            (should (zmq-socket-p socket))
+            (should (equal endpoint channel-endpoint))
+            (should (equal (zmq-socket-get socket zmq-LAST-ENDPOINT) channel-endpoint))
+            (ert-info ("Identity of socket matches session")
+              (should (equal (zmq-socket-get socket zmq-IDENTITY)
+                             (jupyter-session-id jupyter-ioloop-session)))))
+          (ert-info ("Ensure the channel was added to the poller")
+            ;; Raises an error if the socket wasn't added to the poller.
+            (zmq-poller-modify
+             jupyter-ioloop-poller socket (list zmq-POLLIN zmq-POLLOUT))))
+        (ert-info ("Return value to parent process")
+          (let ((result (read (buffer-string))))
+            (should (equal result `(start-channel :shell)))))))))
+
+(ert-deftest jupyter-channel-ioloop-stop-channel-event ()
+  (with-temp-buffer
+    (let* ((ioloop (jupyter-channel-ioloop))
+           (standard-output (current-buffer))
+           (channel (jupyter-sync-channel
+                     :type :shell
+                     :endpoint "tcp://127.0.0.1:5555"))
+           (jupyter-ioloop-channels (list channel))
+           (jupyter-ioloop-session (jupyter-session))
+           (jupyter-ioloop-poller (zmq-poller)))
+      (jupyter-start-channel channel :identity (jupyter-session-id jupyter-ioloop-session))
+      (jupyter-channel-ioloop-add-stop-channel-event ioloop)
+      (ert-info ("Verify the requested channel stops")
+        (should (jupyter-channel-alive-p channel))
+        (zmq-poller-add jupyter-ioloop-poller (oref channel socket) zmq-POLLIN)
+        (jupyter-ioloop-test-eval-ioloop ioloop `(list 'stop-channel :shell))
+        (should-not (jupyter-channel-alive-p channel)))
+      (ert-info ("Ensure the channel was removed from the poller")
+        (should-error (zmq-poller-modify (oref channel socket) (list zmq-POLLIN zmq-POLLOUT))))
+      (ert-info ("Return value to parent process")
+        (let ((result (read (buffer-string))))
+          (should (equal result `(stop-channel :shell))))))))
 
 (ert-deftest jupyter-message-types ()
   (jupyter-with-python-client client
