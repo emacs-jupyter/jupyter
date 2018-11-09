@@ -284,6 +284,20 @@ an \"EXPORT markdown\" block. See `org-babel-insert-result'."
            ;; TODO: Insert a link which runs code to display the widget
            ((memq :application/vnd.jupyter.widget-view+json mimetypes)
             (cons "scalar" "Widget"))
+           ((setq itype (cl-find-if (lambda (x) (memq x '(:image/png
+                                                     :image/jpeg
+                                                     :image/svg+xml)))
+                                    mimetypes))
+            (let* ((data (plist-get data itype))
+                   (overwrite (not (null (alist-get :file params))))
+                   (encoded (memq itype '(:image/png :image/jpeg)))
+                   (file (or (alist-get :file params)
+                             (jupyter-org-image-file-name
+                              data (cl-case itype
+                                     (:image/png "png")
+                                     (:image/jpeg "jpg")
+                                     (:image/svg+xml "svg"))))))
+              (jupyter-org--image-result data file overwrite encoded)))
            ((memq :text/html mimetypes)
             (let ((html (plist-get data :text/html)))
               (save-match-data
@@ -308,20 +322,6 @@ an \"EXPORT markdown\" block. See `org-babel-insert-result'."
            ((memq :text/latex mimetypes)
             (cons (unless (member "raw" result-params) "latex")
                   (plist-get data :text/latex)))
-           ((setq itype (cl-find-if (lambda (x) (memq x '(:image/png
-                                                     :image/jpeg
-                                                     :image/svg+xml)))
-                                    mimetypes))
-            (let* ((data (plist-get data itype))
-                   (overwrite (not (null (alist-get :file params))))
-                   (encoded (memq itype '(:image/png :image/jpeg)))
-                   (file (or (alist-get :file params)
-                             (jupyter-org-image-file-name
-                              data (cl-case itype
-                                     (:image/png "png")
-                                     (:image/jpeg "jpg")
-                                     (:image/svg+xml "svg"))))))
-              (jupyter-org--image-result data file overwrite encoded)))
            ((memq :text/plain mimetypes)
             (cons "scalar" (plist-get data :text/plain)))
            (t (warn "No supported mimetype found %s" mimetypes)))))
