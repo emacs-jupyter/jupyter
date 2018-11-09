@@ -113,7 +113,7 @@ source code block. Set by `org-babel-execute:jupyter'.")))
       (setcar (member "file" (assq :result-params params)) "scalar")))
   (let ((emsg (format "%s: %s" ename (ansi-color-apply evalue))))
     (jupyter-with-output-buffer "traceback" 'reset
-      (jupyter-repl-insert-ansi-coded-text
+      (jupyter-insert-ansi-coded-text
        (mapconcat #'identity traceback "\n"))
       (goto-char (line-beginning-position))
       (pop-to-buffer (current-buffer)))

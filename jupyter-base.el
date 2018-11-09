@@ -146,6 +146,17 @@ directory is where kernel connection files are written to."
 The plist values are the message types either sent or received
 from the kernel.")
 
+(defconst jupyter-mime-types '(:application/vnd.jupyter.widget-view+json
+                               :text/html :text/markdown
+                               :image/svg+xml :image/jpeg :image/png
+                               :text/latex :text/plain)
+  "MIME types handled by Jupyter.")
+
+(defconst jupyter-nongraphic-mime-types '(:application/vnd.jupyter.widget-view+json
+                                          :text/html :text/markdown
+                                          :text/plain)
+  "MIME types that can be used in terminal Emacs.")
+
 (defvar jupyter--debug nil
   "When non-nil, some parts of Jupyter will emit debug statements.")
 
