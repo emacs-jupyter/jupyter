@@ -482,7 +482,7 @@ can contain the following keywords along with their values:
 
 ;;; Handling rich output
 
-(defvar jupyter-repl-graphic-mimetypes '(:image/png :image/svg+xml :text/latex)
+(defvar jupyter-repl-graphic-mimetypes '(:image/png :image/jpeg :image/svg+xml :text/latex)
   "Mimetypes that display graphics in the REPL buffer.")
 
 (defun jupyter-repl-graphic-data-p (msg)
@@ -674,6 +674,11 @@ When no valid mimetype is present in DATA, a warning is shown."
       (jupyter-repl--insert-image
        (plist-get data :image/svg+xml)
        'svg (plist-get metadata :image/svg+xml)))
+     ((memq :image/jpeg mimetypes)
+      (setq mimetype-inserted :image/jpeg)
+      (jupyter-repl--insert-image
+       (base64-decode-string (plist-get data :image/jpeg))
+       'jpeg (plist-get metadata :image/jpeg)))
      ((memq :image/png mimetypes)
       (setq mimetype-inserted :image/png)
       (jupyter-repl--insert-image
