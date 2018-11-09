@@ -149,6 +149,21 @@ from the kernel.")
 (defvar jupyter--debug nil
   "When non-nil, some parts of Jupyter will emit debug statements.")
 
+(defmacro jupyter-with-insertion-bounds (beg end bodyform &rest afterforms)
+  "Bind BEG and END to `point-marker's, evaluate BODYFORM then AFTERFORMS.
+The END marker will advance if BODYFORM inserts text in the
+current buffer. Thus after BODYFORM is evaluated, AFTERFORMS will
+have access to the bounds of the text inserted by BODYFORM in the
+variables BEG and END. The value of BODYFORM is returned."
+  (declare (indent 3) (debug (symbolp symbolp form body)))
+  `(let ((,beg (point-marker))
+         (,end (point-marker)))
+     (set-marker-insertion-type end t)
+     (unwind-protect
+         (prog1 ,bodyform ,@afterforms)
+       (set-marker ,beg nil)
+       (set-marker ,end nil))))
+
 (defun jupyter-sha256 (object)
   "Return the SHA256 hash of OBJECT."
   (secure-hash 'sha256 object nil nil t))
