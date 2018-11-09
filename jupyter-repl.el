@@ -500,9 +500,28 @@ can contain the following keywords along with their values:
        (re-search-forward "</script>")
        (point)))))
 
+(defun jupyter-repl-put-image (spec alt &optional flags)
+  "Identical to `shr-put-image', but ensure :ascent is 50.
+SPEC, ALT and FLAGS have the same meaning as in `shr-put-image'.
+The :ascent of an image is set to 50 so that the image center
+aligns with the output prompt."
+  (let ((image (shr-put-image spec alt flags)))
+    (prog1 image
+      (when image
+        ;; Ensure we use an ascent of 50 so that the image center aligns with
+        ;; the output prompt.
+        (setf (image-property image :ascent) 50)
+        (force-window-update)))))
+
 (defun jupyter-repl-insert-html (html)
   "Parse and insert the HTML string using `shr'."
-  (let ((beg (point)))
+  (cl-letf (((symbol-function #'libxml-parse-html-region)
+             ;; Be strict about syntax. Specifically `libxml-parse-html-region'
+             ;; converts camel cased tags/attributes such as viewBox to viewbox
+             ;; in the dom since html is case insensitive. See #4.
+             #'libxml-parse-xml-region)
+            (shr-put-image-function #'jupyter-repl-put-image)
+            (beg (point)))
     (insert html)
     (save-restriction
       (narrow-to-region beg (point))
