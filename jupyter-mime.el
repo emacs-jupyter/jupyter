@@ -213,13 +213,16 @@ aligns on the current line."
         (setf (image-property image :ascent) 50)
         (force-window-update)))))
 
-(defun jupyter--delete-javascript-tags ()
-  (while (re-search-forward "<script type='text/javascript'>" nil t)
-    (delete-region
-     (match-beginning 0)
-     (progn
-       (re-search-forward "</script>")
-       (point)))))
+(defun jupyter--delete-javascript-tags (beg end)
+  (save-restriction
+    (narrow-to-region beg end)
+    (goto-char beg)
+    (while (re-search-forward "<script type='text/javascript'>" nil t)
+      (delete-region
+       (match-beginning 0)
+       (progn
+         (re-search-forward "</script>")
+         (point))))))
 
 (defun jupyter-insert-html (html)
   "Parse and insert the HTML string using `shr'."
@@ -228,21 +231,18 @@ aligns on the current line."
              ;; converts camel cased tags/attributes such as viewBox to viewbox
              ;; in the dom since html is case insensitive. See #4.
              #'libxml-parse-xml-region)
-            (shr-put-image-function #'jupyter--shr-put-image)
-            (beg (point)))
-    (insert html)
-    (save-restriction
-      (narrow-to-region beg (point))
-      (goto-char (point-min))
+            (shr-put-image-function #'jupyter--shr-put-image))
+    (jupyter-with-insertion-bounds
+        beg end (insert html)
       ;; TODO: We can't really do much about javascript so
       ;; delete those regions instead of trying to parse
       ;; them. Maybe just re-direct to a browser like with
       ;; widgets?
       ;; NOTE: Parsing takes a very long time when the text
       ;; is > ~500000 characters.
-      (jupyter--delete-javascript-tags)
-      (shr-render-region (point-min) (point-max))
-      (jupyter-add-font-lock-properties (point-min) (point-max)))))
+      (jupyter--delete-javascript-tags beg end)
+      (shr-render-region beg end)
+      (jupyter-add-font-lock-properties beg end))))
 
 ;;; Markdown
 
@@ -309,21 +309,17 @@ image."
          `(:foreground
            default
            :background default :scale 2.0
-           :matchers ,(plist-get org-format-latex-options :matchers)))
-        (beg (point-marker))
-        (end (point-marker)))
-    (set-marker-insertion-type end t)
-    (insert tex)
-    (org-format-latex
-     org-preview-latex-image-directory
-     beg end org-babel-jupyter-resource-directory
-     'overlays "Creating LaTeX image...%s"
-     'forbuffer
-     ;; Use the default method for creating image files
-     org-preview-latex-default-process)
-    (goto-char end)
-    (set-marker beg nil)
-    (set-marker end nil)))
+           :matchers ,(plist-get org-format-latex-options :matchers))))
+    (jupyter-with-insertion-bounds
+        beg end (insert tex)
+      (org-format-latex
+       org-preview-latex-image-directory
+       beg end org-babel-jupyter-resource-directory
+       'overlays "Creating LaTeX image...%s"
+       'forbuffer
+       ;; Use the default method for creating image files
+       org-preview-latex-default-process)
+      (goto-char end))))
 
 ;;; Images
 
