@@ -64,20 +64,8 @@ buffer."
        ((and (eq mime :text/plain)
              (eq (jupyter-message-type msg) :inspect-reply))
         (when (search-forward "Docstring:" nil t)
-          (let ((mode major-mode))
-            (with-current-buffer
-                (make-indirect-buffer (current-buffer) " *jupyter-python-temp*")
-              (save-restriction
-                (narrow-to-region (1+ (point)) (point-max))
-                (delay-mode-hooks (rst-mode))
-                ;; NOTE: We get the font-lock-fontified property for free since
-                ;; `ansi-color-apply' already inserts it for :text/plain
-                ;; messages, thus there is no need to call
-                ;; `jupyter-fixup-font-lock-properties' after
-                ;; `font-lock-ensure'
-                (font-lock-ensure))
-              (kill-buffer))
-            (funcall mode))))
+          (jupyter-fontify-region-according-to-mode
+           #'rst-mode (1+ (point)) (point-max))))
        (t nil)))))
 
 (cl-defmethod jupyter-load-file-code (file &context (jupyter-lang python))

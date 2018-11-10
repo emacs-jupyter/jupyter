@@ -148,6 +148,28 @@ will be filled using `fill-region'."
       (fill-region (point-min) (point-max) t 'nosqueeze))
     (buffer-string)))
 
+(defun jupyter-fontify-region-according-to-mode (mode beg end)
+  "Fontify a region according to MODE.
+Fontify the region between BEG and END in the current buffer
+according to MODE. This works by creating a new indirect buffer,
+enabling MODE in the new buffer, ensuring the region is font
+locked, adding required text properties, and finally re-enabling
+the `major-mode' that was current before the call to this
+function."
+  (let ((restore-mode major-mode))
+    (with-current-buffer
+        (make-indirect-buffer
+         (current-buffer) (generate-new-buffer-name
+                           (jupyter-fontify-buffer-name mode)))
+      (unwind-protect
+          (save-restriction
+            (narrow-to-region beg end)
+            (delay-mode-hooks (funcall mode))
+            (font-lock-ensure)
+            (jupyter-fixup-font-lock-properties beg end))
+        (kill-buffer)))
+    (funcall restore-mode)))
+
 ;;; `jupyter-insert' method
 
 (cl-defgeneric jupyter-insert (_mime _data &optional _metadata)
