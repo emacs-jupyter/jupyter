@@ -101,7 +101,7 @@ If no buffer for MODE exists, create a new one."
       (setq buf (get-buffer-create
                  (format " *jupyter-repl-fontify[%s]*" mode)))
       (with-current-buffer buf
-        (funcall mode))
+        (delay-mode-hooks (funcall mode)))
       (setf (alist-get mode jupyter-fontify-buffers) buf))
     buf))
 
