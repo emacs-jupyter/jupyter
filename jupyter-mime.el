@@ -92,14 +92,17 @@ on the region inserted by BODY."
   "An alist of (MODE . BUFFER) pairs used for fontification.
 See `jupyter-fontify-according-to-mode'.")
 
-(defun jupyter-get-fontify-buffer (mode)
+(defun jupyter-fontify-buffer-name (mode)
+  "Return the buffer name for fontifying MODE."
+  (format " *jupyter-fontify[%s]*" mode))
+
+(defun jupyter-fontify-buffer (mode)
   "Return the buffer used to fontify text for MODE.
-Retrieve the buffer for MODE from `jupyter-repl-fontify-buffers'.
+Retrieve the buffer for MODE from `jupyter-fontify-buffers'.
 If no buffer for MODE exists, create a new one."
   (let ((buf (alist-get mode jupyter-fontify-buffers)))
     (unless buf
-      (setq buf (get-buffer-create
-                 (format " *jupyter-repl-fontify[%s]*" mode)))
+      (setq buf (get-buffer-create (jupyter-fontify-buffer-name mode)))
       (with-current-buffer buf
         (delay-mode-hooks (funcall mode)))
       (setf (alist-get mode jupyter-fontify-buffers) buf))
@@ -134,16 +137,16 @@ for the property."
 Return the fontified string. In addition to fontifying STR, if
 MODE has a non-default `fill-forward-paragraph-function', STR
 will be filled using `fill-region'."
-  (with-current-buffer (jupyter-get-fontify-buffer mode)
-    (with-silent-modifications
-      (erase-buffer)
-      (insert str)
-      (font-lock-ensure)
-      (jupyter-add-font-lock-properties (point-min) (point-max))
-      (when (not (memq fill-forward-paragraph-function
-                       '(forward-paragraph)))
-        (fill-region (point-min) (point-max) t 'nosqueeze))
-      (buffer-string))))
+  (with-current-buffer (jupyter-fontify-buffer mode)
+    (erase-buffer)
+    (pop-to-buffer (current-buffer))
+    (insert str)
+    (font-lock-ensure)
+    (jupyter-add-font-lock-properties (point-min) (point-max))
+    (when (not (memq fill-forward-paragraph-function
+                     '(forward-paragraph)))
+      (fill-region (point-min) (point-max) t 'nosqueeze))
+    (buffer-string)))
 
 ;;; `jupyter-insert' method
 
