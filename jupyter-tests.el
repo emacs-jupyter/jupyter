@@ -275,6 +275,85 @@ running BODY."
           (should (equal (buffer-string) "kjdaljk\n"))
           (erase-buffer))))))
 
+(defun jupyter-test-display-id-all (id beg end)
+  (not (text-property-not-all beg end 'jupyter-display id)))
+
+(ert-deftest juptyer-insert-with-ids ()
+  (with-temp-buffer
+    (let ((id "1")
+          (msg (list :data (list :text/plain "foo"))))
+      (ert-info ("`jupyter-display-ids' initialization")
+        (should-not jupyter-display-ids)
+        (should (eq (jupyter-insert id msg) :text/plain))
+        (should (hash-table-p jupyter-display-ids))
+        (should (equal (buffer-string) "foo\n")))
+      (ert-info ("`jupyter-display-ids' is updated with ID")
+        (should (not (null (gethash id jupyter-display-ids)))))
+      (ert-info ("IDs are `eq'")
+        ;; This is done so that they are comparable as text properties.
+        (should (eq (gethash id jupyter-display-ids) id)))
+      (ert-info ("Text property added to inserted text")
+        (should (jupyter-test-display-id-all id (point-min) (point-max)))))))
+
+(ert-deftest jupyter-delete-display-at-point ()
+  (with-temp-buffer
+    (let ((id1 "1")
+          (id2 "2")
+          (msg (list :data (list :text/plain "foo"))))
+      (ert-info ("Actually deletes text with display ID")
+        (jupyter-insert id1 msg)
+        (should (equal (buffer-string) "foo\n"))
+        (goto-char (point-min))
+        (jupyter-delete-display-at-point)
+        (should (= (point-min) (point-max))))
+      (ert-info ("Does not do anything if no display ID at point")
+        (insert "bar")
+        (goto-char (point-min))
+        (jupyter-delete-display-at-point)
+        (should (equal (buffer-string) "bar"))
+        (erase-buffer))
+      (ert-info ("Deletes only text with the same display ID")
+        (jupyter-insert id1 msg)
+        (jupyter-insert id2 msg)
+        (goto-char (point-min))
+        (jupyter-delete-display-at-point)
+        (should (equal (buffer-string) "foo\n"))
+        (should (jupyter-test-display-id-all id2 (point-min) (point-max)))
+        (erase-buffer)))))
+
+(ert-deftest jupyter-update-display ()
+  (with-temp-buffer
+    (let ((id1 "1")
+          (id2 "2")
+          (msg1 (list :data (list :text/plain "foo")))
+          (msg2 (list :data (list :text/plain "bar"))))
+      (ert-info ("Text with matching display ID is actually updated")
+        (jupyter-insert id1 msg1)
+        (jupyter-insert id2 msg2)
+        (should (equal (buffer-string) "foo\nbar\n"))
+        (should (jupyter-test-display-id-all
+                 id1 (point-min) (+ 4 (point-min))))
+        (should (jupyter-test-display-id-all
+                 id2 (- (point-max) 4) (point-max)))
+        (jupyter-update-display "1" (list :data (list :text/plain "baz")))
+        (should (equal (buffer-string) "baz\nbar\n"))
+        (should (jupyter-test-display-id-all
+                 id1 (point-min) (+ 4 (point-min))))
+        (should (jupyter-test-display-id-all
+                 id2 (- (point-max) 4) (point-max)))
+        (erase-buffer))
+      (ert-info ("All displays are updated")
+        (jupyter-insert id1 msg1)
+        (jupyter-insert id1 msg1)
+        (pop-to-buffer (current-buffer))
+        (should (equal (buffer-string) "foo\nfoo\n"))
+        (should (jupyter-test-display-id-all
+                 id1 (point-min) (point-max)))
+        (jupyter-update-display "1" (list :data (list :text/plain "baz")))
+        (should (equal (buffer-string) "baz\nbaz\n"))
+        (should (jupyter-test-display-id-all
+                 id1 (point-min) (point-max)))))))
+
 (ert-deftest jupyter-messages ()
   (ert-info ("Splitting identities from messages")
     (let ((msg (list "123" "323" jupyter-message-delimiter
