@@ -99,7 +99,7 @@ source code block. Set by `org-babel-execute:jupyter'.")))
                                      execution-state)
   (when (and (jupyter-org-request-async req)
              (equal execution-state "idle"))
-    (jupyter-org-clear-request-id req)
+    (jupyter-org--clear-request-id req)
     (run-hooks 'org-babel-after-execute-hook)))
 
 (cl-defmethod jupyter-handle-error ((client jupyter-org-client)
@@ -380,7 +380,7 @@ the PARAMS list. If RENDER-PARAM is a string, remove it from the
    ((not (null render-param))
     (error "Render parameter unsupported (%s)" render-param))))
 
-(defun jupyter-org-clear-request-id (req)
+(defun jupyter-org--clear-request-id (req)
   "Delete the ID of REQ in the `org-mode' buffer if present."
   (unless (jupyter-org-request-id-cleared-p req)
     (org-with-point-at (jupyter-org-request-marker req)
@@ -440,9 +440,11 @@ block for the request."
         (message "%s" (cdr result)))
     (if (jupyter-org-request-async req)
         (let ((params (jupyter-org-request-block-params req))
+              ;; TODO: Remove as this is now done higher up in
+              ;; `jupyter-handle-message'.
               (jupyter-current-client client))
           (org-with-point-at (jupyter-org-request-marker req)
-            (jupyter-org-clear-request-id req)
+            (jupyter-org--clear-request-id req)
             (jupyter-org-insert-results result params))
           (unless (member "append" (assq :result-params params))
             (jupyter-org--inject-render-param "append" params)))
