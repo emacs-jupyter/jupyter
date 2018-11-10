@@ -71,12 +71,15 @@ buffer."
 (cl-defmethod jupyter-load-file-code (file &context (jupyter-lang python))
   (concat "%run " file))
 
-(cl-defmethod jupyter-org-transform-result (render-result
-                                            &context (jupyter-lang python))
-  (cond
-   ((equal (car render-result) "scalar")
-    (cons "scalar" (org-babel-python-table-or-string (cdr render-result))))
-   (t render-result)))
+(cl-defmethod jupyter-org-result ((_mime (eql :text/plain))
+                                  &context (jupyter-lang python)
+                                  &rest _)
+  (let ((result (cl-call-next-method)))
+    (cond
+     ((and (equal (car result) "scalar")
+           (stringp (cdr result)))
+      (cons "scalar" (org-babel-python-table-or-string (cdr result))))
+     (t result))))
 
 (provide 'jupyter-python)
 

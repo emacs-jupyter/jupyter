@@ -1105,6 +1105,34 @@ Image(filename='%s')" file)))
           (when repl-buffer
             (kill-buffer repl-buffer)))))))
 
+(ert-deftest jupyter-org-result ()
+  (let ((req (make-jupyter-org-request)))
+    (should (equal (jupyter-org-result req (list :text/plain "foo"))
+                   (cons "scalar" "foo")))
+    (should (equal (jupyter-org-result req (list :text/html "foo"))
+                   (cons "html" "foo")))
+    (ert-info ("Around method for scalar data")
+      ;; Calls `org-babel-script-escape'
+      (should (equal (jupyter-org-result req (list :text/plain "[1, 2, 3]"))
+                     (cons "scalar" '(1 2 3))))
+      ;; Test that the python language specialized method calls
+      ;; `org-babel-python-table-or-string', this is more of a test for method
+      ;; order.
+      (cl-letf* ((py-method-called nil)
+                 ((symbol-function #'org-babel-python-table-or-string)
+                  (lambda (results)
+                    (setq py-method-called t)
+                    (org-babel-script-escape results)))
+                 (jupyter-current-client (jupyter-kernel-client)))
+        (unwind-protect
+            (progn
+              (oset jupyter-current-client kernel-info
+                    (list :language_info (list :name "python")))
+              (should (equal (jupyter-org-result req (list :text/plain "[1, 2, 3]"))
+                             (cons "scalar" '(1 2 3))))
+              (should py-method-called))
+          (jupyter-finalize jupyter-current-client))))))
+
 ;;; jupyter-tests.el ends here
 
 ;; Local Variables:

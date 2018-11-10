@@ -44,6 +44,13 @@ See `jupyter-org-image-file-name'."
   :group 'ob-jupyter
   :type 'string)
 
+(defconst jupyter-org-mime-types '(:text/org
+                                   ;; Prioritize images over html
+                                   :image/svg+xml :image/jpeg :image/png
+                                   :text/html :text/markdown
+                                   :text/latex :text/plain)
+  "MIME types handled by Jupyter Org.")
+
 (defclass jupyter-org-client (jupyter-repl-client)
   ((block-params
     :initform nil
@@ -119,26 +126,28 @@ source code block. Set by `org-babel-execute:jupyter'.")))
       (pop-to-buffer (current-buffer)))
     (jupyter-org-add-result client req emsg)))
 
-(defun jupyter-org-prepare-and-add-result (client req data metadata)
-  "For CLIENT's REQ, add DATA as a result.
-METADATA has the same meaning as in
-`jupyter-org-prepare-result'."
-  (unless (eq (jupyter-org-request-result-type req) 'output)
-    (let* ((params (jupyter-org-request-block-params req))
-           (rendered-data (jupyter-org-prepare-result data metadata params)))
-      (jupyter-org-add-result client req rendered-data))))
-
 (cl-defmethod jupyter-handle-execute-result ((client jupyter-org-client)
                                              (req jupyter-org-request)
                                              _execution-count
                                              data
                                              metadata)
-  (cond
-   ((equal (jupyter-kernel-language client) "python")
-    ;; The Python kernel emits an execute-result and then a display-data
-    ;; message, so only return the text representation for the execute-result.
-    (setq data (list :text/plain (plist-get data :text/plain)))))
-  (jupyter-org-prepare-and-add-result client req data metadata))
+  (unless (eq (jupyter-org-request-result-type req) 'output)
+    (jupyter-org-add-result
+     client req (jupyter-org-result req data metadata))))
+
+(cl-defmethod jupyter-org-result ((req jupyter-org-request) data
+                                  &context (jupyter-lang python)
+                                  &optional metadata)
+  "Handle message order emitted by the Python kernel.
+The Python kernel emits an execute-result and then a display-data
+message, so only return the text representation for the
+execute-result."
+  (if (eq (jupyter-message-type
+           (jupyter-request-last-message req))
+          :execute-result)
+      (cl-call-next-method
+       req (list :text/plain (plist-get data :text/plain)) metadata)
+    (cl-call-next-method)))
 
 (cl-defmethod jupyter-handle-display-data ((client jupyter-org-client)
                                            (req jupyter-org-request)
@@ -150,7 +159,9 @@ METADATA has the same meaning as in
                                            ;; can #+NAME be used as a display
                                            ;; ID?
                                            _transient)
-  (jupyter-org-prepare-and-add-result client req data metadata))
+  (unless (eq (jupyter-org-request-result-type req) 'output)
+    (jupyter-org-add-result
+     client req (jupyter-org-result req data metadata))))
 
 (cl-defmethod jupyter-handle-execute-reply ((client jupyter-org-client)
                                             (_req jupyter-org-request)
@@ -220,30 +231,39 @@ EXT is used as the extension."
                (concat "." ext))))
     (concat (file-name-as-directory dir) (sha1 data) ext)))
 
-(defun jupyter-org--image-result (data file &optional overwrite base64-encoded)
-  "Possibly write image DATA to FILE.
-If OVERWRITE is non-nil, overwrite FILE if it already exists.
-Otherwise if FILE already exists, DATA is not written to FILE.
+(defun jupyter-org--image-result (mime params data)
+  "Return a cons cell (\"file\" . FILENAME).
+MIME is the image mimetype, PARAMS is the
+`jupyter-org-request-block-params' that caused this result to be
+returned and DATA is the image DATA.
 
-If BASE64-ENCODED is non-nil, the DATA is assumed to be encoded
-with the base64 encoding and is first decoded before writing to
-FILE.
+If PARAMS contains a :file key, it is used as the FILENAME.
+Otherwise a file name is created, see
+`jupyter-org-image-file-name'. Note, when PARAMS contains a :file
+key any existing file with the file name will be overwritten when
+writing the image data. This is not the case when a new file name
+is created."
+  (let* ((overwrite (not (null (alist-get :file params))))
+         (base64-encoded (memq mime '(:image/png :image/jpeg)))
+         (file (or (alist-get :file params)
+                   (jupyter-org-image-file-name
+                    data (cl-case mime
+                           (:image/png "png")
+                           (:image/jpeg "jpg")
+                           (:image/svg+xml "svg"))))))
+    (when (or overwrite (not (file-exists-p file)))
+      (let ((buffer-file-coding-system
+             (if base64-encoded 'binary
+               buffer-file-coding-system))
+            (require-final-newline nil))
+        (with-temp-file file
+          (insert data)
+          (when base64-encoded
+            (base64-decode-region (point-min) (point-max))))))
+    (cons "file" file)))
 
-Return the cons cell (\"file\" . FILE), see
-`jupyter-org-prepare-result'."
-  (cons "file" (prog1 file
-                 (when (or overwrite (not (file-exists-p file)))
-                   (let ((buffer-file-coding-system
-                          (if base64-encoded 'binary
-                            buffer-file-coding-system))
-                         (require-final-newline nil))
-                     (with-temp-file file
-                       (insert data)
-                       (when base64-encoded
-                         (base64-decode-region (point-min) (point-max)))))))))
-
-(defun jupyter-org-prepare-result (data metadata params)
-  "Return the rendered DATA.
+(cl-defmethod jupyter-org-result ((req jupyter-org-request) data &optional metadata)
+  "For REQ, return the rendered DATA.
 DATA is a plist, (:mimetype1 value1 ...), containing the
 different representations of a result returned by a kernel.
 
@@ -252,84 +272,82 @@ returned by the Jupyter kernel. This plist typically contains
 information such as the size of an image to be rendered. The
 metadata plist is currently unused.
 
-PARAMS is the source block parameter list as passed to
-`org-babel-execute:jupyter'. Currently this is used to extract
-the file name of an image file when DATA can be rendered as an
-image. If no file name is given, one is generated based on the
-image data and mimetype, see `jupyter-org-image-file-name'.
-PARAMS is also used to intelligently choose the rendering
-parameter used for result insertion.
+Using the `jupyter-org-request-block-params' of REQ, loop over
+the MIME types in `jupyter-org-mime-types' calling
 
-This function returns a cons cell (RENDER-PARAM . RESULT) where
+    (jupyter-org-result MIME PARAMS DATA METADATA)
+
+for each MIME type. Return the result of the first iteration in
+which the above call returns a non-nil value. PARAMS is the REQ's
+`jupyter-org-request-block-params', DATA and METADATA are the
+data and metadata of the current MIME type."
+  (cl-assert data json-plist)
+  (let* ((params (jupyter-org-request-block-params req)))
+    (or (jupyter-loop-over-mime
+            jupyter-org-mime-types mime data metadata
+          (jupyter-org-result mime params data metadata))
+        (prog1 nil
+          (warn "No valid mimetype found %s"
+                (cl-loop for (k _v) on data by #'cddr collect k))))))
+
+(cl-defgeneric jupyter-org-result (_mime _params _data &optional _metadata)
+  "Return a pair, (RENDER-PARAM . RESULT), used to display MIME DATA.
 RENDER-PARAM is either a result parameter, i.e. one of the result
 parameters of `org-babel-insert-result', or a key value pair
-which should be appended to the PARAMS list when rendering
-RESULT.
+which will be appended to PARAMS when rendering RESULT in the
+`org-mode' buffer.
 
-For example, if DATA only contains the mimetype `:text/markdown',
-the RESULT-PARAM will be
+DATA is the data representing the MIME type and METADATA is any
+associated metadata associated with the MIME DATA.
+
+As an example, if DATA only contains the mimetype
+`:text/markdown', then RESULT-PARAM should be something like
 
     (:wrap . \"SRC markdown\")
 
 and RESULT will be the markdown text which should be wrapped in
 an \"EXPORT markdown\" block. See `org-babel-insert-result'."
-  (let* ((mimetypes (cl-loop for elem in data if (keywordp elem) collect elem))
-         (result-params (alist-get :result-params params))
-         (itype nil)
-         (render-result
-          (cond
-           ((memq :text/org mimetypes)
-            (cons (unless (member "raw" result-params) "org")
-                  (plist-get data :text/org)))
-           ;; TODO: Insert a link which runs code to display the widget
-           ((memq :application/vnd.jupyter.widget-view+json mimetypes)
-            (cons "scalar" "Widget"))
-           ((setq itype (cl-find-if (lambda (x) (memq x '(:image/png
-                                                     :image/jpeg
-                                                     :image/svg+xml)))
-                                    mimetypes))
-            (let* ((data (plist-get data itype))
-                   (overwrite (not (null (alist-get :file params))))
-                   (encoded (memq itype '(:image/png :image/jpeg)))
-                   (file (or (alist-get :file params)
-                             (jupyter-org-image-file-name
-                              data (cl-case itype
-                                     (:image/png "png")
-                                     (:image/jpeg "jpg")
-                                     (:image/svg+xml "svg"))))))
-              (jupyter-org--image-result data file overwrite encoded)))
-           ((memq :text/html mimetypes)
-            (let ((html (plist-get data :text/html)))
-              (save-match-data
-                ;; Allow handling of non-string data but with an html mimetype at a
-                ;; higher level
-                (if (and (stringp html) (string-match "^<img" html))
-                    (let* ((dom (with-temp-buffer
-                                  (insert html)
-                                  (libxml-parse-html-region (point-min) (point-max))))
-                           (img (car (dom-by-tag dom 'img)))
-                           (src (dom-attr img 'src)))
-                      ;; Regex adapted from `shr-get-image-data'
-                      (when (string-match
-                             "\\`data:\\(\\([^/;,]+\\(/[^;,]+\\)?\\)\\(;[^;,]+\\)*\\)?,\\(.*\\)" src)
-                        (let ((mimetype (intern (concat ":" (match-string 2 src))))
-                              (data (url-unhex-string (match-string 5 src))))
-                          (jupyter-org-prepare-result
-                           (list mimetype data) metadata params))))
-                  (cons "html" (plist-get data :text/html))))))
-           ((memq :text/markdown mimetypes)
-            (cons '(:wrap . "SRC markdown") (plist-get data :text/markdown)))
-           ((memq :text/latex mimetypes)
-            (cons (unless (member "raw" result-params) "latex")
-                  (plist-get data :text/latex)))
-           ((memq :text/plain mimetypes)
-            (cons "scalar" (plist-get data :text/plain)))
-           (t (warn "No supported mimetype found %s" mimetypes)))))
-    (prog1 render-result
-      (unless (car render-result)
-        (setcar render-result "scalar"))
-      (unless (cdr render-result)
-        (setcdr render-result "")))))
+  (ignore))
+
+(cl-defmethod jupyter-org-result ((_mime (eql :application/vnd.jupyter.widget-view+json))
+                                  _params _data &optional _metadata)
+  (cons "scalar" "Widget"))
+
+(cl-defmethod jupyter-org-result ((_mime (eql :text/org)) params data
+                                  &optional _metadata)
+  (let ((result-params (alist-get :result-params params)))
+    (cons (if (member "raw" result-params) "scalar" "org") data)))
+
+(cl-defmethod jupyter-org-result ((mime (eql :image/png)) params data
+                                  &optional _metadata)
+  ;; TODO: Add ATTR_ORG with the width and height. This can be done for example
+  ;; by adding a function to `org-babel-after-execute-hook'.
+  (jupyter-org--image-result mime params data))
+
+(cl-defmethod jupyter-org-result ((mime (eql :image/jpeg)) params data
+                                  &optional _metadata)
+  (jupyter-org--image-result mime params data))
+
+(cl-defmethod jupyter-org-result ((mime (eql :image/svg+xml)) params data
+                                  &optional _metadata)
+  (jupyter-org--image-result mime params data))
+
+(cl-defmethod jupyter-org-result ((_mime (eql :text/markdown)) _params data
+                                  &optional _metadata)
+  (cons '(:wrap . "SRC markdown") data))
+
+(cl-defmethod jupyter-org-result ((_mime (eql :text/latex)) params data
+                                  &optional _metadata)
+  (let ((result-params (alist-get :result-params params)))
+    (cons (if (member "raw" result-params) "scalar" "latex") data)))
+
+(cl-defmethod jupyter-org-result ((_mime (eql :text/html)) _params data
+                                  &optional _metadata)
+  (cons "html" data))
+
+(cl-defmethod jupyter-org-result ((_mime (eql :text/plain)) _params data
+                                  &optional _metadata)
+  (cons "scalar" data))
 
 ;; NOTE: The parameters are destructively added to the result parameters passed
 ;; to `org-babel-insert-result' in order to avoid advising
@@ -338,9 +356,9 @@ an \"EXPORT markdown\" block. See `org-babel-insert-result'."
 ;; `org-babel-insert-result'.
 (defun jupyter-org--inject-render-param (render-param params)
   "Destructively modify result parameters for `org-babel-insert-result'.
-RENDER-PARAM is the first element of the list returned by
-`jupyter-org-prepare-result', PARAMS are the parameters
-passed to `org-babel-execute:jupyter'.
+RENDER-PARAM is the first element of the cons cell returned by
+`jupyter-org-result', PARAMS are the parameters passed to
+`org-babel-execute:jupyter'.
 
 Append RENDER-PARAM to the :result-params of PARAMS if it is a
 string. Otherwise, if RENDER-PARAM is a cons cell
@@ -405,18 +423,23 @@ the PARAMS list. If RENDER-PARAM is a string, remove it from the
                    (1+ (line-end-position))))))))))
     (setf (jupyter-org-request-id-cleared-p req) t)))
 
-(cl-defgeneric jupyter-org-transform-result (render-result)
-  "Do some final transformations of RENDER-RESULT.
-RENDER-RESULT is the cons cell returned by
-`jupyter-org-prepare-result'. Return the transformed
-RENDER-RESULT cons cell.
-
-The default method calls `org-babel-script-escape' on the RESULT
-if it is a scalar, otherwise it just returns RENDER-RESULT."
-  (cond
-   ((equal (car render-result) "scalar")
-    (cons "scalar" (org-babel-script-escape (cdr render-result))))
-   (t render-result)))
+;; NOTE: The order of :around methods is that the more specialized wraps the
+;; more general, this makes sense since it is how the primary methods work as
+;; well.
+;;
+;; Using an :around method to attempt to guarantee that this is called as the
+;; outer most method. Kernel languages should extend the primary method.
+(cl-defmethod jupyter-org-result :around ((_mime (eql :text/plain)) &rest _)
+  "Do some final transformations of the result.
+Call the next method, if it returns \"scalar\" results, return a
+new \"scalar\" result with the result of calling
+`org-babel-script-escape' on the old result."
+  (let ((result (cl-call-next-method)))
+    (cond
+     ((and (equal (car result) "scalar")
+           (stringp (cdr result)))
+      (cons "scalar" (org-babel-script-escape (cdr result))))
+     (t result))))
 
 (defun jupyter-org-add-result (client req result)
   "For a request made with CLIENT, add RESULT.
@@ -457,8 +480,7 @@ each cell having the form
 
     (RENDER-PARAM . RESULT)
 
-They should have been collected by previous calls to
-`jupyter-org-prepare-result'. PARAMS are the parameters
+As is returned by `jupyter-org-result'. PARAMS are the parameters
 passed to `org-babel-execute:jupyter'.
 
 Note that if RESULTS is a list, the last result in the list will
@@ -480,7 +502,7 @@ it does not need to be added by the user."
    ;; anything else.
    with info = (list nil nil params)
    with result-params = (alist-get :result-params params)
-   for (render-param . result) in (mapcar #'jupyter-org-transform-result results)
+   for (render-param . result) in results
    do (jupyter-org--inject-render-param render-param params)
    (cl-letf (((symbol-function 'message) #'ignore))
      (org-babel-insert-result result result-params info))
@@ -491,9 +513,7 @@ it does not need to be added by the user."
 Meant to be used as the return value of `org-babel-execute:jupyter'."
   (let ((results (nreverse (jupyter-org-request-results req)))
         (params (jupyter-org-request-block-params req)))
-    (cl-destructuring-bind (render-param . result)
-        (let ((jupyter-current-client client))
-          (jupyter-org-transform-result (car results)))
+    (cl-destructuring-bind (render-param . result) (car results)
       (jupyter-org--inject-render-param render-param params)
       (prog1 result
         ;; Insert remaining results after the first one has been
