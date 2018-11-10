@@ -859,44 +859,6 @@ lines, truncate it to something less than
       (jupyter-repl-insert-prompt 'out)
       (jupyter-insert data metadata))))
 
-(defun jupyter-repl-next-display-with-id (id)
-  "Go to the start of the next display matching ID.
-Return non-nil if successful. If no display with ID is found,
-return nil without moving `point'."
-  (let ((pos (next-single-property-change (point) 'jupyter-display)))
-    (while (and pos (not (eq (get-text-property pos 'jupyter-display) id)))
-      (setq pos (next-single-property-change pos 'jupyter-display)))
-    (and pos (goto-char pos))))
-
-(defun jupyter-delete-display-at-point ()
-  "Delete the Jupyter display at `point'.
-If `point' has a non-nil jupyter-display property, delete the
-surrounding region around `point' containing the same
-jupyter-display property."
-  (let ((id (get-text-property (point) 'jupyter-display)))
-    (when id
-      (let ((beg (previous-single-property-change
-                  (point) 'jupyter-display nil (point-min)))
-            (end (next-single-property-change
-                  (point) 'jupyter-display nil (point-max))))
-        (delete-region beg end)))))
-
-(defun jupyter-repl-update-display (id data metadata)
-  "Update the display with ID using DATA.
-DATA and METADATA have the same meaning as in a `:display-data'
-message."
-  (save-excursion
-    (goto-char (point-min))
-    (while (jupyter-repl-next-display-with-id id)
-      (jupyter-delete-display-at-point)
-      (jupyter-with-insertion-bounds
-          beg end (jupyter-insert-with-id id data metadata)
-        (pulse-momentary-highlight-region beg end 'secondary-selection)))
-    (when (= (point) (point-min))
-      (error "No display matching id (%s)" id))))
-
-;; NOTE: Info on display_id
-;; https://github.com/jupyter/jupyter_client/issues/209
 (cl-defmethod jupyter-handle-display-data ((client jupyter-repl-client)
                                            req
                                            data
@@ -944,7 +906,7 @@ message."
       (let ((id (gethash display_id jupyter-display-ids)))
         (unless id
           (error "Display ID not found (%s)" id))
-        (jupyter-repl-update-display id data metadata)))))
+        (jupyter-update-display id data metadata)))))
 
 (defun jupyter-repl-clear-last-cell-output (client)
   "In CLIENT's REPL buffer, clear the output of the last completed cell."

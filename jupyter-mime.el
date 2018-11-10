@@ -450,6 +450,46 @@ DATA is displayed as a widget."
         (put-text-property beg end 'jupyter-display id)
         (put-text-property beg (1+ beg) 'jupyter-display-begin t)))))
 
+(cl-defgeneric jupyter-next-display-with-id (id)
+  "Go to the start of the next display matching ID.
+Return non-nil if successful. If no display with ID is found,
+return nil without moving `point'.
+
+The default implementation searches the current buffer for text
+with a jupyter-display text property matching ID."
+  (let ((pos (next-single-property-change (point) 'jupyter-display)))
+    (while (and pos (not (eq (get-text-property pos 'jupyter-display) id)))
+      (setq pos (next-single-property-change pos 'jupyter-display)))
+    (and pos (goto-char pos))))
+
+(cl-defgeneric jupyter-delete-display-at-point ()
+  "Delete the Jupyter display at `point'.
+
+The default implementation checks if `point' has a non-nil
+jupyter-display text property, if so, it deletes the surrounding
+region around `point' containing that same jupyter-display
+property."
+  (when-let ((id (get-text-property (point) 'jupyter-display))
+             (beg (previous-single-property-change
+                   (point) 'jupyter-display nil (point-min)))
+             (end (next-single-property-change
+                   (point) 'jupyter-display nil (point-max))))
+    (delete-region beg end)))
+
+(defun jupyter-update-display (id data metadata)
+  "Update the display with ID using DATA.
+DATA and METADATA have the same meaning as in a `:display-data'
+message."
+  (save-excursion
+    (goto-char (point-min))
+    (while (jupyter-next-display-with-id id)
+      (jupyter-delete-display-at-point)
+      (jupyter-with-insertion-bounds
+          beg end (jupyter-insert-with-id id data metadata)
+        (pulse-momentary-highlight-region beg end 'secondary-selection)))
+    (when (= (point) (point-min))
+      (error "No display matching id (%s)" id))))
+
 (provide 'jupyter-mime)
 
 ;;; jupyter-mime.el ends here
