@@ -868,32 +868,32 @@ return nil without moving `point'."
       (setq pos (next-single-property-change pos 'jupyter-display)))
     (and pos (goto-char pos))))
 
+(defun jupyter-delete-display-at-point ()
+  "Delete the Jupyter display at `point'.
+If `point' has a non-nil jupyter-display property, delete the
+surrounding region around `point' containing the same
+jupyter-display property."
+  (let ((id (get-text-property (point) 'jupyter-display)))
+    (when id
+      (let ((beg (previous-single-property-change
+                  (point) 'jupyter-display nil (point-min)))
+            (end (next-single-property-change
+                  (point) 'jupyter-display nil (point-max))))
+        (delete-region beg end)))))
+
 (defun jupyter-repl-update-display (id data metadata)
   "Update the display with ID using DATA.
 DATA and METADATA have the same meaning as in a `:display-data'
 message."
-  ;; Updating a display involves finding and clearing the data that is
-  ;; currently associated with the ID and inserting DATA at the same location.
-  ;; If multiple locations have the same display ID, all of them are updated.
-  ;; Raise an error if no display with ID could be found.
   (save-excursion
     (goto-char (point-min))
-    (let (str)
-      (while (jupyter-repl-next-display-with-id id)
-        (or str (setq str (with-temp-buffer
-                            (jupyter-insert data metadata)
-                            (put-text-property
-                             (point-min) (point-max) 'jupyter-display id)
-                            (buffer-string))))
-        (delete-region (point) (next-single-property-change
-                                (point) 'jupyter-display))
-        (let ((beg (point)) ov)
-          (insert str)
-          (setq ov (make-overlay (1+ beg) (point)))
-          (overlay-put ov 'face 'secondary-selection)
-          (run-at-time 0.3 nil (lambda () (delete-overlay ov)))))
-      (when (= (point) (point-min))
-        (error "No display matching id (%s)" id)))))
+    (while (jupyter-repl-next-display-with-id id)
+      (jupyter-delete-display-at-point)
+      (jupyter-with-insertion-bounds
+          beg end (jupyter-insert-with-id id data metadata)
+        (pulse-momentary-highlight-region beg end 'secondary-selection)))
+    (when (= (point) (point-min))
+      (error "No display matching id (%s)" id))))
 
 ;; NOTE: Info on display_id
 ;; https://github.com/jupyter/jupyter_client/issues/209
