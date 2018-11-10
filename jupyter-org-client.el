@@ -93,13 +93,13 @@ source code block. Set by `org-babel-execute:jupyter'.")))
                                     (req jupyter-org-request))
   (set-marker (jupyter-org-request-marker req) nil))
 
-(cl-defmethod jupyter-handle-stream ((client jupyter-org-client)
+(cl-defmethod jupyter-handle-stream ((_client jupyter-org-client)
                                      (req jupyter-org-request)
                                      name
                                      text)
   (and (eq (jupyter-org-request-result-type req) 'output)
        (equal name "stdout")
-       (jupyter-org-add-result client req (ansi-color-apply text))))
+       (jupyter-org-add-result req (ansi-color-apply text))))
 
 (cl-defmethod jupyter-handle-status ((_client jupyter-org-client)
                                      (req jupyter-org-request)
@@ -109,7 +109,7 @@ source code block. Set by `org-babel-execute:jupyter'.")))
     (jupyter-org--clear-request-id req)
     (run-hooks 'org-babel-after-execute-hook)))
 
-(cl-defmethod jupyter-handle-error ((client jupyter-org-client)
+(cl-defmethod jupyter-handle-error ((_client jupyter-org-client)
                                     (req jupyter-org-request)
                                     ename
                                     evalue
@@ -124,16 +124,15 @@ source code block. Set by `org-babel-execute:jupyter'.")))
        (mapconcat #'identity traceback "\n"))
       (goto-char (line-beginning-position))
       (pop-to-buffer (current-buffer)))
-    (jupyter-org-add-result client req emsg)))
+    (jupyter-org-add-result req emsg)))
 
-(cl-defmethod jupyter-handle-execute-result ((client jupyter-org-client)
+(cl-defmethod jupyter-handle-execute-result ((_client jupyter-org-client)
                                              (req jupyter-org-request)
                                              _execution-count
                                              data
                                              metadata)
   (unless (eq (jupyter-org-request-result-type req) 'output)
-    (jupyter-org-add-result
-     client req (jupyter-org-result req data metadata))))
+    (jupyter-org-add-result req (jupyter-org-result req data metadata))))
 
 (cl-defmethod jupyter-org-result ((req jupyter-org-request) data
                                   &context (jupyter-lang python)
@@ -149,7 +148,7 @@ execute-result."
        req (list :text/plain (plist-get data :text/plain)) metadata)
     (cl-call-next-method)))
 
-(cl-defmethod jupyter-handle-display-data ((client jupyter-org-client)
+(cl-defmethod jupyter-handle-display-data ((_client jupyter-org-client)
                                            (req jupyter-org-request)
                                            data
                                            metadata
@@ -160,8 +159,7 @@ execute-result."
                                            ;; ID?
                                            _transient)
   (unless (eq (jupyter-org-request-result-type req) 'output)
-    (jupyter-org-add-result
-     client req (jupyter-org-result req data metadata))))
+    (jupyter-org-add-result req (jupyter-org-result req data metadata))))
 
 (cl-defmethod jupyter-handle-execute-reply ((client jupyter-org-client)
                                             (_req jupyter-org-request)
@@ -441,7 +439,7 @@ new \"scalar\" result with the result of calling
       (cons "scalar" (org-babel-script-escape (cdr result))))
      (t result))))
 
-(defun jupyter-org-add-result (client req result)
+(defun jupyter-org-add-result (req result)
   "For a request made with CLIENT, add RESULT.
 REQ is a `jupyter-org-request' and if the request is a
 synchronous request, RESULT will be pushed to the list of results
@@ -462,10 +460,7 @@ block for the request."
         ;; TODO: Process the result before displaying
         (message "%s" (cdr result)))
     (if (jupyter-org-request-async req)
-        (let ((params (jupyter-org-request-block-params req))
-              ;; TODO: Remove as this is now done higher up in
-              ;; `jupyter-handle-message'.
-              (jupyter-current-client client))
+        (let ((params (jupyter-org-request-block-params req)))
           (org-with-point-at (jupyter-org-request-marker req)
             (jupyter-org--clear-request-id req)
             (jupyter-org-insert-results result params))

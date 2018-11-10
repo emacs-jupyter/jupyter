@@ -704,7 +704,8 @@ are taken:
          `jupyter-handle-kernel-info-reply', ...
    - Remove request from client request table when idle message is received"
   (when msg
-    (let* ((pmsg-id (jupyter-message-parent-id msg))
+    (let* ((jupyter-current-client client)
+           (pmsg-id (jupyter-message-parent-id msg))
            (requests (oref client requests))
            (req (gethash pmsg-id requests)))
       (if (not req)
