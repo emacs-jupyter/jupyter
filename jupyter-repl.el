@@ -903,10 +903,7 @@ lines, truncate it to something less than
     (unless display_id
       (error "No display ID in `:update-display-data' message"))
     (jupyter-with-repl-buffer client
-      (let ((id (gethash display_id jupyter-display-ids)))
-        (unless id
-          (error "Display ID not found (%s)" id))
-        (jupyter-update-display id data metadata)))))
+      (jupyter-update-display display_id data metadata))))
 
 (defun jupyter-repl-clear-last-cell-output (client)
   "In CLIENT's REPL buffer, clear the output of the last completed cell."

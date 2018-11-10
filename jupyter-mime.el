@@ -450,6 +450,34 @@ DATA is displayed as a widget."
         (put-text-property beg end 'jupyter-display id)
         (put-text-property beg (1+ beg) 'jupyter-display-begin t)))))
 
+(cl-defgeneric jupyter-current-display ()
+  "Return the display ID for the display at `point'.
+
+The default implementation returns the jupyter-display text
+property at `point'."
+  (get-text-property (point) 'jupyter-display))
+
+(cl-defgeneric jupyter-beginning-of-display ()
+  "Go to the beginning of the current Jupyter display.
+
+The default implementation moves `point' to the position of the
+character with a jupyter-display-begin property. If `point' is
+already at a character with such a property, then `point' is
+returned."
+  (if (get-text-property (point) 'jupyter-display-begin) (point)
+    (goto-char
+     (previous-single-property-change
+      (point) 'jupyter-display-begin nil (point-min)))))
+
+(cl-defgeneric jupyter-end-of-display ()
+  "Go to the end of the current Jupyter display."
+  (goto-char
+   (min (next-single-property-change
+         (point) 'jupyter-display nil (point-max))
+        (next-single-property-change
+         (min (1+ (point)) (point-max))
+         'jupyter-display-begin nil (point-max)))))
+
 (cl-defgeneric jupyter-next-display-with-id (id)
   "Go to the start of the next display matching ID.
 Return non-nil if successful. If no display with ID is found,
@@ -457,46 +485,49 @@ return nil without moving `point'.
 
 The default implementation searches the current buffer for text
 with a jupyter-display text property matching ID."
-  (let ((pos (next-single-property-change (point) 'jupyter-display)))
-    (while (and pos (not (eq (get-text-property pos 'jupyter-display) id)))
-      (setq pos (next-single-property-change pos 'jupyter-display)))
-    (and pos (goto-char pos))))
+  (or (and (bobp) (eq id (get-text-property (point) 'jupyter-display)))
+      (let ((pos (next-single-property-change (point) 'jupyter-display-begin)))
+        (while (and pos (not (eq (get-text-property pos 'jupyter-display) id)))
+          (setq pos (next-single-property-change pos 'jupyter-display-begin)))
+        (and pos (goto-char pos)))))
 
-(cl-defgeneric jupyter-delete-display-at-point ()
-  "Delete the Jupyter display at `point'.
+(cl-defgeneric jupyter-delete-current-display ()
+  "Delete the current Jupyter display.
 
 The default implementation checks if `point' has a non-nil
 jupyter-display text property, if so, it deletes the surrounding
 region around `point' containing that same jupyter-display
 property."
-  (when-let ((id (get-text-property (point) 'jupyter-display))
-             (beg (previous-single-property-change
-                   (point) 'jupyter-display nil (point-min)))
-             (end (next-single-property-change
-                   (point) 'jupyter-display nil (point-max))))
-    (delete-region beg end)))
+  (when (jupyter-current-display)
+    (delete-region
+     (save-excursion (jupyter-beginning-of-display) (point))
+     (save-excursion (jupyter-end-of-display) (point)))))
 
-(defun jupyter-update-display (id data metadata)
-  "Update the display with ID using DATA.
+(cl-defgeneric jupyter-update-display ((display-id string) data &optional metadata)
+  "Update the display with DISPLAY-ID using DATA.
 DATA and METADATA have the same meaning as in a `:display-data'
 message."
-  (save-excursion
-    (goto-char (point-min))
-    (let (bounds)
-      (while (jupyter-next-display-with-id id)
-        (jupyter-delete-display-at-point)
-        (jupyter-with-insertion-bounds
-            beg end (if bounds (insert-buffer-substring
-                                (current-buffer) (car bounds) (cdr bounds))
-                      (jupyter-insert-with-id id data metadata))
-          (unless bounds
-            (setq bounds (cons (copy-marker beg) (copy-marker end))))
-          (pulse-momentary-highlight-region beg end 'secondary-selection)))
-      (when bounds
-        (set-marker (car bounds) nil)
-        (set-marker (cdr bounds) nil)))
-    (when (= (point) (point-min))
-      (error "No display matching id (%s)" id))))
+  (let ((id (and jupyter-display-ids
+                 (gethash display-id jupyter-display-ids))))
+    (unless id
+      (error "Display ID not found (%s)" display-id))
+    (save-excursion
+      (goto-char (point-min))
+      (let (bounds)
+        (while (jupyter-next-display-with-id id)
+          (jupyter-delete-current-display)
+          (jupyter-with-insertion-bounds
+              beg end (if bounds (insert-buffer-substring
+                                  (current-buffer) (car bounds) (cdr bounds))
+                        (jupyter-insert id data metadata))
+            (unless bounds
+              (setq bounds (cons (copy-marker beg) (copy-marker end))))
+            (pulse-momentary-highlight-region beg end 'secondary-selection)))
+        (when bounds
+          (set-marker (car bounds) nil)
+          (set-marker (cdr bounds) nil)))
+      (when (= (point) (point-min))
+        (error "No display matching id (%s)" id)))))
 
 (provide 'jupyter-mime)
 
