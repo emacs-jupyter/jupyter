@@ -392,34 +392,6 @@ Do this only when the `major-mode' is `jupyter-repl-mode'."
                               &optional _metadata)
   (jupyter-widgets-display-model jupyter-current-client (plist-get data :model_id)))
 
-(defun jupyter-repl-insert-message (msg)
-  "Insert a messages contents in the current buffer.
-MSG is the message to be inserted. A message is inserted only if
-its content has a status key of \"ok\" and has a found key of t.
-
-Calls the method `jupyter-repl-after-insert-message', if the
-message was inserted."
-  (jupyter-with-message-content msg
-      (status found)
-    (when (and (equal status "ok") (eq found t))
-      (let ((beg (point))
-            (mime (jupyter-insert (jupyter-message-content msg))))
-        (when mime
-          (save-excursion
-            (save-restriction
-              (narrow-to-region beg (point))
-              (goto-char beg)
-              (jupyter-repl-after-insert-message
-               (jupyter-message-type msg) mime))))))))
-
-(cl-defgeneric jupyter-repl-after-insert-message (_type _mime)
-  "Called after a message has been inserted for certain message types.
-If a message with TYPE causes output to be inserted into a
-buffer, the buffer is narrowed to the inserted output before this
-function is called. MIME will be the mimetype of the data
-inserted."
-  (ignore))
-
 ;;; Prompt
 
 (defun jupyter-repl--prompt-display-value (str face)
@@ -1739,7 +1711,7 @@ DETAIL is the detail level to use for the request and defaults to
                     (inhibit-read-only t))
                 (if (buffer-live-p buffer)
                     (with-current-buffer buffer
-                      (jupyter-repl-insert-message msg)
+                      (jupyter-insert (jupyter-message-content msg))
                       (current-buffer))
                   (with-help-window (help-buffer)
                     (with-current-buffer standard-output
@@ -1749,7 +1721,7 @@ DETAIL is the detail level to use for the request and defaults to
                                (lambda () (jupyter-inspect code pos nil detail))))
                        nil)
                       (setq jupyter-current-client client)
-                      (jupyter-repl-insert-message msg)))))
+                      (jupyter-insert (jupyter-message-content msg))))))
             (message "Nothing found for %s"
                      (with-temp-buffer
                        (insert code)

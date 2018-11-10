@@ -54,26 +54,31 @@ buffer."
             (jupyter-repl-insert
              (make-string (if (> len 4) len 4) ? ))))))))
 
-(cl-defmethod jupyter-repl-after-insert-message (type mime &context (jupyter-lang python))
+(cl-defmethod jupyter-insert :around ((msg cons)
+                                      &context (jupyter-lang python)
+                                      &rest _)
   "Fontify docstrings after inserting inspect messages."
-  (cond
-   ((and (eq type :inspect-reply)
-         (eq mime :text/plain))
-    (when (search-forward "Docstring:" nil t)
-      (let ((mode major-mode))
-        (with-current-buffer (make-indirect-buffer (current-buffer) " *jupyter-python-temp*")
-          (save-restriction
-            (narrow-to-region (1+ (point)) (point-max))
-            (delay-mode-hooks (rst-mode))
-            ;; NOTE: We get the font-lock-fontified property for free since
-            ;; `ansi-color-apply' already inserts it for :text/plain messages,
-            ;; thus there is no need to call
-            ;; `jupyter-repl-fixup-font-lock-properties' after
-            ;; `font-lock-ensure'
-            (font-lock-ensure))
-          (kill-buffer))
-        (funcall mode))))
-   (t nil)))
+  (let ((mime (cl-call-next-method)))
+    (prog1 mime
+      (cond
+       ((and (eq mime :text/plain)
+             (eq (jupyter-message-type msg) :inspect-reply))
+        (when (search-forward "Docstring:" nil t)
+          (let ((mode major-mode))
+            (with-current-buffer
+                (make-indirect-buffer (current-buffer) " *jupyter-python-temp*")
+              (save-restriction
+                (narrow-to-region (1+ (point)) (point-max))
+                (delay-mode-hooks (rst-mode))
+                ;; NOTE: We get the font-lock-fontified property for free since
+                ;; `ansi-color-apply' already inserts it for :text/plain
+                ;; messages, thus there is no need to call
+                ;; `jupyter-fixup-font-lock-properties' after
+                ;; `font-lock-ensure'
+                (font-lock-ensure))
+              (kill-buffer))
+            (funcall mode))))
+       (t nil)))))
 
 (cl-defmethod jupyter-load-file-code (file &context (jupyter-lang python))
   (concat "%run " file))
