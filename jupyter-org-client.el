@@ -343,6 +343,24 @@ an \"EXPORT markdown\" block. See `org-babel-insert-result'."
                                   &optional _metadata)
   (cons "html" data))
 
+;; NOTE: The order of :around methods is that the more specialized wraps the
+;; more general, this makes sense since it is how the primary methods work as
+;; well.
+;;
+;; Using an :around method to attempt to guarantee that this is called as the
+;; outer most method. Kernel languages should extend the primary method.
+(cl-defmethod jupyter-org-result :around ((_mime (eql :text/plain)) &rest _)
+  "Do some final transformations of the result.
+Call the next method, if it returns \"scalar\" results, return a
+new \"scalar\" result with the result of calling
+`org-babel-script-escape' on the old result."
+  (let ((result (cl-call-next-method)))
+    (cond
+     ((and (equal (car result) "scalar")
+           (stringp (cdr result)))
+      (cons "scalar" (org-babel-script-escape (cdr result))))
+     (t result))))
+
 (cl-defmethod jupyter-org-result ((_mime (eql :text/plain)) _params data
                                   &optional _metadata)
   (cons "scalar" data))
@@ -420,24 +438,6 @@ the PARAMS list. If RENDER-PARAM is a string, remove it from the
                    (forward-line 1)
                    (1+ (line-end-position))))))))))
     (setf (jupyter-org-request-id-cleared-p req) t)))
-
-;; NOTE: The order of :around methods is that the more specialized wraps the
-;; more general, this makes sense since it is how the primary methods work as
-;; well.
-;;
-;; Using an :around method to attempt to guarantee that this is called as the
-;; outer most method. Kernel languages should extend the primary method.
-(cl-defmethod jupyter-org-result :around ((_mime (eql :text/plain)) &rest _)
-  "Do some final transformations of the result.
-Call the next method, if it returns \"scalar\" results, return a
-new \"scalar\" result with the result of calling
-`org-babel-script-escape' on the old result."
-  (let ((result (cl-call-next-method)))
-    (cond
-     ((and (equal (car result) "scalar")
-           (stringp (cdr result)))
-      (cons "scalar" (org-babel-script-escape (cdr result))))
-     (t result))))
 
 (defun jupyter-org-add-result (req result)
   "For a request made with CLIENT, add RESULT.
