@@ -79,8 +79,8 @@ source code block. Set by `org-babel-execute:jupyter'.")))
      :result-type (alist-get :result-type block-params)
      :block-params block-params
      :async (equal (alist-get :async block-params) "yes")
-     :silent (or (and (member "none" result-params) "none")
-                 (and (member "silent" result-params) "silent")))))
+     :silent (car (or (member "none" result-params)
+                      (member "silent" result-params))))))
 
 (cl-defmethod jupyter-drop-request ((_client jupyter-org-client)
                                     (req jupyter-org-request))
