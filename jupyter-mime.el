@@ -482,11 +482,19 @@ DATA and METADATA have the same meaning as in a `:display-data'
 message."
   (save-excursion
     (goto-char (point-min))
-    (while (jupyter-next-display-with-id id)
-      (jupyter-delete-display-at-point)
-      (jupyter-with-insertion-bounds
-          beg end (jupyter-insert-with-id id data metadata)
-        (pulse-momentary-highlight-region beg end 'secondary-selection)))
+    (let (bounds)
+      (while (jupyter-next-display-with-id id)
+        (jupyter-delete-display-at-point)
+        (jupyter-with-insertion-bounds
+            beg end (if bounds (insert-buffer-substring
+                                (current-buffer) (car bounds) (cdr bounds))
+                      (jupyter-insert-with-id id data metadata))
+          (unless bounds
+            (setq bounds (cons (copy-marker beg) (copy-marker end))))
+          (pulse-momentary-highlight-region beg end 'secondary-selection)))
+      (when bounds
+        (set-marker (car bounds) nil)
+        (set-marker (cdr bounds) nil)))
     (when (= (point) (point-min))
       (error "No display matching id (%s)" id))))
 
