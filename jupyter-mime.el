@@ -24,10 +24,19 @@
 ;;; Commentary:
 
 ;; Routines for working with MIME types.
-;; Adds the following methods which may be extended:
+;; Also adds the following methods which may be extended:
 ;;
 ;; - jupyter-markdown-follow-link
 ;; - jupyter-insert
+;;
+;; For working with display IDs, currently rudimentary
+;;
+;; - jupyter-current-display
+;; - jupyter-beginning-of-display
+;; - jupyter-end-of-display
+;; - jupyter-next-display-with-id
+;; - jupyter-delete-current-display
+;; - jupyter-update-display
 
 ;;; Code:
 
