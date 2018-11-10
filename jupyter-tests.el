@@ -241,6 +241,17 @@ running BODY."
         (jupyter-wait-until-idle req)
         (should (= callback-count 3))))))
 
+(ert-deftest jupyter-loop-over-mime ()
+  (let ((mimes '(:text/html :text/plain))
+        (data (list :text/plain "foo"))
+        (metadata nil))
+    (ert-info ("No iterations without MIME data")
+      (jupyter-loop-over-mime mimes mime data metadata
+        (should-not (eq mime :text/html))
+        (should (eq mime :text/plain))
+        (should (equal data "foo"))
+        (should (eq metadata nil))))))
+
 (ert-deftest jupyter-insert ()
   "Test the `jupyter-insert' method."
   (with-temp-buffer

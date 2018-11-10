@@ -175,6 +175,27 @@ variables BEG and END. The value of BODYFORM is returned."
        (set-marker ,beg nil)
        (set-marker ,end nil))))
 
+(defmacro jupyter-loop-over-mime (mime-order mime data metadata &rest bodyforms)
+  "Loop over MIME types in MIME-ORDER.
+MIME-ORDER should evaluate to a list of MIME types to loop over.
+
+MIME will be bound to the MIME type for the current iteration.
+DATA and METADATA are variables that hold the property list of
+MIME data to loop over and any associated metadata, respectively.
+
+Evaluate BODYFORMS with DATA and METADATA temporarily bound to
+the data and metadata of the MIME type for the current iteration.
+If BODYFORMS returns non-nil, return its value. Otherwise loop
+over the next MIME type in MIME-ORDER that has a non-nil value in
+the DATA property list."
+  (declare (indent 4) (debug ([&or form symbolp listp]
+                              symbolp symbolp symbolp body)))
+  `(cl-loop
+    for ,mime in ,mime-order
+    thereis (let ((,data (plist-get ,data ,mime))
+                  (,metadata (plist-get ,metadata ,mime)))
+              (when ,data ,@bodyforms))))
+
 (defun jupyter-sha256 (object)
   "Return the SHA256 hash of OBJECT."
   (secure-hash 'sha256 object nil nil t))
