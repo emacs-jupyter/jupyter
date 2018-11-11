@@ -525,14 +525,10 @@ Otherwise return the MSG-TYPE string as a keyword."
   (if (keywordp msg-type)
       (if (plist-get jupyter-message-types msg-type) msg-type
         (error "Invalid message type (`%s')" msg-type))
-    (let ((head jupyter-message-types)
-          (tail (cdr jupyter-message-types)))
-      (while (and head (not (string= msg-type (car tail))))
-        (setq head (cdr tail)
-              tail (cddr tail)))
-      (unless head
-        (error "Invalid message type (`%s')" msg-type))
-      (car head))))
+    (or (cl-loop
+         for (k v) on jupyter-message-types by #'cddr
+         thereis (and (string= msg-type v) k))
+        (error "Invalid message type (`%s')" msg-type))))
 
 (defun jupyter-message-time (msg)
   "Get the MSG time.
