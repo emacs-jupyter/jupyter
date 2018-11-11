@@ -166,11 +166,10 @@ decoded string."
                   ;; string
                   (json-unknown-keyword str))))
       (prog1 val
-        (when (listp val)
-          (let ((msg-type (plist-get val :msg_type)))
-            (when msg-type
-              (plist-put val :msg_type
-                         (jupyter-message-type-as-keyword msg-type)))))))))
+        (when-let ((msg-type (and (listp val)
+                                  (plist-get val :msg_type))))
+          (plist-put
+           val :msg_type (jupyter-message-type-as-keyword msg-type)))))))
 
 (defun jupyter--decode-time (str)
   "Decode a time STR into a time object.
