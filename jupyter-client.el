@@ -254,7 +254,8 @@ connection is terminated before initializing a new one."
                        (intern (concat "jupyter-" signature_scheme)))))
         (error "Unsupported signature scheme: %s" signature_scheme))
       ;; Stop the channels if connected to some other kernel
-      (jupyter-stop-channels client)
+      (when (jupyter-channels-running-p client)
+        (jupyter-stop-channels client))
       ;; Initialize the channels
       (unless session
         (setq session (jupyter-session :key key :conn-info conn-info)))
@@ -262,21 +263,21 @@ connection is terminated before initializing a new one."
       (let ((addr (lambda (port) (format "%s://%s:%d" transport ip port))))
         (setf (oref client channels)
               ;; Construct the channel plist
-              (cl-loop
-               collect :hb
-               and collect (make-instance
-                            'jupyter-hb-channel
-                            :session session
-                            :endpoint (funcall addr hb_port))
-               for (channel . port) in `((:stdin . ,stdin_port)
-                                         (:shell . ,shell_port)
-                                         (:iopub . ,iopub_port))
-               collect channel
-               and collect
-               ;; The session will be associated with these channels in the
-               ;; ioloop subprocess.
-               (list :endpoint (funcall addr port)
-                     :alive-p nil)))))))
+              (cl-list*
+               :hb (make-instance
+                    'jupyter-hb-channel
+                    :session session
+                    :endpoint (funcall addr hb_port))
+               (cl-loop
+                for (channel . port) in `((:stdin . ,stdin_port)
+                                          (:shell . ,shell_port)
+                                          (:iopub . ,iopub_port))
+                collect channel
+                and collect
+                ;; The session will be associated with these channels in the
+                ;; ioloop subprocess. See `jupyter-start-channels'.
+                (list :endpoint (funcall addr port)
+                      :alive-p nil))))))))
 
 ;;; Client local variables
 
@@ -422,6 +423,8 @@ kernel via CLIENT's ioloop."
 
 ;;; IOLoop handlers (receiving messages, starting/stopping channels)
 
+;;;; Sending/receiving
+
 (cl-defmethod jupyter-ioloop-handler ((_ioloop jupyter-ioloop)
                                       (client jupyter-kernel-client)
                                       (event (head sent)))
@@ -444,48 +447,72 @@ kernel via CLIENT's ioloop."
     ;; Run immediately after handling this event, i.e. on the next command loop
     (run-at-time 0 nil #'jupyter-handle-message client channel msg)))
 
+;;;; Channel alive methods
+
 (cl-defmethod jupyter-channel-alive-p ((client jupyter-kernel-client) channel)
+  (cl-assert (memq channel '(:hb :stdin :shell :iopub)) t)
   (with-slots (channels) client
-    ;; The hb channel is implemented locally in the current process whereas the
-    ;; other channels are implemented in subprocesses and the current process
-    ;; acts as a proxy.
-    (if (eq channel :hb)
-        (and (plist-get channels :hb)
-             (jupyter-channel-alive-p (plist-get channels :hb)))
-      (plist-get (plist-get channels channel) :alive-p))))
+    (if (not (eq channel :hb))
+        (plist-get (plist-get channels channel) :alive-p)
+      (setq channel (plist-get channels :hb))
+      ;; The hb channel is implemented locally in the current process whereas the
+      ;; other channels are implemented in subprocesses and the current process
+      ;; acts as a proxy.
+      (and channel (jupyter-channel-alive-p channel)))))
+
+;;;; Start channel methods
 
 (cl-defmethod jupyter-ioloop-handler ((_ioloop jupyter-ioloop)
                                       (client jupyter-kernel-client)
                                       (event (head start-channel)))
-  (with-slots (channels) client
-    (plist-put (plist-get channels (cadr event)) :alive-p t)))
+  (plist-put (plist-get (oref client channels) (cadr event)) :alive-p t))
 
 (cl-defmethod jupyter-start-channel ((client jupyter-kernel-client) channel)
-  (with-slots (ioloop channels) client
-    (if (eq channel :hb) (jupyter-start-channel (plist-get channels :hb))
-      (let ((endpoint (plist-get (plist-get channels channel) :endpoint)))
-        (unless (jupyter-channel-alive-p client channel)
-          (jupyter-send ioloop 'start-channel channel endpoint)
-          (with-timeout (0.5 (error "Channel not started in ioloop subprocess"))
-            (while (not (jupyter-channel-alive-p client channel))
-              (accept-process-output (jupyter-ioloop-process ioloop) 0.1 nil 0))))))))
+  (cl-assert (memq channel '(:hb :stdin :shell :iopub)) t)
+  (unless (jupyter-channel-alive-p client channel)
+    (with-slots (channels) client
+      (if (eq channel :hb)
+          (jupyter-start-channel (plist-get channels :hb))
+        (cl-destructuring-bind (&key endpoint &allow-other-keys)
+            (plist-get channels channel)
+          (jupyter-send
+           (oref client ioloop) 'start-channel channel endpoint))))))
+
+(cl-defmethod jupyter-start-channel :after ((client jupyter-kernel-client) channel)
+  "Verify that CLIENT's CHANNEL started.
+Raise an error if it did not start within
+`jupyter-default-timeout'."
+  (unless (or (eq channel :hb) (jupyter-channel-alive-p client channel))
+    (with-slots (ioloop) client
+      (or (jupyter-ioloop-wait-until ioloop 'start-channel
+            (lambda (_) (jupyter-channel-alive-p client channel)))
+          (error "Channel not started in ioloop subprocess (%s)" channel)))))
+
+;;;; Stop channel methods
 
 (cl-defmethod jupyter-ioloop-handler ((_ioloop jupyter-ioloop)
                                       (client jupyter-kernel-client)
                                       (event (head stop-channel)))
-  (with-slots (channels) client
-    (plist-put (plist-get channels (cadr event)) :alive-p nil)))
+  (plist-put (plist-get (oref client channels) (cadr event)) :alive-p nil))
 
 (cl-defmethod jupyter-stop-channel ((client jupyter-kernel-client) channel)
-  (with-slots (ioloop channels) client
-    (when (jupyter-channel-alive-p client channel)
-      (if (eq channel :hb) (jupyter-stop-channel (plist-get channels :hb))
-        (jupyter-send ioloop 'stop-channel channel)
-        (with-timeout (0.5 (warn "Channel not stopped in ioloop subprocess"))
-          (while (jupyter-channel-alive-p client channel)
-            (accept-process-output (jupyter-ioloop-process ioloop) 0.1 nil 0)))))))
+  (cl-assert (memq channel '(:hb :stdin :shell :iopub)) t)
+  (when (jupyter-channel-alive-p client channel)
+    (if (eq channel :hb)
+        (jupyter-stop-channel (plist-get (oref client channels) :hb))
+      (jupyter-send (oref client ioloop) 'stop-channel channel))))
 
-;;; Starting/stopping channels
+(cl-defmethod jupyter-stop-channel :after ((client jupyter-kernel-client) channel)
+  "Verify that CLIENT's CHANNEL has stopped.
+Raise a warning if it has not been stopped within
+`jupyter-default-timeout'."
+  (unless (or (eq channel :hb) (not (jupyter-channel-alive-p client channel)))
+    (with-slots (ioloop) client
+      (or (jupyter-ioloop-wait-until ioloop 'stop-channel
+            (lambda (_) (not (jupyter-channel-alive-p client channel))))
+          (warn "Channel not stopped in ioloop subprocess")))))
+
+;;; Starting/stopping IOLoop
 
 (cl-defmethod jupyter-start-channels ((client jupyter-kernel-client)
                                       &key (shell t)
