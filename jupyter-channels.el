@@ -167,7 +167,7 @@ use `jupyter-hb-unpause'."))
 (cl-defmethod jupyter-hb-unpause ((channel jupyter-hb-channel))
   "Un-pause checking for heatbeat events on CHANNEL."
   (when (oref channel paused)
-    (if (not (zmq-socket-p (oref channel socket)))
+    (if (not (jupyter-channel-alive-p channel))
         (jupyter-start-channel channel)
       (oset channel paused nil)
       (jupyter-hb--send-ping channel))))
@@ -194,9 +194,8 @@ If CHANNEL already has a socket in its socket slot, close it and
 open and connect a new one, re-using the IDENTITY of the socket.
 In this case the IDENTITY argument is ignored."
   (cl-assert (object-of-class-p channel 'jupyter-channel))
-  ;; TODO: More places to use `with-slots'
   (with-slots (socket endpoint) channel
-    (when (zmq-socket-p socket)
+    (when (jupyter-channel-alive-p channel)
       (setq identity (zmq-socket-get socket zmq-IDENTITY))
       (zmq-close socket))
     (oset channel socket (jupyter-connect-channel :hb endpoint identity))))
@@ -231,8 +230,8 @@ heartbeat channel is handled specially in that it is implemented
 with a timer in the current Emacs session. Starting a heartbeat
 channel, starts the timer."
   (unless (jupyter-channel-alive-p channel)
-    (jupyter-channel--reset-socket channel identity))
-  (jupyter-hb-unpause channel))
+    (jupyter-channel--reset-socket channel identity)
+    (jupyter-hb-unpause channel)))
 
 (provide 'jupyter-channels)
 
