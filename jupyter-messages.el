@@ -5,7 +5,6 @@
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 08 Jan 2018
 ;; Version: 0.0.1
-;; X-URL: https://github.com/nathan/jupyter-messages
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -24,7 +23,20 @@
 
 ;;; Commentary:
 
+;; Routines to sign, encode, decode, send, and receive Jupyter messages.
+;; Messages are represented as property lists, the contents of a message should
+;; never be accessed directly since decoding of a message's contents is done on
+;; demand. You access the message contents through `jupyter-message-content',
+;; `jupyter-message-header', `jupyter-message-metadata', etc.
 ;;
+;; There are convenience macros: `jupyter-with-message-content' and
+;; `jupyter-with-message-data'.
+;;
+;; There are many convenience functions: `jupyter-message-data',
+;; `jupyter-message-get', `jupyter-message-type',
+;; `jupyter-message-status-idle-p', etc.
+;;
+;; See the "Convenience functions and macros" section.
 
 ;;; Code:
 
