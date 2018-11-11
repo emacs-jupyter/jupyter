@@ -449,6 +449,15 @@ kernel via CLIENT's ioloop."
         (puthash msg-id req requests)
         (puthash "last-sent" req requests)))))
 
+(cl-defmethod jupyter-ioloop-printer ((_ioloop jupyter-ioloop)
+                                      (_client jupyter-kernel-client)
+                                      (event (head message)))
+  (cl-destructuring-bind (_ channel _idents . msg) event
+    (format "%s" (list
+                  channel
+                  (jupyter-message-type msg)
+                  (jupyter-message-content msg)))))
+
 (cl-defmethod jupyter-ioloop-handler ((_ioloop jupyter-ioloop)
                                       (client jupyter-kernel-client)
                                       (event (head message)))

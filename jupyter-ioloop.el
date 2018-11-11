@@ -50,6 +50,14 @@
 ;;   (jupyter-send ioloop 'echo "Message")
 ;;   (jupyter-ioloop-stop ioloop))
 
+;; TODO: `jupyter-ioloop-printer': Print a serialized representation of an
+;; object, a list with the first element tagging the kind of object.
+;;
+;; TODO: `jupyter-ioloop-reader': Read an object based on the tag in the ioloop environment.
+;;
+;; The above methods would give a way to reconstruct somewhat arbitrary objects
+;; in the ioloop.
+
 ;;; Code:
 
 (require 'jupyter-base)
@@ -331,14 +339,14 @@ evaluation using `zmq-start-process'."
           ,@(jupyter-ioloop-teardown ioloop)
           (zmq-prin1 '(quit)))))))
 
+(cl-defmethod jupyter-ioloop-printer (_ioloop _obj event)
+  (format "%s" (cdr event)))
+
 (defun jupyter-ioloop--filter (ioloop event)
   (when jupyter--debug
-    (apply #'message
-           (concat "%s: " (cl-loop
-                           repeat (length (cdr event))
-                           concat "%s "))
-           (format (upcase (symbol-name (car event))))
-           (cdr event)))
+    (message
+     (concat "%s: " (jupyter-ioloop-printer ioloop (jupyter-ioloop-object ioloop) event))
+     (format (upcase (symbol-name (car event))))))
   (jupyter-ioloop-handler ioloop (jupyter-ioloop-object ioloop) event))
 
 (defun jupyter-ioloop--sentinel (ioloop proc _)
