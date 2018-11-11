@@ -176,10 +176,7 @@ decoded string."
                   (json-unknown-keyword str))))
       (prog1 val
         (when (listp val)
-          (let ((date (plist-get val :date))
-                (msg-type (plist-get val :msg_type)))
-            (when date
-              (plist-put val :date (jupyter--decode-time date)))
+          (let ((msg-type (plist-get val :msg_type)))
             (when msg-type
               (plist-put val :msg_type
                          (jupyter-message-type-as-keyword msg-type)))))))))
@@ -553,7 +550,11 @@ Otherwise return the MSG-TYPE string as a keyword."
   "Get the MSG time.
 The returned time has the same form as returned by
 `current-time'."
-  (plist-get (jupyter-message-header msg) :date))
+  (let* ((header (jupyter-message-header msg))
+         (date (plist-member header :data)))
+    (when (stringp (car date))
+      (setcar date (jupyter--decode-time (car date))))
+    (car date)))
 
 (defun jupyter-message-get (msg key)
   "Get the value in MSG's `jupyter-message-content' that corresponds to KEY."
