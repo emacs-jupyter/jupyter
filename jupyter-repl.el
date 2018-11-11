@@ -135,11 +135,6 @@ timeout, the built-in is-complete handler is used."
     :documentation "Whether or not we should wait to clear the
 current output of the cell. Set when the kernel sends a
 `:clear-output' message.")
-   (execution-state
-    :type string
-    :initform "idle"
-    :documentation "The current state of the kernel. Can be
-either \"idle\", \"busy\", or \"starting\".")
    (execution-count
     :type integer
     :initform 1
@@ -926,7 +921,6 @@ lines, truncate it to something less than
       (jupyter-repl-clear-last-cell-output client)))))
 
 (cl-defmethod jupyter-handle-status ((client jupyter-repl-client) req execution-state)
-  (oset client execution-state execution-state)
   (when (equal execution-state "idle")
     (jupyter-with-repl-buffer client
       (save-excursion
@@ -1116,7 +1110,7 @@ execute the current cell."
           ;; sending a request when the kernel is busy because of the
           ;; is-complete request. Some kernels don't respond to this request
           ;; when the kernel is busy.
-          (unless (member (oref jupyter-current-client execution-state)
+          (unless (member (jupyter-execution-state jupyter-current-client)
                           '("starting" "idle"))
             (jupyter-repl-sync-execution-state)
             (error "Kernel busy"))
@@ -2140,8 +2134,7 @@ When the kernel restarts, insert a new prompt."
   ;; NOTE: This hook will only run if `jupyter-include-other-output' is non-nil
   ;; during the restart.
   (jupyter-add-hook jupyter-current-client 'jupyter-iopub-message-hook
-    (apply-partially
-     #'jupyter-repl-on-kernel-restart jupyter-current-client)))
+    #'jupyter-repl-on-kernel-restart))
 
 (defun jupyter-repl-propertize-output (beg end)
   "Remove string syntax from quote characters between BEG and END."
@@ -2350,7 +2343,7 @@ the REPL is connected, 'x' means the REPL is disconnected
 from the kernel."
   (and (jupyter-repl-client-p jupyter-current-client)
        (concat " JuPy["
-               (if (equal (oref jupyter-current-client execution-state) "busy")
+               (if (equal (jupyter-execution-state jupyter-current-client) "busy")
                    "*"
                  (if (jupyter-hb-beating-p jupyter-current-client)
                      "-"

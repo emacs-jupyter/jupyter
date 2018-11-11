@@ -88,6 +88,11 @@ requests like the above example.")
     :documentation "A ring of pending `jupyter-request's.
 A request is pending if it has not been sent to the kernel via the
 client's ioloop slot.")
+   (execution-state
+    :type string
+    :initform "idle"
+    :documentation "The current state of the kernel. Can be
+either \"idle\", \"busy\", or \"starting\".")
    (requests
     :type hash-table
     :initform (make-hash-table :test 'equal)
@@ -319,11 +324,13 @@ this is called."
     (add-hook hook function append t)))
 
 (defun jupyter-run-hook-with-args-until-success (client hook &rest args)
-  "Run CLIENT's value for HOOK with the arguments ARGS."
+  "Run CLIENT's value for HOOK with the arguments ARGS.
+CLIENT is passed as the first argument and then ARGS."
   (jupyter-with-client-buffer client
     (when jupyter--debug
       (message "RUN-HOOK: %s" hook))
-    (apply #'run-hook-with-args-until-success hook args)))
+    (with-demoted-errors "Error in Jupyter message hook: %S"
+      (apply #'run-hook-with-args-until-success hook client args))))
 
 (defun jupyter-remove-hook (client hook function)
   "Remove from CLIENT's value of HOOK the function FUNCTION."
@@ -1237,6 +1244,24 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
   "Default error handler."
   (declare (indent 1))
   nil)
+
+(defun jupyter-execution-state (client)
+  "Return the execution state of CLIENT's kernel."
+  (cl-check-type client jupyter-kernel-client)
+  (oref client execution-state))
+
+(defun jupyter--set-execution-state (client msg)
+  "Set the execution-state slot of CLIENT.
+If MSG is a status message, set the execution-state slot of
+CLIENT to its execution state slot."
+  (prog1 nil ; Allow the handlers to run.
+    (and (eq (jupyter-message-type msg) :status)
+         (oset client execution-state
+               (jupyter-message-get msg :execution_state)))))
+
+;; Added as a hook as opposed to a :before method due to
+;; `jupyter-inhibit-handlers'.
+(add-hook 'jupyter-iopub-message-hook #'jupyter--set-execution-state)
 
 (cl-defgeneric jupyter-handle-status ((_client jupyter-kernel-client)
                                       _req

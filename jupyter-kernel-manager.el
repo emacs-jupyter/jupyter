@@ -364,7 +364,7 @@ instance, see `jupyter-make-client'."
             ;; NOTE: Startup messages have no parent header, hence the need for
             ;; `jupyter-include-other-output'.
             (let* ((jupyter-include-other-output t)
-                   (cb (lambda (msg)
+                   (cb (lambda (_ msg)
                          (setq started
                                (jupyter-message-status-starting-p msg)))))
               (jupyter-add-hook client 'jupyter-iopub-message-hook cb)
