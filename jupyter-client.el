@@ -184,12 +184,15 @@ passed as the argument has a language of LANG."
   "Close CLIENT's channels and cleanup internal resources."
   (jupyter-stop-channels client)
   (delete-instance client)
-  (when (buffer-live-p (oref client -buffer))
-    ;; Don't ask if the buffer should be killed, this is needed because of the
-    ;; lock file mechanism for channel subprocesses.
-    (with-current-buffer (oref client -buffer)
-      (set-buffer-modified-p nil))
-    (kill-buffer (oref client -buffer))))
+  (with-slots (-buffer) client
+    (when (buffer-live-p -buffer)
+      ;; Don't ask if the buffer should be killed, this is needed because of the
+      ;; lock file mechanism for channel subprocesses.
+      (with-current-buffer -buffer
+        (set-buffer-modified-p nil))
+      (when (get-buffer-process -buffer)
+        (delete-process (get-buffer-process -buffer)))
+      (kill-buffer -buffer))))
 
 (defun jupyter-kill-kernel-clients ()
   "Call the finalizer for all live Jupyter clients."
