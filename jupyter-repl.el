@@ -205,15 +205,12 @@ output of REQ should be inserted.
 Also handles any terminal control codes in the appended output."
   (declare (indent 2) (debug (symbolp &rest form)))
   `(jupyter-with-repl-buffer ,client
-     ;; Don't mess with font-lock and don't insert
-     ;; continuation prompts
-     (with-silent-modifications
-       (let ((buffer-undo-list t) jit-lock-mode)
-         (save-excursion
-           (jupyter-repl-goto-cell ,req)
-           (jupyter-repl-next-cell)
-           (jupyter-with-control-code-handling ,@body)
-           (set-buffer-modified-p nil))))))
+     (let ((buffer-undo-list t))
+       (save-excursion
+         (jupyter-repl-goto-cell ,req)
+         (jupyter-repl-next-cell)
+         (jupyter-with-control-code-handling ,@body)
+         (set-buffer-modified-p nil)))))
 
 (defmacro jupyter-with-repl-lang-buffer (&rest body)
   "Run BODY in the `jupyter-repl-lang-buffer' of the `current-buffer'.
