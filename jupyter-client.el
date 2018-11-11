@@ -702,11 +702,11 @@ received for it and it is not the most recently sent request."
 
 (defun jupyter--run-handler-maybe (client channel req msg)
   "Possibly run CLIENT's CHANNEL handler on REQ's received MSG."
-  (let ((inhibited-handlers (and req (jupyter-request-inhibited-handlers req))))
-    (unless (or (eq inhibited-handlers t)
-                (let ((type (memq (jupyter-message-type msg) inhibited-handlers)))
-                  (if (eq (car inhibited-handlers) 'not) (not type)
-                    type)))
+  (let* ((ihandlers (and req (jupyter-request-inhibited-handlers req)))
+         (type (and (listp ihandlers)
+                    (memq (jupyter-message-type msg) ihandlers))))
+    (unless (or (eq ihandlers t)
+                (if (eq (car ihandlers) 'not) (not type) type))
       (jupyter-handle-message channel client req msg))))
 
 (cl-defmethod jupyter-handle-message ((client jupyter-kernel-client) channel msg)
@@ -1089,15 +1089,13 @@ return it.
 If the kernel CLIENT is connected to does not respond to a
 `:kernel-info-request', raise an error."
   (or (oref client kernel-info)
-      (let ((jupyter-inhibit-handlers t))
-        (prog1 (oset client kernel-info
-                     (jupyter-message-content
-                      (jupyter-wait-until-received :kernel-info-reply
-                        (jupyter-send-kernel-info-request client)
-                        jupyter-long-timeout
-                        "Requesting kernel info...")))
-          (unless (oref client kernel-info)
-            (error "Kernel did not respond to kernel-info request"))))))
+      (let* ((jupyter-inhibit-handlers t)
+             (req (jupyter-send-kernel-info-request client))
+             (msg (jupyter-wait-until-received :kernel-info-reply
+                    req jupyter-long-timeout "Requesting kernel info...")))
+        (unless msg
+          (error "Kernel did not respond to kernel-info request"))
+        (oset client kernel-info (jupyter-message-content msg)))))
 
 (cl-defmethod jupyter-kernel-language ((client jupyter-kernel-client))
   "Return the language of the kernel CLIENT is connected to."
