@@ -71,17 +71,12 @@ signs messages using `jupyter-hmac-sha256'."
 (defun jupyter--split-identities (parts)
   "Extract the identities from a list of message PARTS.
 Return a cons cell (IDENTS . REST-PARTS)."
-  (let ((idents nil))
-    (if (catch 'found-delim
-          (while (car parts)
-            (when (string= (car parts) jupyter-message-delimiter)
-              (setq parts (cdr parts)
-                    idents (nreverse idents))
-              (throw 'found-delim t))
-            (setq idents (cons (car parts) idents)
-                  parts (cdr parts))))
-        (cons idents parts)
-      (error "Message delimiter not in message list"))))
+  (or (cl-loop
+       for (part . rest-parts) on parts by #'cdr
+       if (equal part jupyter-message-delimiter)
+       return (cons idents rest-parts)
+       else collect part into idents)
+      (error "Message delimiter not in message list")))
 
 (defun jupyter--message-header (session msg-type &optional msg-id)
   "Return a message header.
