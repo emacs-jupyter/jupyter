@@ -718,20 +718,23 @@ reporting progress to the user while waiting."
   "Called when CLIENT removes REQ, from its request table."
   nil)
 
+(cl-defmethod jupyter-drop-request :before ((_client jupyter-kernel-client) req)
+  (when jupyter--debug
+    (message "DROPPING-REQ: %s" (jupyter-request-id req))))
+
 (defun jupyter--drop-idle-requests (client)
   "Drop completed requests from CLIENT's request table.
 A request is deemed complete when an idle message has been
 received for it and it is not the most recently sent request."
-  (cl-loop
-   with requests = (oref client requests)
-   with last-sent = (gethash "last-sent" requests)
-   for req in (hash-table-values requests)
-   when (and (jupyter-request-idle-received-p req)
-             (not (eq req last-sent)))
-   do (when jupyter--debug
-        (message "DROPPING-REQ: %s" (jupyter-request-id req)))
-   (remhash (jupyter-request-id req) requests)
-   (jupyter-drop-request client req)))
+  (with-slots (requests) client
+    (cl-loop
+     with last-sent = (gethash "last-sent" requests)
+     for req in (hash-table-values requests)
+     when (and (jupyter-request-idle-received-p req)
+               (not (eq req last-sent)))
+     do (unwind-protect
+            (jupyter-drop-request client req)
+          (remhash (jupyter-request-id req) requests)))))
 
 (defun jupyter--run-handler-maybe (client channel req msg)
   "Possibly run CLIENT's CHANNEL handler on REQ's received MSG."
