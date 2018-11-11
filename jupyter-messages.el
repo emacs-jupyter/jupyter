@@ -62,10 +62,7 @@ signs messages using `jupyter-hmac-sha256'."
        with key = (encode-coding-string
                    (jupyter-session-key session) 'utf-8 t)
        with parts = (encode-coding-string
-                     (cl-loop
-                      with parts = parts
-                      repeat 4 concat (car parts)
-                      and do (setq parts (cdr parts)))
+                     (cl-loop for part in parts concat part)
                      'utf-8 t)
        for byte across (funcall signer parts key)
        concat (format "%02x" byte))
