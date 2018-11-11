@@ -78,16 +78,15 @@ Return a cons cell (IDENTS . REST-PARTS)."
        else collect part into idents)
       (error "Message delimiter not in message list")))
 
-(defun jupyter--message-header (session msg-type &optional msg-id)
+(defun jupyter--message-header (session msg-type msg-id)
   "Return a message header.
 The `:session' key of the header will have its value set to
-SESSION's ID, and its `:msg_type' will be set to MSG-TYPE. If
-MSG-ID is non-nil it is set to the value of the `:msg_id' key,
-otherwise a new message ID is generated. The other fields of the
-returned plist are `:version', `:username', and `:date'. They are
-all set to appropriate default values."
+SESSION's ID, and its `:msg_type' will be set to MSG-TYPE. MSG-ID
+will be set to the value of the `:msg_id' key. The other fields
+of the returned plist are `:version', `:username', and `:date'.
+They are all set to appropriate default values."
   (list
-   :msg_id (or msg-id (jupyter-new-uuid))
+   :msg_id msg-id
    :msg_type msg-type
    :version jupyter-protocol-version
    :username user-login-name
@@ -202,7 +201,7 @@ The returned object has the same form as the object returned by
                                   type
                                   &key idents
                                   content
-                                  msg-id
+                                  (msg-id (jupyter-new-uuid))
                                   parent-header
                                   metadata
                                   buffers
@@ -216,20 +215,18 @@ The returned object has the same form as the object returned by
   (or content (setq content jupyter--empty-dict))
   (or parent-header (setq parent-header jupyter--empty-dict))
   (or metadata (setq metadata jupyter--empty-dict))
+  (and (stringp idents) (setq idents (list idents)))
 
-  (let* ((header (jupyter--message-header session type msg-id))
-         (msg-id (plist-get header :msg_id))
-         (parts (mapcar #'jupyter--encode (list header
-                                           parent-header
-                                           metadata
-                                           content))))
-    (cons msg-id
-          (append
-           (when idents (if (stringp idents) (list idents) idents))
-           (list jupyter-message-delimiter
-                 (jupyter-sign-message session parts signer))
-           parts
-           buffers))))
+  (let ((parts (mapcar #'jupyter--encode
+                  (list (jupyter--message-header session type msg-id)
+                        parent-header
+                        metadata
+                        content))))
+    (nconc (cl-list* msg-id idents)
+           (cl-list* jupyter-message-delimiter
+                     (jupyter-sign-message session parts signer)
+                     parts)
+           buffers)))
 
 
 (cl-defun jupyter-decode-message (session parts &key (signer #'jupyter-hmac-sha256))
