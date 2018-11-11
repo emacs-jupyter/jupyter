@@ -563,12 +563,33 @@ necessary."
 (defun jupyter--run-callbacks (req msg)
   "Run REQ's MSG callbacks.
 See `jupyter-add-callback'."
-  (when req
-    (let* ((callbacks (jupyter-request-callbacks req))
-           (cb-all-types (cdr (assoc t callbacks)))
-           (cb-for-type (cdr (assoc (jupyter-message-type msg) callbacks))))
-      (and cb-all-types (funcall cb-all-types msg))
-      (and cb-for-type (funcall cb-for-type msg)))))
+  (when-let ((callbacks (and req (jupyter-request-callbacks req))))
+    ;; Callback for all message types
+    (funcall (alist-get t callbacks #'identity) msg)
+    (funcall (alist-get (jupyter-message-type msg) callbacks #'identity) msg)))
+
+(defmacro jupyter--set-callback (place callback)
+  "Build a callback from a previous callback at PLACE.
+PLACE is a generalized variable and CALLBACK should be bound to a
+function that takes a single argument.
+
+Construct a new function, combining any function stored in PLACE
+with CALLBACK. If there is a function stored in PLACE, it is
+assumed to take a single argument.
+
+The combined function is equivalent to
+
+    (lambda (msg)
+      (funcall PLACE msg)
+      (funcall CALLBACK msg))
+
+Store the new function in PLACE."
+  (gv-letplace (getter setter) place
+    (macroexp-let2 nil old getter
+      (funcall setter
+               `(lambda (msg)
+                  (and (functionp ,old) (funcall ,old msg))
+                  (funcall ,callback msg))))))
 
 (defun jupyter--add-callback (req msg-type cb)
   "Helper function for `jupyter-add-callback'.
@@ -581,18 +602,8 @@ when MSG-TYPE is received for REQ."
               ;; associated with a request.
               (eq msg-type t))
     (error "Not a valid message type (`%s')" msg-type))
-  (let ((callbacks (jupyter-request-callbacks req)))
-    (if (null callbacks)
-        (setf (jupyter-request-callbacks req)
-              (list (cons msg-type cb)))
-      (let ((cb-for-type (assoc msg-type callbacks)))
-        (if (not cb-for-type)
-            (nconc callbacks (list (cons msg-type cb)))
-          (setcdr cb-for-type
-                  (let ((ccb (cdr cb-for-type)))
-                    (lambda (msg)
-                      (funcall ccb msg)
-                      (funcall cb msg)))))))))
+  (jupyter--set-callback
+   (alist-get msg-type (jupyter-request-callbacks req)) cb))
 
 (defun jupyter-add-callback (req msg-type cb &rest callbacks)
   "Add a callback to run when a message is received for a request.
@@ -617,11 +628,14 @@ multiple callbacks you would do
   (declare (indent 1))
   (if (jupyter-request-idle-received-p req)
       (error "Request already received idle message")
-    (setq callbacks (append (list msg-type cb) callbacks))
-    (cl-loop for (msg-type cb) on callbacks by 'cddr
-             if (listp msg-type)
-             do (mapc (lambda (mt) (jupyter--add-callback req mt cb)) msg-type)
-             else do (jupyter--add-callback req msg-type cb))))
+    (while (and msg-type cb)
+      (cl-check-type cb function "Callback should be a function")
+      (if (listp msg-type)
+          (cl-loop for mt in msg-type
+                   do (jupyter--add-callback req mt cb))
+        (jupyter--add-callback req msg-type cb))
+      (setq msg-type (pop callbacks)
+            cb (pop callbacks)))))
 
 ;;; Waiting for messages
 
