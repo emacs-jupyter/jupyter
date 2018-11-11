@@ -283,7 +283,7 @@ and `:msg_type'."
       (cdr parts)
     (let ((dheader (jupyter--decode header)))
       (list
-       :header `(message-part ,header ',dheader)
+       :header `(message-part ,header ,dheader)
        :msg_id (plist-get dheader :msg_id)
        :msg_type (plist-get dheader :msg_type)
        ;; Also decode the parent header here since it is used quite often in
