@@ -48,10 +48,13 @@ dictionaries.")
 
 ;;; Signing messages
 
-(defun jupyter--sign-message (session parts)
+(cl-defun jupyter-sign-message (session parts &optional (signer #'jupyter-hmac-sha256))
   "Use SESSION to sign message PARTS.
 Return the signature of PARTS. PARTS should be in the order of a
-valid Jupyter message, see `jupyter--decode-message'."
+valid Jupyter message, see `jupyter-decode-message'. SIGNER is
+the message signing function and should take two arguments, the
+text to sign and the key used for signing. The default value
+signs messages using `jupyter-hmac-sha256'."
   (if (> (length (jupyter-session-key session)) 0)
       (cl-loop
        ;; NOTE: Encoding to a unibyte representation due to an "Attempt to
@@ -64,7 +67,7 @@ valid Jupyter message, see `jupyter--decode-message'."
                       repeat 4 concat (car parts)
                       and do (setq parts (cdr parts)))
                      'utf-8 t)
-       for byte across (jupyter-hmac-sha256 parts key)
+       for byte across (funcall signer parts key)
        concat (format "%02x" byte))
     ""))
 
@@ -206,14 +209,15 @@ The returned object has the same form as the object returned by
   "Encode TIME into an ISO 8601 time string."
   (format-time-string "%FT%T.%6N" time))
 
-(cl-defun jupyter--encode-message (session
-                                   type
-                                   &key idents
-                                   content
-                                   msg-id
-                                   parent-header
-                                   metadata
-                                   buffers)
+(cl-defun jupyter-encode-message (session
+                                  type
+                                  &key idents
+                                  content
+                                  msg-id
+                                  parent-header
+                                  metadata
+                                  buffers
+                                  (signer #'jupyter-hmac-sha256))
   (declare (indent 2))
   (cl-check-type session jupyter-session)
   (cl-check-type metadata json-plist)
@@ -234,11 +238,12 @@ The returned object has the same form as the object returned by
           (append
            (when idents (if (stringp idents) (list idents) idents))
            (list jupyter-message-delimiter
-                 (jupyter--sign-message session parts))
+                 (jupyter-sign-message session parts signer))
            parts
            buffers))))
 
-(defun jupyter--decode-message (session parts)
+
+(cl-defun jupyter-decode-message (session parts &key (signer #'jupyter-hmac-sha256))
   "Use SESSION to decode message PARTS.
 PARTS should be a list of message parts in the order of a valid
 Jupyter message, i.e. a list of the form
@@ -248,6 +253,10 @@ Jupyter message, i.e. a list of the form
 If SESSION supports signing messages, then the signature
 resulting from the signing of (cdr PARTS) using SESSION should be
 equal to SIGNATURE. An error is thrown if it is not.
+
+If SIGNER is non-nil it should be a function used to sign the
+message. Otherwise the default signing function is used, see
+`jupyter-sign-message'.
 
 The returned plist has elements of the form
 
@@ -273,7 +282,7 @@ and `:msg_type'."
         (error "Unsigned message"))
       ;; TODO: digest_history
       ;; https://github.com/jupyter/jupyter_client/blob/7a0278af7c1652ac32356d6f00ae29d24d78e61c/jupyter_client/session.py#L915
-      (unless (string= (jupyter--sign-message session (cdr parts)) signature)
+      (unless (string= (jupyter-sign-message session (cdr parts) signer) signature)
         (error "Invalid signature: %s" signature))))
   (cl-destructuring-bind
       (header parent-header metadata content &rest buffers)
@@ -308,7 +317,7 @@ message ID will be generated. FLAGS has the same meaning as in
 `zmq-send'. Return the message ID of the sent message."
   (declare (indent 1))
   (cl-destructuring-bind (id . msg)
-      (jupyter--encode-message session type
+      (jupyter-encode-message session type
         :msg-id msg-id :content message)
     (prog1 id
       (zmq-send-multipart socket msg flags))))
@@ -327,7 +336,7 @@ and other such functions."
     (when msg
       (cl-destructuring-bind (idents . parts)
           (jupyter--split-identities msg)
-        (cons idents (jupyter--decode-message session parts))))))
+        (cons idents (jupyter-decode-message session parts))))))
 
 ;;; Control messages
 
