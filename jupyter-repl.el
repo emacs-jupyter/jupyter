@@ -1166,9 +1166,6 @@ associated with the REPL. See `jupyter-repl-associate-buffer'."
         ;; want to also delete a kernel if this is the last client connected.
         ;; See `eieio-instance-tracker'.
         (prog1 t
-          (jupyter-finalize jupyter-current-client)
-          (when (jupyter-repl-client-has-manager-p)
-            (jupyter-finalize (oref jupyter-current-client manager)))
           (cl-loop
            with client = jupyter-current-client
            for buffer in (buffer-list)

@@ -345,6 +345,22 @@ the output buffer."
           (cl-random 16777216)
           (cl-random 16777216)))
 
+(defclass jupyter-finalized-object ()
+  ((finalizers :type list :initform nil))
+  :documentation "A list of finalizers."
+  :documentation "A base class for cleaning up resources.
+Adds the method `jupyter-add-finalizer' which maintains a list of
+finalizer functions to be called when the object is garbage
+collected.")
+
+(cl-defgeneric jupyter-add-finalizer ((obj jupyter-finalized-object) finalizer)
+  "Cleanup resources automatically.
+FINALIZER if a function to be added to a list of finalizers that
+will be called when OBJ is garbage collected."
+  (declare (indent 1))
+  (cl-check-type finalizer function)
+  (push (make-finalizer finalizer) (oref obj finalizers)))
+
 ;;; Session object definition
 
 (cl-defstruct (jupyter-session

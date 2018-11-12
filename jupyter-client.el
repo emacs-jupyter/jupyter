@@ -38,10 +38,6 @@
 
 (declare-function hash-table-values "subr-x" (hash-table))
 
-(defvar jupyter--clients nil
-  "A list of all live clients.
-Clients are removed from this list when their `jupyter-finalizer' is called.")
-
 ;; This is mainly used by the REPL code, but is also set by
 ;; the `org-mode' client whenever `point' is inside a code
 ;; block.
@@ -72,9 +68,8 @@ requests like the above example.")
 
 ;; Define channel classes for method dispatching based on the channel type
 
-(defclass jupyter-kernel-client (eieio-instance-tracker)
-  ((tracking-symbol :initform 'jupyter--clients)
-   (pending-requests
+(defclass jupyter-kernel-client (jupyter-finalized-object)
+  ((pending-requests
     :type ring
     :initform (make-ring 10)
     :documentation "A ring of pending `jupyter-request's.
@@ -169,40 +164,24 @@ passed as the argument has a language of LANG."
 
 (cl-defmethod initialize-instance ((client jupyter-kernel-client) &rest _slots)
   (cl-call-next-method)
-  (push client jupyter--clients)
-  (oset client -buffer (generate-new-buffer " *jupyter-kernel-client*")))
-
-(cl-defmethod jupyter-finalize ((client jupyter-kernel-client))
-  "Close CLIENT's channels and cleanup internal resources."
-  (jupyter-stop-channels client)
-  (delete-instance client)
-  (with-slots (-buffer) client
-    (when (buffer-live-p -buffer)
-      ;; Don't ask if the buffer should be killed, this is needed because of the
-      ;; lock file mechanism for channel subprocesses.
-      (with-current-buffer -buffer
-        (set-buffer-modified-p nil))
-      (when (get-buffer-process -buffer)
-        (delete-process (get-buffer-process -buffer)))
-      (kill-buffer -buffer))))
-
-(defun jupyter-kill-kernel-clients ()
-  "Call the finalizer for all live Jupyter clients."
-  (dolist (client jupyter--clients)
-    (jupyter-finalize client)))
-
-(add-hook 'kill-emacs-hook 'jupyter-kill-kernel-clients)
+  (let ((buffer (generate-new-buffer " *jupyter-kernel-client*")))
+    (oset client -buffer buffer)
+    (jupyter-add-finalizer client
+      (lambda ()
+        (when (buffer-live-p buffer)
+          (kill-buffer buffer))))))
 
 (defun jupyter-clients ()
   "Return a list of all `jupyter-kernel-clients'."
-  jupyter--clients)
+  (let ((table (get 'jupyter-kernel-client 'jupyter-finalizer-table)))
+    (when (hash-table-p table)
+      (hash-table-keys table))))
 
 (defun jupyter-find-client-for-session (session-id)
   "Return the `jupyter-kernel-client' for SESSION-ID."
-  (or (catch 'found
-        (dolist (client jupyter--clients)
-          (when (string= (jupyter-session-id (oref client session)) session-id)
-            (throw 'found client))))
+  (or (cl-find-if
+       (lambda (x) (string= (jupyter-session-id (oref x session)) session-id))
+       (jupyter-clients))
       (error "No client found for session (%s)" session-id)))
 
 (defun jupyter-initialize-connection (client info-or-session)

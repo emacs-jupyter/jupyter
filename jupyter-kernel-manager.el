@@ -43,7 +43,7 @@
   "A list of all live kernel managers.
 Managers are removed from this list when their `jupyter-finalizer' is called.")
 
-(defclass jupyter-kernel-manager (eieio-instance-tracker)
+(defclass jupyter-kernel-manager (jupyter-finalized-object)
   ((tracking-symbol :initform 'jupyter--managers)
    (name
     :initarg :name
@@ -52,28 +52,34 @@ Managers are removed from this list when their `jupyter-finalizer' is called.")
    (session
     :type jupyter-session
     :initarg :session
-    :documentation "The session object used to sign and
-send/receive messages.")
-   (conn-file
-    :type (or null string)
-    :initform nil
-    :documentation "The absolute path of the connection file when
-the kernel is alive.")
+    :documentation "The session used to sign and send/receive messages.")
    (kernel
     :type (or null process)
     :initform nil
-    :documentation "The local kernel process when the kernel is
-alive.")
+    :documentation "The local kernel process when the kernel is alive.")
+   (conn-file
+    :type (or null string)
+    :initform nil
+    :documentation "The path to the file holding the connection information.")
    (control-channel
     :type (or null jupyter-sync-channel)
     :initform nil
-    :documentation "A control channel to make shutdown and
-interrupt requests to the kernel.")
+    :documentation "The kernel control channel.")
    (spec
     :type (or null json-plist)
     :initarg :spec
     :initform nil
     :documentation "The kernelspec used to start/restart the kernel.")))
+
+(defun jupyter-kernel-manager--cleanup (manager &optional kill-kernel)
+  "Cleanup external resources of MANAGER.
+If KILL-KERNEL is non-nil, delete MANAGER's kernel process if it
+is alive."
+  (with-slots (kernel conn-file) manager
+    (when (file-exists-p conn-file)
+      (delete-file conn-file))
+    (when (and kill-kernel (process-live-p kernel))
+      (delete-process kernel))))
 
 (cl-defmethod initialize-instance ((manager jupyter-kernel-manager) &rest _slots)
   "Initialize MANAGER based on SLOTS.
@@ -82,19 +88,9 @@ If the `:name' slot is not found in SLOTS, it defaults to
 default kernel is a python kernel."
   (cl-call-next-method)
   (unless (slot-boundp manager 'name)
-    (oset manager name "python")))
-
-(cl-defmethod jupyter-finalize ((manager jupyter-kernel-manager))
-  "Kill the kernel of MANAGER and stop its channels."
-  ;; See `jupyter--kernel-sentinel' for other cleanup
-  (jupyter-shutdown-kernel manager)
-  (delete-instance manager))
-
-(defun jupyter-kill-kernel-managers ()
-  (dolist (manager jupyter--managers)
-    (jupyter-finalize manager)))
-
-(add-hook 'kill-emacs-hook 'jupyter-kill-kernel-managers)
+    (oset manager name "python"))
+  (jupyter-add-finalizer manager
+    (lambda () (jupyter-kernel-manager--cleanup manager t))))
 
 (cl-defgeneric jupyter-make-client ((manager jupyter-kernel-manager) class &rest slots)
   "Make a new client from CLASS connected to MANAGER's kernel.
@@ -112,22 +108,15 @@ connect to MANAGER's kernel."
       (jupyter-initialize-connection client (oref manager session))
       (oset client manager manager))))
 
-(defun jupyter--kernel-sentinel (manager kernel _event)
-  "Cleanup resources after kernel shutdown.
-If MANAGER's KERNEL process terminates, i.e. when EVENT describes
-an event in which the KERNEL process was killed: kill the process
-buffer and delete MANAGER's connection file from the
-`jupyter-runtime-directory'."
-  (cond
-   ((not (process-live-p kernel))
-    (kill-buffer (process-buffer kernel))
-    (with-slots (conn-file) manager
-      (when (and conn-file (file-exists-p conn-file))
-        (delete-file conn-file))
-      (oset manager kernel nil)
-      (oset manager conn-file nil)))))
+(defun jupyter--kernel-sentinel (kernel _)
+  "Kill the KERNEL process and its buffer."
+  (when (memq (process-status kernel) '(exit signal))
+    (when (process-live-p kernel)
+      (delete-process kernel))
+    (when (buffer-live-p (process-buffer kernel))
+      (kill-buffer (process-buffer kernel)))))
 
-(defun jupyter--start-kernel (manager kernel-name env args)
+(defun jupyter--start-kernel (kernel-name env args)
   "Start a kernel.
 For a `jupyter-kernel-manager', MANAGER, state a kernel named
 KERNEL-NAME with ENV and ARGS.
@@ -159,8 +148,7 @@ Return the newly created kernel process."
                        (format " *jupyter-kernel[%s]*" kernel-name))
                       (car args) (cdr args))))
     (prog1 proc
-      (set-process-sentinel
-       proc (apply-partially #'jupyter--kernel-sentinel manager)))))
+      (set-process-sentinel proc #'jupyter--kernel-sentinel))))
 
 (cl-defgeneric jupyter-start-kernel ((manager jupyter-kernel-manager) &optional timeout)
   "Start a kernel based on MANAGER's slots. Wait until TIMEOUT for startup.")
@@ -202,7 +190,7 @@ kernel. Starting a kernel involves the following steps:
         ;; Start the process
         (let ((atime (nth 4 (file-attributes conn-file)))
               (proc (jupyter--start-kernel
-                     manager kernel-name (plist-get spec :env)
+                     kernel-name (plist-get spec :env)
                      (cl-loop
                       for arg in (append (plist-get spec :argv) nil)
                       if (equal arg "{connection_file}")
@@ -347,38 +335,34 @@ instance, see `jupyter-make-client'."
                      :session session))
            (client (jupyter-make-client manager client-class))
            started)
-      (unwind-protect
-          ;; Ensure that the necessary hooks to catch the startup message are
-          ;; in place before starting the kernel.
-          ;;
-          ;; NOTE: Startup messages have no parent header, hence the need for
-          ;; `jupyter-include-other-output'.
-          (let* ((jupyter-include-other-output t)
-                 (cb (lambda (_ msg)
-                       (setq started
-                             (jupyter-message-status-starting-p msg)))))
-            (jupyter-add-hook client 'jupyter-iopub-message-hook cb)
-            (jupyter-start-channels client)
-            (jupyter-start-kernel manager 10)
-            (jupyter-with-timeout
-                ("Kernel starting up..." jupyter-long-timeout
-                 (message "Kernel did not send startup message"))
-              started)
-            ;; Un-pause the hearbeat after the kernel starts since waiting for
-            ;; it to start may cause the heartbeat to think the kernel died.
-            (jupyter-hb-unpause client)
-            (jupyter-remove-hook client 'jupyter-iopub-message-hook cb)
-            ;; FIXME: The javascript kernel doesn't seem to
-            ;; send the startup message so instead of
-            ;; erroring when the kernel does not send a
-            ;; startup message, ensure that it responds to
-            ;; a kernel info request.
-            (setq started nil
-                  started (jupyter-kernel-info client))
-            (list manager client))
-        (unless started
-          (jupyter-finalize client)
-          (jupyter-finalize manager))))))
+      ;; Ensure that the necessary hooks to catch the startup message are
+      ;; in place before starting the kernel.
+      ;;
+      ;; NOTE: Startup messages have no parent header, hence the need for
+      ;; `jupyter-include-other-output'.
+      (let* ((jupyter-include-other-output t)
+             (cb (lambda (_ msg)
+                   (setq started
+                         (jupyter-message-status-starting-p msg)))))
+        (jupyter-add-hook client 'jupyter-iopub-message-hook cb)
+        (jupyter-start-channels client)
+        (jupyter-start-kernel manager 10)
+        (jupyter-with-timeout
+            ("Kernel starting up..." jupyter-long-timeout
+             (message "Kernel did not send startup message"))
+          started)
+        ;; Un-pause the hearbeat after the kernel starts since waiting for
+        ;; it to start may cause the heartbeat to think the kernel died.
+        (jupyter-hb-unpause client)
+        (jupyter-remove-hook client 'jupyter-iopub-message-hook cb)
+        ;; FIXME: The javascript kernel doesn't seem to
+        ;; send the startup message so instead of
+        ;; erroring when the kernel does not send a
+        ;; startup message, ensure that it responds to
+        ;; a kernel info request.
+        (setq started nil
+              started (jupyter-kernel-info client))
+        (list manager client)))))
 
 (provide 'jupyter-kernel-manager)
 
