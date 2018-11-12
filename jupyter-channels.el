@@ -230,8 +230,7 @@ heartbeat channel is handled specially in that it is implemented
 with a timer in the current Emacs session. Starting a heartbeat
 channel, starts the timer."
   (unless (jupyter-channel-alive-p channel)
-    (jupyter-channel--reset-socket channel identity)
-    (jupyter-hb-unpause channel)))
+    (jupyter-channel--reset-socket channel identity)))
 
 (provide 'jupyter-channels)
 
