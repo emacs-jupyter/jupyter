@@ -351,25 +351,26 @@ instance, see `jupyter-make-client'."
            (client (jupyter-make-client manager client-class))
            started)
       (unwind-protect
-          (progn
+          ;; Ensure that the necessary hooks to catch the startup message are
+          ;; in place before starting the kernel.
+          ;;
+          ;; NOTE: Startup messages have no parent header, hence the need for
+          ;; `jupyter-include-other-output'.
+          (let* ((jupyter-include-other-output t)
+                 (cb (lambda (_ msg)
+                       (setq started
+                             (jupyter-message-status-starting-p msg)))))
+            (jupyter-add-hook client 'jupyter-iopub-message-hook cb)
             (jupyter-start-channels client)
+            (jupyter-start-kernel manager 10)
+            (jupyter-with-timeout
+                ("Kernel starting up..." jupyter-long-timeout
+                 (message "Kernel did not send startup message"))
+              started)
+            ;; Un-pause the hearbeat after the kernel starts since waiting for
+            ;; it to start may cause the heartbeat to think the kernel died.
             (jupyter-hb-unpause client)
-            ;; Ensure that the necessary hooks to catch the startup message are
-            ;; in place before starting the kernel.
-            ;;
-            ;; NOTE: Startup messages have no parent header, hence the need for
-            ;; `jupyter-include-other-output'.
-            (let* ((jupyter-include-other-output t)
-                   (cb (lambda (_ msg)
-                         (setq started
-                               (jupyter-message-status-starting-p msg)))))
-              (jupyter-add-hook client 'jupyter-iopub-message-hook cb)
-              (jupyter-start-kernel manager 10)
-              (jupyter-with-timeout
-                  ("Kernel starting up..." jupyter-long-timeout
-                   (message "Kernel did not send startup message"))
-                started)
-              (jupyter-remove-hook client 'jupyter-iopub-message-hook cb))
+            (jupyter-remove-hook client 'jupyter-iopub-message-hook cb)
             ;; FIXME: The javascript kernel doesn't seem to
             ;; send the startup message so instead of
             ;; erroring when the kernel does not send a
