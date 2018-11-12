@@ -271,9 +271,10 @@ channel is stopped unless RESTART is non-nil."
           (msg (jupyter-message-shutdown-request :restart restart)))
       (jupyter-send session sock :shutdown-request msg)
       (jupyter-with-timeout
-          (nil (or timeout jupyter-default-timeout)
-               (message "Kernel did not shutdown by request (%s)"
-                        (oref manager name)))
+          ((format "%s kernel shutting down..." (oref manager name))
+           (or timeout jupyter-default-timeout)
+           (message "%s kernel did not shutdown by request"
+                    (oref manager name)))
         (not (jupyter-kernel-alive-p manager)))
       (if restart
           (jupyter-start-kernel manager)
