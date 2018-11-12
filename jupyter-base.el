@@ -160,6 +160,48 @@ from the kernel.")
 (defvar jupyter--debug nil
   "When non-nil, some parts of Jupyter will emit debug statements.")
 
+
+(defvar jupyter-default-timeout 1
+  "The default timeout in seconds for `jupyter-wait-until'.")
+
+(defvar jupyter-long-timeout 10
+  "A longer timeout that `jupyter-default-timeout' used for some operations.
+A longer timeout is needed, for example, when retrieving the
+`jupyter-kernel-info' to allow for the kernel to startup.")
+
+;;; Macros
+
+(defmacro jupyter-with-timeout (spec &rest wait-forms)
+  "Periodically evaluate WAIT-FORMS until timeout.
+Or until WAIT-FORMS evaluates to a non-nil.
+
+Wait until timeout SECONDS, periodically evaluating WAIT-FORMS
+until it returns non-nil. If WAIT-FORMS returns non-nil, stop
+waiting and return its value. Otherwise if timeout SECONDS
+elapses, evaluate TIMEOUT-FORMS and return its value.
+
+If PROGRESS is non-nil and evaluates to a string then, while
+waiting, a progress reporter will be used with PROGRESS as the
+message.
+
+SPEC takes the form (PROGRESS SECONDS TIMEOUT-FORMS...).
+
+\(fn (PROGRESS SECONDS TIMEOUT-FORMS...) WAIT-FORMS...)"
+  (declare (indent 1) (debug ((form form body) body)))
+  (let ((res (make-symbol "res"))
+        (prog (make-symbol "prog"))
+        (prog-msg (make-symbol "prog-msg")))
+    `(let* ((,res nil)
+            (,prog-msg ,(pop spec))
+            (,prog (and (stringp ,prog-msg)
+                        (make-progress-reporter ,prog-msg))))
+       (with-timeout (,(pop spec) ,@spec)
+         (while (not (setq ,res (progn ,@wait-forms)))
+           (accept-process-output nil 0.0001)
+           (when ,prog (progress-reporter-update ,prog))))
+       (prog1 ,res
+         (when ,prog (progress-reporter-done ,prog))))))
+
 (defmacro jupyter-with-insertion-bounds (beg end bodyform &rest afterforms)
   "Bind BEG and END to `point-marker's, evaluate BODYFORM then AFTERFORMS.
 The END marker will advance if BODYFORM inserts text in the

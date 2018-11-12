@@ -51,14 +51,6 @@ Clients are removed from this list when their `jupyter-finalizer' is called.")
 (put 'jupyter-current-client 'permanent-local t)
 (make-variable-buffer-local 'jupyter-current-client)
 
-(defvar jupyter-default-timeout 1
-  "The default timeout in seconds for `jupyter-wait-until'.")
-
-(defvar jupyter-long-timeout 10
-  "A longer timeout that `jupyter-default-timeout' used for some operations.
-A longer timeout is needed, for example, when retrieving the
-`jupyter-kernel-info' to allow for the kernel to startup.")
-
 (defvar jupyter-inhibit-handlers nil
   "Whether or not new requests inhibit client handlers.
 If set to t, prevent new requests from running any of the client
@@ -669,21 +661,12 @@ that if no TIMEOUT is given, `jupyter-default-timeout' is used.
 If PROGRESS-MSG is non-nil, it should be a message string to
 display for reporting progress to the user while waiting."
   (declare (indent 2))
-  (setq timeout (or timeout jupyter-default-timeout))
-  (cl-check-type timeout number)
-  (let ((progress (and (stringp progress-msg)
-                       (make-progress-reporter progress-msg)))
-        msg)
+  (let (msg)
     (jupyter-add-callback req
       msg-type (lambda (m) (setq msg (when (funcall cb m) m))))
-    (with-timeout (timeout nil)
-      (while (null msg)
-        (sleep-for 0.01)
-        (when progress
-          (progress-reporter-update progress))))
-    (prog1 msg
-      (when progress
-        (progress-reporter-done progress)))))
+    (jupyter-with-timeout
+        (progress-msg (or timeout jupyter-default-timeout))
+      msg)))
 
 (defun jupyter-wait-until-idle (req &optional timeout progress-msg)
   "Wait until a status: idle message is received for a request.

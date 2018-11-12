@@ -192,9 +192,7 @@ kernel. Starting a kernel involves the following steps:
       (let* ((temporary-file-directory jupyter-runtime-directory)
              (session (oref manager session))
              (conn-info (jupyter-session-conn-info session))
-             (conn-file (make-temp-file "emacs-kernel-" nil ".json"))
-             (reporter (make-progress-reporter
-                        (format "Starting %s kernel..." kernel-name))))
+             (conn-file (make-temp-file "emacs-kernel-" nil ".json")))
         ;; Write the connection info file
         (let ((json-encoding-pretty-print t))
           (with-temp-buffer
@@ -215,23 +213,21 @@ kernel. Starting a kernel involves the following steps:
                       else collect arg))))
           (oset manager kernel proc)
           (oset manager conn-file conn-file)
-          ;; TODO: This is not reliable.
-          ;;
-          ;; Block until the kernel reads the connection file
-          (with-timeout
-              ((or timeout 5)
-               (error "Kernel did not read connection file within timeout"))
-            ;; TODO: This may fail on some systems see `file-attributes'
-            (while (equal atime (nth 4 (file-attributes conn-file)))
-              (progress-reporter-update reporter)
-              (sleep-for 0 200))
+          (prog1 manager
+            ;; TODO: This is not reliable.
+            ;;
+            ;; Block until the kernel reads the connection file
+            (jupyter-with-timeout
+                ((format "Starting %s kernel process..." kernel-name)
+                 (or timeout jupyter-long-timeout)
+                 (error "Kernel did not read connection file within timeout"))
+              ;; TODO: This may fail on some systems see `file-attributes'
+              (not (equal atime (nth 4 (file-attributes conn-file)))))
             (unless (process-live-p proc)
               (error "Kernel process exited:\n%s"
                      (with-current-buffer (process-buffer proc)
-                       (ansi-color-apply (buffer-string))))))
-          (jupyter-start-channels manager)
-          (progress-reporter-done reporter)
-          manager)))))
+                       (ansi-color-apply (buffer-string)))))
+            (jupyter-start-channels manager)))))))
 
 (cl-defmethod jupyter-start-channels ((manager jupyter-kernel-manager))
   "Start a control channel on MANAGER."
@@ -274,11 +270,11 @@ channel is stopped unless RESTART is non-nil."
           (sock (oref (oref manager control-channel) socket))
           (msg (jupyter-message-shutdown-request :restart restart)))
       (jupyter-send session sock :shutdown-request msg)
-      (with-timeout ((or timeout 1)
-                     (delete-process (oref manager kernel))
-                     (message "Kernel did not shutdown by request (%s)" (oref manager name)))
-        (while (jupyter-kernel-alive-p manager)
-          (sleep-for 0.01)))
+      (jupyter-with-timeout
+          (nil (or timeout jupyter-default-timeout)
+               (message "Kernel did not shutdown by request (%s)"
+                        (oref manager name)))
+        (not (jupyter-kernel-alive-p manager)))
       (if restart
           (jupyter-start-kernel manager)
         (jupyter-stop-channels manager)))))
@@ -301,12 +297,12 @@ subprocess."
            (sock (oref (oref manager control-channel) socket))
            (msg (jupyter-message-interrupt-request)))
        (jupyter-send session sock :interrupt-request msg)
-       (with-timeout ((or timeout 1)
-                      (message "No interrupt reply from kernel (%s)" (oref manager name)))
-         (while (condition-case nil
-                    (prog1 nil (jupyter-recv session sock zmq-NOBLOCK))
-                  (zmq-EAGAIN t))
-           (sleep-for 0.01)))))
+       (jupyter-with-timeout
+           (nil (or timeout jupyter-default-timeout)
+                (message "No interrupt reply from kernel (%s)" (oref manager name)))
+         (condition-case nil
+             (jupyter-recv session sock zmq-DONTWAIT)
+           (zmq-EAGAIN nil)))))
     (_ (interrupt-process (oref manager kernel) t))))
 
 (cl-defgeneric jupyter-kernel-alive-p ((manager jupyter-kernel-manager))
@@ -355,7 +351,7 @@ instance, see `jupyter-make-client'."
            (client (jupyter-make-client manager client-class))
            started)
       (unwind-protect
-          (let (reporter)
+          (progn
             (jupyter-start-channels client)
             (jupyter-hb-unpause client)
             ;; Ensure that the necessary hooks to catch the startup message are
@@ -369,12 +365,10 @@ instance, see `jupyter-make-client'."
                                (jupyter-message-status-starting-p msg)))))
               (jupyter-add-hook client 'jupyter-iopub-message-hook cb)
               (jupyter-start-kernel manager 10)
-              (setq reporter (make-progress-reporter "Kernel starting up..."))
-              (with-timeout (5 (message "Kernel did not send startup message"))
-                (while (not started)
-                  (progress-reporter-update reporter)
-                  (sleep-for 0.02))
-                (progress-reporter-done reporter))
+              (jupyter-with-timeout
+                  ("Kernel starting up..." jupyter-long-timeout
+                   (message "Kernel did not send startup message"))
+                started)
               (jupyter-remove-hook client 'jupyter-iopub-message-hook cb))
             ;; FIXME: The javascript kernel doesn't seem to
             ;; send the startup message so instead of
