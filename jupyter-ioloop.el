@@ -100,27 +100,36 @@ the return value of `zmq-poller-wait-all'.")
 OBJ will be the value of the `jupyter-ioloop-object' slot of
 IOLOOP and EVENT will be an event as received by a filter
 function described in `zmq-start-process'."
+  ;; Don't error on built in events
   (unless (memq (car-safe event) '(start quit))
-    (error "Unhandled event (%s %s)" obj event)))
+    (error "Unhandled event (%s %s)" (type-of obj) event)))
 
-(defun jupyter-ioloop-wait-until (ioloop event &optional timeout)
-  "Wait until EVENT occurs in IOLOOP.
-Currently EVENT can be :start or :quit and this function will
-block for TIMEOUT seconds until IOLOOP starts or quits depending
-on EVENT. If TIMEOUT is nil it defaults to 1 s."
-  (cl-assert (jupyter-ioloop-p ioloop))
-  (cl-assert (memq event '(:start :quit)))
-  (or timeout (setq timeout 1))
-  (with-timeout (timeout nil)
-    (while (null (process-get (jupyter-ioloop-process ioloop) event))
-      (sleep-for 0.1))
-    t))
+(defun jupyter-ioloop-wait-until (ioloop event cb &optional timeout progress-msg)
+  "Wait until EVENT occurs on IOLOOP.
+If EVENT occurs, call CB and return its value if non-nil. CB is
+called with a single argument, an event list whose first element
+is EVENT. If CB returns nil, continue waiting until EVENT occurs
+again or until TIMEOUT seconds elapses, TIMEOUT defaults to
+`jupyter-default-timeout'. If TIMEOUT is reached, return nil.
 
-(cl-defmethod jupyter-ioloop-handler ((ioloop jupyter-ioloop) _obj (_ (head quit)))
-  (process-put (jupyter-ioloop-process ioloop) :quit t))
+If PROGRESS-MSG is non-nil, a progress reporter will be displayed
+while waiting using PROGRESS-MSG as the message."
+  (declare (indent 2))
+  (cl-check-type ioloop jupyter-ioloop)
+  (jupyter-with-timeout
+      (progress-msg (or timeout jupyter-default-timeout))
+    (let ((e (jupyter-ioloop-last-event ioloop)))
+      (when (eq (car-safe e) event) (funcall cb e)))))
 
-(cl-defmethod jupyter-ioloop-handler ((ioloop jupyter-ioloop) _obj (_ (head start)))
-  (process-put (jupyter-ioloop-process ioloop) :start t))
+(defun jupyter-ioloop-last-event (ioloop)
+  "Return the last event received on IOLOOP."
+  (cl-check-type ioloop jupyter-ioloop)
+  (process-get (jupyter-ioloop-process ioloop) :last-event))
+
+(cl-defmethod jupyter-ioloop-handler :before ((ioloop jupyter-ioloop) _obj event)
+  "Set the :last-event property of IOLOOP's process.
+See `jupyter-ioloop-wait-until'."
+  (process-put (jupyter-ioloop-process ioloop) :last-event event))
 
 (defmacro jupyter-ioloop-add-setup (ioloop &rest body)
   "Set IOLOOP's `jupyter-ioloop-setup' slot to BODY.
@@ -375,7 +384,7 @@ the IOLOOP subprocess buffer, see `zmq-start-process'."
          :filter (apply-partially #'jupyter-ioloop--filter ioloop)
          :sentinel (apply-partially #'jupyter-ioloop--sentinel ioloop)
          :buffer buffer))
-  (jupyter-ioloop-wait-until ioloop :start))
+  (jupyter-ioloop-wait-until ioloop 'start #'identity))
 
 (cl-defgeneric jupyter-ioloop-stop ((ioloop jupyter-ioloop))
   "Stop IOLOOP.
@@ -383,7 +392,7 @@ Send a quit event to IOLOOP, wait until it actually quits before
 returning."
   (when (process-live-p (jupyter-ioloop-process ioloop))
     (jupyter-send ioloop 'quit)
-    (unless (jupyter-ioloop-wait-until ioloop :quit)
+    (unless (jupyter-ioloop-wait-until ioloop 'quit #'identity)
       (delete-process (jupyter-ioloop-process ioloop)))))
 
 (cl-defmethod jupyter-send ((ioloop jupyter-ioloop) &rest args)
