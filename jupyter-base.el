@@ -43,6 +43,8 @@
 (declare-function tramp-file-name-user "tramp")
 (declare-function tramp-file-name-host "tramp")
 
+;;; Custom variables
+
 (defcustom jupyter-include-other-output nil
   "Whether or not to handle IOPub messages from other clients.
 A Jupyter client can receive messages from other clients
@@ -237,6 +239,85 @@ the DATA property list."
     thereis (let ((,data (plist-get ,data ,mime))
                   (,metadata (plist-get ,metadata ,mime)))
               (when ,data ,@bodyforms))))
+
+;;;; Output buffers
+
+(defvar-local jupyter-output-buffer-marker nil
+  "The marker to store the last output position of an output buffer.
+See `jupyter-with-output-buffer'.")
+
+(defvar-local jupyter-output-buffer-request-id nil
+  "The last `jupyter-request' message ID that generated output.")
+
+(defun jupyter-get-buffer-create (name)
+  "Return a buffer with some special properties.
+
+- The buffer's name is based on NAME, specifically it will be
+  \"*jupyter-NAME*\"
+
+- Its `major-mode' will be `special-mode'
+
+- It will have local keybindings to quit the window (q), and
+  scroll the window (SPC and <backtab>)."
+  (let* ((bname (format "*jupyter-repl-%s*" name))
+         (buffer (get-buffer bname)))
+    (unless buffer
+      (setq buffer (get-buffer-create bname))
+      (with-current-buffer buffer
+        (special-mode)
+        (local-set-key "q" #'quit-window)
+        (local-set-key (kbd "SPC") #'scroll-down)
+        (local-set-key (kbd "S-TAB") #'scroll-up)
+        (local-set-key (kbd "<backtab>") #'scroll-up)))
+    buffer))
+
+(defun jupyter--reset-output-buffer-p (arg)
+  "Return non-nil if the current output buffer should be reset.
+If ARG is a `jupyter-request', reset the buffer if ARG's
+`jupyter-request-id' is no equal to the
+`jupyter-buffer-last-request-id'. If ARG is not a
+`jupyter-request-id', return ARG."
+  (if (jupyter-request-p arg)
+      ;; Reset the output buffer is the last request ID does not
+      ;; match the current request's ID.
+      (let ((id (jupyter-request-id arg)))
+        (and (not (equal id jupyter-output-buffer-request-id))
+             (setq jupyter-output-buffer-request-id id)
+             t))
+    ;; Otherwise reset the output buffer if RESET evaluates to a
+    ;; non-nil value
+    arg))
+
+(defmacro jupyter-with-output-buffer (name reset &rest body)
+  "With the REPL output buffer corresponding to NAME, run BODY.
+The buffer corresponding to NAME will be obtained by a call to
+`jupyter-get-special-buffer'. An output buffer differs from a
+documentation buffer by maintaining its previous output and
+moving `point' to the end of the last output.
+
+RESET should be a form or symbol to determine if the output
+buffer should be reset before evaluating BODY. If RESET is nil,
+no reset is ever performed. If RESET evaluates to a
+`jupyter-request' object, reset the buffer if the previous
+request that generated output in the buffer is not the same
+request. Otherwise if RESET evaluates to any non-nil value, reset
+the output buffer."
+  (declare (indent 2) (debug (stringp [&or atom form] body)))
+  (let ((buffer (make-symbol "buffer")))
+    `(let ((,buffer (jupyter-get-buffer-create ,name)))
+       (setq other-window-scroll-buffer ,buffer)
+       (with-current-buffer ,buffer
+         (let ((inhibit-read-only t))
+           (when (jupyter--reset-output-buffer-p ,reset)
+             (erase-buffer)
+             (if jupyter-output-buffer-marker
+                 (set-marker jupyter-output-buffer-marker (point))
+               (setq jupyter-output-buffer-marker (point-marker))))
+           (goto-char jupyter-output-buffer-marker)
+           (jupyter-with-control-code-handling ,@body)
+           (set-marker jupyter-output-buffer-marker (point)))))))
+
+;;; Signing functions/UUID
 
 (defun jupyter-sha256 (object)
   "Return the SHA256 hash of OBJECT."
