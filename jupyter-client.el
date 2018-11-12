@@ -920,6 +920,62 @@ nil, return the text/plain representation."
 
 ;;;; Inspection
 
+;; TODO: How to add hover documentation support
+(defun jupyter-inspect-at-point (&optional buffer detail)
+  "Inspect the code at point.
+Call `jupyter-inspect' for the `jupyter-code-context' at point.
+
+BUFFER and DETAIL have the same meaning as in `jupyter-inspect'."
+  (interactive (list nil 0))
+  (cl-destructuring-bind (code pos)
+      (jupyter-code-context 'inspect)
+    (jupyter-inspect code pos buffer detail)))
+
+(defun jupyter-inspect (code &optional pos buffer detail)
+  "Inspect CODE.
+Send an `:inspect-request' to the `jupyter-current-client' and
+display the results in a BUFFER.
+
+CODE is the code to inspect and POS is your position in the CODE.
+If POS is nil, it defaults to the length of CODE.
+
+If BUFFER is nil, display the results in a help buffer.
+Otherwise insert the results in BUFFER but do not display it.
+
+DETAIL is the detail level to use for the request and defaults to
+0."
+  (setq pos (or pos (length code)))
+  (let ((client jupyter-current-client)
+        (msg (jupyter-wait-until-received :inspect-reply
+               (let ((jupyter-inhibit-handlers '(not :status)))
+                 (jupyter-send-inspect-request jupyter-current-client
+                   :code code :pos pos :detail detail)))))
+    (if msg
+        (jupyter-with-message-content msg
+            (status found)
+          (if (and (equal status "ok") (eq found t))
+              (let ((inhibit-read-only t))
+                (if (buffer-live-p buffer)
+                    (with-current-buffer buffer
+                      (jupyter-insert (jupyter-message-content msg))
+                      (current-buffer))
+                  (with-help-window (help-buffer)
+                    (with-current-buffer standard-output
+                      (setq other-window-scroll-buffer (current-buffer))
+                      (setq jupyter-current-client client)
+                      (help-setup-xref
+                       (list (lambda ()
+                               (let ((jupyter-current-client client))
+                                 (jupyter-inspect code pos nil detail))))
+                       nil)
+                      (jupyter-insert (jupyter-message-content msg))))))
+            (message "Nothing found for %s"
+                     (with-temp-buffer
+                       (insert code)
+                       (goto-char pos)
+                       (symbol-at-point)))))
+      (message "Inspect timed out"))))
+
 (cl-defgeneric jupyter-send-inspect-request ((client jupyter-kernel-client)
                                              &key code
                                              (pos 0)
