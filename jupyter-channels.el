@@ -208,20 +208,19 @@ In this case the IDENTITY argument is ignored."
      (lambda ()
        (let ((sock (oref channel socket)))
          (when (zmq-socket-p sock)
-           (unless (oset channel beating
-                         (condition-case nil
-                             (and (zmq-recv sock zmq-DONTWAIT) t)
-                           ((zmq-EINTR zmq-EAGAIN) nil)))
+           (oset channel beating
+                 (condition-case nil
+                     (and (zmq-recv sock zmq-DONTWAIT) t)
+                   ((zmq-EINTR zmq-EAGAIN) nil)))
+           (if (oref channel beating)
+               (jupyter-hb--send-ping channel)
              (jupyter-channel--reset-socket channel)
-             (when (and (integerp counter)
-                        (>= counter jupyter-hb-consider-dead-periods))
+             (or counter (setq counter 0))
+             (if (< counter jupyter-hb-consider-dead-periods)
+                 (jupyter-hb--send-ping channel (1+ counter))
                (oset channel paused t)
                (when (functionp (oref channel kernel-died-cb))
-                 (funcall (oref channel kernel-died-cb)))))
-           (jupyter-hb--send-ping
-            channel
-            (unless (oref channel beating)
-              (1+ (or counter 0))))))))))
+                 (funcall (oref channel kernel-died-cb)))))))))))
 
 (cl-defmethod jupyter-start-channel ((channel jupyter-hb-channel) &key identity)
   "Start a heartbeat CHANNEL.
