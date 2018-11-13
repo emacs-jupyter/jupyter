@@ -85,15 +85,13 @@ the return value of `zmq-poller-wait-all'.")
 (defvar jupyter-ioloop--argument-types nil
   "Argument types added via `jupyter-ioloop-add-arg-type'.")
 
-(cl-defstruct (jupyter-ioloop
-               (:constructor jupyter-ioloop))
-  process
-  ;; The object used to dispatch on the IOLoop
-  object
-  callbacks
-  events
-  setup
-  teardown)
+(defclass jupyter-ioloop ()
+  ((process :type (or null process) :initform nil)
+   (object :initform nil)
+   (callbacks :type list :initform nil)
+   (events :type list :initform nil)
+   (setup :type list :initform nil)
+   (teardown :type list :initform nil)))
 
 (cl-defgeneric jupyter-ioloop-handler ((_ioloop jupyter-ioloop) obj event)
   "Define a new IOLOOP handler, dispatching on OBJ, for EVENT.
@@ -124,20 +122,20 @@ while waiting using PROGRESS-MSG as the message."
 (defun jupyter-ioloop-last-event (ioloop)
   "Return the last event received on IOLOOP."
   (cl-check-type ioloop jupyter-ioloop)
-  (process-get (jupyter-ioloop-process ioloop) :last-event))
+  (process-get (oref ioloop process) :last-event))
 
-(cl-defmethod jupyter-ioloop-handler :before ((ioloop jupyter-ioloop) _obj event)
-  "Set the :last-event property of IOLOOP's process.
-See `jupyter-ioloop-wait-until'."
-  (process-put (jupyter-ioloop-process ioloop) :last-event event))
+(cl-defmethod jupyter-ioloop-handler :before ((ioloop jupyter-ioloop) obj event)
+  "Set the :last-event property of IOLOOP's process."
+  (with-slots (process) ioloop
+    (process-put process :last-event event)))
 
 (defmacro jupyter-ioloop-add-setup (ioloop &rest body)
   "Set IOLOOP's `jupyter-ioloop-setup' slot to BODY.
 BODY is the code that will be evaluated before the IOLOOP sends a
 start event to the parent process."
   (declare (indent 1))
-  `(setf (jupyter-ioloop-setup ,ioloop)
-         (append (jupyter-ioloop-setup ,ioloop)
+  `(setf (oref ,ioloop setup)
+         (append (oref ,ioloop setup)
                  (quote ,body))))
 
 (defmacro jupyter-ioloop-add-teardown (ioloop &rest body)
@@ -149,7 +147,9 @@ After BODY is evaluated in the IOLOOP environment, the channels
 in `jupyter-ioloop-channels' will be stopped before sending the
 quit event."
   (declare (indent 1))
-  `(setf (jupyter-ioloop-teardown ,ioloop) (quote ,body)))
+  `(setf (oref ,ioloop teardown)
+         (append (oref ,ioloop teardown)
+                 (quote ,body))))
 
 (defmacro jupyter-ioloop-add-arg-type (tag fun)
   "Add a new argument type for arguments in `jupyter-ioloop-add-event'.
@@ -237,10 +237,10 @@ be converted into the corresponding channel object and bound to
   (unless (stringp doc)
     (when doc
       (setq body (cons doc body))))
-  `(setf (jupyter-ioloop-events ,ioloop)
+  `(setf (oref ,ioloop events)
          (cons (list (quote ,event) (quote ,args) (quote ,body))
                (cl-remove-if (lambda (x) (eq (car x) (quote ,event)))
-                             (jupyter-ioloop-events ,ioloop)))))
+                             (oref ,ioloop events)))))
 
 (defun jupyter-ioloop--event-dispatcher (ioloop exp)
   "For IOLOOP return a form suitable for matching against EXP.
@@ -252,7 +252,7 @@ By default this adds the events quit, callback, and timer."
   `(let* ((cmd ,exp)
           (res (pcase cmd
                  ,@(cl-loop
-                    for (event args body) in (jupyter-ioloop-events ioloop)
+                    for (event args body) in (oref ioloop events)
                     for cond = (list '\` (cl-list* event (jupyter-ioloop--replace-args args)))
                     if (memq event '(quit callback timer))
                     do (error "Event can't be one of quit, callback, or, timer")
@@ -286,11 +286,11 @@ sending closures to the IOLOOP. An example:
       `(lambda () (zmq-prin1 'foo \"bar\")))"
   (declare (indent 1))
   (cl-assert (functionp cb))
-  (setf (jupyter-ioloop-callbacks ioloop)
-        (append (jupyter-ioloop-callbacks ioloop) (list cb)))
-  (when (process-live-p (jupyter-ioloop-process ioloop))
-    (zmq-subprocess-send (jupyter-ioloop-process ioloop)
-      (list 'callback (macroexpand-all cb)))))
+  (with-slots (process callbacks) ioloop
+    (oset ioloop callbacks (append callbacks (list cb)))
+    (when (process-live-p process)
+      (zmq-subprocess-send process
+        (list 'callback (macroexpand-all cb))))))
 
 (defun jupyter-ioloop-poller-add (socket events)
   "Add SOCKET to be polled using the `jupyter-ioloop-poller'.
@@ -316,7 +316,7 @@ evaluation using `zmq-start-process'."
            ;; Initialize any callbacks that were added before the ioloop was started
            jupyter-ioloop-pre-hook
            (mapcar #'byte-compile (quote ,(mapcar #'macroexpand-all
-                                        (jupyter-ioloop-callbacks ioloop))))
+                                        (oref ioloop callbacks))))
            ;; Timeout used when polling for events, whenever there are callbacks
            ;; this gets set to 0.
            jupyter-ioloop-timeout (if jupyter-ioloop-pre-hook 0 200))
@@ -325,7 +325,7 @@ evaluation using `zmq-start-process'."
      (let (events)
        (condition-case nil
            (progn
-             ,@(jupyter-ioloop-setup ioloop)
+             ,@(oref ioloop setup)
              ;; Notify the parent process we are ready to do something
              (zmq-prin1 '(start))
              (while t
@@ -345,7 +345,7 @@ evaluation using `zmq-start-process'."
                (when events
                  (run-hook-with-args 'jupyter-ioloop-post-hook events))))
          (quit
-          ,@(jupyter-ioloop-teardown ioloop)
+          ,@(oref ioloop teardown)
           (zmq-prin1 '(quit)))))))
 
 (cl-defmethod jupyter-ioloop-printer (_ioloop _obj event)
@@ -354,16 +354,16 @@ evaluation using `zmq-start-process'."
 (defun jupyter-ioloop--filter (ioloop event)
   (when jupyter--debug
     (message
-     (concat "%s: " (jupyter-ioloop-printer ioloop (jupyter-ioloop-object ioloop) event))
+     (concat "%s: " (jupyter-ioloop-printer ioloop (oref ioloop object) event))
      (format (upcase (symbol-name (car event))))))
-  (jupyter-ioloop-handler ioloop (jupyter-ioloop-object ioloop) event))
+  (jupyter-ioloop-handler ioloop (oref ioloop object) event))
 
 (defun jupyter-ioloop--sentinel (ioloop proc _)
   (when (memq (process-status proc) '(exit signal))
     ;; Reset the object the ioloop was started with, since the object most
     ;; likely contains a reference to the ioloop itself. We want to allow the
     ;; object to be garbage collected if the IOLoop is killed.
-    (setf (jupyter-ioloop-object ioloop) nil)))
+    (setf (oref ioloop object) nil)))
 
 (cl-defgeneric jupyter-ioloop-start ((ioloop jupyter-ioloop) &rest _args)
   "Start an IOLOOP.")
@@ -377,8 +377,8 @@ Emacs process receives an event to handle from IOLOOP, see
 If BUFFER is non-nil it should be a buffer that will be used as
 the IOLOOP subprocess buffer, see `zmq-start-process'."
   (jupyter-ioloop-stop ioloop)
-  (setf (jupyter-ioloop-object ioloop) object)
-  (setf (jupyter-ioloop-process ioloop)
+  (setf (oref ioloop object) object)
+  (setf (oref ioloop process)
         (zmq-start-process
          (jupyter-ioloop--function ioloop)
          :filter (apply-partially #'jupyter-ioloop--filter ioloop)
@@ -390,10 +390,12 @@ the IOLOOP subprocess buffer, see `zmq-start-process'."
   "Stop IOLOOP.
 Send a quit event to IOLOOP, wait until it actually quits before
 returning."
-  (when (process-live-p (jupyter-ioloop-process ioloop))
-    (jupyter-send ioloop 'quit)
-    (unless (jupyter-ioloop-wait-until ioloop 'quit #'identity)
-      (delete-process (jupyter-ioloop-process ioloop)))))
+  (with-slots (process) ioloop
+    (when (process-live-p process)
+      (jupyter-send ioloop 'quit)
+      (unless (jupyter-ioloop-wait-until ioloop 'quit #'identity)
+        (delete-process process)))
+    (setf (oref ioloop process) nil)))
 
 (cl-defmethod jupyter-send ((ioloop jupyter-ioloop) &rest args)
   "Using IOLOOP, send ARGS to its process.
@@ -401,8 +403,9 @@ returning."
 All arguments passed to this function are sent as a list to the
 process unchanged. This means that all arguments should be
 serializable."
-  (cl-assert (process-live-p (jupyter-ioloop-process ioloop)))
-  (zmq-subprocess-send (jupyter-ioloop-process ioloop) args))
+  (with-slots (process) ioloop
+    (cl-assert (process-live-p process))
+    (zmq-subprocess-send process args)))
 
 (provide 'jupyter-ioloop)
 
