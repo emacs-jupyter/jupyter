@@ -231,21 +231,18 @@ kernel. Starting a kernel involves the following steps:
 
 (cl-defmethod jupyter-start-channels ((manager jupyter-kernel-manager))
   "Start a control channel on MANAGER."
-  (let ((session (oref manager session))
-        (channel (oref manager control-channel)))
-    (if channel
-        (unless (jupyter-channel-alive-p channel)
-          (jupyter-start-channel channel :identity (jupyter-session-id session)))
-      (let ((conn-info (jupyter-session-conn-info session)))
+  (with-slots (session control-channel) manager
+    (if control-channel
+        (unless (jupyter-channel-alive-p control-channel)
+          (jupyter-start-channel
+           control-channel :identity (jupyter-session-id session)))
+      (cl-destructuring-bind (&key transport ip control_port &allow-other-keys)
+          (jupyter-session-conn-info session)
         (oset manager control-channel
               (jupyter-sync-channel
                :type :control
                :session session
-               :endpoint (format "%s://%s:%d"
-                                 (plist-get conn-info :transport)
-                                 (plist-get conn-info :ip)
-                                 (plist-get conn-info :control_port))))
-        (jupyter-start-channels manager)))))
+               :endpoint (format "%s://%s:%d" transport ip control_port)))))))
 
 (cl-defmethod jupyter-stop-channels ((manager jupyter-kernel-manager))
   "Stop the control channel on MANAGER."
