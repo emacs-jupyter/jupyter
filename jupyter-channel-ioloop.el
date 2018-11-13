@@ -45,9 +45,7 @@
 (eval-and-compile (require 'jupyter-ioloop))
 (require 'jupyter-channels)
 
-(defclass jupyter-channel-ioloop (jupyter-ioloop)
-  ()
-  :documentation "A `jupyter-ioloop' configured for Jupyter channels.")
+;;; Variables used in the ioloop
 
 ;; Meant to be used in the subprocess
 (defvar jupyter-ioloop-channels nil
@@ -56,12 +54,18 @@
 (defvar jupyter-ioloop-session nil
   "The `jupyter-session' used when initializing Jupyter channels.")
 
+;;; `jupyter-channel' ioloop arg
+
 (jupyter-ioloop-add-arg-type jupyter-channel
   (lambda (arg)
     `(or (object-assoc ,arg :type jupyter-ioloop-channels)
          (error "Channel not alive (%s)" ,arg))))
 
+;;; `jupyter-channel-ioloop'
 
+(defclass jupyter-channel-ioloop (jupyter-ioloop)
+  ()
+  :documentation "A `jupyter-ioloop' configured for Jupyter channels.")
 
 (cl-defmethod initialize-instance ((ioloop jupyter-channel-ioloop) &rest _)
   (cl-call-next-method)
@@ -73,6 +77,8 @@
   (jupyter-channel-ioloop-add-stop-channel-event ioloop)
   (jupyter-ioloop-add-teardown ioloop
     (mapc #'jupyter-stop-channel jupyter-ioloop-channels)))
+
+;;;; Starting the ioloop
 
 (defun jupyter-channel-ioloop--set-session (ioloop session)
   "In the IOLOOP, set SESSION as the `jupyter-ioloop-session'.
@@ -114,7 +120,8 @@ start a channel."
   (jupyter-channel-ioloop--set-session ioloop session)
   (cl-call-next-method ioloop obj :buffer buffer))
 
-;;; Channel events
+;;;; Receiving messages in the ioloop
+
 (defun jupyter-channel-ioloop-recv-messages (events)
   "Print the received messages described in EVENTS.
 EVENTS is a list of socket events as returned by
@@ -136,6 +143,8 @@ either :shell, :stdin, or :iopub. MSG is a list as returned by
       ;; Send messages
       (mapc (lambda (msg) (prin1 (cons 'message msg))) (nreverse messages))
       (zmq-flush 'stdout))))
+
+;;;; Channel events
 
 (defun jupyter-channel-ioloop-add-start-channel-event (ioloop)
   "Add a start-channel event handler to IOLOOP.
