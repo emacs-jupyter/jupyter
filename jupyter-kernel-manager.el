@@ -195,9 +195,8 @@ kernel. Starting a kernel involves the following steps:
              (conn-file (make-temp-file "emacs-kernel-" nil ".json")))
         ;; Write the connection info file
         (let ((json-encoding-pretty-print t))
-          (with-temp-buffer
-            (insert (json-encode-plist conn-info))
-            (write-region (point-min) (point-max) conn-file)))
+          (with-temp-file conn-file
+            (insert (json-encode-plist conn-info))))
         ;; This is needed for reliability
         (sleep-for 0.5)
         ;; Start the process
