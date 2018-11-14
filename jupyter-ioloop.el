@@ -124,6 +124,15 @@ while waiting using PROGRESS-MSG as the message."
   (cl-check-type ioloop jupyter-ioloop)
   (process-get (oref ioloop process) :last-event))
 
+(cl-defgeneric jupyter-ioloop-printer (_ioloop _obj event)
+  "Return a printed representation of an IOLOOP EVENT.
+IOLOOP, OBJ, and EVENT have the same meaning as in
+`jupyter-ioloop-handler'.
+
+This is mainly used for debugging purposes. The returned string
+should exclude the head element of the EVENT."
+  (format "%s" (cdr event)))
+
 (cl-defmethod jupyter-ioloop-handler :before ((ioloop jupyter-ioloop) obj event)
   "Set the :last-event property of IOLOOP's process."
   (with-slots (process) ioloop
@@ -348,9 +357,6 @@ evaluation using `zmq-start-process'."
           ,@(oref ioloop teardown)
           (zmq-prin1 '(quit)))))))
 
-(cl-defmethod jupyter-ioloop-printer (_ioloop _obj event)
-  (format "%s" (cdr event)))
-
 (defun jupyter-ioloop--filter (ioloop event)
   (when jupyter--debug
     (message
@@ -365,10 +371,8 @@ evaluation using `zmq-start-process'."
     ;; object to be garbage collected if the IOLoop is killed.
     (setf (oref ioloop object) nil)))
 
-(cl-defgeneric jupyter-ioloop-start ((ioloop jupyter-ioloop) &rest _args)
-  "Start an IOLOOP.")
 
-(cl-defmethod jupyter-ioloop-start ((ioloop jupyter-ioloop) object &key buffer)
+(cl-defgeneric jupyter-ioloop-start ((ioloop jupyter-ioloop) object &key buffer)
   "Start an IOLOOP.
 OBJECT is an object which is used to dispatch on when the current
 Emacs process receives an event to handle from IOLOOP, see
