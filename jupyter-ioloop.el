@@ -85,19 +85,26 @@ the return value of `zmq-poller-wait-all'.")
 (defvar jupyter-ioloop--argument-types nil
   "Argument types added via `jupyter-ioloop-add-arg-type'.")
 
-(defclass jupyter-ioloop ()
+(defclass jupyter-ioloop (jupyter-finalized-object)
   ((process :type (or null process) :initform nil)
-   (object :initform nil)
    (callbacks :type list :initform nil)
    (events :type list :initform nil)
    (setup :type list :initform nil)
    (teardown :type list :initform nil)))
 
+(cl-defmethod initialize-instance ((ioloop jupyter-ioloop) &rest _)
+  (cl-call-next-method)
+  (jupyter-add-finalizer ioloop
+    (lambda ()
+      (with-slots (process) ioloop
+        (when (process-live-p process)
+          (delete-process process))))))
+
 (cl-defgeneric jupyter-ioloop-handler ((_ioloop jupyter-ioloop) obj event)
   "Define a new IOLOOP handler, dispatching on OBJ, for EVENT.
-OBJ will be the value of the `jupyter-ioloop-object' slot of
-IOLOOP and EVENT will be an event as received by a filter
-function described in `zmq-start-process'."
+OBJ will be the value of the object passed to
+`jupyter-ioloop-start' and EVENT will be an event as received by
+a filter function described in `zmq-start-process'."
   ;; Don't error on built in events
   (unless (memq (car-safe event) '(start quit))
     (error "Unhandled event (%s %s)" (type-of obj) event)))
@@ -368,20 +375,6 @@ evaluation using `zmq-start-process'."
           ,@(oref ioloop teardown)
           (zmq-prin1 '(quit)))))))
 
-(defun jupyter-ioloop--filter (ioloop event)
-  (when jupyter--debug
-    (message
-     (concat "%s: " (jupyter-ioloop-printer ioloop (oref ioloop object) event))
-     (format (upcase (symbol-name (car event))))))
-  (jupyter-ioloop-handler ioloop (oref ioloop object) event))
-
-(defun jupyter-ioloop--sentinel (ioloop proc _)
-  (when (memq (process-status proc) '(exit signal))
-    ;; Reset the object the ioloop was started with, since the object most
-    ;; likely contains a reference to the ioloop itself. We want to allow the
-    ;; object to be garbage collected if the IOLoop is killed.
-    (setf (oref ioloop object) nil)))
-
 (defun jupyter-ioloop-alive-p (ioloop)
   "Return non-nil if IOLOOP is ready to receive/send events."
   (cl-check-type ioloop jupyter-ioloop)
@@ -394,17 +387,18 @@ OBJECT is an object which is used to dispatch on when the current
 Emacs process receives an event to handle from IOLOOP, see
 `jupyter-ioloop-handler'.
 
+If IOLOOP was previously running, it is stopped first.
+
 If BUFFER is non-nil it should be a buffer that will be used as
 the IOLOOP subprocess buffer, see `zmq-start-process'."
   (jupyter-ioloop-stop ioloop)
-  (setf (oref ioloop object) object)
-  (setf (oref ioloop process)
-        (zmq-start-process
-         (jupyter-ioloop--function ioloop)
-         :filter (apply-partially #'jupyter-ioloop--filter ioloop)
-         :sentinel (apply-partially #'jupyter-ioloop--sentinel ioloop)
-         :buffer buffer))
-  (jupyter-ioloop-wait-until ioloop 'start #'identity))
+  (let ((process (zmq-start-process
+                  (jupyter-ioloop--function ioloop)
+                  :filter (lambda (event)
+                            (jupyter-ioloop-handler ioloop object event))
+                  :buffer buffer)))
+    (oset ioloop process process)
+    (jupyter-ioloop-wait-until ioloop 'start #'identity)))
 
 (cl-defgeneric jupyter-ioloop-stop ((ioloop jupyter-ioloop))
   "Stop IOLOOP.
@@ -414,8 +408,7 @@ returning."
     (when (process-live-p process)
       (jupyter-send ioloop 'quit)
       (unless (jupyter-ioloop-wait-until ioloop 'quit #'identity)
-        (delete-process process)))
-    (setf (oref ioloop process) nil)))
+        (delete-process process)))))
 
 (cl-defmethod jupyter-send ((ioloop jupyter-ioloop) &rest args)
   "Using IOLOOP, send ARGS to its process.
