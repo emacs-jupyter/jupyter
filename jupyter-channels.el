@@ -154,10 +154,13 @@ use `jupyter-hb-unpause'."))
   "Return non-nil if CHANNEL is alive."
   (zmq-socket-p (oref channel socket)))
 
+(defun jupyter-hb--pingable-p (channel)
+  (and (not (oref channel paused))
+       (jupyter-channel-alive-p channel)))
+
 (cl-defmethod jupyter-hb-beating-p ((channel jupyter-hb-channel))
   "Return non-nil if CHANNEL is reachable."
-  (and (jupyter-channel-alive-p channel)
-       (not (oref channel paused))
+  (and (jupyter-hb--pingable-p channel)
        (oref channel beating)))
 
 (cl-defmethod jupyter-hb-pause ((channel jupyter-hb-channel))
@@ -172,14 +175,6 @@ use `jupyter-hb-unpause'."))
     (oset channel paused nil)
     (jupyter-hb--send-ping channel)))
 
-(cl-defmethod jupyter-stop-channel ((channel jupyter-hb-channel))
-  "Stop the heartbeat CHANNEL.
-Stop the timer of the heartbeat channel."
-  (when (jupyter-channel-alive-p channel)
-    (zmq-close (oref channel socket))
-    (oset channel socket nil)
-    (oset channel paused t)))
-
 (cl-defmethod jupyter-hb-on-kernel-dead ((channel jupyter-hb-channel) fun)
   "When the kernel connected to CHANNEL dies call FUN.
 A kernel is considered dead when CHANNEL does not receive a
@@ -188,48 +183,29 @@ response after `jupyter-hb-consider-dead-periods' of
   (declare (indent 1))
   (oset channel kernel-died-cb fun))
 
-(defun jupyter-channel--reset-socket (channel &optional identity)
-  "Set CHANNEL's socket slot to a new socket with IDENTITY.
-If CHANNEL already has a socket in its socket slot, close it and
-open and connect a new one, re-using the IDENTITY of the socket.
-In this case the IDENTITY argument is ignored."
-  (cl-assert (object-of-class-p channel 'jupyter-channel))
-  (with-slots (socket endpoint) channel
-    (when (jupyter-channel-alive-p channel)
-      (setq identity (zmq-socket-get socket zmq-IDENTITY))
-      (zmq-close socket))
-    (oset channel socket (jupyter-connect-channel :hb endpoint identity))))
-
 (defun jupyter-hb--send-ping (channel &optional counter)
-  (unless (oref channel paused)
+  (when (jupyter-hb--pingable-p channel)
     (zmq-send (oref channel socket) "ping")
     (run-with-timer
      (oref channel time-to-dead) nil
      (lambda ()
-       (let ((sock (oref channel socket)))
-         (when (zmq-socket-p sock)
+       (when (jupyter-hb--pingable-p channel)
+         (let ((sock (oref channel socket)))
            (oset channel beating
                  (condition-case nil
                      (and (zmq-recv sock zmq-DONTWAIT) t)
                    ((zmq-EINTR zmq-EAGAIN) nil)))
            (if (oref channel beating)
                (jupyter-hb--send-ping channel)
-             (jupyter-channel--reset-socket channel)
+             ;; Reset the socket
+             (jupyter-stop-channel channel)
+             (jupyter-start-channel channel)
              (or counter (setq counter 0))
              (if (< counter jupyter-hb-consider-dead-periods)
                  (jupyter-hb--send-ping channel (1+ counter))
                (oset channel paused t)
                (when (functionp (oref channel kernel-died-cb))
                  (funcall (oref channel kernel-died-cb)))))))))))
-
-(cl-defmethod jupyter-start-channel ((channel jupyter-hb-channel) &key identity)
-  "Start a heartbeat CHANNEL.
-IDENTITY has the same meaning as in `jupyter-connect-channel'. A
-heartbeat channel is handled specially in that it is implemented
-with a timer in the current Emacs session. Starting a heartbeat
-channel, starts the timer."
-  (unless (jupyter-channel-alive-p channel)
-    (jupyter-channel--reset-socket channel identity)))
 
 (provide 'jupyter-channels)
 
