@@ -422,33 +422,6 @@ running BODY."
     ;; TODO
     ))
 
-(ert-deftest jupyter-channel-subprocess-lock ()
-  (ert-info ("Locking and unlocking a file")
-    (with-temp-buffer
-      (let ((create-lockfiles t))
-        (setq buffer-file-name (expand-file-name "jupyter-lock-test")
-              buffer-file-truename (file-truename buffer-file-name))
-        (should (not (file-exists-p buffer-file-name)))
-        (should (not (file-locked-p buffer-file-name)))
-        (set-buffer-modified-p t)
-        (should (file-locked-p buffer-file-name))
-        (set-buffer-modified-p nil)
-        (should (not (file-locked-p buffer-file-name)))
-        (should (not (file-exists-p buffer-file-name))))))
-  (ert-info ("`jupyter--ioloop-lock-file'")
-    (let ((client (jupyter-kernel-client)))
-      ;; Lock file names are based on session IDs
-      (oset client session (jupyter-session))
-      (jupyter-with-client-buffer client
-        (should (not buffer-file-name))
-        (let ((lock (jupyter--ioloop-lock-file client)))
-          (should (file-locked-p lock))
-          (should (equal buffer-file-name lock))
-          (ert-info ("Lock is acquired regardless of lock state")
-            (should (file-locked-p lock))
-            (should (equal (jupyter--ioloop-lock-file client) lock))
-            (should (file-locked-p lock))))))))
-
 (ert-deftest jupyter-sync-channel ()
   (let ((channel (jupyter-sync-channel
                   :type :shell
