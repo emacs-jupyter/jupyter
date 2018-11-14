@@ -871,6 +871,8 @@ All client handlers except the status handler are inhibited for
 the request. In addition, the history of the request is not
 stored. Return the MIME representation of the result. If MIME is
 nil, return the text/plain representation."
+  (cl-check-type jupyter-current-client jupyter-kernel-client
+                 "Need a client to evaluate code")
   (let ((msg (jupyter-wait-until-received :execute-result
                (let ((jupyter-inhibit-handlers '(not :status)))
                  (jupyter-send-execute-request jupyter-current-client
