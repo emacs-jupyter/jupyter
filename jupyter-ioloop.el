@@ -146,8 +146,11 @@ Additionally set the :start and :quit properties of the process
 to t when they occur. See also `jupyter-ioloop-wait-until'."
   (when jupyter--debug
     (message
-     (concat "%s: " (jupyter-ioloop-printer ioloop obj event))
-     (format (upcase (symbol-name (car event))))))
+     (concat (upcase (symbol-name (car event)))
+             ": "
+             ;; TODO: Fix this
+             (replace-regexp-in-string
+              "%" "%%" (jupyter-ioloop-printer ioloop obj event)))))
   (with-slots (process) ioloop
     (cond
      ((eq (car-safe event) 'start)
