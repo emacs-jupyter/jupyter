@@ -124,10 +124,8 @@ If the `current-buffer' is not a REPL, this is identical to
 
 (defmacro jupyter-with-echo-client (client &rest body)
   (declare (indent 1) (debug (symbolp &rest form)))
-  `(unwind-protect
-       (let ((,client (jupyter-echo-client)))
-         ,@body)
-     (jupyter-finalize ,client)))
+  `(let ((,client (jupyter-echo-client)))
+     ,@body))
 
 (defun jupyter-error-if-no-kernelspec (kernel)
   (prog1 kernel
@@ -144,10 +142,7 @@ BODY."
     `(cl-destructuring-bind (,manager ,client)
          (jupyter-start-new-kernel
           (jupyter-error-if-no-kernelspec ,kernel))
-       (unwind-protect
-           (progn ,@body)
-         (jupyter-finalize ,manager)
-         (jupyter-finalize ,client)))))
+       ,@body)))
 
 (defmacro jupyter-with-python-client (client &rest body)
   "Start a new Python kernel, bind it to CLIENT, evaluate BODY.
@@ -444,17 +439,15 @@ running BODY."
     (let ((client (jupyter-kernel-client)))
       ;; Lock file names are based on session IDs
       (oset client session (jupyter-session))
-      (unwind-protect
-          (jupyter-with-client-buffer client
-            (should (not buffer-file-name))
-            (let ((lock (jupyter--ioloop-lock-file client)))
-              (should (file-locked-p lock))
-              (should (equal buffer-file-name lock))
-              (ert-info ("Lock is acquired regardless of lock state")
-                (should (file-locked-p lock))
-                (should (equal (jupyter--ioloop-lock-file client) lock))
-                (should (file-locked-p lock)))))
-        (jupyter-finalize client)))))
+      (jupyter-with-client-buffer client
+        (should (not buffer-file-name))
+        (let ((lock (jupyter--ioloop-lock-file client)))
+          (should (file-locked-p lock))
+          (should (equal buffer-file-name lock))
+          (ert-info ("Lock is acquired regardless of lock state")
+            (should (file-locked-p lock))
+            (should (equal (jupyter--ioloop-lock-file client) lock))
+            (should (file-locked-p lock))))))))
 
 (ert-deftest jupyter-sync-channel ()
   (let ((channel (jupyter-sync-channel
@@ -525,59 +518,54 @@ running BODY."
   (let ((conn-info (jupyter-test-conn-info-plist))
         (client (jupyter-kernel-client)))
     (jupyter-initialize-connection client conn-info)
-    (unwind-protect
-        (with-slots (session channels) client
-          (ert-info ("Client session")
-            (should (string= (jupyter-session-key session)
-                             (plist-get conn-info :key)))
-            (should (equal (jupyter-session-conn-info session)
-                           conn-info)))
-          (ert-info ("Heartbeat channel initialized")
-            (should (eq session (oref (plist-get channels :hb) session)))
-            (should (string= (oref (plist-get channels :hb) endpoint)
-                             (format "tcp://127.0.0.1:%d"
-                                     (plist-get conn-info :hb_port)))))
-          (ert-info ("Shell, iopub, stdin initialized")
-            (cl-loop
-             for channel in '(:shell :iopub :stdin)
-             for port_sym = (intern (concat (symbol-name channel) "_port"))
-             do
-             (should (plist-member (plist-get channels channel) :alive-p))
-             (should (plist-member (plist-get channels channel) :endpoint))
-             (should
-              (string= (plist-get (plist-get channels channel) :endpoint)
-                       (format "tcp://127.0.0.1:%d"
-                               (plist-get conn-info port_sym))))))
-          (ert-info ("Initialization stops any running channels")
-            (should-not (jupyter-channels-running-p client))
-            (jupyter-start-channels client)
-            (should (jupyter-channels-running-p client))
-            (jupyter-initialize-connection client conn-info)
-            (should-not (jupyter-channels-running-p client)))
-          (ert-info ("Invalid signature scheme")
-            (plist-put conn-info :signature_scheme "hmac-foo")
-            (should-error (jupyter-initialize-connection client conn-info))))
-      (jupyter-finalize client))))
+    (with-slots (session channels) client
+      (ert-info ("Client session")
+        (should (string= (jupyter-session-key session)
+                         (plist-get conn-info :key)))
+        (should (equal (jupyter-session-conn-info session)
+                       conn-info)))
+      (ert-info ("Heartbeat channel initialized")
+        (should (eq session (oref (plist-get channels :hb) session)))
+        (should (string= (oref (plist-get channels :hb) endpoint)
+                         (format "tcp://127.0.0.1:%d"
+                                 (plist-get conn-info :hb_port)))))
+      (ert-info ("Shell, iopub, stdin initialized")
+        (cl-loop
+         for channel in '(:shell :iopub :stdin)
+         for port_sym = (intern (concat (symbol-name channel) "_port"))
+         do
+         (should (plist-member (plist-get channels channel) :alive-p))
+         (should (plist-member (plist-get channels channel) :endpoint))
+         (should
+          (string= (plist-get (plist-get channels channel) :endpoint)
+                   (format "tcp://127.0.0.1:%d"
+                           (plist-get conn-info port_sym))))))
+      (ert-info ("Initialization stops any running channels")
+        (should-not (jupyter-channels-running-p client))
+        (jupyter-start-channels client)
+        (should (jupyter-channels-running-p client))
+        (jupyter-initialize-connection client conn-info)
+        (should-not (jupyter-channels-running-p client)))
+      (ert-info ("Invalid signature scheme")
+        (plist-put conn-info :signature_scheme "hmac-foo")
+        (should-error (jupyter-initialize-connection client conn-info))))))
 
 (ert-deftest jupyter-client-channels ()
   (ert-info ("Starting/stopping channels")
     (let ((conn-info (jupyter-test-conn-info-plist))
           (client (jupyter-kernel-client)))
       (jupyter-initialize-connection client conn-info)
-      (unwind-protect
-          (progn
-            (cl-loop
-             for channel in '(:hb :shell :iopub :stdin)
-             do (should-not (jupyter-channel-alive-p client channel)))
-            (jupyter-start-channels client)
-            (cl-loop
-             for channel in '(:hb :shell :iopub :stdin)
-             do (should (jupyter-channel-alive-p client channel)))
-            (jupyter-stop-channels client)
-            (cl-loop
-             for channel in '(:hb :shell :iopub :stdin)
-             do (should-not (jupyter-channel-alive-p client channel))))
-        (jupyter-finalize client)))))
+      (cl-loop
+       for channel in '(:hb :shell :iopub :stdin)
+       do (should-not (jupyter-channel-alive-p client channel)))
+      (jupyter-start-channels client)
+      (cl-loop
+       for channel in '(:hb :shell :iopub :stdin)
+       do (should (jupyter-channel-alive-p client channel)))
+      (jupyter-stop-channels client)
+      (cl-loop
+       for channel in '(:hb :shell :iopub :stdin)
+       do (should-not (jupyter-channel-alive-p client channel))))))
 
 (ert-deftest jupyter-inhibited-handlers ()
   (jupyter-with-python-client client
@@ -1122,14 +1110,11 @@ Image(filename='%s')" file)))
                     (setq py-method-called t)
                     (org-babel-script-escape results)))
                  (jupyter-current-client (jupyter-kernel-client)))
-        (unwind-protect
-            (progn
-              (oset jupyter-current-client kernel-info
-                    (list :language_info (list :name "python")))
-              (should (equal (jupyter-org-result req (list :text/plain "[1, 2, 3]"))
-                             (cons "scalar" '(1 2 3))))
-              (should py-method-called))
-          (jupyter-finalize jupyter-current-client))))))
+        (oset jupyter-current-client kernel-info
+              (list :language_info (list :name "python")))
+        (should (equal (jupyter-org-result req (list :text/plain "[1, 2, 3]"))
+                       (cons "scalar" '(1 2 3))))
+        (should py-method-called)))))
 
 ;;; jupyter-tests.el ends here
 
