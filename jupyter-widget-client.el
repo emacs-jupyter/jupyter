@@ -237,8 +237,12 @@ required by the JupyterLab widget manager."
 
 ;;; `httpd' interface
 
-(defun httpd/jupyter (proc path query &rest _args)
-  "Serve the javascript required for Jupyter widget support."
+(defun httpd/jupyter (proc path _query &rest _args)
+  "Serve the javascript required for Jupyter widget support.
+PROC is the httpd process and PATH is the requested resource
+path. Currently no resources are accessible at any PATH other
+than the root, which will serve the necessary Javascript to
+load."
   (let ((split-path (split-string (substring path 1) "/")))
     (if (= (length split-path) 1)
         (with-httpd-buffer proc "text/javascript; charset=UTF-8"
@@ -246,8 +250,12 @@ required by the JupyterLab widget manager."
            (expand-file-name "js/built/index.built.js" jupyter-root)))
       (error "Not found"))))
 
-(defun httpd/jupyter/widgets/built (proc path query &rest _args)
-  "Serve the resources required by the widgets in the browser."
+(defun httpd/jupyter/widgets/built (proc path _query &rest _args)
+  "Serve the resources required by the widgets in the browser.
+PROC is the httpd process and PATH is the requested resource
+path. Currently this will only serve a file from the js/built
+directory if it has one of the extensions woff, woff2, ttf, svg,
+or eot. These are used by Jupyter."
   (let* ((split-path (split-string (substring path 1) "/"))
          (file (car (last split-path)))
          (mime (pcase (file-name-extension file)
@@ -277,7 +285,8 @@ required by the JupyterLab widget manager."
 ;; loaded we can automatically search the jupyter --paths for notebook
 ;; extension modules matching it.
 (defun httpd/jupyter/widgets (proc &rest _args)
-  "Serve the HTML page to display widgets."
+  "Serve the HTML page to display widgets.
+PROC is the httpd process."
   (with-temp-buffer
     (insert-file-contents (expand-file-name "widget.html" jupyter-root))
     (httpd-send-header

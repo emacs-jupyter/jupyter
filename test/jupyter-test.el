@@ -1,4 +1,4 @@
-;;; jupyter-tests.el --- Jupyter tests -*- lexical-binding: t -*-
+;;; jupyter-test.el --- Jupyter tests -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2018 Nathaniel Nicandro
 
@@ -28,187 +28,35 @@
 
 ;;; Code:
 
-(require 'jupyter-client)
-(require 'jupyter-repl)
-(require 'jupyter-kernel-manager)
-(require 'cl-lib)
-(require 'ert)
+(declare-function org-babel-python-table-or-string "ob-python" (results))
 
 ;; TODO: Required tests
-;; - `jupyter-channels'
-;; - `jupyter-messages'
-;; - `jupyter-request' semantics
-;;   - Ensure `jupyter-request-idle-received-p' gets set
-;;   - Ensure `jupyter-request-run-handlers-p' actually prevents a handler from running
-;; - IOLoop subprocess
-;;   - Make sure all commands that can be sent to the subprocess work
 ;; - Jupyter REPL
 
-(defclass jupyter-echo-client (jupyter-kernel-client)
-  ((messages))
-  :documentation "A client that echo's any messages sent back to
-the channel the message was sent on. No communication is actually
-done with a kernel. Every sent message on a channel is just
-placed back into the channel's recv-queue. This is mainly for
-testing the callback functionality of a
-`jupyter-kernel-client'.")
-
-(defun jupyter-test-message (req type content)
-  "Return a bare bones message plist for REQ.
-TYPE is the message type of the returned message. CONTENT is the
-message contents. The actual return value is a cons cell as
-expected by `jupyter-queue-message'."
-  (cons "" (list :msg_id (jupyter-new-uuid)
-                 :msg_type type
-                 :parent_header (list :msg_id (jupyter-request-id req))
-                 :content content)))
-
-(cl-defmethod initialize-instance ((client jupyter-echo-client) &rest _slots)
-  (cl-call-next-method)
-  (oset client messages (make-ring 10))
-  (oset client channels
-        (list :hb (jupyter-hb-channel)
-              :shell (list :alive-p nil :endpoint "foo://bar")
-              :stdin (list :alive-p nil :endpoint "foo://bar")
-              :iopub (list :alive-p nil :endpoint "foo://bar"))))
-
-(cl-defmethod jupyter-send ((client jupyter-echo-client)
-                            channel
-                            type
-                            message
-                            &optional _flags)
-  (let ((req (make-jupyter-request :id (jupyter-new-uuid))))
-    (if (string-match "request" (symbol-name type))
-        (setq type (intern (replace-match "reply" nil nil (symbol-name type))))
-      (error "Not a request message type (%s)" type))
-    ;; Message flow
-    ;; - status: busy
-    ;; - reply message
-    ;; - status: idle
-    (jupyter-handle-message
-     client :iopub (jupyter-test-message req :status (list :execution_state "busy")))
-    (jupyter-handle-message client channel (jupyter-test-message req type message))
-    (jupyter-handle-message
-     client :iopub (jupyter-test-message req :status (list :execution_state "idle")))
-    ;; Needed internally by a `jupyter-kernel-client', this is mainly handled
-    ;; by the eventloop.
-    (puthash (jupyter-request-id req) req (oref client requests))
-    req))
-
-(cl-defmethod jupyter-handle-message ((client jupyter-echo-client) _channel msg)
-  (ring-insert+extend (oref client messages) (cdr msg) 'grow)
-  (cl-call-next-method))
-
-(cl-defmacro jupyter-ert-info ((message-form &key ((:prefix prefix-form) "Info: "))
-                                &body body)
-  "Identical to `ert-info', but clear the REPL buffer before running BODY.
-In a REPL buffer, the contents are erased and an input prompt is
-inserted.
-
-If the `current-buffer' is not a REPL, this is identical to
-`ert-info'."
-  (declare (debug ((form &rest [sexp form]) body))
-           (indent 1))
-  `(ert-info ((quote ,message-form) :prefix (quote ,prefix-form))
-     ;; Clear the REPL buffer before each new test section, but do this only if
-     ;; the current client is a REPL client
-     (when (and jupyter-current-client
-                (object-of-class-p jupyter-current-client
-                                   'jupyter-repl-client)
-                (eq (current-buffer)
-                    (oref jupyter-current-client buffer)))
-       (let ((inhibit-read-only t))
-         (erase-buffer)
-         (jupyter-test-repl-ret-sync)))
-     ,@body))
-
-(defmacro jupyter-with-echo-client (client &rest body)
-  (declare (indent 1) (debug (symbolp &rest form)))
-  `(let ((,client (jupyter-echo-client)))
-     ,@body))
-
-(defun jupyter-error-if-no-kernelspec (kernel)
-  (prog1 kernel
-    (unless (car (jupyter-find-kernelspecs
-                  (regexp-quote kernel)))
-      (error "Kernel not found (%s)" kernel))))
-
-(defmacro jupyter-with-kernel-client (kernel client &rest body)
-  "Start a new KERNEL client, bind it to CLIENT, evaluate BODY.
-Cleanup the client and delete the kernel process after running
-BODY."
-  (declare (indent 2) (debug (stringp symbolp &rest form)))
-  (let ((manager (make-symbol "--manager")))
-    `(cl-destructuring-bind (,manager ,client)
-         (jupyter-start-new-kernel
-          (jupyter-error-if-no-kernelspec ,kernel))
-       ,@body)))
-
-(defmacro jupyter-with-python-client (client &rest body)
-  "Start a new Python kernel, bind it to CLIENT, evaluate BODY.
-Do cleanup of the kernel process afterwards."
-  (declare (indent 1) (debug (symbolp &rest form)))
-  `(jupyter-with-kernel-client "python" ,client
-     ,@body))
-
-(defmacro jupyter-with-kernel-repl (kernel client &rest body)
-  "Start a new KERNEL REPL, bind the client to CLIENT, evaluate BODY.
-Delete the REPL buffer after running BODY."
-  (declare (indent 2) (debug (stringp symbolp &rest form)))
-  `(let ((,client (jupyter-run-repl
-                   (jupyter-error-if-no-kernelspec ,kernel))))
-     (unwind-protect
-         (jupyter-with-repl-buffer ,client
-           (progn ,@body))
-       (cl-letf (((symbol-function 'yes-or-no-p)
-                  (lambda (_prompt) t))
-                 ((symbol-function 'y-or-n-p)
-                  (lambda (_prompt) t)))
-         (kill-buffer (oref client buffer))))))
-
-(defmacro jupyter-with-python-repl (client &rest body)
-  "Start a new Python REPL and run BODY.
-CLIENT is bound to the Python REPL. Delete the REPL buffer after
-running BODY."
-  (declare (indent 1) (debug (symbolp &rest form)))
-  `(jupyter-with-kernel-repl "python" ,client
-     ,@body))
-
-(defun jupyter-test-wait-until-idle-repl (client)
-  "Wait until the execution state of a REPL CLIENT is idle."
-  (while (not (equal (oref client execution-state)
-                     "idle"))
-    (sleep-for 0.01)))
-
-(defun jupyter-test-repl-ret-sync ()
-  "A synchronous version of `jupyter-repl-ret'."
-  ;; TODO: There are issues here since the kernel goes through multiple idle ->
-  ;; busy cycles
-  (jupyter-repl-ret)
-  (jupyter-test-wait-until-idle-repl
-   jupyter-current-client))
-
 (ert-deftest jupyter-echo-client ()
+  :tags '(mock)
   (jupyter-with-echo-client client
     (ert-info ("Mock echo client echo's messages back to channel.")
       (let* ((msg (jupyter-message-execute-request :code "foo"))
              (req (jupyter-send client :shell :execute-request msg)))
+        (sleep-for 0.3)
         (setq msgs (nreverse (ring-elements (oref client messages))))
         (should (= (length msgs) 3))
-        (should (equal (jupyter-message-type (first msgs)) :status))
-        (should (equal (jupyter-message-parent-id (first msgs))
+        (should (equal (jupyter-message-type (car msgs)) :status))
+        (should (equal (jupyter-message-parent-id (car msgs))
                        (jupyter-request-id req)))
-        (should (equal (jupyter-message-get (first msgs) :execution_state) "busy"))
-        (should (equal (jupyter-message-type (second msgs)) :execute-reply))
-        (should (equal (jupyter-message-parent-id (second msgs))
+        (should (equal (jupyter-message-get (car msgs) :execution_state) "busy"))
+        (should (equal (jupyter-message-type (cadr msgs)) :execute-reply))
+        (should (equal (jupyter-message-parent-id (cadr msgs))
                        (jupyter-request-id req)))
-        (should (equal (jupyter-message-content (second msgs)) msg))
-        (should (equal (jupyter-message-type (third msgs)) :status))
-        (should (equal (jupyter-message-parent-id (third msgs))
+        (should (equal (jupyter-message-content (cadr msgs)) msg))
+        (should (equal (jupyter-message-type (caddr msgs)) :status))
+        (should (equal (jupyter-message-parent-id (caddr msgs))
                        (jupyter-request-id req)))
-        (should (equal (jupyter-message-get (third msgs) :execution_state) "idle"))))))
+        (should (equal (jupyter-message-get (caddr msgs) :execution_state) "idle"))))))
 
 (ert-deftest jupyter-callbacks ()
+  :tags '(callbacks)
   (jupyter-with-echo-client client
     (let ((req (jupyter-send-execute-request client :code "foo")))
       (ert-info ("Blocking callbacks")
@@ -237,6 +85,7 @@ running BODY."
         (should (= callback-count 3))))))
 
 (ert-deftest jupyter-loop-over-mime ()
+  :tags '(mime)
   (let ((mimes '(:text/html :text/plain))
         (data (list :text/plain "foo"))
         (metadata nil))
@@ -249,6 +98,7 @@ running BODY."
 
 (ert-deftest jupyter-insert ()
   "Test the `jupyter-insert' method."
+  :tags '(mime)
   (with-temp-buffer
     (let ((msg (list :data (list :text/plain "foo")
                      :metadata nil)))
@@ -262,16 +112,22 @@ running BODY."
       (ert-info ("Calling with data plist directly")
         (should (eq (jupyter-insert (plist-get msg :data)) :text/plain))
         (should (equal (buffer-string) "foo\n"))
+        (erase-buffer))
+      (ert-info ("Calling with message plist directly")
+        (should (eq (jupyter-insert msg) :text/plain))
+        (should (equal (buffer-string) "foo\n"))
         (erase-buffer)))
     (let ((msg (list :data (list :text/plain "foo"
                                  :text/html "<b>bar</b>")
                      :metadata nil)))
       (ert-info ("Mimetype priority")
         (should (eq (jupyter-insert msg) :text/html))
-        (should (equal (buffer-string) "bar\n"))
+        (should (equal (string-trim (buffer-string)) "bar"))
         (erase-buffer)))
-    (let ((data (list :image/jpeg (base64-encode-string "kjdaljk"))))
-      (ert-info ("Method specializers")
+    (let ((data (list :image/jpeg (base64-encode-string "kjdaljk")))
+          ;; So that this test runs under ert-runner
+          (jupyter-nongraphic-mime-types jupyter-mime-types))
+      (ert-info ("The right method specializers are called")
         (cl-letf (((symbol-function #'jupyter-insert-image)
                    (lambda (data &rest _) (insert data))))
           (cl-letf (((symbol-function #'image-type-available-p)
@@ -285,6 +141,7 @@ running BODY."
   (not (text-property-not-all beg end 'jupyter-display id)))
 
 (ert-deftest juptyer-insert-with-ids ()
+  :tags '(mime display-id)
   (with-temp-buffer
     (let ((id "1")
           (msg (list :data (list :text/plain "foo"))))
@@ -301,7 +158,8 @@ running BODY."
       (ert-info ("Text property added to inserted text")
         (should (jupyter-test-display-id-all id (point-min) (point-max)))))))
 
-(ert-deftest jupyter-delete-display-at-point ()
+(ert-deftest jupyter-delete-current-display ()
+  :tags '(mime display-id)
   (with-temp-buffer
     (let ((id1 "1")
           (id2 "2")
@@ -310,24 +168,25 @@ running BODY."
         (jupyter-insert id1 msg)
         (should (equal (buffer-string) "foo\n"))
         (goto-char (point-min))
-        (jupyter-delete-display-at-point)
+        (jupyter-delete-current-display)
         (should (= (point-min) (point-max))))
       (ert-info ("Does not do anything if no display ID at point")
         (insert "bar")
         (goto-char (point-min))
-        (jupyter-delete-display-at-point)
+        (jupyter-delete-current-display)
         (should (equal (buffer-string) "bar"))
         (erase-buffer))
       (ert-info ("Deletes only text with the same display ID")
         (jupyter-insert id1 msg)
         (jupyter-insert id2 msg)
         (goto-char (point-min))
-        (jupyter-delete-display-at-point)
+        (jupyter-delete-current-display)
         (should (equal (buffer-string) "foo\n"))
         (should (jupyter-test-display-id-all id2 (point-min) (point-max)))
         (erase-buffer)))))
 
 (ert-deftest jupyter-update-display ()
+  :tags '(mime display-id)
   (with-temp-buffer
     (let ((id1 "1")
           (id2 "2")
@@ -361,6 +220,7 @@ running BODY."
                  id1 (point-min) (point-max)))))))
 
 (ert-deftest jupyter-messages ()
+  :tags '(messages)
   (ert-info ("Splitting identities from messages")
     (let ((msg (list "123" "323" jupyter-message-delimiter
                      "msg1" "msg2" "\0\0")))
@@ -371,7 +231,8 @@ running BODY."
       (should-error (jupyter--split-identities msg))))
   (ert-info ("Creating message headers")
     (let* ((session (jupyter-session :key (jupyter-new-uuid)))
-           (header (jupyter--message-header session :input-reply)))
+           (id (jupyter-new-uuid))
+           (header (jupyter--message-header session :input-reply id)))
       (should (plist-get header :msg_id))
       (should (plist-get header :date))
       (should (eq (plist-get header :msg_type) :input-reply))
@@ -423,6 +284,7 @@ running BODY."
     ))
 
 (ert-deftest jupyter-sync-channel ()
+  :tags '(channels)
   (let ((channel (jupyter-sync-channel
                   :type :shell
                   :endpoint "tcp://127.0.0.1:5555")))
@@ -439,8 +301,11 @@ running BODY."
         (should-error (zmq-send sock "foo") :type 'zmq-ENOTSOCK)))))
 
 (ert-deftest jupyter-hb-channel ()
+  :tags '(channels)
   (should (eq (oref (jupyter-hb-channel) type) :hb))
-  (let ((channel (jupyter-hb-channel :endpoint "tcp://127.0.0.1:5556"))
+  (let ((channel (jupyter-hb-channel
+                  :endpoint "tcp://127.0.0.1:5556"
+                  :session (jupyter-session)))
         (died-cb-called nil)
         (jupyter-hb-consider-dead-periods 1))
     (oset channel time-to-dead 0.1)
@@ -451,7 +316,9 @@ running BODY."
     (jupyter-start-channel channel)
     (jupyter-hb-on-kernel-dead channel (lambda () (setq died-cb-called t)))
     (should (jupyter-channel-alive-p channel))
-    (should-not (oref channel paused))
+    ;; `jupyter-hb-unpause' needs to explicitly called
+    (should (oref channel paused))
+    (jupyter-hb-unpause channel)
     (sleep-for 0.2)
     ;; It seems the timers are run after returning from the first `sleep-for'
     ;; call.
@@ -461,6 +328,19 @@ running BODY."
     (should died-cb-called)
     (should (jupyter-channel-alive-p channel))
     (should-not (jupyter-hb-beating-p channel))))
+
+;; (ert-deftest jupyter-weak-references ()
+;;   ;; Skip this test always. It is here as a reference for intended behavior.
+;;   ;; The garbage collector is non-deterministic and I haven't been able to get
+;;   ;; it to reliably clean up the objects. Under normal operating conditions,
+;;   ;; this works as intended.
+;;   (let ((ref (make-hash-table :size 1 :weakness 'value)))
+;;     (jupyter-with-python-client client
+;;       (puthash t client ref))
+;;     (garbage-collect))
+;;   (garbage-collect)
+;;   (should (= (length (jupyter-clients)) 0))
+;;   (should (= (length (jupyter-kernel-managers)) 0)))
 
 (defun jupyter-test-conn-info-plist ()
   "Return a connection info plist suitable for testing."
@@ -488,6 +368,7 @@ running BODY."
 
 ;; TODO: Different values of the session argument
 (ert-deftest jupyter-initialize-connection ()
+  :tags '(client init)
   (let ((conn-info (jupyter-test-conn-info-plist))
         (client (jupyter-kernel-client)))
     (jupyter-initialize-connection client conn-info)
@@ -524,6 +405,7 @@ running BODY."
         (should-error (jupyter-initialize-connection client conn-info))))))
 
 (ert-deftest jupyter-client-channels ()
+  :tags '(client channels)
   (ert-info ("Starting/stopping channels")
     (let ((conn-info (jupyter-test-conn-info-plist))
           (client (jupyter-kernel-client)))
@@ -541,15 +423,20 @@ running BODY."
        do (should-not (jupyter-channel-alive-p client channel))))))
 
 (ert-deftest jupyter-inhibited-handlers ()
+  :tags '(client handlers)
   (jupyter-with-python-client client
     (let* ((jupyter-inhibit-handlers '(:stream))
            (req (jupyter-send-kernel-info-request client)))
       (should (equal (jupyter-request-inhibited-handlers req)
                      '(:stream)))
+      (should-not (jupyter--run-handler-p
+                   req (jupyter-test-message
+                        req :stream (list :name "stdout" :text "foo"))))
       (setq jupyter-inhibit-handlers '(:foo))
       (should-error (jupyter-send-kernel-info-request client)))))
 
 (ert-deftest jupyter-ioloop-lifetime ()
+  :tags '(ioloop)
   (let ((ioloop (jupyter-ioloop))
         (jupyter-default-timeout 2))
     (should-not (process-live-p (oref ioloop process)))
@@ -572,6 +459,7 @@ running BODY."
   (setq jupyter-ioloop-test-handler-called t))
 
 (ert-deftest jupyter-ioloop-callbacks ()
+  :tags '(ioloop)
   (ert-info ("Callback added before starting the ioloop")
     (let ((ioloop (jupyter-ioloop)))
       (setq jupyter-ioloop-test-handler-called nil)
@@ -590,6 +478,7 @@ running BODY."
       (should jupyter-ioloop-test-handler-called))))
 
 (ert-deftest jupyter-ioloop-setup ()
+  :tags '(ioloop)
   (let ((ioloop (jupyter-ioloop)))
     (setq jupyter-ioloop-test-handler-called nil)
     (jupyter-ioloop-add-setup ioloop
@@ -599,6 +488,7 @@ running BODY."
     (should jupyter-ioloop-test-handler-called)))
 
 (ert-deftest jupyter-ioloop-teardown ()
+  :tags '(ioloop)
   (let ((ioloop (jupyter-ioloop)))
     (setq jupyter-ioloop-test-handler-called nil)
     (jupyter-ioloop-add-teardown ioloop
@@ -608,6 +498,7 @@ running BODY."
     (should jupyter-ioloop-test-handler-called)))
 
 (ert-deftest jupyter-ioloop-add-event ()
+  :tags '(ioloop)
   (let ((ioloop (jupyter-ioloop)))
     (setq jupyter-ioloop-test-handler-called nil)
     (jupyter-ioloop-add-event ioloop test (data)
@@ -625,6 +516,7 @@ running BODY."
       ,(jupyter-ioloop--event-dispatcher ioloop ex))))
 
 (ert-deftest jupyter-channel-ioloop-send-event ()
+  :tags '(ioloop)
   (with-temp-buffer
     (cl-letf ((ioloop (jupyter-channel-ioloop))
               (standard-output (current-buffer))
@@ -639,6 +531,7 @@ running BODY."
             (should (equal result `(sent :shell ,msg-id)))))))))
 
 (ert-deftest jupyter-channel-ioloop-start-channel-event ()
+  :tags '(ioloop)
   (with-temp-buffer
     (let* ((ioloop (jupyter-channel-ioloop))
            (standard-output (current-buffer))
@@ -670,6 +563,7 @@ running BODY."
             (should (equal result `(start-channel :shell)))))))))
 
 (ert-deftest jupyter-channel-ioloop-stop-channel-event ()
+  :tags '(ioloop)
   (with-temp-buffer
     (let* ((ioloop (jupyter-channel-ioloop))
            (standard-output (current-buffer))
@@ -692,6 +586,7 @@ running BODY."
           (should (equal result `(stop-channel :shell))))))))
 
 (ert-deftest jupyter-message-types ()
+  :tags '(client messages)
   (jupyter-with-python-client client
     (ert-info ("Kernel info")
       (let ((res (jupyter-wait-until-received :kernel-info-reply
@@ -719,7 +614,7 @@ running BODY."
           (should-not (null res))
           (should (json-plist-p res))
           (should (eq (jupyter-message-type res) :execute-result))
-          (should (equal (jupyter-message-data data :text/plain) "'foo'")))))
+          (should (equal (jupyter-message-data res :text/plain) "'foo'")))))
     (ert-info ("Inspect")
       (let ((res (jupyter-wait-until-received :inspect-reply
                    (jupyter-send-inspect-request client
@@ -759,6 +654,7 @@ running BODY."
         (should (eq (jupyter-message-type res) :shutdown-reply))))))
 
 (ert-deftest jupyter-completion ()
+  :tags '(completion)
   (ert-info ("`jupyter-completion-number-p'")
     (with-temp-buffer
       (insert "0.311")
@@ -800,6 +696,7 @@ running BODY."
         (should (jupyter-completion-prefetch-p "a"))))))
 
 (ert-deftest jupyter-repl ()
+  :tags '(repl)
   (jupyter-with-python-repl client
     (should (jupyter-repl-client-has-manager-p))
     (should (jupyter-repl-connected-p))
@@ -843,6 +740,7 @@ last element being the newest element added to the history."
   (jupyter-repl-history-add-input "3"))
 
 (ert-deftest jupyter-repl-history ()
+  :tags '(repl)
   (jupyter-with-python-repl client
     (ert-info ("Rotating REPL history ring")
       (jupyter-test-set-dummy-repl-history)
@@ -873,6 +771,7 @@ last element being the newest element added to the history."
       (should (equal (jupyter-repl-cell-code) "")))))
 
 (ert-deftest jupyter-repl-cell-motions ()
+  :tags '(repl motion)
   (jupyter-with-python-repl client
     (jupyter-ert-info ("`jupyter-repl-goto-cell'")
       (let (cell-pos req)
@@ -936,6 +835,7 @@ last element being the newest element added to the history."
         (should (= (point) cell-pos2))))))
 
 (ert-deftest jupyter-repl-cell-positions ()
+  :tags '(repl motion)
   (jupyter-with-python-repl client
     (ert-info ("Beginning of a cell")
       (should (= (point) (jupyter-repl-cell-code-beginning-position)))
@@ -967,6 +867,7 @@ last element being the newest element added to the history."
       (should-error (jupyter-repl-cell-end-position)))))
 
 (ert-deftest jupyter-repl-prompts ()
+  :tags '(repl prompt)
   (jupyter-with-python-repl client
     (ert-info ("Prompt properties")
       (let (prompt-overlay)
@@ -996,7 +897,23 @@ last element being the newest element added to the history."
 
       )))
 
-(defun jupyter-test-src-block (session code test-result)
+(defvar org-babel-load-languages)
+(defvar org-confirm-babel-evaluate)
+
+(defmacro jupyter-org-test (&rest body)
+  (declare (debug (body)))
+  `(progn
+     (require 'org)
+     (let ((org-babel-load-languages
+            '((python . t)
+              (jupyter . t)))
+           (org-confirm-babel-evaluate nil))
+       (org-babel-do-load-languages
+        'org-babel-load-languages
+        org-babel-load-languages)
+       ,@body)))
+
+(defun jupyter-org-test-src-block (session code test-result)
   (let ((pos (point)))
     (insert
      "#+BEGIN_SRC jupyter-python " ":session " session "\n"
@@ -1016,81 +933,91 @@ last element being the newest element added to the history."
 (defvar org-babel-jupyter-resource-directory nil)
 
 (ert-deftest org-babel-jupyter ()
-  (ert-info ("Dynamic result types")
-    (let ((session (make-temp-name "ob-jupyter-test")) repl-buffer)
-      (unwind-protect
-          (with-temp-buffer
-            (org-mode)
-            (insert
-             "#+BEGIN_SRC jupyter-python " ":session " session "\n"
-             "#+END_SRC")
-            (setq repl-buffer (org-babel-initiate-session))
-            (erase-buffer)
-            (ert-info ("Scalar results")
-              (jupyter-test-src-block session "1 + 1" ": 2"))
-            (ert-info ("HTML results")
-              (let ((code "\
+  :tags '(org)
+  (jupyter-org-test
+   (ert-info ("Dynamic result types")
+     (let ((session (make-temp-name "ob-jupyter-test")) repl-buffer)
+       (unwind-protect
+           (with-temp-buffer
+             (org-mode)
+             (insert
+              "#+BEGIN_SRC jupyter-python " ":session " session "\n"
+              "#+END_SRC")
+             (setq repl-buffer (org-babel-initiate-session))
+             (erase-buffer)
+             (ert-info ("Scalar results")
+               (jupyter-org-test-src-block session "1 + 1" ": 2"))
+             (ert-info ("HTML results")
+               (let ((code "\
 from IPython.core.display import HTML\n\
 HTML('<a href=\"http://foo.com\">link</a>')"))
-                (jupyter-test-src-block session code "\
+                 (jupyter-org-test-src-block session code "\
 #+BEGIN_EXPORT html
 <a href=\"http://foo.com\">link</a>
 #+END_EXPORT")))
-            (ert-info ("Image results")
-              (let* ((default-directory (file-name-directory
-                                         (locate-library "jupyter")))
-                     (org-babel-jupyter-resource-directory "./")
-                     (file (expand-file-name "jupyter.png"))
-                     (data (let ((buffer-file-coding-system 'binary))
-                             (with-temp-buffer
-                               (set-buffer-multibyte nil)
-                               (insert-file-contents-literally file)
-                               (base64-encode-region (point-min) (point-max) t)
-                               (goto-char (point-max))
-                               (insert "\n")
-                               (buffer-substring-no-properties (point-min) (point-max)))))
-                     (image-file-name (org-babel-jupyter-file-name data "png"))
-                     (code (format "\
+             (ert-info ("Image results")
+               (let* ((default-directory (file-name-directory
+                                          (locate-library "jupyter")))
+                      (org-babel-jupyter-resource-directory "./")
+                      (file (expand-file-name "jupyter.png"))
+                      (data (let ((buffer-file-coding-system 'binary))
+                              (with-temp-buffer
+                                (set-buffer-multibyte nil)
+                                (insert-file-contents-literally file)
+                                ;; NOTE: It seems that no line breaks are
+                                ;; necessary when testing in GUI Emacs and line
+                                ;; breaks are needed when testing in terminal
+                                ;; Emacs using ert-runner?
+                                (base64-encode-region (point-min) (point-max))
+                                (goto-char (point-max))
+                                (insert "\n")
+                                (buffer-substring-no-properties (point-min) (point-max)))))
+                      (image-file-name (jupyter-org-image-file-name data "png"))
+                      (code (format "\
 from IPython.display import Image
 Image(filename='%s')" file)))
-                (unwind-protect
-                    (jupyter-test-src-block session code (format "[[file:%s]]" image-file-name))
-                  (when (file-exists-p image-file-name)
-                    (delete-file image-file-name))))))
-        (cl-letf (((symbol-function 'yes-or-no-p)
-                   (lambda (_prompt) t))
-                  ((symbol-function 'y-or-n-p)
-                   (lambda (_prompt) t)))
-          (when repl-buffer
-            (kill-buffer repl-buffer)))))))
+                 (unwind-protect
+                     (jupyter-org-test-src-block session code (format "[[file:%s]]" image-file-name))
+                   (when (file-exists-p image-file-name)
+                     (delete-file image-file-name))))))
+         (cl-letf (((symbol-function 'yes-or-no-p)
+                    (lambda (_prompt) t))
+                   ((symbol-function 'y-or-n-p)
+                    (lambda (_prompt) t)))
+           (when repl-buffer
+             (kill-buffer repl-buffer))))))))
 
 (ert-deftest jupyter-org-result ()
-  (let ((req (make-jupyter-org-request)))
-    (should (equal (jupyter-org-result req (list :text/plain "foo"))
-                   (cons "scalar" "foo")))
-    (should (equal (jupyter-org-result req (list :text/html "foo"))
-                   (cons "html" "foo")))
-    (ert-info ("Around method for scalar data")
-      ;; Calls `org-babel-script-escape'
-      (should (equal (jupyter-org-result req (list :text/plain "[1, 2, 3]"))
-                     (cons "scalar" '(1 2 3))))
-      ;; Test that the python language specialized method calls
-      ;; `org-babel-python-table-or-string', this is more of a test for method
-      ;; order.
-      (cl-letf* ((py-method-called nil)
-                 ((symbol-function #'org-babel-python-table-or-string)
-                  (lambda (results)
-                    (setq py-method-called t)
-                    (org-babel-script-escape results)))
-                 (jupyter-current-client (jupyter-kernel-client)))
-        (oset jupyter-current-client kernel-info
-              (list :language_info (list :name "python")))
-        (should (equal (jupyter-org-result req (list :text/plain "[1, 2, 3]"))
-                       (cons "scalar" '(1 2 3))))
-        (should py-method-called)))))
-
-;;; jupyter-tests.el ends here
+  :tags '(org)
+  (jupyter-org-test
+   (let ((req (make-jupyter-org-request)))
+     (should (equal (jupyter-org-result req (list :text/plain "foo"))
+                    (cons "scalar" "foo")))
+     (should (equal (jupyter-org-result req (list :text/html "foo"))
+                    (cons "html" "foo")))
+     (ert-info ("Kernel specific results")
+       ;; Calls `org-babel-script-escape'
+       (should (equal (jupyter-org-result req (list :text/plain "[1, 2, 3]"))
+                      (cons "scalar" '(1 2 3))))
+       ;; Test that the python language specialized method calls
+       ;; `org-babel-python-table-or-string', this is more of a test for method
+       ;; order.
+       (cl-letf* ((py-method-called nil)
+                  ((symbol-function #'org-babel-python-table-or-string)
+                   (lambda (results)
+                     (setq py-method-called t)
+                     (org-babel-script-escape results)))
+                  (jupyter-current-client (jupyter-kernel-client)))
+         (oset jupyter-current-client kernel-info
+               (list :language_info (list :name "python")))
+         (should (equal (jupyter-kernel-language jupyter-current-client) "python"))
+         ;; Bring in the python specific methods
+         (jupyter-load-language-support jupyter-current-client)
+         (should (equal (jupyter-org-result req (list :text/plain "[1, 2, 3]"))
+                        (cons "scalar" '(1 2 3))))
+         (should py-method-called))))))
 
 ;; Local Variables:
 ;; byte-compile-warnings: (not free-vars)
 ;; End:
+;;; jupyter-test.el ends here
