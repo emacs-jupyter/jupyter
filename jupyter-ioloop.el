@@ -134,8 +134,19 @@ should exclude the head element of the EVENT."
   (format "%s" (cdr event)))
 
 (cl-defmethod jupyter-ioloop-handler :before ((ioloop jupyter-ioloop) obj event)
-  "Set the :last-event property of IOLOOP's process."
+  "Set the :last-event property of IOLOOP's process.
+Additionally set the :start and :quit properties of the process
+to t when they occur. See also `jupyter-ioloop-wait-until'."
+  (when jupyter--debug
+    (message
+     (concat "%s: " (jupyter-ioloop-printer ioloop obj event))
+     (format (upcase (symbol-name (car event))))))
   (with-slots (process) ioloop
+    (cond
+     ((eq (car-safe event) 'start)
+      (process-put process :start t))
+     ((eq (car-safe event) 'quit)
+      (process-put process :quit t)))
     (process-put process :last-event event)))
 
 (defmacro jupyter-ioloop-add-setup (ioloop &rest body)
@@ -371,6 +382,11 @@ evaluation using `zmq-start-process'."
     ;; object to be garbage collected if the IOLoop is killed.
     (setf (oref ioloop object) nil)))
 
+(defun jupyter-ioloop-alive-p (ioloop)
+  "Return non-nil if IOLOOP is ready to receive/send events."
+  (cl-check-type ioloop jupyter-ioloop)
+  (with-slots (process) ioloop
+    (and (process-live-p process) (process-get process :start))))
 
 (cl-defgeneric jupyter-ioloop-start ((ioloop jupyter-ioloop) object &key buffer)
   "Start an IOLOOP.
