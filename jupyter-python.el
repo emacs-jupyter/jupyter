@@ -63,9 +63,14 @@ buffer."
       (cond
        ((and (eq mime :text/plain)
              (eq (jupyter-message-type msg) :inspect-reply))
-        (when (search-forward "Docstring:" nil t)
-          (jupyter-fontify-region-according-to-mode
-           #'rst-mode (1+ (point)) (point-max))))
+        (save-excursion
+          (goto-char (point-min))
+          (when (re-search-forward "^Docstring:" nil t)
+            (jupyter-fontify-region-according-to-mode
+             #'rst-mode (1+ (point))
+             (or (and (re-search-forward "^File:" nil t)
+                      (line-beginning-position))
+                 (point-max))))))
        (t nil)))))
 
 (cl-defmethod jupyter-load-file-code (file &context (jupyter-lang python))
