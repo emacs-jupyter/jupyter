@@ -506,6 +506,16 @@ Raise a warning if it has not been stopped within
 
 ;;; Starting/stopping IOLoop
 
+(cl-defmethod jupyter-start-channels :before ((client jupyter-kernel-client)
+                                              &rest _)
+  "Start CLIENT's channel ioloop."
+  (with-slots (ioloop session) client
+    (unless ioloop
+      (oset client ioloop (jupyter-channel-ioloop))
+      (setq ioloop (oref client ioloop)))
+    (unless (jupyter-ioloop-alive-p ioloop)
+      (jupyter-ioloop-start ioloop session client))))
+
 (cl-defmethod jupyter-start-channels ((client jupyter-kernel-client)
                                       &key (shell t)
                                       (iopub t)
@@ -522,24 +532,22 @@ non-nil value passed to this function.
 If the shell channel is started, send an initial
 `:kernel-info-request' to set the kernel-info slot of CLIENT if
 necessary."
-  (with-slots (ioloop session -buffer) client
-    (jupyter-stop-channels client)
-    (unless ioloop
-      (oset client ioloop (jupyter-channel-ioloop))
-      (setq ioloop (oref client ioloop)))
-    (jupyter-ioloop-start ioloop session client :buffer -buffer)
-    (cl-loop
-     for (channel . start) in `((:hb . ,hb)
-                                (:shell . ,shell)
-                                (:iopub . ,iopub)
-                                (:stdin . ,stdin))
-     when start do (jupyter-start-channel client channel))))
+  (cl-loop
+   for (channel . start) in `((:hb . ,hb)
+                              (:shell . ,shell)
+                              (:iopub . ,iopub)
+                              (:stdin . ,stdin))
+   when start do (jupyter-start-channel client channel)))
 
 (cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
   "Stop any running channels of CLIENT."
   (cl-loop
    for channel in '(:shell :iopub :stdin :hb)
-   do (jupyter-stop-channel client channel))
+   do (jupyter-stop-channel client channel)))
+
+(cl-defmethod jupyter-stop-channels :after ((client jupyter-kernel-client)
+                                            &rest _)
+  "Stop CLIENT's channel ioloop."
   (with-slots (ioloop) client
     (when (jupyter-ioloop-p ioloop)
       (jupyter-ioloop-stop ioloop))))
