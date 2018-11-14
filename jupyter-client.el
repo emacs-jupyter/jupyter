@@ -713,14 +713,18 @@ received for it and it is not the most recently sent request."
             (jupyter-drop-request client req)
           (remhash (jupyter-request-id req) requests)))))
 
-(defun jupyter--run-handler-maybe (client channel req msg)
-  "Possibly run CLIENT's CHANNEL handler on REQ's received MSG."
+(defsubst jupyter--run-handler-p (req msg)
+  "Return non-nil if REQ doesn't inhibit the handler for MSG."
   (let* ((ihandlers (and req (jupyter-request-inhibited-handlers req)))
          (type (and (listp ihandlers)
                     (memq (jupyter-message-type msg) ihandlers))))
-    (unless (or (eq ihandlers t)
-                (if (eq (car ihandlers) 'not) (not type) type))
-      (jupyter-handle-message channel client req msg))))
+    (not (or (eq ihandlers t)
+             (if (eq (car ihandlers) 'not) (not type) type)))))
+
+(defun jupyter--run-handler-maybe (client channel req msg)
+  "Possibly run CLIENT's CHANNEL handler on REQ's received MSG."
+  (when (jupyter--run-handler-p req msg)
+    (jupyter-handle-message channel client req msg)))
 
 (cl-defmethod jupyter-handle-message ((client jupyter-kernel-client) channel msg)
   "Process a message on CLIENT's CHANNEL.
