@@ -508,25 +508,25 @@ return the value of KEY in MSG."
   "Get the MSG contents."
   (jupyter--decode-message-part :content msg))
 
-(defun jupyter-message-id (msg)
+(defsubst jupyter-message-id (msg)
   "Get the ID of MSG."
   (or (plist-get msg :msg_id)
       (plist-get (jupyter-message-header msg) :msg_id)))
 
-(defun jupyter-message-parent-id (msg)
+(defsubst jupyter-message-parent-id (msg)
   "Get the parent ID of MSG."
   (jupyter-message-id (jupyter-message-parent-header msg)))
 
-(defun jupyter-message-type (msg)
+(defsubst jupyter-message-type (msg)
   "Get the type of MSG."
   (or (plist-get msg :msg_type)
       (plist-get (jupyter-message-header msg) :msg_type)))
 
-(defun jupyter-message-session (msg)
+(defsubst jupyter-message-session (msg)
   "Get the session ID of MSG."
   (plist-get (jupyter-message-header msg) :session))
 
-(defun jupyter-message-parent-type (msg)
+(defsubst jupyter-message-parent-type (msg)
   "Get the type of MSG's parent message."
   (jupyter-message-type (jupyter-message-parent-header msg)))
 
@@ -552,11 +552,11 @@ The returned time has the same form as returned by
       (setcar date (jupyter--decode-time (car date))))
     (car date)))
 
-(defun jupyter-message-get (msg key)
+(defsubst jupyter-message-get (msg key)
   "Get the value in MSG's `jupyter-message-content' that corresponds to KEY."
   (plist-get (jupyter-message-content msg) key))
 
-(defun jupyter-message-data (msg mimetype)
+(defsubst jupyter-message-data (msg mimetype)
   "Get the message data for a specific mimetype.
 MSG should be a message with a `:data' field in its contents.
 MIMETYPE is should be a standard media mimetype
@@ -565,7 +565,7 @@ has a key corresponding to MIMETYPE, return the value. Otherwise
 return nil."
   (plist-get (jupyter-message-get msg :data) mimetype))
 
-(defun jupyter-message-status-idle-p (msg)
+(defsubst jupyter-message-status-idle-p (msg)
   "Determine if MSG is a status: idle message."
   (and (eq (jupyter-message-type msg) :status)
        (equal (jupyter-message-get msg :execution_state) "idle")))
