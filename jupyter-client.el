@@ -66,10 +66,14 @@ In addition, if the first element of the list is the symbol
 Do not set this variable directly, let bind it around specific
 requests like the above example.")
 
+(defvar jupyter--clients nil)
+
 ;; Define channel classes for method dispatching based on the channel type
 
-(defclass jupyter-kernel-client (jupyter-finalized-object)
-  ((pending-requests
+(defclass jupyter-kernel-client (jupyter-finalized-object
+                                 jupyter-instance-tracker)
+  ((tracking-symbol :initform 'jupyter--clients)
+   (pending-requests
     :type ring
     :initform (make-ring 10)
     :documentation "A ring of pending `jupyter-request's.
@@ -173,9 +177,7 @@ passed as the argument has a language of LANG."
 
 (defun jupyter-clients ()
   "Return a list of all `jupyter-kernel-clients'."
-  (let ((table (get 'jupyter-kernel-client 'jupyter-finalizer-table)))
-    (when (hash-table-p table)
-      (hash-table-keys table))))
+  (jupyter-all-objects 'jupyter--clients))
 
 (defun jupyter-find-client-for-session (session-id)
   "Return the `jupyter-kernel-client' for SESSION-ID."

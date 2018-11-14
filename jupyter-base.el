@@ -345,6 +345,30 @@ the output buffer."
           (cl-random 16777216)
           (cl-random 16777216)))
 
+(defclass jupyter-instance-tracker ()
+  ((tracking-symbol :type symbol))
+  :documentation "Similar to `eieio-instance-tracker', but keeping weak references.
+To access all the objects in TRACKING-SYMBOL, use
+`jupyter-all-objects'."
+  :abstract t)
+
+(cl-defmethod initialize-instance ((obj jupyter-instance-tracker) &rest _)
+  (cl-call-next-method)
+  (let ((sym (oref obj tracking-symbol)))
+    (unless (hash-table-p (get sym 'jupyter-instance-tracker))
+      (put sym 'jupyter-instance-tracker t)
+      (set sym (make-hash-table :weakness 'key)))
+    (puthash obj t (symbol-value sym))))
+
+(defun jupyter-all-objects (sym)
+  "Return all tracked objects in tracking SYM.
+SYMB is a symbol used for tracking objects that inherit from
+`jupyter-instance-tracker'."
+  (let ((table (symbol-value sym)))
+    (when (hash-table-p table)
+      (cl-assert (get sym 'jupyter-instance-tracker) t)
+      (hash-table-keys table))))
+
 (defclass jupyter-finalized-object ()
   ((finalizers :type list :initform nil))
   :documentation "A list of finalizers."

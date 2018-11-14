@@ -40,10 +40,10 @@
   :group 'jupyter)
 
 (defvar jupyter--managers nil
-  "A list of all live kernel managers.
-Managers are removed from this list when their `jupyter-finalizer' is called.")
+  "A list of all live kernel managers.")
 
-(defclass jupyter-kernel-manager (jupyter-finalized-object)
+(defclass jupyter-kernel-manager (jupyter-finalized-object
+                                  jupyter-instance-tracker)
   ((tracking-symbol :initform 'jupyter--managers)
    (name
     :initarg :name
@@ -91,6 +91,10 @@ default kernel is a python kernel."
     (oset manager name "python"))
   (jupyter-add-finalizer manager
     (lambda () (jupyter-kernel-manager--cleanup manager t))))
+
+(defun jupyter-kernel-managers ()
+  "Return a list of all `jupyter-kernel-manager's."
+  (jupyter-all-objects 'jupyter--managers))
 
 (cl-defgeneric jupyter-make-client ((manager jupyter-kernel-manager) class &rest slots)
   "Make a new client from CLASS connected to MANAGER's kernel.
