@@ -44,6 +44,7 @@
 (require 'shr)
 (require 'ansi-color)
 
+(declare-function jupyter-message-content "jupyter-messages" (msg))
 (declare-function org-format-latex "org" (prefix &optional beg end dir overlays msg forbuffer processing-type))
 (declare-function markdown-link-at-pos "ext:markdown-mode" (pos))
 (declare-function markdown-follow-link-at-point "ext:markdown-mode")
@@ -198,26 +199,32 @@ has been handled."
 PLIST should be a property list that contains the key :data and
 optionally the key :metadata. The value of :data shall be another
 property list that contains MIME types as keys and their
-representations as values. For each MIME type in
-`jupyter-mime-types' call
+representations as values. Alternatively, PLIST can be a full
+message property list or be a property list that itself contains
+mimetypes.
+
+For each MIME type in `jupyter-mime-types' call
 
     (jupyter-insert MIME (plist-get data MIME) (plist-get metadata MIME))
 
 until one of the invocations inserts text into the current
 buffer (tested by comparisons with `buffer-modified-tick') or
 returns a non-nil value. When either of these cases occur, return
-MIME. Note you may also call this method like
-
-    (jupyter-insert data metadata)
+MIME.
 
 Note on non-graphic displays, `jupyter-nongraphic-mime-types' is
 used instead of `jupyter-mime-types'.
 
-When no valid mimetype is present, a warning is shown."
+When no valid mimetype is present, a warning is shown and nil is
+returned."
   (cl-assert plist json-plist)
-  ;; Allow for passing the data plist directly this allows for
-  ;; (jupyter-insert data nil) to work
-  (let* ((data (or (plist-get plist :data) plist))
+  (let* ((data (or
+                ;; Allow for passing message plists
+                (plist-get (jupyter-message-content plist) :data)
+                ;; Allow for passing (jupyter-message-content msg)
+                (plist-get plist :data)
+                ;; Otherwise assume the plist contains mimetypes
+                plist))
          (metadata (if (eq data plist) metadata
                      (plist-get plist :metadata))))
     (when data
