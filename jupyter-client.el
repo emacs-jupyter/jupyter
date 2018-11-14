@@ -952,7 +952,10 @@ DETAIL is the detail level to use for the request and defaults to
               (let ((inhibit-read-only t))
                 (if (buffer-live-p buffer)
                     (with-current-buffer buffer
-                      (jupyter-insert (jupyter-message-content msg))
+                      ;; Insert MSG here so that `jupyter-insert' has access to
+                      ;; the message type. This is needed since the python
+                      ;; kernel and others may use this information.
+                      (jupyter-insert msg)
                       (current-buffer))
                   (with-help-window (help-buffer)
                     (with-current-buffer standard-output
@@ -963,7 +966,7 @@ DETAIL is the detail level to use for the request and defaults to
                                (let ((jupyter-current-client client))
                                  (jupyter-inspect code pos nil detail))))
                        nil)
-                      (jupyter-insert (jupyter-message-content msg))))))
+                      (jupyter-insert msg)))))
             (message "Nothing found for %s"
                      (with-temp-buffer
                        (insert code)
