@@ -37,6 +37,7 @@
 (require 'jupyter-messages)
 
 (declare-function hash-table-values "subr-x" (hash-table))
+(declare-function jupyter-insert "jupyter-mime")
 
 ;; This is mainly used by the REPL code, but is also set by
 ;; the `org-mode' client whenever `point' is inside a code
@@ -553,7 +554,7 @@ necessary."
                                             &rest _)
   "Stop CLIENT's channel ioloop."
   (with-slots (ioloop) client
-    (when (jupyter-ioloop-p ioloop)
+    (when ioloop
       (jupyter-ioloop-stop ioloop))))
 
 (cl-defmethod jupyter-channels-running-p ((client jupyter-kernel-client))
