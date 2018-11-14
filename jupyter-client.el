@@ -173,7 +173,11 @@ passed as the argument has a language of LANG."
     (jupyter-add-finalizer client
       (lambda ()
         (when (buffer-live-p buffer)
-          (kill-buffer buffer))))))
+          (kill-buffer buffer))
+        ;; Ensure the ioloop process gets cleaned up when the client goes out
+        ;; of scope.
+        (when (jupyter-channels-running-p client)
+          (jupyter-stop-channels client))))))
 
 (defun jupyter-clients ()
   "Return a list of all `jupyter-kernel-clients'."
