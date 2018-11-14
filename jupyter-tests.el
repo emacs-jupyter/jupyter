@@ -589,23 +589,24 @@ running BODY."
       (should-error (jupyter-send-kernel-info-request client)))))
 
 (ert-deftest jupyter-ioloop-lifetime ()
-  (let ((ioloop (jupyter-ioloop)))
-    (should-not (process-live-p (jupyter-ioloop-process ioloop)))
+  (let ((ioloop (jupyter-ioloop))
+        (jupyter-default-timeout 2))
+    (should-not (process-live-p (oref ioloop process)))
     (jupyter-ioloop-start ioloop :tag1)
-    (should (eq (jupyter-ioloop-object ioloop) :tag1))
-    (should (process-live-p (jupyter-ioloop-process ioloop)))
-    (let ((proc (jupyter-ioloop-process ioloop)))
+    (should (equal (jupyter-ioloop-last-event ioloop) '(start)))
+    (with-slots (process) ioloop
+      (should (process-live-p process))
       (jupyter-ioloop-stop ioloop)
-      (should-not (process-live-p proc))
-      ;; The object used for dispatch is reset once the ioloop stops since it
-      ;; may itself contain a reference to the ioloop which would create a
-      ;; reference cycle so ensure that we break it.
-      (should-not (jupyter-ioloop-object ioloop)))))
+      (should (equal (jupyter-ioloop-last-event ioloop) '(quit)))
+      (sleep-for 0.1)
+      (should-not (process-live-p process)))))
 
 (defvar jupyter-ioloop-test-handler-called nil
   "Flag variable used for testing the `juyter-ioloop'.")
 
-(cl-defmethod jupyter-ioloop-handler ((_ioloop jupyter-ioloop) (_tag (eql :test)) (event (head test)))
+(cl-defmethod jupyter-ioloop-handler ((_ioloop jupyter-ioloop)
+                                      (_tag (eql :test))
+                                      (event (head test)))
   (should (equal (cadr event) "message"))
   (setq jupyter-ioloop-test-handler-called t))
 
@@ -659,7 +660,7 @@ running BODY."
 (defun jupyter-ioloop-test-eval-ioloop (ioloop ex)
   (eval
    `(progn
-      ,@(jupyter-ioloop-setup ioloop)
+      ,@(oref ioloop setup)
       ,(jupyter-ioloop--event-dispatcher ioloop ex))))
 
 (ert-deftest jupyter-channel-ioloop-send-event ()
@@ -669,13 +670,12 @@ running BODY."
               (jupyter-ioloop-channels (list (jupyter-sync-channel :type :shell)))
               ((symbol-function #'jupyter-send)
                (lambda (_channel _msg-type _msg msg-id) msg-id)))
-      (jupyter-channel-ioloop-add-send-event ioloop)
       (let ((msg-id (jupyter-new-uuid)))
         (jupyter-ioloop-test-eval-ioloop
          ioloop `(list 'send :shell :execute-request '(msg) ,msg-id))
         (ert-info ("Return value to parent process")
           (let ((result (read (buffer-string))))
-            (should (equal result `(send :shell ,msg-id)))))))))
+            (should (equal result `(sent :shell ,msg-id)))))))))
 
 (ert-deftest jupyter-channel-ioloop-start-channel-event ()
   (with-temp-buffer
@@ -685,8 +685,7 @@ running BODY."
            (jupyter-ioloop-session nil)
            (jupyter-ioloop-poller (zmq-poller))
            (channel-endpoint "tcp://127.0.0.1:5555"))
-      (jupyter-channel-ioloop-add-session ioloop (jupyter-session :key "foo"))
-      (jupyter-channel-ioloop-add-start-channel-event ioloop)
+      (jupyter-channel-ioloop--set-session ioloop (jupyter-session :key "foo"))
       (jupyter-ioloop-test-eval-ioloop
        ioloop `(list 'start-channel :shell ,channel-endpoint))
       (should (not (null jupyter-ioloop-channels)))
@@ -720,7 +719,6 @@ running BODY."
            (jupyter-ioloop-session (jupyter-session))
            (jupyter-ioloop-poller (zmq-poller)))
       (jupyter-start-channel channel :identity (jupyter-session-id jupyter-ioloop-session))
-      (jupyter-channel-ioloop-add-stop-channel-event ioloop)
       (ert-info ("Verify the requested channel stops")
         (should (jupyter-channel-alive-p channel))
         (zmq-poller-add jupyter-ioloop-poller (oref channel socket) zmq-POLLIN)
