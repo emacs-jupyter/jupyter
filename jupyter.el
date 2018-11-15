@@ -5,7 +5,8 @@
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 11 Jan 2018
 ;; Version: 0.0.1
-;; X-URL: https://github.com/dzop/jupyter
+;; Package-Requires: ((emacs "26") (zmq "0.9.0") (cl-lib "0.5") (simple-httpd "1.5.0") (websocket "1.9"))
+;; URL: https://github.com/dzop/emacs-jupyter
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -24,7 +25,7 @@
 
 ;;; Commentary:
 
-;;
+;; An interface for communicating with Jupyter kernels.
 
 ;;; Code:
 
