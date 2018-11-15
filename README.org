@@ -9,14 +9,16 @@ If you would like to try this package out, in your Emacs configuration add
 (require 'jupyter)
 #+END_SRC
 
-where =<path>= is the root directory for this project.
+where =<path>= is the root directory for this project and all of the necessary
+decencies are available.
+
 ** Dependencies
 
 - markdown-mode (optional) :: https://jblevins.org/projects/markdown-mode/
 - company-mode (optional) :: http://company-mode.github.io/
-- emacs-websocket (optional) :: https://github.com/ahyatt/emacs-websocket
-- simple-httpd (optional) :: https://github.com/skeeto/emacs-web-server
-- emacs-zmq :: http://github.com/dzop/emacs-zmq
+- emacs-websocket :: https://github.com/ahyatt/emacs-websocket
+- simple-httpd :: https://github.com/skeeto/emacs-web-server
+- zmq :: http://github.com/dzop/emacs-zmq
 *** Widget support (EXPERIMENTAL)
 :PROPERTIES:
 :ID:       59559FA3-59AD-453F-93E7-113B43F85493
@@ -37,6 +39,28 @@ npm install -g yarn
 npm install
 yarn run build --progress
 #+END_SRC
+** Using =cask=
+
+The easiest way to install this package and all of its dependencies is to use
+=cask= (https://github.com/cask/cask). Then in the top level directory of this
+package, run
+
+#+BEGIN_SRC shell
+make init
+make
+#+END_SRC
+
+and to update any dependencies in the future
+
+#+BEGIN_SRC shell
+cask update
+#+END_SRC
+
+to also build the experimental widget support
+
+#+BEGIN_SRC shell
+make widgets
+#+END_SRC
 * Jupyter REPL
 
 To start a new kernel on the =localhost= and connect a REPL client to it, run
@@ -50,11 +74,7 @@ displayed in the REPL buffer. If LaTeX is sent, it will be compiled (using
 =org-mode=) and displayed. The currently available mimetypes and their
 dependencies are:
 
-** DONE Rich kernel output
-CLOSED: [2018-10-06 Sat 02:42]
-:LOGBOOK:
-- State "DONE"       from "TODO"       [2018-10-06 Sat 02:42]
-:END:
+** Rich kernel output
 
 A Jupyter kernel provides many representations of results that may be used by
 the frontend, in this case Emacs. Luckily, Emacs provides
@@ -110,11 +130,16 @@ keybindings for interacting with the REPL:
 
 | Key binding | Command                            |
 |-------------+------------------------------------|
+| =C-M-x=     | =jupyter-repl=eval-defun=          |
+| =M-i=       | =jupyter-inspect-at-point=         |
+| =C-c C-b=   | =jupyter-repl-eval-buffer=         |
 | =C-c C-c=   | =jupyter-repl-eval-line-or-region= |
-| =C-c C-f=   | =jupyter-inspect-at-point=         |
-| =C-c C-z=   | =jupyter-repl-pop-to-buffer=       |
 | =C-c C-i=   | =jupyter-repl-interrupt-kernel=    |
+| =C-c C-l=   | =jupyter-repl-eval-file=           |
 | =C-c C-r=   | =jupyter-repl-restart-kernel=      |
+| =C-c C-s=   | =jupyter-repl-scratch-buffer=      |
+| =C-c C-r=   | =jupyter-repl-restart-kernel=      |
+| =C-c M-:=   | =jupyter-repl-eval-string=         |
 ** Widget support
 
 There is also support for Jupyter widgets integrated into the REPL. If any of
@@ -280,12 +305,8 @@ handling messages received from a kernel are named =jupyter-handle-<msg-type>=.
 Methods that require a message type as an argument such as
 =jupyter-add-callback= should do so by passing a message type keyword such as
 =:execute-request=.
-** TODO Overview
-:LOGBOOK:
-- State "TODO"       from "NEXT"       [2018-10-06 Sat 03:07]
-- State "NEXT"       from "TODO"       [2018-10-02 Tue 00:53]
-:END:
-*** Class overview
+** Overview
+*** Classes
 
 - =jupyter-kernel-client= :: The base class for Jupyter frontends. Handles all
      message sending and receiving to/from a Jupyter kernel.
@@ -300,25 +321,41 @@ Methods that require a message type as an argument such as
 - =jupyter-org-client= :: A subclass of =jupyter-repl-client= that adds support
      for evaluating =org-mode= source code blocks and inserting the results in
      the =org-mode= buffer.
+**** Lower level classes
+
+- =jupyter-ioloop= :: A general class for asynchronous communication with a
+     subprocess. "Events" are sent to the subprocess for processing and are
+     return values from the subprocess back to the parent are handled by
+     extending the =jupyter-ioloop-handler= method.
+- =jupyter-channel-ioloop= :: A subclass of =jupyter-ioloop= configured to
+     process messages being passed between a kernel and the parent Emacs
+     process. This is what =jupyter-kernel-client= uses to communicate with a
+     kernel.
 *** Communicating with the kernel
-**** Initializing the connection and sending messages
+**** Initializing the connection
 
 For a =jupyter-kernel-client= to start communicating with a kernel, the
 following steps are taken:
 
 1. Initialize the connection using =jupyter-initialize-connection=
 2. Start listening on the client's channels with =jupyter-start-channels=
-3. Send requests with the =jupyter-send-<msg-type>= family of client methods
 
-When starting a local kernel process, the first two steps are already taken care
-of when using =jupyter-start-new-kernel=.
+If starting a local kernel process both steps are handled by
+=jupyter-start-new-kernel=. For remote kernels, you will have to manually
+supply the connection JSON file to =jupyter-initialize-connection= and start
+the kernel channels.
+**** Sending messages
 
-All message sending and receiving is asynchronous. Methods that send requests
-to a kernel return a =jupyter-request= object that encapsulates the necessary
-information to handle any future messages generated in response to the request.
+Once a connection is initialized, messages can be sent to the kernel using the
+=jupyter-send-<msg-type>= family of methods, where =<msg-type>= is any valid
+request message type, see =jupyter-message-types=. These methods asynchronously
+send a message to the kernel using a subprocess associated with each client,
+see help:jupyter-channel-ioloop, and they each return a =jupyter-request=
+object which encapsulates the information necessary for handling reply messages
+received from the kernel in response to the request.
 **** Receiving messages
 
-There are two methods to handle the reply messages sent by the kernel (1)
+There are two ways to handle the reply messages sent by the kernel: (1)
 subclass the =jupyter-kernel-client= and override the
 =jupyter-handle-<msg-type>= family of methods or (2) attach callbacks to the
 =jupyter-request= objects returned by the =jupyter-send-<msg-type>= methods.
@@ -326,9 +363,8 @@ Both ways can occur in parallel.
 
 When a message is received, =jupyter-handle-message= is called on the client to
 kick off the message handling process. Any callbacks associated with the
-=jupyter-request= of the message are evaluated and then the appropriate
-=jupyter-handle-<msg-type>= method will be called. Finally, any completed
-requests are dropped from the client's request table.
+=jupyter-request= of the message are evaluated and the appropriate
+=jupyter-handle-<msg-type>= method called.
 
 Note, the default handler methods of =jupyter-kernel-client= are no-ops with
 the exception of =jupyter-handle-input-request= which requests input from the
@@ -431,12 +467,7 @@ the =jupyter-handle-<msg-type>= methods).
 A request is considered complete and is dropped from the request table once a
 =status: idle= message has been received for the request and it is not the most
 recently made request.
-**** DONE =jupyter-generate-request=
-CLOSED: [2018-10-01 Mon 16:09]
-:LOGBOOK:
-- State "DONE"       from "TODO"       [2018-10-01 Mon 16:09]
-- State "TODO"       from              [2018-10-01 Mon 15:50]
-:END:
+**** =jupyter-generate-request=
 
 When one of the send methods are called, a =jupyter-request= object is
 instantiated by a call to =jupyter-generate-request= and the instantiated
@@ -482,12 +513,7 @@ Notice that the =major-mode= context allows for =jupyter-org-request= objects
 to be used by =jupyter-generate-request= when the request is generated in
 =org-mode= buffers and to use the less specialized =jupyter-request= in other
 contexts.
-**** DONE =jupyter-drop-request=
-CLOSED: [2018-10-01 Mon 16:16]
-:LOGBOOK:
-- State "DONE"       from "TODO"       [2018-10-01 Mon 16:16]
-- State "TODO"       from              [2018-10-01 Mon 15:50]
-:END:
+**** =jupyter-drop-request=
 
 When a request is completed, i.e. when the kernel sends an idle message for a
 request, you may want to do some final cleanup of the request. This is the
@@ -521,19 +547,17 @@ Alternatively you may work with the full message property list by accessing the
 See [[id:0E7CA280-8D14-4994-A3C7-C3B7204AC9D2][message callbacks]] for another way of handling received messages.
 **** A note on boolean arguments
 
-For message types that have boolean message fields, the
-symbol in the variable =jupyter--false= represents a false
-value so when checking the contents of these arguments it
-is best to explicitly check for =t=.
+For message types that have boolean message fields, the symbol in the variable
+=jupyter--false= represents a false value so when checking the contents of
+these arguments it is best to explicitly check for =t=.
 
 #+BEGIN_SRC elisp
 (if (eq arg1 t) ...)
 #+END_SRC
 
-This is because there are some ambiguities between
-translating JSON values to their Emacs Lisp equivalents,
-since =nil= in Emacs is used both as signifying =false= or
-nothing whereas JSON has =null= for nothing.
+This is because there are some ambiguities between translating JSON values to
+their Emacs Lisp equivalents, since =nil= in Emacs is used both as signifying
+=false= or nothing whereas JSON has =null= for nothing.
 *** Client local variables
 
 Some variables which are used internally by =jupyter-kernel-client= have client
@@ -662,6 +686,9 @@ kernel through a websocket. For this to work, you will also need to have the
 
 This feature is currently experimental, but seems to work well. I was able to
 interact with an [[https://github.com/jupyter-widgets/ipyleaflet][ipyleaflet]] map without any noticeable delay.
+** TODO =jupyter-repl-client=
+** TODO =jupyter-ioloop=
+** TODO =jupyter-channel-ioloop=
 ** Callbacks and hooks
 :PROPERTIES:
 :ID:       0E7CA280-8D14-4994-A3C7-C3B7204AC9D2
@@ -894,6 +921,7 @@ way. Below is the full list of methods that can be overridden in this way
 
 | Method                               | Purpose                                                                |
 |--------------------------------------+------------------------------------------------------------------------|
+| =jupyter-insert=                     | Insert Jupyter results into the current buffer                         |
 | =jupyter-code-context=               | Return the code and position for inspect and complete requests         |
 | =jupyter-indent-line=                | Indent the current cell in the REPL buffer                             |
 | =jupyter-completion-prefix=          | Return the completion prefix for the current completion context        |
@@ -901,7 +929,7 @@ way. Below is the full list of methods that can be overridden in this way
 | =jupyter-repl-after-init=            | Evaluate code after a REPL buffer has been initialized                 |
 | =jupyter-repl-after-change=          | Called when input cell code changes                                    |
 | =jupyter-markdown-follow-link=       | Follow a markdown link at point                                        |
-| =jupyter-org-transform-result=       | Modify the result of a Jupyter code block before display in =org-mode= |
+| =jupyter-org-result=                 | Modify the result of a Jupyter code block before display in =org-mode= |
 
 In addition to the =jupyter-lang= context, there is also the
 =jupyter-repl-mode= context which is identical to the =derived-mode= context
@@ -913,10 +941,7 @@ For example for =javascript= kernels, it used to setup code highlighting when
 use =font-lock=.
 
 ** =org-mode=
-*** NEXT =jupyter-org-client=
-:LOGBOOK:
-- State "NEXT"       from              [2018-08-31 Fri 23:23]
-:END:
+*** =jupyter-org-client=
 
 A =jupyter-org-client= is a subclass of =jupyter-kernel-client= meant to
 display the results of a Jupyter code block in an =org-mode= buffer.
@@ -924,15 +949,63 @@ display the results of a Jupyter code block in an =org-mode= buffer.
 Since the Jupyter spec provides rich output, a code block does not know before
 obtaining the results from the kernel what type of results to expect. Typically
 this is handled in the =org-mode= document by the user specifying the kind of
-results it expects in header arguments. But the Jupyter messaging spec provides
-enough information for the results of an execution so that the user does not
-have to specify any header arguments.
+results it expects in header arguments.
 
-A =jupyter-org-client= takes care of collecting the results of execution from
-the kernel and inserting the results in an =org-mode= buffer. If the kernel
+The Jupyter messaging spec provides enough information for the results of an
+execution so that the user shouldn't have to specify any header arguments. A
+=jupyter-org-client= uses this information to dynamically update the results of
+a source block based on the mime type of the Jupyter result. If the kernel
 returns results that can be formatted as LaTeX, the results are wrapped in a
-LaTeX code block. If the result is an image, a file link is inserted. Similarly
-for all of the other supported mimetypes.
+LaTeX code block. If the result is an image, a file link is inserted. Other
+supported mimetypes are handled in a similar way.
+**** =jupyter-org-result=
+
+The main entry point for extending how results are inserted into the =org-mode=
+buffer is the method help:jupyter-org-result, which dispatches on the MIME type
+of a result returned from the Jupyter kernel. The MIME type priority is given
+in =jupyter-org-mime-types=. =jupyter-org-result= returns a cons cell of the
+form =(RENDER-PARAM . RESULT)= where =RENDER-PARAM= can be either a string or a
+cons cell of the form =(:wrap . "SRC markdown")=. If =RENDER-PARAM= is a string
+it will be added to the result parameters of the code block. If it is a cons
+cell it will be appended to the source block arguments, see
+help:org-babel-insert-result. =RESULT= is the result that will be inserted into
+the =org-mode= buffer using =RENDER-PARAM= and should be based on the mime data
+returned by the Jupyter kernel.
+
+For example, suppose Jupyter returns a =png= image to be displayed. The default
+method of =jupyter-org-result= will create an image with a file name based on
+the =sha1= hash of the image data and place the file in
+=org-babel-jupyter-resource-directory=. The return value will be
+
+#+BEGIN_SRC elisp
+(cons "file" "<file-name>.png")
+#+END_SRC
+
+where =<file-name>= is the file name based on the image data. Since
+=RENDER-PARAM= is ="file"=, =org-mode= will wrap =<file-name>.png= in an
+=org-mode= file link.
+***** Extending =jupyter-org-result=
+
+For a kernel language to extend the behavior of how results are inserted, the
+=jupyter-lang= method specializer can be used. For example, below is how
+=:text/plain= results are modified for Python code blocks
+
+#+BEGIN_SRC elisp
+(cl-defmethod jupyter-org-result ((_mime (eql :text/plain))
+                                  &context (jupyter-lang python)
+                                  &rest _)
+  (let ((result (cl-call-next-method)))
+    (cond
+     ((and (equal (car result) "scalar")
+           (stringp (cdr result)))
+      (cons "scalar" (org-babel-python-table-or-string (cdr result))))
+     (t result))))
+#+END_SRC
+
+=cl-call-next-method= calls down to a less specialized method of
+=jupyter-org-result= and if the returned result is still expected to be plain
+text, calls =org-babel-python-table-org-string= to convert any results that
+look like Python arrays into =org-mode= tables before returning its results.
 * See also
 
 - ob-ipython :: https://github.com/gregsexton/ob-ipython
