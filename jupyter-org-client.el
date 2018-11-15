@@ -134,20 +134,6 @@ source code block. Set by `org-babel-execute:jupyter'.")))
   (unless (eq (jupyter-org-request-result-type req) 'output)
     (jupyter-org-add-result req (jupyter-org-result req data metadata))))
 
-(cl-defmethod jupyter-org-result ((req jupyter-org-request) data
-                                  &context (jupyter-lang python)
-                                  &optional metadata)
-  "Handle message order emitted by the Python kernel.
-The Python kernel emits an execute-result and then a display-data
-message, so only return the text representation for the
-execute-result."
-  (if (eq (jupyter-message-type
-           (jupyter-request-last-message req))
-          :execute-result)
-      (cl-call-next-method
-       req (list :text/plain (plist-get data :text/plain)) metadata)
-    (cl-call-next-method)))
-
 (cl-defmethod jupyter-handle-display-data ((_client jupyter-org-client)
                                            (req jupyter-org-request)
                                            data
