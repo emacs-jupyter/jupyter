@@ -186,7 +186,7 @@ is returned to the parent process."
       ;; Let the channel start. This avoids problems with the initial startup
       ;; message for the python kernel. Sometimes we arent fast enough to get
       ;; this message.
-      (sleep-for 0.1)
+      (sleep-for 0.2)
       (list 'start-channel type))))
 
 (defun jupyter-channel-ioloop-add-stop-channel-event (ioloop)
