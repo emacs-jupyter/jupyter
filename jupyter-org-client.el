@@ -99,7 +99,7 @@ source code block. Set by `org-babel-execute:jupyter'.")))
                                      text)
   (and (eq (jupyter-org-request-result-type req) 'output)
        (equal name "stdout")
-       (jupyter-org-add-result req (ansi-color-apply text))))
+       (jupyter-org--add-result req (ansi-color-apply text))))
 
 (cl-defmethod jupyter-handle-status ((_client jupyter-org-client)
                                      (req jupyter-org-request)
@@ -124,7 +124,7 @@ source code block. Set by `org-babel-execute:jupyter'.")))
        (mapconcat #'identity traceback "\n"))
       (goto-char (line-beginning-position))
       (pop-to-buffer (current-buffer)))
-    (jupyter-org-add-result req emsg)))
+    (jupyter-org--add-result req emsg)))
 
 (cl-defmethod jupyter-handle-execute-result ((_client jupyter-org-client)
                                              (req jupyter-org-request)
@@ -132,7 +132,7 @@ source code block. Set by `org-babel-execute:jupyter'.")))
                                              data
                                              metadata)
   (unless (eq (jupyter-org-request-result-type req) 'output)
-    (jupyter-org-add-result req (jupyter-org-result req data metadata))))
+    (jupyter-org--add-result req (jupyter-org-result req data metadata))))
 
 (cl-defmethod jupyter-handle-display-data ((_client jupyter-org-client)
                                            (req jupyter-org-request)
@@ -145,7 +145,7 @@ source code block. Set by `org-babel-execute:jupyter'.")))
                                            ;; ID?
                                            _transient)
   (unless (eq (jupyter-org-request-result-type req) 'output)
-    (jupyter-org-add-result req (jupyter-org-result req data metadata))))
+    (jupyter-org--add-result req (jupyter-org-result req data metadata))))
 
 (cl-defmethod jupyter-handle-execute-reply ((client jupyter-org-client)
                                             (_req jupyter-org-request)
@@ -425,7 +425,7 @@ the PARAMS list. If RENDER-PARAM is a string, remove it from the
                    (1+ (line-end-position))))))))))
     (setf (jupyter-org-request-id-cleared-p req) t)))
 
-(defun jupyter-org-add-result (req result)
+(defun jupyter-org--add-result (req result)
   "For a request made with CLIENT, add RESULT.
 REQ is a `jupyter-org-request' and if the request is a
 synchronous request, RESULT will be pushed to the list of results
@@ -449,12 +449,12 @@ block for the request."
         (let ((params (jupyter-org-request-block-params req)))
           (org-with-point-at (jupyter-org-request-marker req)
             (jupyter-org--clear-request-id req)
-            (jupyter-org-insert-results result params))
+            (jupyter-org--insert-results result params))
           (unless (member "append" (assq :result-params params))
             (jupyter-org--inject-render-param "append" params)))
       (push result (jupyter-org-request-results req)))))
 
-(defun jupyter-org-insert-results (results params)
+(defun jupyter-org--insert-results (results params)
   "Insert RESULTS at the current source block location.
 RESULTS is either a single cons cell or a list of such cells,
 each cell having the form
@@ -511,7 +511,7 @@ Meant to be used as the return value of `org-babel-execute:jupyter'."
                      (jupyter-current-client client))
                  (jupyter-org--clear-render-param render-param params)
                  (jupyter-org--inject-render-param "append" params)
-                 (jupyter-org-insert-results (cdr results) params)
+                 (jupyter-org--insert-results (cdr results) params)
                  (set-marker (jupyter-org-request-marker req) nil))))))))))
 
 (provide 'jupyter-org-client)
