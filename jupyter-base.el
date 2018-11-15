@@ -362,7 +362,7 @@ To access all the objects in TRACKING-SYMBOL, use
 
 (defun jupyter-all-objects (sym)
   "Return all tracked objects in tracking SYM.
-SYMB is a symbol used for tracking objects that inherit from
+SYM is a symbol used for tracking objects that inherit from the class
 `jupyter-instance-tracker'."
   (let ((table (symbol-value sym)))
     (when (hash-table-p table)

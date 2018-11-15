@@ -43,7 +43,9 @@
 ;; the `org-mode' client whenever `point' is inside a code
 ;; block.
 (defvar jupyter-current-client nil
-  "The `jupyter-kernel-client' for the `current-buffer'.")
+  "The kernel client for the `current-buffer'.
+This is also let bound whenever a message is handled by a
+kernel.")
 
 (put 'jupyter-current-client 'permanent-local t)
 (make-variable-buffer-local 'jupyter-current-client)
@@ -185,7 +187,7 @@ passed as the argument has a language of LANG."
   (jupyter-all-objects 'jupyter--clients))
 
 (defun jupyter-find-client-for-session (session-id)
-  "Return the `jupyter-kernel-client' for SESSION-ID."
+  "Return the kernel client whose session has SESSION-ID."
   (or (cl-find-if
        (lambda (x) (string= (jupyter-session-id (oref x session)) session-id))
        (jupyter-clients))
@@ -616,7 +618,7 @@ when MSG-TYPE is received for REQ."
 (defun jupyter-add-callback (req msg-type cb &rest callbacks)
   "Add a callback to run when a message is received for a request.
 REQ is a `jupyter-request' returned by one of the request methods
-of a `jupyter-kernel-client'. MSG-TYPE is one of the keys in
+of a kernel client. MSG-TYPE is one of the keys in
 `jupyter-message-types'. CB is the callback function to run when
 a message with MSG-TYPE is received for REQ.
 
@@ -1184,7 +1186,7 @@ If the kernel CLIENT is connected to does not respond to a
 
 (defun jupyter-load-language-support (client)
   "Load language support definitions for CLIENT.
-CLIENT is a `jupyter-kernel-client'."
+CLIENT is a kernel client."
   (cl-assert (object-of-class-p client 'jupyter-kernel-client))
   (let* ((lang (jupyter-kernel-language client))
          (support (intern (concat "jupyter-" lang))))

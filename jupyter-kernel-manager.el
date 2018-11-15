@@ -93,7 +93,7 @@ default kernel is a python kernel."
     (lambda () (jupyter-kernel-manager--cleanup manager t))))
 
 (defun jupyter-kernel-managers ()
-  "Return a list of all `jupyter-kernel-manager's."
+  "Return a list of all live kernel managers."
   (jupyter-all-objects 'jupyter--managers))
 
 (cl-defgeneric jupyter-make-client ((manager jupyter-kernel-manager) class &rest slots)
@@ -122,8 +122,8 @@ connect to MANAGER's kernel."
 
 (defun jupyter--start-kernel (kernel-name env args)
   "Start a kernel.
-For a `jupyter-kernel-manager', MANAGER, state a kernel named
-KERNEL-NAME with ENV and ARGS.
+Start a kernel named KERNEL-NAME with ENV and ARGS. Return the
+newly created kernel process.
 
 If ENV is non-nil, then it should be a plist containing
 environment variable names as keywords along with their
@@ -133,9 +133,7 @@ environment before starting the kernel.
 ARGS should be a list of command line arguments used to start the
 kernel process. The name of the command used to start the kernel
 should be the first element of ARGS and the rest of the elements
-of ARGS are the arguments of the command.
-
-Return the newly created kernel process."
+of ARGS are the arguments of the command."
   (let* ((process-environment
           (append
            ;; The first entry takes precedence when duplicated variables

@@ -45,12 +45,11 @@
 
 (defvar jupyter-hb-consider-dead-periods 5
   "Number of `time-to-dead' periods until the `kernel-died-cb' is called.
-A `jupyter-hb-channel' sends a ping to the kernel on the
-heartbeat channel and waits until `time-to-dead' seconds to see
-if the kernel sent a ping back. If the kernel does not send a
-ping back for
+A ping is sent to the kernel on a heartbeat channel and waits
+until `time-to-dead' seconds to see if the kernel sent a ping
+back. If the kernel doesn't send a ping back after
 
-    (* `time-to-dead'`jupyter-hb-consider-dead-periods')
+    (* `time-to-dead' `jupyter-hb-consider-dead-periods')
 
 seconds, consider the kernel dead and call the callback in the
 `kernel-died-cb' slot of a `jupyter-hb-channel'. See

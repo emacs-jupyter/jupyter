@@ -49,7 +49,7 @@
 
 ;; Meant to be used in the subprocess
 (defvar jupyter-ioloop-channels nil
-  "List of `jupyter-sync-channel's in an ioloop controlling Jupyter channels.")
+  "A list of synchronous channels in an ioloop controlling Jupyter channels.")
 
 (defvar jupyter-ioloop-session nil
   "The `jupyter-session' used when initializing Jupyter channels.")

@@ -257,12 +257,11 @@ anything.
 
 Some arguments are treated specially:
 
-If one of ARGS is a list (<sym> jupyter-channel) where <sym> is
-any symbol, then the parent process that sends EVENT to IOLOOP is
-expected to give a channel type as the argument and the type will
-be converted into the corresponding channel object and bound to
-<sym> before evaluating BODY. The available channels are in
-`jupyter-ioloop-channels'."
+If one of ARGS is a list (<sym> tag) where <sym> is any symbol,
+then the parent process that sends EVENT to IOLOOP is expected to
+send a value that will be bound to <sym> and be handled by an
+argument handler associated with tag before BODY is evaluated in
+the IOLOOP process, see `jupyter-ioloop-add-arg-type'."
   (declare (indent 3) (doc-string 4) (debug t))
   (unless (stringp doc)
     (when doc

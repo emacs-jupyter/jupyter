@@ -190,8 +190,8 @@ executing BODY."
 
 (defmacro jupyter-repl-append-output (client req &rest body)
   "Switch to CLIENT's buffer, move to the end of REQ, and run BODY.
-REQ is a `jupyter-request' previously made using CLIENT, a
-`jupyter-repl-client'.
+REQ is a `jupyter-request' previously made using CLIENT, a REPL
+client.
 
 `point' is moved to the `jupyter-repl-cell-beginning-position' of
 the cell *after* REQ, this position is where any newly generated
@@ -618,7 +618,7 @@ POS defaults to `point'."
       (/= (jupyter-repl-cell-end-position) (point-max))))
 
 (defun jupyter-repl-client-has-manager-p ()
-  "Does the `jupyter-current-client' have a `jupyter-kernel-manager'?"
+  "Return non-nil if the `jupyter-current-client' has a kernel manager."
   (and jupyter-current-client
        (oref jupyter-current-client manager)))
 
@@ -1152,8 +1152,7 @@ Note, the overriding method should call `cl-call-next-method'."
 (defun jupyter-repl-kill-buffer-query-function ()
   "Ask before killing a Jupyter REPL buffer.
 If the REPL buffer is killed, stop the client. If the REPL client
-is connected to a kernel with a `jupyter-kernel-manager', kill
-the kernel.
+is connected to a kernel with a kernel manager, kill the kernel.
 
 In addition, exit `jupyter-repl-interaction-mode' in all buffers
 associated with the REPL. See `jupyter-repl-associate-buffer'."
@@ -1745,8 +1744,8 @@ synchronize the execution state, and insert a new input prompt."
 
 (defun jupyter-repl-interrupt-kernel ()
   "Interrupt the kernel if possible.
-A kernel can be interrupted if it was started using a
-`jupyter-kernel-manager'. See `jupyter-start-new-kernel'."
+A kernel can be interrupted if it was started using a kernel
+manager. See `jupyter-start-new-kernel'."
   (interactive)
   (if (not (jupyter-repl-client-has-manager-p))
       (user-error "Cannot interrupt non-subprocess kernels")
@@ -2279,8 +2278,8 @@ purposes and SYNTAX-TABLE is the syntax table of MODE."
 
 (defun jupyter-repl--new-repl (client &optional repl-name)
   "Initialize a new REPL buffer based on CLIENT.
-CLIENT is a `jupyter-repl-client' already connected to its kernel
-and has a non-nil kernel-info slot.
+CLIENT is a REPL client already connected to its kernel and has a
+non-nil kernel-info slot.
 
 A new REPL buffer communicating with CLIENT's kernel is created
 and set as CLIENT's buffer slot. If CLIENT already has a non-nil
