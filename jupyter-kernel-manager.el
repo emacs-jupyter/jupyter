@@ -96,6 +96,20 @@ default kernel is a python kernel."
   "Return a list of all live kernel managers."
   (jupyter-all-objects 'jupyter--managers))
 
+(defun jupyter-delete-all-kernels ()
+  ;; Ensure any resources the process has are cleaned up, e.g. connection
+  ;; files
+  (dolist (manager (jupyter-kernel-managers))
+    (with-slots (kernel) manager
+      (set-process-plist kernel nil)
+      (when (process-live-p kernel)
+        (delete-process kernel))))
+  ;; TODO: If we are doing this, should we just go back to having a slot for
+  ;; the connection file?
+  (garbage-collect))
+
+(add-hook 'kill-emacs-hook 'jupyter-delete-all-kernels)
+
 (cl-defgeneric jupyter-make-client ((manager jupyter-kernel-manager) class &rest slots)
   "Make a new client from CLASS connected to MANAGER's kernel.
 SLOTS are the slots used to initialize the client with.")
