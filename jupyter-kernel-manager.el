@@ -189,8 +189,6 @@ kernel. Starting a kernel involves the following steps:
         (let ((json-encoding-pretty-print t))
           (with-temp-file conn-file
             (insert (json-encode-plist conn-info))))
-        ;; This is needed for reliability
-        (sleep-for 0.5)
         ;; Start the process
         (let ((atime (nth 4 (file-attributes conn-file)))
               (proc (jupyter--start-kernel

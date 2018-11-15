@@ -542,7 +542,10 @@ necessary."
                               (:shell . ,shell)
                               (:iopub . ,iopub)
                               (:stdin . ,stdin))
-   when start do (jupyter-start-channel client channel)))
+   when start do (jupyter-start-channel client channel))
+  ;; Needed for reliability. Sometimes we are not fast enough to capture the
+  ;; startup message of a kernel.
+  (sleep-for 0.3))
 
 (cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
   "Stop any running channels of CLIENT."
