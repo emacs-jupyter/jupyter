@@ -18,7 +18,8 @@
         "@jupyter-widgets/output": "^1.0.10",
         "codemirror": "^5.9.0",
         "font-awesome": "^4.7.0",
-        "npm": "^6.4.1"
+        "npm": "^6.4.1",
+        "yarn": "^1.12.3"
     },
     "devDependencies": {
         "css-loader": "^0.28.4",
