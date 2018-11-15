@@ -50,14 +50,6 @@
 ;;   (jupyter-send ioloop 'echo "Message")
 ;;   (jupyter-ioloop-stop ioloop))
 
-;; TODO: `jupyter-ioloop-printer': Print a serialized representation of an
-;; object, a list with the first element tagging the kind of object.
-;;
-;; TODO: `jupyter-ioloop-reader': Read an object based on the tag in the ioloop environment.
-;;
-;; The above methods would give a way to reconstruct somewhat arbitrary objects
-;; in the ioloop.
-
 ;;; Code:
 
 (require 'jupyter-base)
@@ -90,7 +82,49 @@ the return value of `zmq-poller-wait-all'.")
    (callbacks :type list :initform nil)
    (events :type list :initform nil)
    (setup :type list :initform nil)
-   (teardown :type list :initform nil)))
+   (teardown :type list :initform nil))
+  :documentation "An interface for sending asynchronous messages via a subprocess.
+
+An ioloop starts an Emacs subprocess setup to send events back
+and forth between the parent Emacs process and the ioloop
+asynchronously. The ioloop subprocess is essentially a polling
+loop that polls its stdin and any sockets that may have been
+created in the ioloop environment and performs pre-defined
+actions when stdin sends an event. The structure of the
+subprocess is the following
+
+\(progn
+  (let ((jupyter-ioloop-poller (zmq-poller)))
+    <jupyter-ioloop-setup>
+    <send start event to parent>
+    (condition-case nil
+      (while t
+        (run-hook 'jupyter-ioloop-pre-hook)
+        <poll for stdin/socket events>
+        (run-hook 'jupyter-ioloop-post-hook))
+     (quit
+       <jupyter-ioloop-teardown>
+       <send quit event to parent>))))
+
+<jupyter-ioloop-setup> is replaced by the form in the setup slot
+of an ioloop and can be conveniently added to using
+`jupyter-ioloop-add-setup'.
+
+<jupyter-ioloop-teardown> is replaced with the teardown slow and
+can be added to using `jupyter-ioloop-add-teardown'.
+
+<poll for stdin/socket events> is replaced by code that will
+listen for stdin/socket events using `jupyter-ioloop-poller'.
+
+You add events to be handled by the subprocess using
+`jupyter-ioloop-add-event', the return value of any event added
+is what is sent to the parent Emacs process and what will
+eventually be used as the EVENT argument of
+`jupyter-ioloop-handler', which see. To suppress the subprocess
+from sending anything back to the parent, ensure nil is returned
+by the form created by `jupyter-ioloop-add-event'.
+
+See `jupyter-channel-ioloop' for an example of its usage.")
 
 (cl-defmethod initialize-instance ((ioloop jupyter-ioloop) &rest _)
   (cl-call-next-method)
