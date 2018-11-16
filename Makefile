@@ -1,4 +1,5 @@
 EMACS ?= emacs
+SHELL = bash
 CASK ?= $(shell command -v cask)
 ifeq ($(CASK),)
     $(error "Install cask (https://github.com/cask/cask)")
