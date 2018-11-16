@@ -98,10 +98,6 @@ on the region inserted by BODY."
 
 ;;; Fontificiation routines
 
-(defvar jupyter-fontify-buffers nil
-  "An alist of (MODE . BUFFER) pairs used for fontification.
-See `jupyter-fontify-according-to-mode'.")
-
 (defun jupyter-fontify-buffer-name (mode)
   "Return the buffer name for fontifying MODE."
   (format " *jupyter-fontify[%s]*" mode))
@@ -110,12 +106,10 @@ See `jupyter-fontify-according-to-mode'.")
   "Return the buffer used to fontify text for MODE.
 Retrieve the buffer for MODE from `jupyter-fontify-buffers'.
 If no buffer for MODE exists, create a new one."
-  (let ((buf (alist-get mode jupyter-fontify-buffers)))
-    (unless buf
-      (setq buf (get-buffer-create (jupyter-fontify-buffer-name mode)))
-      (with-current-buffer buf
-        (delay-mode-hooks (funcall mode)))
-      (setf (alist-get mode jupyter-fontify-buffers) buf))
+  (let ((buf (get-buffer-create (jupyter-fontify-buffer-name mode))))
+    (with-current-buffer buf
+      (unless (eq major-mode mode)
+        (delay-mode-hooks (funcall mode))))
     buf))
 
 (defun jupyter-fixup-font-lock-properties (beg end &optional object)
