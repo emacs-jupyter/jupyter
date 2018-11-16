@@ -36,7 +36,6 @@ install:
   - sudo pip3 install jupyter
   - cd $TRAVIS_BUILD_DIR
   - make dev
-  - cd $(cask package-directory)
   # Build the zmq module
   - cask eval "(cl-letf (((symbol-function 'read-string) (lambda (&rest _) \"y\"))) (require 'zmq))"
 script:
