@@ -38,4 +38,7 @@ install:
   - make dev
 script:
   - cd $TRAVIS_BUILD_DIR
+  # Build variables for zmq
+  - export CFLAGS=-I${TRAVIS_BUILD_DIR}/include
+  - export LDFLAGS=-L${TRAVIS_BUILD_DIR}/lib
   - make test

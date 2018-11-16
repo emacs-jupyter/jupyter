@@ -52,5 +52,5 @@ widgets:
 	make -C js
 
 .PHONY: compile
-compile:
+compile: zmq
 	$(CASK) build
