@@ -573,7 +573,7 @@ necessary."
 (defun jupyter--run-callbacks (req msg)
   "Run REQ's MSG callbacks.
 See `jupyter-add-callback'."
-  (when-let ((callbacks (and req (jupyter-request-callbacks req))))
+  (when-let* ((callbacks (and req (jupyter-request-callbacks req))))
     ;; Callback for all message types
     (funcall (alist-get t callbacks #'identity) msg)
     (funcall (alist-get (jupyter-message-type msg) callbacks #'identity) msg)))

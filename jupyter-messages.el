@@ -178,8 +178,8 @@ decoded string."
                   ;; string
                   (json-unknown-keyword str))))
       (prog1 val
-        (when-let ((msg-type (and (listp val)
-                                  (plist-get val :msg_type))))
+        (when-let* ((msg-type (and (listp val)
+                                   (plist-get val :msg_type))))
           (plist-put
            val :msg_type (jupyter-message-type-as-keyword msg-type)))))))
 
