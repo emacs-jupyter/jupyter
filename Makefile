@@ -16,6 +16,9 @@ ifneq ($(PATTERN),)
     override PATTERN := -p $(PATTERN)
 endif
 
+# For consistency with time encoding/decoding tests
+export TZ=UTC0
+
 .PHONY: all
 all: compile
 
