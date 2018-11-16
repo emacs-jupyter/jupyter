@@ -241,7 +241,7 @@
       (should (string= (plist-get header :session) (jupyter-session-id session)))))
   (ert-info ("Encoding/decoding time strings")
     (should (equal (jupyter--encode-time '(23385 27704 100000))
-                   "2018-07-26T01:37:44.100000"))
+                   "2018-07-26T06:37:44.100000"))
     (should (equal (jupyter--decode-time "2018-07-26T01:37:44.100")
                    '(23385 27704 100000 0)))
     (should (equal (jupyter--decode-time "2018-07-26T01:37:44.10011122")

@@ -206,7 +206,7 @@ The returned object has the same form as the object returned by
 
 (defun jupyter--encode-time (time)
   "Encode TIME into an ISO 8601 time string."
-  (format-time-string "%FT%T.%6N" time))
+  (format-time-string "%FT%T.%6N" time t))
 
 (cl-defun jupyter-encode-message (session
                                   type
