@@ -162,6 +162,18 @@ running BODY."
 
 ;;; Functions
 
+(defun jupyter-test-kernel-version (spec)
+  "Return the version string of the command corresponding to SPEC.
+This works by extracting the command from the :argv property of
+the kernelspec, SPEC, passing it the argument --version, and
+extracting out a semver.
+
+It is an error if no semver can be found."
+  (let* ((cmd (aref (plist-get spec :argv) 0))
+         (version (shell-command-to-string (concat cmd " --version"))))
+    (string-match "\\([0-9]+\\.[0-9]+\\.[0-9]+\\)" version)
+    (match-string 1 version)))
+
 (defun jupyter-error-if-no-kernelspec (kernel)
   (prog1 kernel
     (unless (car (jupyter-find-kernelspecs
