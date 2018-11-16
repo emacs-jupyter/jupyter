@@ -19,6 +19,11 @@ endif
 .PHONY: all
 all: compile
 
+# Build the zmq module.
+.PHONY: zmq
+zmq:
+	$(CASK) eval "(cl-letf (((symbol-function 'read-string) (lambda (&rest _) \"y\"))) (require 'zmq))"
+
 .PHONY: init
 init:
 	$(CASK) install
@@ -30,7 +35,7 @@ dev:
 	$(CASK) --dev update
 
 .PHONY: test
-test: compile
+test: zmq compile
 	$(CASK) exec ert-runner --no-win $(TAGS) $(PATTERN)
 
 .PHONY: clean
