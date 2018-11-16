@@ -961,15 +961,14 @@ HTML('<a href=\"http://foo.com\">link</a>')"))
                       (org-babel-jupyter-resource-directory "./")
                       (file (expand-file-name "jupyter.png"))
                       (line-breaks
-                       ;; Something has changed with binascii.b2a_base64 (what
-                       ;; IPython uses to encode images) within the version
-                       ;; range [3.4, 3.7]. This ensures that Travis will pass
-                       ;; this test since the current python version on Travis
-                       ;; is 3.4 as of <2018-11-16>.
+                       ;; Implementation details of binascii.b2a_base64 (what
+                       ;; IPython uses to encode images) have changed after
+                       ;; python 3.7 it seems.
                        (with-current-buffer repl-buffer
-                         (version<=
-                          (jupyter-test-kernel-version
-                           (oref (oref jupyter-current-client manager) spec)) "3.4")))
+                         (not
+                          (version<
+                           (jupyter-test-kernel-version
+                            (oref (oref jupyter-current-client manager) spec)) "3.7"))))
                       (data (let ((buffer-file-coding-system 'binary))
                               (with-temp-buffer
                                 (set-buffer-multibyte nil)
