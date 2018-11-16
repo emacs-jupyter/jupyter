@@ -25,7 +25,7 @@
 
 ;;; Commentary:
 
-;;
+;; Manage a local kernel process.
 
 ;;; Code:
 
@@ -97,16 +97,9 @@ default kernel is a python kernel."
   (jupyter-all-objects 'jupyter--managers))
 
 (defun jupyter-delete-all-kernels ()
-  ;; Ensure any resources the process has are cleaned up, e.g. connection
-  ;; files
+  "Delete all kernel processes and external resources used."
   (dolist (manager (jupyter-kernel-managers))
-    (with-slots (kernel) manager
-      (set-process-plist kernel nil)
-      (when (process-live-p kernel)
-        (delete-process kernel))))
-  ;; TODO: If we are doing this, should we just go back to having a slot for
-  ;; the connection file?
-  (garbage-collect))
+    (jupyter-kernel-manager--cleanup manager t)))
 
 (add-hook 'kill-emacs-hook 'jupyter-delete-all-kernels)
 
