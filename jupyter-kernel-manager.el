@@ -222,8 +222,13 @@ kernel. Starting a kernel involves the following steps:
                 ((format "Starting %s kernel process..." kernel-name)
                  (or timeout jupyter-long-timeout)
                  (error "Kernel did not read connection file within timeout"))
-              ;; TODO: This may fail on some systems see `file-attributes'
-              (not (equal atime (nth 4 (file-attributes conn-file)))))
+              (let ((attribs (file-attributes conn-file)))
+                ;; `file-attributes' can potentially return nil, in this case
+                ;; just assume it has read the connection file so that we can
+                ;; know for sure it is not connected if it fails to respond to
+                ;; any messages we send it.
+                (or (null attribs)
+                    (not (equal atime (nth 4 attribs))))))
             (unless (process-live-p proc)
               (error "Kernel process exited:\n%s"
                      (with-current-buffer (process-buffer proc)
