@@ -36,7 +36,7 @@ dev:
 
 .PHONY: test
 test: zmq compile
-	$(CASK) exec ert-runner --no-win $(TAGS) $(PATTERN)
+	$(CASK) exec ert-runner --script $(TAGS) $(PATTERN)
 
 .PHONY: clean
 clean:

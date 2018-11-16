@@ -41,4 +41,6 @@ script:
   # Build variables for zmq
   - export CFLAGS=-I${TRAVIS_BUILD_DIR}/include
   - export LDFLAGS=-L${TRAVIS_BUILD_DIR}/lib
+  # Ensure Jupyter paths are availble
+  - mkdir -p $(jupyter --runtime-dir)
   - make test
