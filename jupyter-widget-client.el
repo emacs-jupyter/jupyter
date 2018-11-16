@@ -4,7 +4,7 @@
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 21 May 2018
-;; Version: 0.0.1
+;; Version: 0.6.0
 ;; Keywords:
 
 ;; This program is free software; you can redistribute it and/or

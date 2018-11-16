@@ -4,7 +4,7 @@
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.edu>
 ;; Created: 08 Jan 2018
-;; Version: 0.0.1
+;; Version: 0.6.0
 ;; Keywords:
 ;; X-URL: https://github.com/nathan/jupyter-kernel-manager
 
