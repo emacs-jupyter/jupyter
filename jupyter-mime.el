@@ -149,7 +149,6 @@ MODE has a non-default `fill-forward-paragraph-function', STR
 will be filled using `fill-region'."
   (with-current-buffer (jupyter-fontify-buffer mode)
     (erase-buffer)
-    (pop-to-buffer (current-buffer))
     (insert str)
     (font-lock-ensure)
     (jupyter-add-font-lock-properties (point-min) (point-max))
