@@ -331,7 +331,7 @@ The default implementation returns a new `jupyter-request' with
 the default value for all slots. Note, the `:id' and
 `:inhibited-handlers' slots are overwritten by the caller of this
 method."
-  (make-jupyter-request))
+  (jupyter-request))
 
 (defun jupyter-verify-inhibited-handlers ()
   "Verify the value of `jupyter-inhibit-handlers'.

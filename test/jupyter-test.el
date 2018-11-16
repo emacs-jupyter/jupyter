@@ -990,7 +990,7 @@ Image(filename='%s')" file)))
 (ert-deftest jupyter-org-result ()
   :tags '(org)
   (jupyter-org-test
-   (let ((req (make-jupyter-org-request)))
+   (let ((req (jupyter-org-request)))
      (should (equal (jupyter-org-result req (list :text/plain "foo"))
                     (cons "scalar" "foo")))
      (should (equal (jupyter-org-result req (list :text/html "foo"))

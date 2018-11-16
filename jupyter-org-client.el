@@ -58,7 +58,9 @@ See `jupyter-org-image-file-name'."
 source code block. Set by `org-babel-execute:jupyter'.")))
 
 (cl-defstruct (jupyter-org-request
-               (:include jupyter-request))
+               (:include jupyter-request)
+               (:constructor nil)
+               (:constructor jupyter-org-request))
   result-type
   block-params
   results
@@ -81,7 +83,7 @@ source code block. Set by `org-babel-execute:jupyter'.")))
   "Return a `jupyter-org-request' for the current source code block."
   (let* ((block-params (oref client block-params))
          (result-params (alist-get :result-params block-params)))
-    (make-jupyter-org-request
+    (jupyter-org-request
      :marker (copy-marker org-babel-current-src-block-location)
      :result-type (alist-get :result-type block-params)
      :block-params block-params

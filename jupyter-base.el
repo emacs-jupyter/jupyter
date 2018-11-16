@@ -413,7 +413,9 @@ fields:
 
 ;;; Request object definition
 
-(cl-defstruct jupyter-request
+(cl-defstruct (jupyter-request
+               (:constructor nil)
+               (:constructor jupyter-request))
   "A `jupyter-request' encapsulates the current status of a
 request to a kernel. A `jupyter-request' consists of the
 following fields:
