@@ -1113,16 +1113,20 @@ more characters than were initially in the buffer."
     (font-lock-fillin-text-property beg end 'field 'cell-code)))
 
 (defun jupyter-repl-do-after-change (beg end len)
-  "Insert line continuation prompts in `jupyter-repl-mode' buffers.
-BEG, END, and LEN have the same meaning as in
-`after-change-functions'."
+  "Call `jupyter-repl-after-change' when the current cell code is changed.
+`jupyter-repl-after-change' is only called when BEG is a position
+on a `jupyter-repl-cell-line-p'. BEG, END, and LEN have the same
+meaning as in `after-change-functions'."
   (when (eq major-mode 'jupyter-repl-mode)
     (with-demoted-errors "Jupyter error after buffer change: %S"
-      (cond
-       ((= len 0)
-        (jupyter-repl-after-change 'insert beg end))
-       ((and (= beg end) (not (zerop len)))
-        (jupyter-repl-after-change 'delete beg len))))))
+      (when (save-excursion
+              (goto-char beg)
+              (jupyter-repl-cell-line-p))
+        (cond
+         ((= len 0)
+          (jupyter-repl-after-change 'insert beg end))
+         ((and (= beg end) (not (zerop len)))
+          (jupyter-repl-after-change 'delete beg len)))))))
 
 (cl-defgeneric jupyter-repl-after-change (_type _beg _end-or-len)
   "Called from the `after-change-functions' of a REPL buffer.
@@ -1141,12 +1145,11 @@ Note, the overriding method should call `cl-call-next-method'."
 
 (cl-defmethod jupyter-repl-after-change ((_type (eql insert)) beg end)
   (goto-char beg)
-  (when (jupyter-repl-cell-line-p)
-    ;; Avoid doing anything on self insertion
-    (unless (and (= (point) (1- end))
-                 (not (eq (char-after) ?\n)))
-      (setq end (jupyter-repl-insert-continuation-prompts end)))
-    (jupyter-repl-mark-as-cell-code beg end))
+  ;; Avoid doing anything on self insertion
+  (unless (and (= (point) (1- end))
+               (not (eq (char-after) ?\n)))
+    (setq end (jupyter-repl-insert-continuation-prompts end)))
+  (jupyter-repl-mark-as-cell-code beg end)
   (goto-char end))
 
 (defun jupyter-repl-kill-buffer-query-function ()
