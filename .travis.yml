@@ -1,0 +1,43 @@
+language: emacs-lisp
+dist: trusty
+# https://github.com/travis-ci/travis-ci/issues/9061
+sudo: required
+python:
+  - "3.6"
+matrix:
+  allow_failures:
+    - env: EMACS_VERSION=git-snapshot ZMQ_VERSION=4.2.3
+    - env: EMACS_VERSION=git-snapshot ZMQ_VERSION=4.2.5
+env:
+  - EMACS_VERSION=26-pretest ZMQ_VERSION=4.2.3
+  - EMACS_VERSION=git-snapshot ZMQ_VERSION=4.2.3
+  - EMACS_VERSION=26-pretest ZMQ_VERSION=4.2.5
+  - EMACS_VERSION=git-snapshot ZMQ_VERSION=4.2.5
+before_install:
+  # Setup paths
+  - export PATH=${TRAVIS_BUILD_DIR}/.evm/bin:${TRAVIS_BUILD_DIR}/.cask/bin:${PATH}
+  - export LD_LIBRARY_PATH=${TRAVIS_BUILD_DIR}/lib:${LD_LIBRARY_PATH}
+  # Install emacs
+  - if [[ ${EMACS_VERSION} = git-snapshot ]]; then sudo apt-get install -y texinfo; fi
+  # Use this fork of EVM for dynamic module support
+  - git clone https://github.com/ubolonton/evm ${TRAVIS_BUILD_DIR}/.evm
+  - evm config path /tmp
+  - evm install emacs-${EMACS_VERSION} --use --skip
+  # Install cask
+  - git clone https://github.com/cask/cask ${TRAVIS_BUILD_DIR}/.cask
+  # Install zmq
+  - git clone git://github.com/zeromq/libzmq.git
+  - cd libzmq
+  - git checkout v${ZMQ_VERSION}
+  - mkdir cmake-build && cd cmake-build
+  - cmake -DCMAKE_INSTALL_PREFIX=${TRAVIS_BUILD_DIR} .. && make && make install
+install:
+  - pip install jupyter
+  - cd $TRAVIS_BUILD_DIR
+  - make dev
+  - cd $(cask package-directory)
+  # Build the zmq module
+  - cask eval "(cl-letf (((symbol-function #'read-string) (lambda (&rest _) \"y\"))) (require 'zmq))"
+script:
+  - cd $TRAVIS_BUILD_DIR
+  - make test
