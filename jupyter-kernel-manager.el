@@ -310,6 +310,9 @@ subprocess."
   (when (oref manager kernel)
     (process-live-p (oref manager kernel))))
 
+(defun jupyter--error-if-no-kernel-info (client)
+  (jupyter-kernel-info client))
+
 (defun jupyter-start-new-kernel (kernel-name &optional client-class)
   "Start a managed Jupyter kernel.
 KERNEL-NAME is the name of the kernel to start. It can also be
@@ -367,13 +370,7 @@ instance, see `jupyter-make-client'."
         ;; it to start may cause the heartbeat to think the kernel died.
         (jupyter-hb-unpause client)
         (jupyter-remove-hook client 'jupyter-iopub-message-hook cb)
-        ;; FIXME: The javascript kernel doesn't seem to
-        ;; send the startup message so instead of
-        ;; erroring when the kernel does not send a
-        ;; startup message, ensure that it responds to
-        ;; a kernel info request.
-        (setq started nil
-              started (jupyter-kernel-info client))
+        (jupyter--error-if-no-kernel-info client)
         (list manager client)))))
 
 (provide 'jupyter-kernel-manager)
