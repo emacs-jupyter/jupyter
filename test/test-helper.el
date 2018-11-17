@@ -34,6 +34,12 @@
 (require 'cl-lib)
 (require 'ert)
 
+(defvar jupyter-test-with-new-client nil
+  "Whether the global client for a kernel should be used for tests.
+Let bind to a non-nil value around a call to
+`jupyter-with-kernel-client' or `jupyter-with-kernel-repl' to
+start a new kernel REPL instead of re-using one.")
+
 ;;; `jupyter-echo-client'
 
 (defclass jupyter-echo-client (jupyter-kernel-client)
@@ -101,7 +107,7 @@ If the `current-buffer' is not a REPL, this is identical to
 `ert-info'."
   (declare (debug ((form &rest [sexp form]) body))
            (indent 1))
-  `(ert-info ((quote ,message-form) :prefix (quote ,prefix-form))
+  `(ert-info (,message-form :prefix (quote ,prefix-form))
      ;; Clear the REPL buffer before each new test section, but do this only if
      ;; the current client is a REPL client
      (when (and jupyter-current-client
@@ -119,17 +125,32 @@ If the `current-buffer' is not a REPL, this is identical to
   `(let ((,client (jupyter-echo-client)))
      ,@body))
 
+(defvar jupyter-test-global-clients nil)
+
+(defvar jupyter-test-global-repls nil)
+
 (defmacro jupyter-with-kernel-client (kernel client &rest body)
   "Start a new KERNEL client, bind it to CLIENT, evaluate BODY.
-Cleanup the client and delete the kernel process after running
-BODY."
+This only starts a single global client unless the variable
+`jupyter-test-with-new-client' is non-nil."
   (declare (indent 2) (debug (stringp symbolp &rest form)))
-  (let ((manager (make-symbol "--manager")))
-    `(cl-destructuring-bind (,manager ,client)
-         (jupyter-start-new-kernel
-          (jupyter-error-if-no-kernelspec ,kernel))
-       (sleep-for 0.3)
-       ,@body)))
+  (let ((manager (make-symbol "--manager"))
+        (real-kernel (make-symbol "--real-kernel"))
+        (global (make-symbol "--global")))
+    `(progn
+       (jupyter-error-if-no-kernelspec ,kernel)
+       (let* ((,real-kernel (caar (jupyter-find-kernelspecs ,kernel)))
+              (,global (alist-get ,real-kernel jupyter-test-global-clients)))
+         (cl-destructuring-bind (,manager ,client)
+             (if (and ,global (not jupyter-test-with-new-client))
+                 ,global
+               (let ((manager-client
+                      (jupyter-start-new-kernel ,kernel)))
+                 (prog1 manager-client
+                   (unless (or ,global jupyter-test-with-new-client)
+                     (setf (alist-get ,real-kernel jupyter-test-global-clients)
+                           manager-client)))))
+           ,@body)))))
 
 (defmacro jupyter-with-python-client (client &rest body)
   "Start a new Python kernel, bind it to CLIENT, evaluate BODY."
@@ -141,16 +162,31 @@ BODY."
   "Start a new KERNEL REPL, bind the client to CLIENT, evaluate BODY.
 Delete the REPL buffer after running BODY."
   (declare (indent 2) (debug (stringp symbolp &rest form)))
-  `(let ((,client (jupyter-run-repl
-                   (jupyter-error-if-no-kernelspec ,kernel))))
-     (unwind-protect
-         (jupyter-with-repl-buffer ,client
-           (progn ,@body))
-       (cl-letf (((symbol-function 'yes-or-no-p)
-                  (lambda (_prompt) t))
-                 ((symbol-function 'y-or-n-p)
-                  (lambda (_prompt) t)))
-         (kill-buffer (oref client buffer))))))
+  (let ((real-kernel (make-symbol "--real-kernel"))
+        (global (make-symbol "--global"))
+        (cleanup-after (make-symbol "--cleanup-after")))
+    `(progn
+       (jupyter-error-if-no-kernelspec ,kernel)
+       (let* ((,real-kernel (caar (jupyter-find-kernelspecs ,kernel)))
+              (,global (alist-get ,real-kernel jupyter-test-global-repls))
+              (,cleanup-after jupyter-test-with-new-client)
+              (,client (if (and ,global (not jupyter-test-with-new-client))
+                           ,global
+                         (let ((client
+                                (jupyter-run-repl ,kernel)))
+                           (prog1 client
+                             (unless (or ,global jupyter-test-with-new-client)
+                               (setf (alist-get ,real-kernel jupyter-test-global-repls)
+                                     client)))))))
+         (unwind-protect
+             (jupyter-with-repl-buffer ,client
+               (progn ,@body))
+           (cl-letf (((symbol-function 'yes-or-no-p)
+                      (lambda (_prompt) t))
+                     ((symbol-function 'y-or-n-p)
+                      (lambda (_prompt) t)))
+             (when ,cleanup-after
+               (kill-buffer (oref ,client buffer)))))))))
 
 (defmacro jupyter-with-python-repl (client &rest body)
   "Start a new Python REPL and run BODY.
@@ -196,10 +232,35 @@ message contents."
 
 (defun jupyter-test-repl-ret-sync ()
   "A synchronous version of `jupyter-repl-ret'."
-  ;; TODO: There are issues here since the kernel goes through multiple idle ->
-  ;; busy cycles
   (jupyter-repl-ret)
+  ;; Account for the multiple idle -> busy cycles that occurs from
+  ;; `jupyter-repl-ret'
+  (sleep-for 0.2)
   (jupyter-test-wait-until-idle-repl
    jupyter-current-client))
+
+(defun jupyter-test-conn-info-plist ()
+  "Return a connection info plist suitable for testing."
+  (let* ((ports (cl-loop
+                 with sock = (zmq-socket (zmq-current-context) zmq-PUB)
+                 for c in '(:shell :hb :iopub :stdin :control)
+                 collect c and
+                 collect (zmq-bind-to-random-port sock "tcp://127.0.0.1")
+                 finally (zmq-close sock))))
+    `(:shell_port
+      ,(plist-get ports :shell)
+      :key  "8671b7e4-5656e6c9d24edfce81916780"
+      :hb_port
+      ,(plist-get ports :hb)
+      :kernel_name "python"
+      :control_port
+      ,(plist-get ports :control)
+      :signature_scheme "hmac-sha256"
+      :ip "127.0.0.1"
+      :stdin_port
+      ,(plist-get ports :stdin)
+      :transport "tcp"
+      :iopub_port
+      ,(plist-get ports :iopub))))
 
 ;;; test-helper.el ends here
