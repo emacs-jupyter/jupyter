@@ -1,5 +1,7 @@
 An interface to communicate with Jupyter kernels in Emacs.
 
+[[https://travis-ci.com/dzop/emacs-jupyter][https://travis-ci.com/dzop/emacs-jupyter.svg?branch=master]]
+
 * Installation
 
 If you would like to try this package out, in your Emacs configuration add
