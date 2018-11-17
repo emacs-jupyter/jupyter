@@ -139,9 +139,6 @@ current output of the cell. Set when the kernel sends a
 (defvar-local jupyter-repl-history nil
   "The history of the current Jupyter REPL.")
 
-(defvar jupyter-repl-fontify-buffers nil
-  "An alist of (MODE . BUFFER) pairs used for fontification.
-See `jupyter-repl-fontify-according-to-mode'.")
 
 (defvar-local jupyter-repl-use-builtin-is-complete nil
   "Whether or not to send `:is-complete-request's to a kernel.
