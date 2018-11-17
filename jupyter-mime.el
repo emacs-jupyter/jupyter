@@ -247,16 +247,17 @@ aligns on the current line."
         (setf (image-property image :ascent) 50)
         (force-window-update)))))
 
-(defun jupyter--delete-javascript-tags (beg end)
-  (save-restriction
-    (narrow-to-region beg end)
-    (goto-char beg)
-    (while (re-search-forward "<script type='text/javascript'>" nil t)
-      (delete-region
-       (match-beginning 0)
-       (progn
-         (re-search-forward "</script>")
-         (point))))))
+(defun jupyter--delete-script-tags (beg end)
+  (save-excursion
+    (save-restriction
+      (narrow-to-region beg end)
+      (goto-char beg)
+      (while (re-search-forward "<script[^>]*>" nil t)
+        (delete-region
+         (match-beginning 0)
+         (if (re-search-forward "</script>" nil t)
+             (point)
+           (point-max)))))))
 
 (defun jupyter-insert-html (html)
   "Parse and insert the HTML string using `shr'."
@@ -274,7 +275,7 @@ aligns on the current line."
       ;; widgets?
       ;; NOTE: Parsing takes a very long time when the text
       ;; is > ~500000 characters.
-      (jupyter--delete-javascript-tags beg end)
+      (jupyter--delete-script-tags beg end)
       (shr-render-region beg end)
       (jupyter-add-font-lock-properties beg end))))
 
