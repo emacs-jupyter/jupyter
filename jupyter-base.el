@@ -255,20 +255,14 @@ See `jupyter-with-output-buffer'.")
 - The buffer's name is based on NAME, specifically it will be
   \"*jupyter-NAME*\"
 
-- Its `major-mode' will be `special-mode'
-
-- It will have local keybindings to quit the window (q), and
-  scroll the window (SPC and <backtab>)."
+- Its `major-mode' will be `special-mode'."
   (let* ((bname (format "*jupyter-repl-%s*" name))
          (buffer (get-buffer bname)))
     (unless buffer
       (setq buffer (get-buffer-create bname))
       (with-current-buffer buffer
-        (special-mode)
-        (local-set-key "q" #'quit-window)
-        (local-set-key (kbd "SPC") #'scroll-down)
-        (local-set-key (kbd "S-TAB") #'scroll-up)
-        (local-set-key (kbd "<backtab>") #'scroll-up)))
+        (unless (eq major-mode 'special-mode)
+          (special-mode))))
     buffer))
 
 (defun jupyter--reset-output-buffer-p (arg)
