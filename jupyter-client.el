@@ -1839,6 +1839,15 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
   (declare (indent 1))
   nil)
 
+(defun jupyter-display-traceback (traceback)
+  "Display TRACEBACK in a dedicated buffer."
+  (when (or (vectorp traceback) (listp traceback))
+    (setq traceback (concat (mapconcat #'identity traceback "\n") "\n")))
+  (jupyter-with-output-buffer "traceback" 'reset
+    (jupyter-insert-ansi-coded-text traceback)
+    (goto-char (point-min))
+    (display-buffer (current-buffer) '(display-buffer-below-selected))))
+
 (cl-defgeneric jupyter-handle-error ((_client jupyter-kernel-client)
                                      _req
                                      _ename

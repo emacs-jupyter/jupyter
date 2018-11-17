@@ -884,15 +884,6 @@ buffer to display TEXT."
       (jupyter-repl-append-output client req
         (jupyter-insert-ansi-coded-text text))))))
 
-(defun jupyter-repl-display-traceback (traceback)
-  "Display TRACEBACK in its own buffer."
-  (when (or (vectorp traceback) (listp traceback))
-    (setq traceback (concat (mapconcat #'identity traceback "\n") "\n")))
-  (jupyter-with-output-buffer "traceback" 'reset
-    (jupyter-insert-ansi-coded-text traceback)
-    (goto-char (point-min))
-    (display-buffer (current-buffer) '(display-buffer-below-selected))))
-
 (cl-defmethod jupyter-handle-error ((client jupyter-repl-client)
                                     req _ename _evalue traceback)
   (when req
@@ -900,7 +891,7 @@ buffer to display TEXT."
      ((eq (jupyter-message-parent-type
            (jupyter-request-last-message req))
           :comm-msg)
-      (jupyter-repl-display-traceback traceback))
+      (jupyter-display-traceback traceback))
      (t
       (jupyter-repl-append-output client req
         (jupyter-insert-ansi-coded-text
