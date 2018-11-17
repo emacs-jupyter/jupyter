@@ -204,8 +204,10 @@ Also handles any terminal control codes in the appended output."
        (save-excursion
          (jupyter-repl-goto-cell ,req)
          (jupyter-repl-next-cell)
-         (jupyter-with-control-code-handling ,@body)
-         (set-buffer-modified-p nil)))))
+         (jupyter-with-insertion-bounds
+             beg end (jupyter-with-control-code-handling ,@body)
+           (put-text-property beg end 'read-only t)
+           (set-buffer-modified-p nil))))))
 
 (defmacro jupyter-with-repl-lang-buffer (&rest body)
   "Run BODY in the `jupyter-repl-lang-buffer' of the `current-buffer'.
