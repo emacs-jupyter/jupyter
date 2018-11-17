@@ -635,6 +635,16 @@ POS defaults to `point'."
 
 ;;; Modifying cell code, truncating REPL buffer
 
+(defun jupyter-repl-cell-output ()
+  "Return the output of the current cell."
+  (unless (jupyter-repl-cell-finalized-p)
+    (error "Cell not finalized"))
+  (let ((beg (jupyter-repl-cell-end-position))
+        (end (save-excursion
+               (jupyter-repl-next-cell)
+               (jupyter-repl-cell-beginning-position))))
+    (buffer-substring beg end)))
+
 (defun jupyter-repl-cell-code ()
   "Return the code of the current cell."
   (buffer-substring
