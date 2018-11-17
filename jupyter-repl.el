@@ -43,8 +43,8 @@
 ;; `jupyter-repl-interaction-mode' adds the following keybindings for
 ;; interacing a REPL client:
 ;;
-;;     C-c C-c `jupyter-repl-eval-line-or-region'
-;;     C-c C-l `jupyter-repl-eval-file'
+;;     C-c C-c `jupyter-eval-line-or-region'
+;;     C-c C-l `jupyter-eval-file'
 ;;     C-c C-f `jupyter-inspect-at-point'
 ;;     C-c C-r `jupyter-repl-restart-kernel'
 ;;     C-c C-i `jupyter-repl-interrupt-kernel'
@@ -62,16 +62,6 @@
 (require 'jupyter-widget-client)
 (require 'jupyter-kernel-manager)
 (require 'ring)
-
-(declare-function company-begin-backend "ext:company" (backend &optional callback))
-(declare-function company-doc-buffer "ext:company" (&optional string))
-(declare-function company-post-command "ext:company")
-(declare-function company-input-noop "ext:company")
-(declare-function company-auto-begin "ext:company")
-
-
-(declare-function yas-minor-mode "ext:yasnippet" (&optional arg))
-(declare-function yas-expand-snippet "ext:yasnippet" (content &optional start end expand-env))
 
 (declare-function string-trim "subr-x")
 
@@ -1207,535 +1197,28 @@ value."
 
 ;;; Completion
 
-(defconst jupyter-completion-argument-regexp
-  (rx
-   (group "(" (zero-or-more anything) ")")
-   (one-or-more anything) " "
-   (group (one-or-more anything)) ?: (group (one-or-more digit)))
-  "Regular expression to match arguments and file locations.")
-
-;;; Helpers for completion interface
-
-(defun jupyter-completion-symbol-beginning (&optional pos)
-  "Return the starting position of a completion symbol.
-If POS is non-nil return the position of the symbol before POS
-otherwise return the position of the symbol before point."
-  (save-excursion
-    (and pos (goto-char pos))
-    (if (and (eq (char-syntax (char-before)) ?.)
-             (not (eq (char-before) ?.)))
-        ;; Complete operators, but not the field/attribute
-        ;; accessor .
-        (skip-syntax-backward ".")
-      (skip-syntax-backward "w_"))
-    (point)))
-
-;; Adapted from `company-grab-symbol-cons'
-(defun jupyter-completion-grab-symbol-cons (re &optional max-len)
-  "Return the current completion prefix before point.
-Return either a STRING or a (STRING . t) pair. If RE matches the
-beginning of the current symbol before point, return the latter.
-Otherwise return the symbol before point. If no completion can be
-done at point, return nil.
-
-MAX-LEN is the maximum number of characters to search behind the
-begiining of the symbol at point to look for a match of RE."
-  (let ((symbol (if (or (looking-at "\\>\\|\\_>")
-                        ;; Complete operators
-                        (and (char-before)
-                             (eq (char-syntax (char-before)) ?.)))
-                    (buffer-substring-no-properties
-                     (jupyter-completion-symbol-beginning) (point))
-                  (unless (and (char-after)
-                               (memq (char-syntax (char-after)) '(?w ?_)))
-                    ""))))
-    (when symbol
-      (save-excursion
-        (forward-char (- (length symbol)))
-        (if (looking-back re (if max-len
-                                 (- (point) max-len)
-                               (line-beginning-position)))
-            (cons symbol t)
-          symbol)))))
-
-(defun jupyter-completion-number-p ()
-  "Return non-nil if the text before `point' may be a floating point number."
-  (and (char-before)
-       (or (<= ?0 (char-before) ?9)
-           (eq (char-before) ?.))
-       (save-excursion
-         (skip-syntax-backward "w.")
-         (looking-at-p "[0-9]+\\.?[0-9]*"))))
-
-;;; Extracting arguments from argument strings
-
-(defun jupyter-completion--arg-extract-1 (pos)
-  "Helper function for `jupyter-completion--arg-extract'.
-Extract the arguments starting at POS, narrowing to the first
-SEXP before extraction."
-  (save-restriction
-    (goto-char pos)
-    (narrow-to-region
-     pos (save-excursion (forward-sexp) (point)))
-    (jupyter-completion--arg-extract)))
-
-(defun jupyter-completion--arg-extract ()
-  "Extract arguments from an argument string.
-Works for Julia and Python."
-  (let (arg-info
-        inner-args ppss depth inner
-        (start (1+ (point-min)))
-        (get-sexp
-         (lambda ()
-           (buffer-substring-no-properties
-            (point) (progn (forward-sexp) (point)))))
-        (get-string
-         (lambda (start)
-           (string-trim
-            (buffer-substring-no-properties
-             start (1- (point)))))))
-    (while (re-search-forward ",\\|::" nil t)
-      (setq ppss (syntax-ppss)
-            depth (nth 0 ppss)
-            inner (nth 1 ppss))
-      (cl-case (char-before)
-        (?:
-         (if (eq (char-after) ?{)
-             (push (jupyter-completion--arg-extract-1 (point)) inner-args)
-           (push (list (list (funcall get-sexp))) inner-args)))
-        (?,
-         (if (/= depth 1)
-             (push (jupyter-completion--arg-extract-1 inner) inner-args)
-           (push (cons (funcall get-string start) (pop inner-args))
-                 arg-info)
-           (setq start (1+ (point)))))))
-    (goto-char (point-max))
-    (push (cons (funcall get-string start) (pop inner-args)) arg-info)
-    (nreverse arg-info)))
-
-(defun jupyter-completion--make-arg-snippet (args)
-  "Construct a snippet from ARGS."
-  (cl-loop
-   with i = 1
-   for top-args in args
-   ;; TODO: Handle nested arguments
-   for (arg . inner-args) = top-args
-   collect (format "${%d:%s}" i arg) into constructs
-   and do (setq i (1+ i))
-   finally return
-   (concat "(" (mapconcat #'identity constructs ", ") ")")))
-
-;;; Getting the completion context
-
 (cl-defmethod jupyter-code-context ((_type (eql completion))
                                     &context (major-mode jupyter-repl-mode))
   (list (jupyter-repl-cell-code)
         (1- (jupyter-repl-cell-code-position))))
 
-(cl-defgeneric jupyter-completion-prefix (&optional re max-len)
-  "Return the prefix for the current completion context.
-The default method calls `jupyter-completion-grab-symbol-cons'
-with RE and MAX-LEN as arguments, RE defaulting to \"\\\\.\". It
-also handles argument lists surrounded by parentheses specially
-by considering an open parentheses and the symbol before it as a
-completion prefix since some kernels will complete argument lists
-if given such a prefix.
-
-Note that the prefix returned is not the content sent to the
-kernel, but the prefix used by `jupyter-completion-at-point'. See
-`jupyter-code-context' for what is actually sent to the kernel."
-  (or re (setq re "\\."))
-  (cond
-   ;; Completing argument lists
-   ((and (char-before)
-         (eq (char-syntax (char-before)) ?\()
-         (or (not (char-after))
-             (looking-at-p "\\_>")
-             (not (memq (char-syntax (char-after)) '(?w ?_)))))
-    (buffer-substring-no-properties
-     (jupyter-completion-symbol-beginning (1- (point)))
-     (point)))
-   ;; FIXME: Needed for cases where all completions are retrieved
-   ;; from Base.| and the prefix turns empty again after
-   ;; Base.REPLCompletions)|
-   ;;
-   ;; Actually the problem stems from stting the prefix length to 0
-   ;; in company in the case Base.| and we have not selected a
-   ;; completion and just pass over it.
-   ((and (looking-at-p "\\_>")
-         (eq (char-syntax (char-before)) ?\)))
-    nil)
-   (t
-    (unless (jupyter-completion-number-p)
-      (jupyter-completion-grab-symbol-cons re max-len)))))
-
 (cl-defmethod jupyter-completion-prefix (&context (major-mode jupyter-repl-mode))
   (and (not (get-text-property (point) 'read-only))
        (cl-call-next-method)))
 
-(defun jupyter-completion-construct-candidates (matches metadata)
-  "Construct candidates for completion.
-MATCHES are the completion matches returned by the kernel,
-METADATA is any extra data associated with MATCHES that was
-supplied by the kernel."
-  (let* ((matches (append matches nil))
-         (tail matches)
-         (types (append (plist-get metadata :_jupyter_types_experimental) nil))
-         (buf))
-    (save-current-buffer
-      (unwind-protect
-          (while tail
-            (cond
-             ((string-match jupyter-completion-argument-regexp (car tail))
-              (let* ((str (car tail))
-                     (args-str (match-string 1 str))
-                     (end (match-end 1))
-                     (path (match-string 2 str))
-                     (line (string-to-number (match-string 3 str)))
-                     (snippet (progn
-                                (unless buf
-                                  (setq buf (generate-new-buffer " *temp*"))
-                                  (set-buffer buf))
-                                (insert args-str)
-                                (goto-char (point-min))
-                                (prog1 (jupyter-completion--make-arg-snippet
-                                        (jupyter-completion--arg-extract))
-                                  (erase-buffer)))))
-                (setcar tail (substring (car tail) 0 end))
-                (put-text-property 0 1 'snippet snippet (car tail))
-                (put-text-property 0 1 'location (cons path line) (car tail))
-                (put-text-property 0 1 'docsig (car tail) (car tail))))
-             ;; TODO: This is specific to the results that
-             ;; the python kernel returns, make a support
-             ;; function?
-             ((string-match-p "\\." (car tail))
-              (setcar tail (car (last (split-string (car tail) "\\."))))))
-            (setq tail (cdr tail)))
-        (when buf (kill-buffer buf))))
-    ;; When a type is supplied add it as an annotation
-    (when types
-      (let ((max-len (apply #'max (mapcar #'length matches))))
-        (cl-mapc
-         (lambda (match meta)
-           (let* ((prefix (make-string (1+ (- max-len (length match))) ? ))
-                  (annot (concat prefix (plist-get meta :type))))
-             (put-text-property 0 1 'annot annot match)))
-         matches types)))
-    matches))
-
-;;; Completion at point interface
-
-(defvar jupyter-completion-cache nil
-  "The cache for completion candidates.
-A list that can take the following forms
-
-    (PREFIX . CANDIDATES)
-    (fetched PREFIX MESSAGE)
-
-The first form states that the list of CANDIDATES is for the
-prefix, PREFIX.
-
-The second form signifies that the CANDIDATES for PREFIX must be
-extracted from MESSAGE and converted to the first form.")
-
-(defun jupyter-completion-prefetch-p (prefix)
-  "Return non-nil if a prefetch for PREFIX should be performed.
-Looks at `jupyter-completion-cache' to determine if its
-candidates can be used for PREFIX."
-  (not (and jupyter-completion-cache
-            (if (eq (car jupyter-completion-cache) 'fetched)
-                (equal (nth 1 jupyter-completion-cache) prefix)
-              (or (equal (car jupyter-completion-cache) prefix)
-                  (and (not (string= (car jupyter-completion-cache) ""))
-                       (string-prefix-p (car jupyter-completion-cache) prefix))))
-            ;; Invalidate the cache when completing argument lists
-            (or (string= prefix "")
-                (not (eq (aref prefix (1- (length prefix))) ?\())))))
-
-(defun jupyter-completion-prefetch (fun)
-  "Get completions for the current completion context.
-Run FUN when the completions are available."
-  (cl-destructuring-bind (code pos)
-      (jupyter-code-context 'completion)
-    (let ((req (let ((jupyter-inhibit-handlers t))
-                 (jupyter-send-complete-request
-                     jupyter-current-client
-                   :code code :pos pos))))
-      (prog1 req
-        (jupyter-add-callback req :complete-reply fun)))))
-
-(defvar jupyter-completion--company-timer nil)
-(defvar company-minimum-prefix-length)
-
-(defun jupyter-completion--company-idle-begin ()
-  "Trigger an idle completion."
-  (when jupyter-completion--company-timer
-    (cancel-timer jupyter-completion--company-timer))
-  (setq jupyter-completion--company-timer
-        ;; NOTE: When we reach here `company-idle-delay' is `now' since
-        ;; we are already inside a company completion so we can't use
-        ;; it, just use a sensible time value instead.
-        (run-with-idle-timer
-         0.1 nil
-         (lambda ()
-           (let ((company-minimum-prefix-length 0))
-             (when (company-auto-begin)
-               (company-input-noop)
-               (let ((this-command 'company-idle-begin))
-                 (company-post-command))))))))
-
-(defun jupyter-completion-at-point ()
-  "Function to add to `completion-at-point-functions'."
-  (let ((prefix (jupyter-completion-prefix)) req)
-    (when (and prefix jupyter-current-client)
-      (when (consp prefix)
-        (setq prefix (car prefix))
-        (when (and (bound-and-true-p company-mode)
-                   (< (length prefix) company-minimum-prefix-length))
-          (jupyter-completion--company-idle-begin)))
-      (when (jupyter-completion-prefetch-p prefix)
-        (setq jupyter-completion-cache nil
-              req (jupyter-completion-prefetch
-                   (lambda (msg) (setq jupyter-completion-cache
-                                  (list 'fetched prefix msg))))))
-      (list
-       (- (point) (length prefix)) (point)
-       (completion-table-dynamic
-        (lambda (_)
-          (when (and req (not (jupyter-request-idle-received-p req))
-                     (not (eq (jupyter-message-type
-                               (jupyter-request-last-message req))
-                              :complete-reply)))
-            (jupyter-wait-until-received :complete-reply req))
-          (when (eq (car jupyter-completion-cache) 'fetched)
-            (jupyter-with-message-content (nth 2 jupyter-completion-cache)
-                (status matches metadata)
-              (setq jupyter-completion-cache
-                    (cons (nth 1 jupyter-completion-cache)
-                          (when (equal status "ok")
-                            (jupyter-completion-construct-candidates
-                             matches metadata))))))
-          (cdr jupyter-completion-cache)))
-       :exit-function
-       #'jupyter-completion--post-completion
-       :company-location
-       (lambda (arg) (get-text-property 0 'location arg))
-       :annotation-function
-       (lambda (arg) (get-text-property 0 'annot arg))
-       :company-docsig
-       (lambda (arg) (get-text-property 0 'docsig arg))
-       :company-doc-buffer
-       #'jupyter-completion--company-doc-buffer))))
-
-(defun jupyter-completion--company-doc-buffer (arg)
-  "Send an inspect request for ARG to the kernel.
-Use the `company-doc-buffer' to insert the results."
-  (let ((buf (company-doc-buffer)))
-    (jupyter-inspect arg nil buf)
-    (with-current-buffer buf
-      (when (> (point-max) (point-min))
-        (let ((inhibit-read-only t))
-          (remove-text-properties
-           (point-min) (point-max) '(read-only))
-          (font-lock-mode 1)
-          (goto-char (point-min))
-          (current-buffer))))))
-
-(defun jupyter-completion--post-completion (arg status)
-  "If ARG is a completion with a snippet, expand the snippet.
-Do this only if STATUS is sole or finished."
-  (when (memq status '(sole finished))
-    (jupyter-completion-post-completion arg)))
-
-(cl-defgeneric jupyter-completion-post-completion (candidate)
-  "Called when CANDIDATE was selected as the completion candidate.
-The default implementation expands the snippet in CANDIDATE's
-snippet text property, if any, and if `yasnippet' is available."
-  (when (and (get-text-property 0 'snippet candidate)
-             (require 'yasnippet nil t))
-    (unless yas-minor-mode
-      (yas-minor-mode 1))
-    ;; Due to packages like smartparens
-    (when (eq (char-after) ?\))
-      (delete-char 1))
-    (yas-expand-snippet
-     (get-text-property 0 'snippet candidate)
-     (save-excursion
-       (forward-sexp -1)
-       (point))
-     (point))))
-
 ;;; Evaluation
 
-(defvar jupyter-repl-eval-expression-history nil)
-
-(defun jupyter-repl--read-expression ()
+(cl-defmethod jupyter-read-expression (&context ((and
+                                                  jupyter-current-client
+                                                  (object-of-class-p
+                                                   jupyter-current-client
+                                                   'jupyter-repl-client)
+                                                  t)
+                                                 (eql t)))
   (jupyter-with-repl-buffer jupyter-current-client
-    (let ((client jupyter-current-client)
-          (jupyter-repl-eval-expression-history
-           (ring-elements jupyter-repl-history)))
-      (minibuffer-with-setup-hook
-          (lambda ()
-            (setq jupyter-current-client client)
-            ;; TODO: Enable the kernel languages mode using
-            ;; `jupyter-repl-language-mode', but there are
-            ;; issues with enabling a major mode.
-            (add-hook 'completion-at-point-functions
-                      'jupyter-completion-at-point nil t))
-        (read-from-minibuffer
-         "Jupyter Eval: " nil
-         read-expression-map
-         nil 'jupyter-repl-eval-expression-history)))))
-
-(defun jupyter-repl-eval-string (str &optional silently cb)
-  "Evaluate STR with the `jupyter-current-client's REPL.
-Replaces the contents of the last cell in the REPL buffer with
-STR before evaluating.
-
-If the result of evaluation is more than 10 lines long, a buffer
-displaying the results is shown. For results less than 10 lines
-long, the result is displayed in the minibuffer.
-
-If a prefix argument is given, SILENTLY evaluate STR without any
-modification to the REPL buffer. Only the results of evaluation
-are displayed.
-
-CB is a function to call with the `:execute-result' message when
-the evalution is succesful. When CB is nil, its behavior defaults
-to the above explanation."
-  (interactive (list (jupyter-repl--read-expression) current-prefix-arg nil))
-  (unless jupyter-current-client
-    (user-error "No `jupyter-current-client' set, see `jupyter-repl-associate-buffer'"))
-  (jupyter-with-repl-buffer jupyter-current-client
-    (goto-char (point-max))
-    (unless (= (save-excursion (jupyter-repl-previous-cell)) 0)
-      (jupyter-repl-insert-prompt 'in))
-    (unless silently
-      (jupyter-repl-replace-cell-code str)
-      ;; Allow the REPL to evaluate the current cell
-      (setq str nil))
-    (let* ((jupyter-inhibit-handlers '(not :status))
-           (req (jupyter-send-execute-request jupyter-current-client
-                  :code str :store-history (unless silently t))))
-      (jupyter-add-callback req
-        :execute-reply (lambda (msg)
-                         (jupyter-with-message-content msg (status evalue)
-                           (unless (equal status "ok")
-                             (message "%s" (ansi-color-apply evalue)))))
-        :execute-result
-        (or (and (functionp cb) cb)
-            (lambda (msg)
-              (jupyter-with-message-data msg ((res text/plain))
-                (if (null res)
-                    (jupyter-with-output-buffer "result" 'reset
-                      (jupyter-with-message-content msg (data metadata)
-                        (jupyter-insert data metadata))
-                      (goto-char (point-min))
-                      (display-buffer (current-buffer)))
-                  (setq res (ansi-color-apply res))
-                  (if (cl-loop
-                       with nlines = 0
-                       for c across res when (eq c ?\n) do (cl-incf nlines)
-                       thereis (> nlines 10))
-                      (jupyter-with-output-buffer "result" 'reset
-                        (insert res)
-                        (goto-char (point-min))
-                        (display-buffer (current-buffer)))
-                    (if (equal res "") (message "jupyter: eval done")
-                      (message "%s" res)))))))
-        :error
-        (lambda (msg)
-          (jupyter-with-message-content msg (traceback)
-            ;; FIXME: Assumes the error in the
-            ;; execute-reply is good enough
-            (when (> (apply '+ (mapcar 'length traceback)) 250)
-              (jupyter-repl-display-traceback traceback))))
-        :stream
-        (lambda (msg)
-          (jupyter-with-message-content msg (name text)
-            (when (equal name "stdout")
-              (jupyter-with-output-buffer "output" req
-                (jupyter-insert-ansi-coded-text text)
-                (display-buffer (current-buffer)
-                                '(display-buffer-below-selected)))))))
-      req)))
-
-(cl-defgeneric jupyter-load-file-code (_file)
-  "Return a string suitable to send as code to a kernel for loading FILE.
-Use the jupyter-lang method specializer to add a method for a
-particular language."
-  (error "Kernel language (%s) not supported yet"
-         (jupyter-kernel-language jupyter-current-client)))
-
-(defun jupyter-repl-eval-file (file)
-  "Send the contents of FILE using `jupyter-current-client'."
-  (interactive
-   (list (read-file-name "File name: " nil nil nil
-                         (file-name-nondirectory
-                          (or (buffer-file-name) "")))))
-  (message "Evaluating %s..." file)
-  (setq file (expand-file-name file))
-  (if (file-exists-p file)
-      (jupyter-repl-eval-string
-       (jupyter-load-file-code file) 'silently)
-    (error "Not a file (%s)" file)))
-
-(defun jupyter-repl-eval-buffer (buffer)
-  "Send the contents of BUFFER using `jupyter-current-client'."
-  (interactive (list (current-buffer)))
-  (jupyter-repl-eval-string
-   (with-current-buffer buffer (buffer-string)) 'silently))
-
-(defun jupyter-repl-eval-region (beg end &optional silently cb)
-  "Evaluate a region with the `jupyter-current-client'.
-BEG and END are the beginning and end of the region to evaluate.
-SILENTLY and CB has the same meaning as in `jupyter-repl-eval-string'.
-CB is ignored when called interactively."
-  (interactive "rP")
-  (jupyter-repl-eval-string
-   (buffer-substring-no-properties beg end) silently cb))
-
-(defun jupyter-repl-eval-line-or-region (insert)
-  "Evaluate the current line or region with the `jupyter-current-client'.
-If the current region is active send the current region using
-`jupyter-repl-eval-region', otherwise send the current line.
-
-With a prefix argument, evaluate and INSERT the results in the
-current buffer."
-  (interactive "P")
-  (let ((cb (when insert
-              (let ((pos (point-marker))
-                    (region (when (use-region-p)
-                              (car (region-bounds)))))
-                (lambda (msg)
-                  (jupyter-with-message-data msg ((res text/plain))
-                    (when res
-                      (setq res (ansi-color-apply res))
-                      (with-current-buffer (marker-buffer pos)
-                        (save-excursion
-                          (cond
-                           (region
-                            (goto-char (car region))
-                            (delete-region (car region) (cdr region)))
-                           (t
-                            (goto-char pos)
-                            (end-of-line)
-                            (insert "\n")))
-                          (set-marker pos nil)
-                          (insert res)
-                          (when region (push-mark)))))))))))
-    (if (use-region-p)
-        (jupyter-repl-eval-region
-         (region-beginning) (region-end) 'silently cb)
-      (jupyter-repl-eval-region
-       (line-beginning-position) (line-end-position) 'silently cb))))
-
-(defun jupyter-repl-eval-defun ()
-  "Evaluate the function at `point'."
-  (interactive)
-  (cl-destructuring-bind (beg . end)
-      (bounds-of-thing-at-point 'defun)
-    (jupyter-repl-eval-region beg end 'silently)))
+    (jupyter-set jupyter-current-client 'jupyter-eval-expression-history
+                 (ring-elements jupyter-repl-history))
+    (cl-call-next-method)))
 
 ;;; Kernel management
 
@@ -1919,8 +1402,8 @@ in the appropriate direction, to the saved element."
             (insert
              (substitute-command-keys
               "Jupyter scratch buffer for evaluation.
-\\[jupyter-repl-eval-line-or-region] to evaluate the line or region.
-\\[jupyter-repl-eval-buffer] to evaluate the whole buffer.
+\\[jupyter-eval-line-or-region] to evaluate the line or region.
+\\[jupyter-eval-buffer] to evaluate the whole buffer.
 \\[jupyter-repl-pop-to-buffer] to show the REPL buffer."))
             (comment-region (point-min) (point-max))
             (insert "\n\n")))
@@ -2149,13 +1632,13 @@ If CLIENT is a buffer or the name of a buffer, use the
 
 (defvar jupyter-repl-interaction-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "C-x C-e") #'jupyter-repl-eval-line-or-region)
-    (define-key map (kbd "C-c C-c") #'jupyter-repl-eval-line-or-region)
-    (define-key map (kbd "C-M-x") #'jupyter-repl-eval-defun)
+    (define-key map (kbd "C-x C-e") #'jupyter-eval-line-or-region)
+    (define-key map (kbd "C-c C-c") #'jupyter-eval-line-or-region)
+    (define-key map (kbd "C-M-x") #'jupyter-eval-defun)
     (define-key map (kbd "C-c C-s") #'jupyter-repl-scratch-buffer)
-    (define-key map (kbd "C-c C-b") #'jupyter-repl-eval-buffer)
-    (define-key map (kbd "C-c C-l") #'jupyter-repl-eval-file)
-    (define-key map (kbd "C-c M-:") #'jupyter-repl-eval-string)
+    (define-key map (kbd "C-c C-b") #'jupyter-eval-buffer)
+    (define-key map (kbd "C-c C-l") #'jupyter-load-file)
+    (define-key map (kbd "C-c M-:") #'jupyter-eval-string)
     (define-key map (kbd "M-i") #'jupyter-inspect-at-point)
     (define-key map (kbd "C-c C-r") #'jupyter-repl-restart-kernel)
     (define-key map (kbd "C-c C-i") #'jupyter-repl-interrupt-kernel)
