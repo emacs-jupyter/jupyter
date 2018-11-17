@@ -261,23 +261,28 @@ aligns on the current line."
 
 (defun jupyter-insert-html (html)
   "Parse and insert the HTML string using `shr'."
-  (cl-letf (((symbol-function #'libxml-parse-html-region)
-             ;; Be strict about syntax. Specifically `libxml-parse-html-region'
-             ;; converts camel cased tags/attributes such as viewBox to viewbox
-             ;; in the dom since html is case insensitive. See #4.
-             #'libxml-parse-xml-region)
-            (shr-put-image-function #'jupyter--shr-put-image))
-    (jupyter-with-insertion-bounds
-        beg end (insert html)
-      ;; TODO: We can't really do much about javascript so
-      ;; delete those regions instead of trying to parse
-      ;; them. Maybe just re-direct to a browser like with
-      ;; widgets?
-      ;; NOTE: Parsing takes a very long time when the text
-      ;; is > ~500000 characters.
-      (jupyter--delete-script-tags beg end)
-      (shr-render-region beg end)
-      (jupyter-add-font-lock-properties beg end))))
+  (jupyter-with-insertion-bounds
+      beg end (insert html)
+    ;; TODO: We can't really do much about javascript so
+    ;; delete those regions instead of trying to parse
+    ;; them. Maybe just re-direct to a browser like with
+    ;; widgets?
+    ;; NOTE: Parsing takes a very long time when the text
+    ;; is > ~500000 characters.
+    (jupyter--delete-script-tags beg end)
+    (let ((shr-put-image-function #'jupyter--shr-put-image))
+      (if (save-excursion
+            (goto-char beg)
+            (looking-at "<\\?xml"))
+          ;; Be strict about syntax when the html returned explicitly asks to
+          ;; be parsed as xml. `libxml-parse-html-region' converts camel cased
+          ;; tags/attributes such as viewBox to viewbox in the dom since html
+          ;; is case insensitive. See #4.
+          (cl-letf (((symbol-function #'libxml-parse-html-region)
+                     #'libxml-parse-xml-region))
+            (shr-render-region beg end))
+          (shr-render-region beg end)))
+    (jupyter-add-font-lock-properties beg end)))
 
 ;;; Markdown
 

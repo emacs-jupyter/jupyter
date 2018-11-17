@@ -239,6 +239,28 @@
         (should (jupyter-test-display-id-all
                  id1 (point-min) (point-max)))))))
 
+(ert-deftest jupyter-insert-html ()
+  :tags '(mime)
+  (ert-info ("Correct libxml parser is called depending on prolog")
+    (ert-info ("XML prolog means to parse as XML")
+      (with-temp-buffer
+        (cl-letf* ((xml-parser-called nil)
+                   ((symbol-function #'libxml-parse-xml-region)
+                    (lambda (&rest _)
+                      (prog1 nil
+                        (setq xml-parser-called t)))))
+          (jupyter-insert :text/html "<?xml version=\"1.0\" encoding=\"UTF-8\"?><p>hello</p>")
+          (should xml-parser-called))))
+    (ert-info ("Parse as html")
+      (with-temp-buffer
+        (cl-letf* ((html-parser-called nil)
+                   ((symbol-function #'libxml-parse-html-region)
+                    (lambda (&rest _)
+                      (prog1 nil
+                        (setq html-parser-called t)))))
+          (jupyter-insert :text/html "<p>hello</p>")
+          (should html-parser-called))))))
+
 ;;; Messages
 
 (ert-deftest  jupyter-message-identities ()
