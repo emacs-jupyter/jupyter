@@ -960,15 +960,14 @@ HTML('<a href=\"http://foo.com\">link</a>')"))
                                           (locate-library "jupyter")))
                       (org-babel-jupyter-resource-directory "./")
                       (file (expand-file-name "jupyter.png"))
-                      (line-breaks
-                       ;; Implementation details of binascii.b2a_base64 (what
-                       ;; IPython uses to encode images) have changed after
-                       ;; python 3.7 it seems.
+                      (py-version
                        (with-current-buffer repl-buffer
-                         (not
-                          (version<
-                           (jupyter-test-kernel-version
-                            (oref (oref jupyter-current-client manager) spec)) "3.7"))))
+                         (jupyter-test-kernel-version
+                          (oref (oref jupyter-current-client manager) spec))))
+                      ;; Implementation details of binascii.b2a_base64 (what
+                      ;; IPython uses to encode images) have changed after
+                      ;; python 3.6 it seems.
+                      (line-breaks (version< py-version "3.6"))
                       (data (let ((buffer-file-coding-system 'binary))
                               (with-temp-buffer
                                 (set-buffer-multibyte nil)
