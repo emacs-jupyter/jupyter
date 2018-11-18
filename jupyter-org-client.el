@@ -163,29 +163,82 @@ source code block. Set by `org-babel-execute:jupyter'.")))
 
 ;;; Completions in code blocks
 
-(cl-defmethod jupyter-completion-prefix (&context (major-mode org-mode))
-  (when (org-in-src-block-p 'inside)
+(defvar jupyter-org--src-block-cache nil
+  "A list of three elements (SESSION BEG END).
+SESSION is the Jupyter session to use for completion requests for
+a code block between BEG and END.
+
+BEG and END are the bounds of the source block which made the
+most recent completion request.")
+
+(defun jupyter-org--same-src-block-p ()
+  (and jupyter-org--src-block-cache
+       (cl-destructuring-bind (_ beg end)
+           jupyter-org--src-block-cache
+         (<= beg (point) end))))
+
+(defun jupyter-org--set-current-src-block ()
+  (unless (jupyter-org--same-src-block-p)
     (let* ((el (org-element-at-point))
-           (lang (org-element-property :language el))
-           info params syntax client)
+           (lang (org-element-property :language el)))
       (when (string-prefix-p "jupy-" lang)
-        (setq info (org-babel-get-src-block-info el)
-              params (nth 2 info)
-              client (with-current-buffer
-                         (org-babel-jupyter-initiate-session
-                          (alist-get :session params) params)
-                       (setq syntax (syntax-table))
-                       jupyter-current-client))
-        ;; KLUDGE: Remove the need for setting
-        ;; `jupyter-current-client', its needed so
-        ;; that `jupyter-completion-prefetch' will use the
-        ;; right client, similarly for the less specialized
-        ;; `jupyter-completion-prefix'
-        (setq jupyter-current-client client)
-        ;; Use the syntax table of the language when
-        ;; retrieving the prefix
-        (with-syntax-table syntax
-          (cl-call-next-method))))))
+        (let* ((info (org-babel-get-src-block-info el))
+               (params (nth 2 info))
+               (beg (save-excursion
+                      (goto-char
+                       (org-element-property :begin el))
+                      (line-beginning-position 2)))
+               (end (save-excursion
+                      (goto-char
+                       (org-element-property :end el))
+                      (let ((pblank (org-element-property :post-blank el)))
+                        (line-beginning-position
+                         (unless (zerop pblank) (- pblank)))))))
+          (unless jupyter-org--src-block-cache
+            (setq jupyter-org--src-block-cache
+                  (list nil (point-marker) (point-marker)))
+            ;; Move the end marker when text is inserted
+            (set-marker-insertion-type (nth 2 jupyter-org--src-block-cache) t))
+          (setf (nth 0 jupyter-org--src-block-cache) params)
+          (cl-callf move-marker (nth 1 jupyter-org--src-block-cache) beg)
+          (cl-callf move-marker (nth 2 jupyter-org--src-block-cache) end))))))
+
+(defmacro jupyter-org-when-in-src-block (&rest body)
+  "Evaluate BODY when inside a Jupyter source block.
+Return the result of BODY when it is evaluated, otherwise nil is
+returned."
+  (declare (debug (body)))
+  `(if (not (org-in-src-block-p 'inside))
+       ;; Invalidate cache when going outside of a source block. This way if
+       ;; the language of the block changes we don't end up using the cache
+       ;; since it is only used for Jupyter blocks.
+       (prog1 nil
+         (when jupyter-org--src-block-cache
+           (set-marker (nth 1 jupyter-org--src-block-cache) nil)
+           (set-marker (nth 2 jupyter-org--src-block-cache) nil)
+           (setq jupyter-org--src-block-cache nil)))
+     (jupyter-org--set-current-src-block)
+     (when (jupyter-org--same-src-block-p)
+       ,@body)))
+
+(defmacro jupyter-org-with-src-block-client (&rest body)
+  "Evaluate BODY with `jupyter-current-client' set to the session's client.
+If `point' is not at a Jupyter source block, BODY is not
+evaluated and nil is returned. Return the result of BODY when it
+is evaluated.
+
+In addition to evaluating BODY with an active Jupyter client set,
+the `syntax-table' will be set to that of the REPL buffers."
+  (declare (debug (body)))
+  `(jupyter-org-when-in-src-block
+    (let* ((params (car jupyter-org--src-block-cache))
+           (buffer (org-babel-jupyter-initiate-session
+                    (alist-get :session params) params))
+           (syntax (with-current-buffer buffer (syntax-table)))
+           (jupyter-current-client
+            (with-current-buffer buffer jupyter-current-client)))
+      (with-syntax-table syntax
+        ,@body))))
 
 (cl-defmethod jupyter-code-context ((_type (eql inspect))
                                     &context (major-mode org-mode))
@@ -197,9 +250,13 @@ source code block. Set by `org-babel-execute:jupyter'.")))
   (when (org-in-src-block-p 'inside)
     (jupyter-line-context)))
 
+(defun jupyter-org-completion-at-point ()
+  (jupyter-org-with-src-block-client
+   (jupyter-completion-at-point)))
+
 (defun jupyter-org-enable-completion ()
   "Enable autocompletion in Jupyter source code blocks."
-  (add-hook 'completion-at-point-functions 'jupyter-completion-at-point nil t))
+  (add-hook 'completion-at-point-functions 'jupyter-org-completion-at-point nil t))
 
 (add-hook 'org-mode-hook 'jupyter-org-enable-completion)
 
