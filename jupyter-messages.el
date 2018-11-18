@@ -452,7 +452,7 @@ So to bind the :status key of MSG you would do
 
     (jupyter-with-message-content msg (status)
       BODY)"
-  (declare (indent 2) (debug (symbol list form)))
+  (declare (indent 2) (debug (form listp body)))
   `(cl-destructuring-bind (&key ,@keys &allow-other-keys)
        (jupyter-message-content ,msg)
      ,@body))
