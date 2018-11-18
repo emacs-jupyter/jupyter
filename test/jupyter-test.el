@@ -1029,12 +1029,13 @@ last element being the newest element added to the history."
     (with-current-buffer jupyter-org-test-buffer
       (org-mode)
       (insert
-       "#+BEGIN_SRC jupyter-python " ":session " jupyter-org-test-session "\n"
+       "#+BEGIN_SRC jupy-python " ":session " jupyter-org-test-session "\n"
        "#+END_SRC")
       (setq jupyter-current-client
             (with-current-buffer (org-babel-initiate-session)
-              jupyter-current-client))
-      (erase-buffer))))
+              jupyter-current-client))))
+  (with-current-buffer jupyter-org-test-buffer
+    (erase-buffer)))
 
 (defmacro jupyter-org-test (&rest body)
   (declare (debug (body)))
@@ -1043,44 +1044,112 @@ last element being the newest element added to the history."
      (with-current-buffer jupyter-org-test-buffer
        ,@body)))
 
-(defmacro jupyter-org-test-code (code expected-result)
-  `(jupyter-org-test
-    (jupyter-org-test-src-block
-     jupyter-org-test-session ,code ,expected-result)))
+(defmacro jupyter-org-test-src-block (block expected-result &rest args)
+  "Test source code BLOCK.
+EXPECTED-RESULT is a string that the source block's results
+should match. If REGEXP is non-nil, EXPECTED-RESULT is a regular
+expression to match against the results instead of an equality
+match."
+  (let (regexp)
+    (setq args
+          (cl-loop for (arg val) on args by #'cddr
+                   if (eq arg :regexp) do (setq regexp val)
+                   else collect (cons arg val)))
+    `(jupyter-org-test
+      (jupyter-org-test-src-block-1 ,block ,expected-result ,regexp ',args))))
 
-(defun jupyter-org-test-src-block (session code test-result)
-  (let ((pos (point)))
-    (insert
-     "#+BEGIN_SRC jupyter-python " ":session " session "\n"
+(defun jupyter-org-test-make-block (code args)
+  (let ((arg-str (mapconcat
+                  (lambda (x)
+                    (cl-destructuring-bind (name . val) x
+                      (concat (symbol-name name) " " (format "%s" val))))
+                  args " ")))
+    (concat
+     "#+BEGIN_SRC jupy-python " arg-str " :session "
+     jupyter-org-test-session "\n"
      code "\n"
-     "#+END_SRC")
-    (let* ((info (org-babel-get-src-block-info)))
-      (org-babel-execute-src-block nil info)
-      (org-with-point-at (org-babel-where-is-src-block-result nil info)
-        (forward-line 1)
-        (let ((result
-               (string-trim-right
-                (buffer-substring-no-properties
-                 (point) (goto-char (org-babel-result-end))))))
-          (should (equal result test-result))
-          (delete-region pos (point)))))))
+     "#+END_SRC")))
+
+(defmacro jupyter-org-test-insert-block (code &rest args)
+  (declare (indent 1))
+  `(insert (jupyter-org-test-make-block ,code ',args)))
+
+(defun jupyter-org-test-src-block-1 (code test-result &optional regexp args)
+  (insert (jupyter-org-test-make-block code args))
+  (let* ((info (org-babel-get-src-block-info))
+         (end (point-marker)))
+    (set-marker-insertion-type end t)
+    (save-window-excursion
+      (org-babel-execute-src-block nil info))
+    (org-with-point-at (org-babel-where-is-src-block-result nil info)
+      (forward-line 1)
+      (let ((result (string-trim (buffer-substring-no-properties
+                                  (point) end))))
+        (if regexp (should (string-match-p test-result result))
+          (should (equal result test-result)))))))
 
 (defvar org-babel-jupyter-resource-directory nil)
 
+(ert-deftest ob-jupyter-no-results ()
+  :tags '(org)
+  (jupyter-org-test-src-block "1 + 1;" ""))
+
 (ert-deftest ob-jupyter-scalar-results ()
   :tags '(org)
-  (jupyter-org-test-code "1 + 1" ": 2"))
+  (jupyter-org-test-src-block "1 + 1" ": 2")
+  (ert-info ("Tables")
+    (jupyter-org-test-src-block
+     "[[1, 2, 3], [4, 5, 6]]"
+     "\
+| 1 | 2 | 3 |
+| 4 | 5 | 6 |")))
 
 (ert-deftest ob-jupyter-html-results ()
   :tags '(org)
-  (jupyter-org-test-code
+  (jupyter-org-test-src-block
    "\
-from IPython.core.display import HTML\n\
+from IPython.core.display import HTML
 HTML('<a href=\"http://foo.com\">link</a>')"
    "\
 #+BEGIN_EXPORT html
 <a href=\"http://foo.com\">link</a>
 #+END_EXPORT"))
+
+(ert-deftest ob-jupyter-markdown-results ()
+  :tags '(org)
+  (jupyter-org-test-src-block
+   "\
+from IPython.core.display import Markdown
+Markdown('*b*')"
+   "\
+#+BEGIN_EXPORT markdown
+*b*
+#+END_EXPORT"))
+
+(ert-deftest ob-jupyter-latex-results ()
+  :tags '(org)
+  (jupyter-org-test-src-block
+   "\
+from IPython.core.display import Latex
+Latex(r'$\\alpha$')"
+   "\
+#+BEGIN_EXPORT latex
+$\\alpha$
+#+END_EXPORT")
+  (ert-info ("Raw results")
+    (jupyter-org-test-src-block
+     "\
+from IPython.core.display import Latex
+Latex(r'$\\alpha$')"
+     "$\\alpha$"
+     :results "raw")))
+
+(ert-deftest ob-jupyter-error-results ()
+  :tags '(org)
+  (jupyter-org-test-src-block
+   "from IPython."
+   ": SyntaxError:.*"
+   :regexp t))
 
 (ert-deftest ob-jupyter-image-results ()
   :tags '(org)
@@ -1089,9 +1158,9 @@ HTML('<a href=\"http://foo.com\">link</a>')"
          (org-babel-jupyter-resource-directory "./")
          (file (expand-file-name "jupyter.png"))
          (py-version
-          (jupyter-org-test
-           (jupyter-test-kernel-version
-            (oref (oref jupyter-current-client manager) spec))))
+          (with-current-buffer jupyter-org-test-buffer
+            (jupyter-test-kernel-version
+             (oref (oref jupyter-current-client manager) spec))))
          ;; Implementation details of binascii.b2a_base64 (what
          ;; IPython uses to encode images) have changed after
          ;; python 3.6 it seems.
@@ -1106,7 +1175,7 @@ HTML('<a href=\"http://foo.com\">link</a>')"
                    (buffer-substring-no-properties (point-min) (point-max)))))
          (image-file-name (jupyter-org-image-file-name data "png")))
     (unwind-protect
-        (jupyter-org-test-code
+        (jupyter-org-test-src-block
          (format "\
 from IPython.display import Image
 Image(filename='%s')" file)
@@ -1145,6 +1214,77 @@ Image(filename='%s')" file)
     (should (equal (jupyter-org-result req (list :text/plain "[1, 2, 3]"))
                    (cons "scalar" '(1 2 3))))
     (should py-method-called)))
+
+(ert-deftest jupyter-org-src-block-cache ()
+  :tags '(org)
+  (let (jupyter-org-src-block-cache)
+    (jupyter-org-test
+     (insert
+      "#+BEGIN_SRC jupy-python :session " jupyter-org-test-session "\n"
+      "imp\n"
+      "#+END_SRC\n\n\n#+RESULTS:")
+     ;; Needed for the text properties
+     (font-lock-ensure)
+     (goto-char (point-min))
+     (forward-line)
+     (end-of-line)
+     (should-not jupyter-org-src-block-cache)
+     (should-not (jupyter-org--same-src-block-p))
+     (jupyter-org--set-current-src-block)
+     (should jupyter-org-src-block-cache)
+     (should (jupyter-org--same-src-block-p))
+     (cl-destructuring-bind (params beg end)
+         jupyter-org-src-block-cache
+       (should (equal (alist-get :session params) jupyter-org-test-session))
+       (should (= beg (line-beginning-position)))
+       (should (= end (line-beginning-position 2))))
+     (ert-info ("End marker updates after insertion")
+       (forward-line)
+       (insert "new source block text\n")
+       ;; #+BEGIN_SRC ...
+       ;; imp
+       ;; new source block text
+       ;; |#+END_SRC
+       (cl-destructuring-bind (params beg end)
+           jupyter-org-src-block-cache
+         (should (equal (alist-get :session params) jupyter-org-test-session))
+         (should (= beg (line-beginning-position -1)))
+         (should (= end (line-beginning-position))))))))
+
+(ert-deftest jupyter-org-when-in-src-block ()
+  :tags '(org)
+  (ert-info ("In Jupyter blocks")
+    (jupyter-org-test
+     (insert
+      "#+BEGIN_SRC jupy-python :session " jupyter-org-test-session "\n"
+      "1 + 1\n"
+      "#+END_SRC\nfoo")
+     ;; Needed for the text properties
+     (font-lock-ensure)
+     (goto-char (point-min))
+     (should-not (jupyter-org-when-in-src-block t))
+     (forward-line)
+     (should (jupyter-org-when-in-src-block t))
+     (forward-line)
+     (should-not (jupyter-org-when-in-src-block t))
+     (forward-line)
+     (should-not (jupyter-org-when-in-src-block t))))
+  (ert-info ("Not in Jupyter block")
+    (jupyter-org-test
+     (insert
+      "#+BEGIN_SRC python :session " jupyter-org-test-session "\n"
+      "1 + 1\n"
+      "#+END_SRC\nfoo")
+     ;; Needed for the text properties
+     (font-lock-ensure)
+     (goto-char (point-min))
+     (should-not (jupyter-org-when-in-src-block t))
+     (forward-line)
+     (should-not (jupyter-org-when-in-src-block t))
+     (forward-line)
+     (should-not (jupyter-org-when-in-src-block t))
+     (forward-line)
+     (should-not (jupyter-org-when-in-src-block t)))))
 
 ;; Local Variables:
 ;; byte-compile-warnings: (not free-vars)
