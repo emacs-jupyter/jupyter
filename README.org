@@ -169,8 +169,8 @@ For users of =org-mode=, integration with =org-babel= is provided through the
 Note, =jupyter= should be added as the last element when loading languages
 since it depends on the values of variables such as =org-src-lang-modes= and
 =org-babel-tangle-lang-exts=. After =ob-jupyter= has been loaded, new source
-code blocks with names of the form =jupyter-LANG= will be available. =LANG= can
-be any one of the kernel languages found on your system. See
+code blocks with names of the form =jupy-LANG= will be available. =LANG= can be
+any one of the kernel languages found on your system. See
 =jupyter-available-kernelspecs=.
 
 Every Jupyter source code block requires that the =:session= parameter be
@@ -214,9 +214,9 @@ the underlying REPL buffer for a source code block is a based on both
 =:session= and =:kernel=.
 
 In addition, any of the defaults for a language can be changed by setting
-=org-babel-default-header-args:jupyter-LANG= to an appropriate value. For
-example to change the default header arguments of the =julia= kernel, you can
-set =org-babel-default-header-args:jupyter-julia= to something like
+=org-babel-default-header-args:jupy-LANG= to an appropriate value. For example
+to change the default header arguments of the =julia= kernel, you can set
+=org-babel-default-header-args:jupy-julia= to something like
 
 #+BEGIN_SRC elisp
 (setq org-babel-default-header-args:jupyter-julia '((:async . "yes")

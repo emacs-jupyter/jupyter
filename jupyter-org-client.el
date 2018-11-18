@@ -168,7 +168,7 @@ source code block. Set by `org-babel-execute:jupyter'.")))
     (let* ((el (org-element-at-point))
            (lang (org-element-property :language el))
            info params syntax client)
-      (when (string-prefix-p "jupyter-" lang)
+      (when (string-prefix-p "jupy-" lang)
         (setq info (org-babel-get-src-block-info el)
               params (nth 2 info)
               client (with-current-buffer

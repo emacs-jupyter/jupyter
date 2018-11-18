@@ -68,7 +68,7 @@
                                                 (:async . "no"))
   "Default header arguments for Jupyter src-blocks.")
 
-(defvar org-babel-jupyter-language-regex "^[ \t]*#\\+begin_src[ \t]+jupyter-\\([^ \f\t\n\r\v]+\\)[ \t]*"
+(defvar org-babel-jupyter-language-regex "^[ \t]*#\\+begin_src[ \t]+jupy-\\([^ \f\t\n\r\v]+\\)[ \t]*"
   "Regular expression used to extract a source block's language name.")
 
 (defun org-babel-variable-assignments:jupyter (params &optional lang)
@@ -253,17 +253,20 @@ the PARAMS alist."
   "Simimilar to `org-babel-make-language-alias' but for Jupyter src-blocks.
 KERNEL should be the name of the default kernel to use for kernel
 LANG. All necessary org-babel functions for a language with the
-name jupyter-LANG will be aliased to the jupyter functions."
+name jupy-LANG will be aliased to the Jupyter functions."
   (dolist (fn '("execute" "expand-body" "prep-session" "edit-prep"
                 "variable-assignments" "load-session"))
+    ;; Use :jupyter here for the base functions, for all the language aliases
+    ;; use :jupy-LANG, this is to avoid name clashes with the ob-ipython
+    ;; package.
     (let ((sym (intern-soft (concat "org-babel-" fn ":jupyter"))))
       (when (and sym (fboundp sym))
-        (defalias (intern (concat "org-babel-" fn ":jupyter-" lang)) sym))))
-  (defalias (intern (concat "org-babel-jupyter-" lang "-initiate-session"))
+        (defalias (intern (concat "org-babel-" fn ":jupy-" lang)) sym))))
+  (defalias (intern (concat "org-babel-jupy-" lang "-initiate-session"))
     'org-babel-jupyter-initiate-session)
-  (set (intern (concat "org-babel-header-args:jupyter-" lang))
+  (set (intern (concat "org-babel-header-args:jupy-" lang))
        org-babel-header-args:jupyter)
-  (set (intern (concat "org-babel-default-header-args:jupyter-" lang))
+  (set (intern (concat "org-babel-default-header-args:jupy-" lang))
        `((:kernel . ,kernel)
          (:async . "no"))))
 
@@ -283,10 +286,10 @@ Optional argument REFRESH has the same meaning as in
    do (org-babel-jupyter-make-language-alias kernel lang)
    (when (assoc lang org-babel-tangle-lang-exts)
      (add-to-list 'org-babel-tangle-lang-exts
-                  (cons (concat "jupyter-" lang)
+                  (cons (concat "jupy-" lang)
                         (cdr (assoc lang org-babel-tangle-lang-exts)))))
    (add-to-list 'org-src-lang-modes
-                (cons (concat "jupyter-" lang)
+                (cons (concat "jupy-" lang)
                       (intern (or (cdr (assoc lang org-src-lang-modes))
                                   (replace-regexp-in-string
                                    "[0-9]*" "" lang)))))))
