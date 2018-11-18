@@ -240,13 +240,13 @@ the DATA property list."
                   (,metadata (plist-get ,metadata ,mime)))
               (when ,data ,@bodyforms))))
 
-;;;; Output buffers
+;;;; Display buffers
 
-(defvar-local jupyter-output-buffer-marker nil
+(defvar-local jupyter-display-buffer-marker nil
   "The marker to store the last output position of an output buffer.
-See `jupyter-with-output-buffer'.")
+See `jupyter-with-display-buffer'.")
 
-(defvar-local jupyter-output-buffer-request-id nil
+(defvar-local jupyter-display-buffer-request-id nil
   "The last `jupyter-request' message ID that generated output.")
 
 (defun jupyter-get-buffer-create (name)
@@ -256,7 +256,7 @@ See `jupyter-with-output-buffer'.")
   \"*jupyter-NAME*\"
 
 - Its `major-mode' will be `special-mode'."
-  (let* ((bname (format "*jupyter-repl-%s*" name))
+  (let* ((bname (format "*jupyter-%s*" name))
          (buffer (get-buffer bname)))
     (unless buffer
       (setq buffer (get-buffer-create bname))
@@ -265,7 +265,7 @@ See `jupyter-with-output-buffer'.")
           (special-mode))))
     buffer))
 
-(defun jupyter--reset-output-buffer-p (arg)
+(defun jupyter--reset-display-buffer-p (arg)
   "Return non-nil if the current output buffer should be reset.
 If ARG is a `jupyter-request', reset the buffer if ARG's
 `jupyter-request-id' is no equal to the
@@ -275,17 +275,17 @@ If ARG is a `jupyter-request', reset the buffer if ARG's
       ;; Reset the output buffer is the last request ID does not
       ;; match the current request's ID.
       (let ((id (jupyter-request-id arg)))
-        (and (not (equal id jupyter-output-buffer-request-id))
-             (setq jupyter-output-buffer-request-id id)
+        (and (not (equal id jupyter-display-buffer-request-id))
+             (setq jupyter-display-buffer-request-id id)
              t))
     ;; Otherwise reset the output buffer if RESET evaluates to a
     ;; non-nil value
     arg))
 
-(defmacro jupyter-with-output-buffer (name reset &rest body)
+(defmacro jupyter-with-display-buffer (name reset &rest body)
   "With the REPL output buffer corresponding to NAME, run BODY.
 The buffer corresponding to NAME will be obtained by a call to
-`jupyter-get-special-buffer'. An output buffer differs from a
+`jupyter-get-buffer-create'. An output buffer differs from a
 documentation buffer by maintaining its previous output and
 moving `point' to the end of the last output.
 
@@ -302,14 +302,14 @@ the output buffer."
        (setq other-window-scroll-buffer ,buffer)
        (with-current-buffer ,buffer
          (let ((inhibit-read-only t))
-           (when (jupyter--reset-output-buffer-p ,reset)
+           (when (jupyter--reset-display-buffer-p ,reset)
              (erase-buffer)
-             (if jupyter-output-buffer-marker
-                 (set-marker jupyter-output-buffer-marker (point))
-               (setq jupyter-output-buffer-marker (point-marker))))
-           (goto-char jupyter-output-buffer-marker)
+             (if jupyter-display-buffer-marker
+                 (set-marker jupyter-display-buffer-marker (point))
+               (setq jupyter-display-buffer-marker (point-marker))))
+           (goto-char jupyter-display-buffer-marker)
            (jupyter-with-control-code-handling ,@body)
-           (set-marker jupyter-output-buffer-marker (point)))))))
+           (set-marker jupyter-display-buffer-marker (point)))))))
 
 ;;; Signing functions/UUID
 

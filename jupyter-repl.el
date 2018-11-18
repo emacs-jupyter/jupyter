@@ -730,7 +730,7 @@ lines, truncate it to something less than
         ("page"
          (let ((text (plist-get (plist-get pl :data) :text/plain))
                (line (or (plist-get pl :start) 0)))
-           (jupyter-with-output-buffer "pager" 'reset
+           (jupyter-with-display-buffer "pager" 'reset
              (jupyter-insert-ansi-coded-text text)
              (goto-char (point-min))
              (forward-line line)
@@ -838,7 +838,7 @@ lines, truncate it to something less than
      ((eq (jupyter-message-parent-type
            (jupyter-request-last-message req))
           :comm-msg)
-      (with-current-buffer (get-buffer-create "*jupyter-repl-output*")
+      (with-current-buffer (jupyter-get-buffer-create "output")
         (erase-buffer)))
      (t
       (jupyter-repl-clear-last-cell-output client)))))
@@ -860,7 +860,7 @@ buffer to display TEXT."
          (stream-buffer
           (concat (substring bname 0 (1- (length bname))) "-" stream "*")))
     ;; FIXME: Reset this on the next request
-    (jupyter-with-output-buffer stream-buffer nil
+    (jupyter-with-display-buffer stream-buffer nil
       (let ((pos (point)))
         (jupyter-insert-ansi-coded-text text)
         (fill-region pos (point)))
@@ -874,7 +874,7 @@ buffer to display TEXT."
      ((eq (jupyter-message-parent-type
            (jupyter-request-last-message req))
           :comm-msg)
-      (jupyter-with-output-buffer "output" req
+      (jupyter-with-display-buffer "output" req
         (jupyter-insert-ansi-coded-text text)
         (display-buffer (current-buffer))))
      (t

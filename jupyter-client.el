@@ -933,7 +933,7 @@ Methods that extend this generic function should
 (defun jupyter--display-eval-result (msg)
   (jupyter-with-message-data msg ((res text/plain))
     (if (null res)
-        (jupyter-with-output-buffer "result" 'reset
+        (jupyter-with-display-buffer "result" 'reset
           (jupyter-with-message-content msg (data metadata)
             (jupyter-insert data metadata))
           (goto-char (point-min))
@@ -943,7 +943,7 @@ Methods that extend this generic function should
            with nlines = 0
            for c across res when (eq c ?\n) do (cl-incf nlines)
            thereis (> nlines 10))
-          (jupyter-with-output-buffer "result" 'reset
+          (jupyter-with-display-buffer "result" 'reset
             (insert res)
             (goto-char (point-min))
             (display-buffer (current-buffer)))
@@ -1004,7 +1004,7 @@ to the above explanation."
       (lambda (msg)
         (jupyter-with-message-content msg (name text)
           (when (equal name "stdout")
-            (jupyter-with-output-buffer "output" req
+            (jupyter-with-display-buffer "output" req
               (jupyter-insert-ansi-coded-text text)
               (display-buffer (current-buffer)
                               '(display-buffer-below-selected)))))))
@@ -1843,7 +1843,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
   "Display TRACEBACK in a dedicated buffer."
   (when (or (vectorp traceback) (listp traceback))
     (setq traceback (concat (mapconcat #'identity traceback "\n") "\n")))
-  (jupyter-with-output-buffer "traceback" 'reset
+  (jupyter-with-display-buffer "traceback" 'reset
     (jupyter-insert-ansi-coded-text traceback)
     (goto-char (point-min))
     (display-buffer (current-buffer) '(display-buffer-below-selected))))
