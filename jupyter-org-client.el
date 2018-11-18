@@ -377,7 +377,7 @@ an \"EXPORT markdown\" block. See `org-babel-insert-result'."
 
 (cl-defmethod jupyter-org-result ((_mime (eql :text/markdown)) _params data
                                   &optional _metadata)
-  (cons '(:wrap . "SRC markdown") data))
+  (cons '(:wrap . "EXPORT markdown") data))
 
 (cl-defmethod jupyter-org-result ((_mime (eql :text/latex)) params data
                                   &optional _metadata)
