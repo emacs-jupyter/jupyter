@@ -139,6 +139,15 @@ current output of the cell. Set when the kernel sends a
 (defvar-local jupyter-repl-history nil
   "The history of the current Jupyter REPL.")
 
+(defvar-local jupyter-repl-propertize-regex "\"\\|'\\|`"
+  "Regular expression used when adding syntax properties to output.
+When a kernel inserts output into the REPL buffer, the output is
+scanned using this regular expression. Any matching text will
+have its syntax-table property set to symbol syntax.
+
+This is most useful for ensuring that the output produced by a
+kernel doesn't get mistakenly fontified as strings from the
+kernel's language.")
 
 (defvar-local jupyter-repl-use-builtin-is-complete nil
   "Whether or not to send `:is-complete-request's to a kernel.
@@ -1485,13 +1494,11 @@ When the kernel restarts, insert a new prompt."
     (save-restriction
       (narrow-to-region beg end)
       (goto-char (point-min))
-      (let ((re (concat "\"\\|'\\|`" (when comment-start
-                                       (concat "\\|" comment-start)))))
-        (while (and (re-search-forward re nil t)
-                    (/= (point) (point-max)))
-          (put-text-property
-           (match-beginning 0) (point)
-           'syntax-table '(3 . ?_)))))))
+      (while (and (re-search-forward jupyter-repl-propertize-regex nil t)
+                  (/= (point) (point-max)))
+        (put-text-property
+         (match-beginning 0) (point)
+         'syntax-table '(3 . ?_))))))
 
 (defun jupyter-repl-initialize-fontification ()
   "Initialize fontification for the current REPL buffer."
@@ -1525,10 +1532,13 @@ When the kernel restarts, insert a new prompt."
                                         (jupyter-with-repl-cell
                                           (funcall spf (point-min) (point-max))))))))
                           (cons 'font-lock-syntactic-face-function sff))))
+      (setq-local comment-start comment)
       (setq font-lock-defaults
             (apply #'list kws kws-only case-fold syntax-alist vars))
-      ;; Set the comment start character for `jupyter-repl-propertize-output'
-      (setq-local comment-start comment))
+      (when comment
+        (setq jupyter-repl-propertize-regex
+              (concat jupyter-repl-propertize-regex
+                      "\\|" (string-trim comment)))))
     (font-lock-mode)))
 
 (defun jupyter-repl-insert-banner (banner)
