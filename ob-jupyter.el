@@ -227,9 +227,10 @@ Re-add the file parameters on the next call to
   "Execute BODY according to PARAMS.
 BODY is the code to execute for the current Jupyter `:session' in
 the PARAMS alist."
-  (let* ((repl-buffer (org-babel-jupyter-initiate-session
-                       (alist-get :session params) params))
-         (client (with-current-buffer repl-buffer
+  (let* ((default-directory (or (alist-get :dir params) default-directory))
+         (client (with-current-buffer
+                     (org-babel-jupyter-initiate-session
+                      (alist-get :session params) params)
                    jupyter-current-client))
          (kernel-lang (jupyter-kernel-language client))
          (vars (org-babel-variable-assignments:jupyter params kernel-lang))
