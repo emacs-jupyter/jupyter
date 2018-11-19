@@ -771,6 +771,9 @@ are taken:
           (when (jupyter-get client 'jupyter-include-other-output)
             (jupyter--run-handler-maybe client channel req msg))
         (setf (jupyter-request-last-message req) msg)
+        (when (eq (jupyter-message-type msg) :status)
+          (oset client execution-state
+                (jupyter-message-get msg :execution_state)))
         (unwind-protect
             (jupyter--run-callbacks req msg)
           (unwind-protect
@@ -958,9 +961,8 @@ text/plain representation."
   (cl-check-type jupyter-current-client jupyter-kernel-client
                  "Need a client to evaluate code")
   (let ((msg (jupyter-wait-until-received :execute-result
-               (let ((jupyter-inhibit-handlers '(not :status)))
-                 (jupyter-send-execute-request jupyter-current-client
-                   :code code :store-history nil)))))
+               (jupyter-send-execute-request jupyter-current-client
+                 :code code :store-history nil))))
     (when msg
       (jupyter-message-data msg (or mime :text/plain)))))
 
@@ -979,9 +981,10 @@ to the above explanation."
   (interactive (list (jupyter-read-expression) current-prefix-arg nil))
   (unless jupyter-current-client
     (user-error "No `jupyter-current-client' set"))
-  (let* ((jupyter-inhibit-handlers '(not :status))
+  (let* ((jupyter-inhibit-handlers t)
          (req (jupyter-send-execute-request jupyter-current-client
-                :code str :store-history nil)))
+                :code str :store-history nil))
+         (had-result nil))
     (jupyter-add-callback req
       :execute-reply
       (lambda (msg)
@@ -1134,9 +1137,8 @@ DETAIL is the detail level to use for the request and defaults to
   (setq pos (or pos (length code)))
   (let ((client jupyter-current-client)
         (msg (jupyter-wait-until-received :inspect-reply
-               (let ((jupyter-inhibit-handlers '(not :status)))
-                 (jupyter-send-inspect-request jupyter-current-client
-                   :code code :pos pos :detail detail)))))
+               (jupyter-send-inspect-request jupyter-current-client
+                 :code code :pos pos :detail detail))))
     (if msg
         (jupyter-with-message-content msg
             (status found)
@@ -1850,19 +1852,6 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
   "Return the execution state of CLIENT's kernel."
   (cl-check-type client jupyter-kernel-client)
   (oref client execution-state))
-
-(defun jupyter--set-execution-state (client msg)
-  "Set the execution-state slot of CLIENT.
-If MSG is a status message, set the execution-state slot of
-CLIENT to its execution state slot."
-  (prog1 nil ; Allow the handlers to run.
-    (and (eq (jupyter-message-type msg) :status)
-         (oset client execution-state
-               (jupyter-message-get msg :execution_state)))))
-
-;; Added as a hook as opposed to a :before method due to
-;; `jupyter-inhibit-handlers'.
-(add-hook 'jupyter-iopub-message-hook #'jupyter--set-execution-state)
 
 (cl-defgeneric jupyter-handle-status ((_client jupyter-kernel-client)
                                       _req
