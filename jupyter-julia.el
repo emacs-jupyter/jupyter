@@ -24,12 +24,21 @@
 
 ;;; Commentary:
 
-;;
+;; Support methods for integration with Julia.
 
 ;;; Code:
 
 (require 'jupyter-repl)
 (require 'julia-mode)
+
+(cl-defmethod jupyter-indent-line (&context (major-mode julia-mode))
+  "Call `julia-latexsub-or-indent'."
+  (call-interactively #'julia-latexsub-or-indent))
+
+(cl-defmethod jupyter-load-file-code (file &context (jupyter-lang julia))
+  (format "include(\"%s\");" file))
+
+;;; Completion
 
 (cl-defmethod jupyter-completion-prefix (&context (jupyter-lang julia))
   (let ((prefix (cl-call-next-method "\\\\\\|\\.\\|::" 2)))
@@ -51,6 +60,8 @@
         (insert (string-trim (get-text-property 0 'annot candidate))))
     (cl-call-next-method)))
 
+;;; `markdown-mode'
+
 (cl-defmethod jupyter-markdown-follow-link (link-text url _ref-label _title-text _bang
                                                       &context (jupyter-lang julia))
   "Send a help query to the Julia REPL for LINK-TEXT if URL is \"@ref\".
@@ -71,12 +82,7 @@ manual for <section>. Otherwise follow the link normally."
            (format "https://docs.julialang.org/en/latest/manual/%s/" section))))
     (cl-call-next-method)))
 
-(cl-defmethod jupyter-indent-line (&context (major-mode julia-mode))
-  "Call `julia-latexsub-or-indent'."
-  (call-interactively #'julia-latexsub-or-indent))
-
-(cl-defmethod jupyter-load-file-code (file &context (jupyter-lang julia))
-  (format "include(\"%s\");" file))
+;;; `jupyter-repl-after-change'
 
 (defvar ansi-color-names-vector)
 
@@ -91,6 +97,7 @@ Make the character after `point' invisible."
 
 (cl-defmethod jupyter-repl-after-change ((_type (eql insert)) beg _end
                                          &context (jupyter-lang julia))
+  "Change the REPL prompt when a REPL mode is entered."
   (when (= beg (jupyter-repl-cell-code-beginning-position))
     (save-excursion
       (goto-char beg)

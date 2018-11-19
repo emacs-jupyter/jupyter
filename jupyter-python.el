@@ -23,7 +23,7 @@
 
 ;;; Commentary:
 
-;;
+;; Support methods for integration with Python.
 
 ;;; Code:
 
