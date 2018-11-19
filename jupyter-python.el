@@ -77,6 +77,8 @@ buffer."
 (cl-defmethod jupyter-load-file-code (file &context (jupyter-lang python))
   (concat "%run " file))
 
+;;; `jupyter-org'
+
 (cl-defmethod jupyter-org-result ((_mime (eql :text/plain))
                                   &context (jupyter-lang python)
                                   &rest _)
@@ -85,6 +87,11 @@ buffer."
      ((stringp result)
       (org-babel-python-table-or-string result))
      (t result))))
+
+(cl-defmethod jupyter-org-error-location (&context (jupyter-lang python))
+  (and (or (save-excursion (re-search-forward "^----> \\([0-9]+\\)" nil t))
+           (re-search-forward "^[\t ]*File.+line \\([0-9]+\\)$" nil t))
+       (string-to-number (match-string 1))))
 
 (provide 'jupyter-python)
 

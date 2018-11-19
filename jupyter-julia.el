@@ -119,6 +119,14 @@ Make the character after `point' invisible."
   (when (= beg (jupyter-repl-cell-code-beginning-position))
     (jupyter-repl-cell-reset-prompt)))
 
+;;; `jupyter-org'
+
+(cl-defmethod jupyter-org-error-location (&context (jupyter-lang julia))
+  (when (and (re-search-forward "^Stacktrace:" nil t)
+             (re-search-forward
+              "top-level scope at In\\[[0-9]+\\]:\\([0-9]+\\)" nil t))
+    (string-to-number (match-string 1))))
+
 (provide 'jupyter-julia)
 
 ;;; jupyter-julia.el ends here

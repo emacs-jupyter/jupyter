@@ -113,18 +113,89 @@ source code block. Set by `org-babel-execute:jupyter'.")))
       (jupyter-org--clear-request-id req)
       (run-hooks 'org-babel-after-execute-hook))))
 
+;;; Errors
+
+(defvar jupyter-org-goto-error-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map [mouse-2] #'jupyter-org-goto-error)
+    (define-key map (kbd "RET") #'jupyter-org-goto-error)
+    map))
+
+(defun jupyter-org-goto-error ()
+  "Go to the error location specified by the jupyter-error-loc text property.
+If `point' has a non-nil jupyter-error-loc property, jump to that
+line in the previous source block. See
+`jupyter-org-error-location'."
+  (interactive)
+  (let ((loc (get-text-property (point) 'jupyter-error-loc)))
+    ;; TODO: Ensure we are at the right source block by storing the hash of the
+    ;; code as a text property using `org-babel-sha1-hash'. Then don't jump to
+    ;; the error if the hash doesn't match. Better yet, we could hash the line
+    ;; corresponding to the error and then scan the lines of the source block
+    ;; to find the right one if the original location doesn't match.
+    (when loc
+      (org-babel-previous-src-block)
+      (forward-line loc))))
+
+;;;; `jupyter-org-error-location'
+;; Inspiration from https://kitchingroup.cheme.cmu.edu/blog/2017/06/10/Adding-keymaps-to-src-blocks-via-org-font-lock-hook/
+;; TODO: Do something similar for `jupyter-inspect-at-point' using `jupyter-org-with-src-block-client'.
+
+(cl-defgeneric jupyter-org-error-location ()
+  "Return the line number corresponding to an error from a traceback.
+This method is called with `point' at `point-min' in a buffer
+containing the traceback of the last error that occurred due to
+execution of a source block. It should return the line number
+relative to the source block that caused the error or nil if a
+line number could not be found."
+  (ignore))
+
+(defun jupyter-org-goto-error-string (traceback)
+  "Return a propertized string with a jupyter-error-loc property.
+The property is obtained by calling `jupyter-org-error-location'
+in a buffer whose contents contain TRACEBACK."
+  (let ((loc
+         (with-temp-buffer
+           (insert traceback)
+           (goto-char (point-min))
+           (jupyter-org-error-location))))
+    (when loc
+      (unless (memq 'jupyter-org-add-error-keymap org-font-lock-hook)
+        (add-hook 'org-font-lock-hook 'jupyter-org-add-error-keymap nil t))
+      (propertize "[goto error]" 'jupyter-error-loc loc))))
+
+(defun jupyter-org-add-error-keymap (limit)
+  "Add keymaps to text that contain a jupyter-error-loc property.
+Search up to LIMIT from `point' for any text to add the keymap
+to."
+  (save-restriction
+    (save-restriction
+      (narrow-to-region (point) limit)
+      (goto-char (point-min))
+      (let ((pos (point)) end)
+        (while (setq pos (next-single-property-change pos 'jupyter-error-loc))
+          (when (get-text-property pos 'jupyter-error-loc)
+            (setq end (next-single-property-change pos 'jupyter-error-loc))
+            (put-text-property pos end 'keymap jupyter-org-goto-error-map)
+            (setq pos end)))))))
+
 (cl-defmethod jupyter-handle-error ((_client jupyter-org-client)
                                     (req jupyter-org-request)
                                     ename
                                     evalue
                                     traceback)
-  (jupyter-with-display-buffer "traceback" 'reset
-    (jupyter-insert-ansi-coded-text
-     (mapconcat #'identity traceback "\n"))
-    (goto-char (line-beginning-position))
-    (pop-to-buffer (current-buffer)))
-  (jupyter-org--add-result
-   req (jupyter-org-scalar (format "%s: %s" ename (ansi-color-apply evalue)))))
+  ;; (jupyter-with-display-buffer "traceback" 'reset
+  ;;   (jupyter-insert-ansi-coded-text
+  ;;    (mapconcat #'identity traceback "\n"))
+  ;;   (goto-char (line-beginning-position))
+  ;;   (pop-to-buffer (current-buffer)))
+  (setq traceback (org-element-normalize-string
+                   (ansi-color-apply (mapconcat #'identity traceback "\n"))))
+  (jupyter-org--add-result req traceback)
+  ;; (jupyter-org-scalar (format "%s: %s" ename (ansi-color-apply evalue)))
+  (let ((goto-error (jupyter-org-goto-error-string traceback)))
+    (when goto-error
+      (jupyter-org--add-result req (concat "# " goto-error "\n")))))
 
 (cl-defmethod jupyter-handle-execute-result ((_client jupyter-org-client)
                                              (req jupyter-org-request)
