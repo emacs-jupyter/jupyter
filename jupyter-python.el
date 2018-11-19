@@ -82,9 +82,8 @@ buffer."
                                   &rest _)
   (let ((result (cl-call-next-method)))
     (cond
-     ((and (equal (car result) "scalar")
-           (stringp (cdr result)))
-      (cons "scalar" (org-babel-python-table-or-string (cdr result))))
+     ((stringp result)
+      (org-babel-python-table-or-string result))
      (t result))))
 
 (provide 'jupyter-python)

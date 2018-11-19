@@ -223,6 +223,15 @@ Re-add the file parameters on the next call to
               (remove-hook 'org-babel-after-execute-hook #'reset t)))
           (add-hook 'org-babel-after-execute-hook #'reset nil t))))))
 
+(defun org-babel-jupyter--after-execute (old-hook _client req)
+  (advice-remove 'message #'ignore)
+  (unwind-protect
+      (org-with-point-at (jupyter-org-request-marker req)
+        (jupyter-org--append-result
+         req (jupyter-org-scalar (jupyter-org-request-id req))))
+    (setq org-babel-after-execute-hook old-hook)
+    (run-hooks 'org-babel-after-execute-hook)))
+
 (defun org-babel-execute:jupyter (body params)
   "Execute BODY according to PARAMS.
 BODY is the code to execute for the current Jupyter `:session' in
@@ -242,13 +251,12 @@ the PARAMS alist."
                 (oset client block-params params)
                 (jupyter-send-execute-request client :code code))))
     (cond
-     ((equal (alist-get :async params) "yes")
-      (org-babel-jupyter-clear-file-param req)
-      (concat (when (member "raw" (assq :result-params params)) ": ")
-              (jupyter-request-id req)))
+     ((or (equal (alist-get :async params) "yes")
+          (plist-member params :async))
+      (jupyter-org-insert-async-id req))
      (t
       (jupyter-wait-until-idle req most-positive-fixnum)
-      (jupyter-org-insert-sync-results client req)))))
+      (jupyter-org-insert-sync-results req)))))
 
 (defun org-babel-jupyter-make-language-alias (kernel lang)
   "Simimilar to `org-babel-make-language-alias' but for Jupyter src-blocks.
