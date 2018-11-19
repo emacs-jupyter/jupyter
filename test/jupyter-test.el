@@ -1070,10 +1070,6 @@ match."
      code "\n"
      "#+END_SRC")))
 
-(defmacro jupyter-org-test-insert-block (code &rest args)
-  (declare (indent 1))
-  `(insert (jupyter-org-test-make-block ,code ',args)))
-
 (defun jupyter-org-test-src-block-1 (code test-result &optional regexp args)
   (insert (jupyter-org-test-make-block code args))
   (let* ((info (org-babel-get-src-block-info))
@@ -1082,11 +1078,19 @@ match."
     (save-window-excursion
       (org-babel-execute-src-block nil info))
     (org-with-point-at (org-babel-where-is-src-block-result nil info)
-      (forward-line 1)
-      (let ((result (string-trim (buffer-substring-no-properties
-                                  (point) end))))
-        (if regexp (should (string-match-p test-result result))
-          (should (equal result test-result)))))))
+      (let ((drawer (org-element-at-point)))
+        ;; Handle empty results with just a RESULTS keyword
+        ;;
+        ;; #+RESULTS:
+        (if (eq (org-element-type drawer) 'keyword) ""
+          (should (eq (org-element-type drawer) 'drawer))
+          (should (equal (org-element-property :drawer-name drawer) "RESULTS"))
+          (let ((result (string-trim
+                         (buffer-substring-no-properties
+                          (org-element-property :contents-begin drawer)
+                          (org-element-property :contents-end drawer)))))
+            (if regexp (should (string-match-p test-result result))
+              (should (equal result test-result)))))))))
 
 (defvar org-babel-jupyter-resource-directory nil)
 
@@ -1187,12 +1191,12 @@ Image(filename='%s')" file)
   :tags '(org)
   (let ((req (jupyter-org-request)))
     (should (equal (jupyter-org-result req (list :text/plain "foo"))
-                   (cons "scalar" "foo")))
+                   '(fixed-width (:value "foo"))))
     (should (equal (jupyter-org-result req (list :text/html "foo"))
-                   (cons "html" "foo")))
+                   '(export-block (:type "html" :value "foo\n"))))
     ;; Calls `org-babel-script-escape' for scalar data
     (should (equal (jupyter-org-result req (list :text/plain "[1, 2, 3]"))
-                   (cons "scalar" '(1 2 3))))))
+                   "| 1 | 2 | 3 |\n"))))
 
 (ert-deftest jupyter-org-result-python ()
   :tags '(org)
@@ -1212,7 +1216,7 @@ Image(filename='%s')" file)
     ;; Bring in the python specific methods
     (jupyter-load-language-support jupyter-current-client)
     (should (equal (jupyter-org-result req (list :text/plain "[1, 2, 3]"))
-                   (cons "scalar" '(1 2 3))))
+                   "| 1 | 2 | 3 |\n"))
     (should py-method-called)))
 
 (ert-deftest jupyter-org-src-block-cache ()
