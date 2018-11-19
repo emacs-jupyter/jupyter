@@ -69,7 +69,7 @@ buffer."
           (when (re-search-forward "^Docstring:" nil t)
             (jupyter-fontify-region-according-to-mode
              #'rst-mode (1+ (point))
-             (or (and (re-search-forward "^File:" nil t)
+             (or (and (re-search-forward "^\\(File\\|Type\\):" nil t)
                       (line-beginning-position))
                  (point-max))))))
        (t nil)))))
