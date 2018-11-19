@@ -29,7 +29,8 @@
 ;;; Code:
 
 (require 'jupyter-repl)
-(require 'julia-mode)
+
+(declare-function julia-latexsub-or-indent "ext:julia-mode" (arg))
 
 (cl-defmethod jupyter-indent-line (&context (major-mode julia-mode))
   "Call `julia-latexsub-or-indent'."
