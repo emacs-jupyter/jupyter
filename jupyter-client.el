@@ -1158,9 +1158,16 @@ DETAIL is the detail level to use for the request and defaults to
                       (setq other-window-scroll-buffer (current-buffer))
                       (setq jupyter-current-client client)
                       (help-setup-xref
-                       (list (lambda ()
-                               (let ((jupyter-current-client client))
-                                 (jupyter-inspect code pos nil detail))))
+                       (list
+                        ;; We find the client based on session so that we don't
+                        ;; capture a reference to the client.
+                        (let ((session (jupyter-session-id (oref client session))))
+                          (lambda ()
+                            (let ((jupyter-current-client
+                                   (jupyter-find-client-for-session session)))
+                              (if jupyter-current-client
+                                  (jupyter-inspect code pos nil detail)
+                                (error "Client for session has been removed"))))))
                        nil)
                       (jupyter-insert msg)))))
             (message "Nothing found for %s"
