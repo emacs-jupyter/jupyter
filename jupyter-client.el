@@ -947,8 +947,7 @@ Methods that extend this generic function should
             (insert res)
             (goto-char (point-min))
             (display-buffer (current-buffer)))
-        (if (equal res "") (message "jupyter: eval done")
-          (message "%s" res))))))
+        (message "%s" res)))))
 
 (defun jupyter-eval (code &optional mime)
   "Send an execute request for CODE, wait for the execute result.
@@ -989,10 +988,15 @@ to the above explanation."
       :execute-reply
       (lambda (msg)
         (jupyter-with-message-content msg (status evalue)
-          (unless (equal status "ok")
+          (if (equal status "ok")
+              (unless had-result
+                (message "jupyter: eval done"))
             (message "%s" (ansi-color-apply evalue)))))
       :execute-result
-      (or (and (functionp cb) cb) #'jupyter--display-eval-result)
+      (or (and (functionp cb) cb)
+          (lambda (msg)
+            (setq had-result t)
+            (jupyter--display-eval-result msg)))
       :error
       (lambda (msg)
         (jupyter-with-message-content msg (traceback)
