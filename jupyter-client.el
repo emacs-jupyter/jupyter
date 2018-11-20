@@ -39,9 +39,7 @@
 
 (declare-function company-begin-backend "ext:company" (backend &optional callback))
 (declare-function company-doc-buffer "ext:company" (&optional string))
-(declare-function company-post-command "ext:company")
-(declare-function company-input-noop "ext:company")
-(declare-function company-auto-begin "ext:company")
+(declare-function company-idle-begin "ext:company")
 
 (declare-function yas-minor-mode "ext:yasnippet" (&optional arg))
 (declare-function yas-expand-snippet "ext:yasnippet" (content &optional start end expand-env))
@@ -1485,25 +1483,24 @@ Run FUN when the completions are available."
       (prog1 req
         (jupyter-add-callback req :complete-reply fun)))))
 
-(defvar jupyter-completion--company-timer nil)
 (defvar company-minimum-prefix-length)
+(defvar company-timer)
 
 (defun jupyter-completion--company-idle-begin ()
   "Trigger an idle completion."
-  (when jupyter-completion--company-timer
-    (cancel-timer jupyter-completion--company-timer))
-  (setq jupyter-completion--company-timer
+  (when company-timer
+    (cancel-timer company-timer))
+  (setq company-timer
         ;; NOTE: When we reach here `company-idle-delay' is `now' since
         ;; we are already inside a company completion so we can't use
         ;; it, just use a sensible time value instead.
-        (run-with-idle-timer
-         0.1 nil
-         (lambda ()
+        (run-with-timer
+         0.3 nil
+         (lambda (buf win tick pos)
            (let ((company-minimum-prefix-length 0))
-             (when (company-auto-begin)
-               (company-input-noop)
-               (let ((this-command 'company-idle-begin))
-                 (company-post-command))))))))
+             (company-idle-begin buf win tick pos)))
+         (current-buffer) (selected-window)
+         (buffer-chars-modified-tick) (point))))
 
 (defun jupyter-completion-at-point ()
   "Function to add to `completion-at-point-functions'."
