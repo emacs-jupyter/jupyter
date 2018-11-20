@@ -1211,32 +1211,35 @@ originating from `jupyter-completion-at-point' and
 
 The default methods return the `jupyter-line-or-region-context'.")
 
-(defun jupyter-line-context (&optional start)
-  "Return the code context of the current line.
-START is the buffer position considered as the start of the line
-and defaults to the `line-beginning-position'. See
-`jupyter-code-context' for the form of the returned list."
-  (or start (setq start (line-beginning-position)))
-  (let ((code (buffer-substring-no-properties start (line-end-position)))
-        (pos (1+ (- (point) start))))
+(defun jupyter-line-context ()
+  "Return the code context for the current line."
+  (jupyter-region-context (line-beginning-position) (line-end-position)))
+
+(defun jupyter-region-context (beg end)
+  "Return the code context between BEG and END.
+BEG and END are the bounds of the region of text for which to
+extract the context. It is an error if `point' is not within
+these bounds. See `jupyter-code-context' for the form of the
+returned list."
+  (unless (<= beg (point) end)
+    (error "Point not within bounds (%d %d)" beg end))
+  (let ((code (buffer-substring-no-properties beg end))
+        (pos (1+ (- (point) beg))))
     (list code (min pos (length code)))))
 
-(defun jupyter-line-or-region-context (&optional start)
+(defun jupyter-line-or-region-context ()
   "Return the code context of the region or line.
 If the region is active, return the active region context.
-Otherwise return the line context. START has the same meaning as
-in `jupyter-line-context' and is ignored if the region is active."
+Otherwise return the line context."
   (if (region-active-p)
-      (list (buffer-substring-no-properties (region-beginning) (region-end))
-            (min (- (region-end) (region-beginning))
-                 (1+ (- (point) (region-beginning)))))
-    (jupyter-line-context start)))
+      (jupyter-region-context (region-beginning) (region-end))
+    (jupyter-line-context)))
 
 (cl-defmethod jupyter-code-context ((_type (eql inspect)))
   (jupyter-line-or-region-context))
 
 (cl-defmethod jupyter-code-context ((_type (eql completion)))
-  (jupyter-line-or-region-context))
+  (jupyter-region-context (line-beginning-position) (point)))
 
 ;;;;; Helpers for completion interface
 
