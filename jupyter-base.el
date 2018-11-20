@@ -349,7 +349,7 @@ To access all the objects in TRACKING-SYMBOL, use
 (cl-defmethod initialize-instance ((obj jupyter-instance-tracker) &rest _)
   (cl-call-next-method)
   (let ((sym (oref obj tracking-symbol)))
-    (unless (hash-table-p (get sym 'jupyter-instance-tracker))
+    (unless (hash-table-p (symbol-value sym))
       (put sym 'jupyter-instance-tracker t)
       (set sym (make-hash-table :weakness 'key)))
     (puthash obj t (symbol-value sym))))
