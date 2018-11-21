@@ -105,6 +105,11 @@ source code block. Set by `org-babel-execute:jupyter'.")))
                                      (req jupyter-org-request)
                                      _name
                                      text)
+  ;; TODO: This is not good because there can be arbitrary output which may get
+  ;; recognized as org syntax. We need to wrap this into a an example block or
+  ;; scalar block. Probably an example block and then coalesce any output into
+  ;; a single example block when new output comes in and the last results in a
+  ;; drawer is an example block.
   (jupyter-org--add-result
    req (with-temp-buffer
          (jupyter-with-control-code-handling
