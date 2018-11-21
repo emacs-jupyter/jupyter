@@ -670,7 +670,7 @@ REQ is the `jupyter-request' to associate with the current cell."
     ;; spilling over to the rest of the buffer.
     (add-text-properties beg (point) '(read-only t font-lock-multiline t))
     ;; reset the undo list so that a completed cell doesn't get undone.
-    (setq buffer-undo-list '(nil))))
+    (setq buffer-undo-list '((t . 0)))))
 
 (defun jupyter-repl-replace-cell-code (new-code)
   "Replace the current cell code with NEW-CODE."
