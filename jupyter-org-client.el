@@ -43,6 +43,13 @@ See `jupyter-org-image-file-name'."
   :group 'ob-jupyter
   :type 'string)
 
+(defcustom jupyter-org-toggle-latex t
+  "Whether to automatically display latex fragments or not.
+If a source block returns LaTeX fragments, LaTeX images will
+automatically be shown if this is non-nil."
+  :group 'ob-jupyter
+  :type 'boolean)
+
 (defconst jupyter-org-mime-types '(:text/org
                                    ;; Prioritize images over html
                                    :image/svg+xml :image/jpeg :image/png
@@ -673,7 +680,21 @@ new \"scalar\" result with the result of calling
               (org-element-put-property context :post-blank nil))))))
       (when (= result-beg (point))
         (forward-line))
-      (insert (org-element-interpret-data result)))))
+      (insert (org-element-interpret-data result))
+      (when jupyter-org-toggle-latex
+        (forward-line -2)
+        (end-of-line)
+        (while (< result-beg (point))
+          (let ((delim-pos (org-inside-LaTeX-fragment-p)))
+            (if delim-pos
+                (cl-destructuring-bind (_delim . pos)
+                    delim-pos
+                  (goto-char pos)
+                  (let ((ov (car (overlays-at pos))))
+                    (unless (and ov (eq (overlay-get ov 'org-overlay-type)
+                                        'org-latex-overlay))
+                      (org-toggle-latex-fragment))))
+              (backward-word))))))))
 
 (defun jupyter-org--add-result (req result)
   "For REQ, add RESULT.
