@@ -368,8 +368,12 @@ image."
 TYPE has the same meaning as in `create-image'. METADATA is a
 plist containing :width and :height keys that will be used as the
 width and height of the image."
-  (cl-destructuring-bind (&key width height &allow-other-keys) metadata
-    (let ((img (create-image data type 'data :width width :height height)))
+  (cl-destructuring-bind (&key width height needs_background &allow-other-keys)
+      metadata
+    (let ((img (create-image
+                data type 'data :width width :height height
+                :mask (when needs_background
+                        '(heuristic t)))))
       (insert-image img))))
 
 ;;; Plain text
