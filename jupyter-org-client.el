@@ -104,15 +104,6 @@ source code block. Set by `org-babel-execute:jupyter'.")))
           (insert (ansi-color-apply text)))
          (buffer-string))))
 
-(cl-defmethod jupyter-handle-status ((_client jupyter-org-client)
-                                     (req jupyter-org-request)
-                                     execution-state)
-  (when (equal execution-state "idle")
-    (message "Code block evaluation complete.")
-    (when (jupyter-org-request-async req)
-      (jupyter-org--clear-request-id req)
-      (run-hooks 'org-babel-after-execute-hook))))
-
 ;;; Errors
 
 (defvar jupyter-org-goto-error-map
@@ -219,15 +210,21 @@ to."
   (jupyter-org--add-result req (jupyter-org-result req data metadata)))
 
 (cl-defmethod jupyter-handle-execute-reply ((client jupyter-org-client)
-                                            (_req jupyter-org-request)
-                                            _status
+                                            (req jupyter-org-request)
+                                            status
                                             execution-count
                                             _user-expressions
                                             payload)
   ;; TODO: Re-use the REPL's handler somehow?
   (oset client execution-count (1+ execution-count))
   (when payload
-    (jupyter-repl--handle-payload payload)))
+    (jupyter-repl--handle-payload payload))
+  (if (equal status "ok")
+      (message "Code block evaluation complete.")
+    (message "An error occurred when evaluating code block."))
+  (when (jupyter-org-request-async req)
+    (jupyter-org--clear-request-id req)
+    (run-hooks 'org-babel-after-execute-hook)))
 
 
 ;;; Completions in code blocks
