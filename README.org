@@ -2,26 +2,82 @@ An interface to communicate with Jupyter kernels in Emacs.
 
 [[https://travis-ci.com/dzop/emacs-jupyter][https://travis-ci.com/dzop/emacs-jupyter.svg?branch=master]]
 
-* Installation
+* What does this package do?
 
-If you would like to try this package out, in your Emacs configuration add
+This package provides an API for communicating with a Jupyter kernel via =zmq=
+sockets (http://github.com/dzop/emacs-zmq). It utilizes Emacs' object
+implementation, =eieio=, to define Jupyter client and kernel manager classes
+that can be sub-classed to provide support for any kind of Jupyter frontend
+which communicates directly with a kernel in Emacs. Currently, there is a
+built-in REPL frontend and =org-mode= source block frontend.
 
-#+BEGIN_SRC elisp
-(add-to-list 'load-path "<path>")
-(require 'jupyter)
+The base Jupyter client class tries to provide good default implementations for
+handling common message replies from a kernel that integrate well with Emacs'
+built-in features. For example sending an inspect request will display the
+inspect reply in the =*Help*= buffer and previous inspect requests can be
+revisited by calling =help-go-back= or =help=go-forward= in the =*Help*=
+buffer, making completion requests to a kernel is done through the
+=completion-at-point= interface, and if the kernel asks for input from the
+user, a prompt is displayed in the minibuffer. These are just a few of the ways
+that this package integrates with Emacs' built-in features.
+
+** Other features
+
+*** Support differences between kernel languages
+
+To take into account differences between kernel languages, there are many
+methods that can be extended to take into account these differences. This is
+achieved by providing a method specializer, =jupyter-lang=, that can be added
+to the =&context= section of a method definition. See
+=cl-generic-generalizers=.
+
+For example, the Python kernel sends =text/plain= data in its inspect replies,
+but most of the time the documentation requested is written using
+reStructuredText (rST) markup, the officially supported markup language for
+documentation strings in Python. In =emacs-jupyter= all insertion of messages
+into a buffer is handled by the =jupyter-insert= method. This method is
+extended to properly highlight rST when an inspect reply message is being
+inserted and the message is from a Python kernel.
+
+See the files =jupyter-python.el= and =jupyter-julia.el= for how these
+languages are integrated into the =emacs-jupyter= framework.
+
+* How do I install this package?
+
+At the moment, the easiest way to install this package is by using =cask=
+(https://github.com/cask/cask) to build a local package file to install in your
+Emacs. To do this, clone the repository, enter its directory, and run the
+following at the command line:
+
+#+BEGIN_SRC shell
+cask package
 #+END_SRC
 
-where =<path>= is the root directory for this project and all of the necessary
-decencies are available.
+This creates a file =dist/jupyter-0.6.0.tar= containing the package archive. To
+install it
 
-** Dependencies
+1. Start your Emacs normally
+2. Ensure MELPA is in your =package-archives=
+3. =M-x package-initialize=
+4. =M-x package-refresh-contents=
+5. =M-x package-install-file ~/path/to/jupyter/dist/jupyter-0.6.0.tar=
+
+** Manual installation
+
+For a manual installation you can add the repository directory to your
+=load-path= and ensure the following dependencies are installed:
 
 - markdown-mode (optional) :: https://jblevins.org/projects/markdown-mode/
 - company-mode (optional) :: http://company-mode.github.io/
 - emacs-websocket :: https://github.com/ahyatt/emacs-websocket
 - simple-httpd :: https://github.com/skeeto/emacs-web-server
 - zmq :: http://github.com/dzop/emacs-zmq
-*** Widget support (EXPERIMENTAL)
+
+#+BEGIN_SRC elisp
+(add-to-list 'load-path "~/path/to/jupyter")
+(require 'jupyter)
+#+END_SRC
+** Building the widget support (EXPERIMENTAL)
 :PROPERTIES:
 :ID:       59559FA3-59AD-453F-93E7-113B43F85493
 :END:
@@ -36,33 +92,40 @@ installed on your system to build the necessary javascript. Then you will have
 to run the following commands from the root project directory:
 
 #+BEGIN_SRC shell
-cd js
-npm install -g yarn
-npm install
-yarn run build --progress
-#+END_SRC
-** Using =cask=
-
-The easiest way to install this package and all of its dependencies is to use
-=cask= (https://github.com/cask/cask). Then in the top level directory of this
-package, run
-
-#+BEGIN_SRC shell
-make init
-make
-#+END_SRC
-
-and to update any dependencies in the future
-
-#+BEGIN_SRC shell
-cask update
-#+END_SRC
-
-to also build the experimental widget support
-
-#+BEGIN_SRC shell
 make widgets
 #+END_SRC
+* How does this package compare to other similar packages?
+
+There are two popular packages that implement similar functionality to this
+package
+
+- ob-ipython :: https://github.com/gregsexton/ob-ipython
+  - Interacts with a Jupyter kernel via =org-mode= source blocks.
+- emacs-ipython-notebook (ein) :: https://github.com/millejoh/emacs-ipython-notebook
+  - A Jupyter notebook interface in Emacs.
+
+=emacs-jupyter= extends the features of =ob-ipython= by integrating more with
+=org-mode= and providing a better REPL interface to the kernel. For example,
+=ob-ipython= currently does not provide a function for
+=org-babel-load-in-session=. =ob-ipython= also starts a new process for every
+inspect and completion request whereas =emacs-jupyter= starts one process for
+every new client connection and pushes all the message sending/receiving into
+the subprocess so that the parent Emacs session does not spend much time
+encoding/decoding JSON. Also =ob-ipython= relies on a Python script for
+communication between Emacs and a Jupyter kernel, whereas =emacs-jupyter= uses
+=zmq= sockets.
+
+=ein= is more of a full featured solution for a Jupyter notebook interface in
+Emacs and looks like a good solution if you want to work with Jupyter notebooks
+in Emacs. The goals of =emacs-jupyter= and =ein= are different. =ein= aims to
+be a frontend to the Jupyter notebook server API
+(https://github.com/jupyter/jupyter/wiki/Jupyter-Notebook-Server-API) which is
+an extra layer between the user and a kernel
+(https://jupyter.readthedocs.io/en/latest/architecture/how_jupyter_ipython_work.html#notebooks).
+The goal of =emacs-jupyter= is to directly connect to a kernel through =zmq=
+sockets. In the future, it would be nice to add some kind of notebook interface
+in =emacs-jupyter= or at least an efficient conversion process between notebook
+files and =org-mode=.
 * Jupyter REPL
 
 To start a new kernel on the =localhost= and connect a REPL client to it, run
@@ -154,7 +217,7 @@ simple uses of widgets. See [[id:B15FF43B-114C-4D73-B69C-2095F108EBBB][=jupyter-
 * Integration with =org-mode=
 
 For users of =org-mode=, integration with =org-babel= is provided through the
-=ob-jupyter= library. To enable Jupyter support for source code blocks add
+=ob-jupyter= library. To enable Jupyter support for source code blocks, add
 =jupyter= to =org-babel-load-languages=.
 
 #+BEGIN_SRC elisp
@@ -178,7 +241,7 @@ specified since all interaction with a kernel is through a REPL. For example,
 to interact with a =python= kernel you would create a new source block like so
 
 #+BEGIN_SRC org
-,#+BEGIN_SRC jupyter-python :session py
+,#+BEGIN_SRC jupy-python :session py
 x = 'foo'
 y = 'bar'
 x + ' ' + y
@@ -189,7 +252,7 @@ By default, source blocks are executed synchronously. To execute a source block
 asynchronously set the =:async= parameter to =yes=:
 
 #+BEGIN_SRC org
-,#+BEGIN_SRC jupyter-python :session py :async yes
+,#+BEGIN_SRC jupy-python :session py :async yes
 x = 'foo'
 y = 'bar'
 x + ' ' + y
@@ -202,7 +265,7 @@ kernel used for a language is the first kernelspec found by
 =:kernel= parameter:
 
 #+BEGIN_SRC org
-,#+BEGIN_SRC jupyter-python :session py :async yes :kernel python2
+,#+BEGIN_SRC jupy-python :session py :async yes :kernel python2
 x = 'foo'
 y = 'bar'
 x + ' ' + y
@@ -219,9 +282,9 @@ to change the default header arguments of the =julia= kernel, you can set
 =org-babel-default-header-args:jupy-julia= to something like
 
 #+BEGIN_SRC elisp
-(setq org-babel-default-header-args:jupyter-julia '((:async . "yes")
-                                                    (:session . "jl")
-                                                    (:kernel . "julia-1.0")))
+(setq org-babel-default-header-args:jupy-julia '((:async . "yes")
+                                                 (:session . "jl")
+                                                 (:kernel . "julia-1.0")))
 #+END_SRC
 ** Rich kernel output
 
@@ -1008,22 +1071,3 @@ For a kernel language to extend the behavior of how results are inserted, the
 =jupyter-org-result= and if the returned result is still expected to be plain
 text, calls =org-babel-python-table-org-string= to convert any results that
 look like Python arrays into =org-mode= tables before returning its results.
-* See also
-
-- ob-ipython :: https://github.com/gregsexton/ob-ipython
-- emacs-ipython-notebook :: https://github.com/millejoh/emacs-ipython-notebook
-
-There are a few other packages similar to this one, the most notable one being
-=ob-ipython=. I originally started out using this package, but was having
-trouble getting it to work with some languages and I could never get completion
-working consistently.
-
-There is also =ein= which aims to be a fully integrated notebook environment in
-Emacs with many features. I have not tried out this package yet, but looks like
-a good solution for a complete notebook experience.
-
-The current package differs from those above in that it aims to be a Jupyter
-client API in Emacs to make it easy to build any type of frontend for
-communicating with a kernel. In addition to serving as useful tools in their
-own right, the included REPL client and =org-mode= client are examples of how
-the API can be used.
