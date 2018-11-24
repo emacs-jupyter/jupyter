@@ -622,6 +622,36 @@ new \"scalar\" result with the result of calling
       (forward-line (- post))
       (line-beginning-position))))
 
+(defun jupyter-org--wrap-result-maybe (context result)
+  "Depending on CONTEXT, wrap RESULT in a drawer."
+  ;; If CONTEXT is a keyword, then it is the #+RESULTS: line which means RESULT
+  ;; is the first result being inserted.
+  (let ((first-result (eq (org-element-type context) 'keyword)))
+    (if first-result
+        (if (or (and (stringp result)
+                     ;; Org tables are returned as strings by this time. So we need
+                     ;; something to distinguish them from regular strings. See
+                     ;; `jupyter-org-scalar'.
+                     (get-text-property 0 'org-table result))
+                (memq (org-element-type result)
+                      '(example-block
+                        export-block fixed-width item
+                        plain-list src-block table)))
+            ;; No need to wrap result types that can be recognized by
+            ;; `org-babel-remove-result'
+            result
+          (jupyter-org-results-drawer result))
+      ;; If this is not the first result, then it is a result that is being
+      ;; appended to the current results. This means CONTEXT was the first
+      ;; result and we need to wrap both CONTEXT and RESULT in a drawer.
+      (prog1 (jupyter-org-results-drawer context result)
+        ;; Ensure that a #+RESULTS: line is not prepended to context when
+        ;; calling `org-element-interpret-data'
+        (org-element-put-property context :results nil)
+        ;; Ensure there is no post-blank since
+        ;; `org-element-interpret-data' already normalizes the string
+        (org-element-put-property context :post-blank nil)))))
+
 (defun jupyter-org--append-result (req result)
   (org-with-point-at (jupyter-org-request-marker req)
     (let ((result-beg (org-babel-where-is-src-block-result 'insert))
@@ -629,61 +659,24 @@ new \"scalar\" result with the result of calling
       (goto-char result-beg)
       (unless (jupyter-org-request-id-cleared-p req)
         (jupyter-org--clear-request-id req))
-      (if (org-at-drawer-p)
-          (let* ((el (org-element-at-point))
-                 (content-end (org-element-property :contents-end el))
-                 (pos (or content-end
-                          (jupyter-org--element-end-preserve-blanks el))))
-            (goto-char pos))
-        ;; Only wrap the result in a drawer when its a string that would be
-        ;; hard for `org' to remove when replacing the results or if the result
-        ;; is the first result. If there is already a result, remove it and
-        ;; place it as the first item in a drawer and the current result being
-        ;; inserted as the second. Then insert the drawer.
-        (let* ((context (org-element-context))
-               (first-result (eq (org-element-type context) 'keyword)))
-          (cond
-           ((and
-             first-result
-             ;; When this is the first result, distinguished by there only
-             ;; being a #+RESULTS keyword line, then results are wrapped in a
-             ;; drawer only if: (1) The results are a string, but not a string
-             ;; representing an org table or (2) The results cannot be removed
-             ;; by `org-babel-remove-result'.
-             (if (stringp result)
-                 ;; Org tables are returned as strings by this time. So we need
-                 ;; something to distinguish them from regular strings. See
-                 ;; `jupyter-org-scalar'.
-                 (get-text-property 0 'org-table result)
-               (memq (org-element-type result)
-                     ;; No need to wrap these types in a drawer since
-                     ;; `org-babel-remove-result' will be able to remove
-                     ;; them. Everything else we will have to.
-                     '(example-block
-                       export-block fixed-width item
-                       plain-list src-block table)))))
-           (t
-            (and (stringp result) (setq result (org-element-normalize-string result)))
-            (if first-result
-                ;; If this is the first result and it is not able to be placed
-                ;; in the buffer without being wrapped in a drawer, wrap it.
-                (setq result (jupyter-org-results-drawer result))
-              ;; Otherwise there already exists a result in the buffer that
-              ;; needs to be wrapped along with the new result.
-              (setq result (jupyter-org-results-drawer context result))
-              ;; Remove these properties since `org-element-interpret-data'
-              ;; uses them?
+      (let ((context (org-element-context)))
+        (if (eq (org-element-type context) 'drawer)
+            (let* ((content-end (org-element-property :contents-end context))
+                   (pos (or content-end
+                            (jupyter-org--element-end-preserve-blanks context))))
+              (goto-char pos))
+          (let ((new-result (jupyter-org--wrap-result-maybe context result)))
+            (unless (or (eq result new-result)
+                        ;; If the context is the #+RESULTS: keyword don't
+                        ;; remove it
+                        (eq (org-element-type context) 'keyword))
               ;; :post-affiliated is used here as opposed to :begin so that we
               ;; don't remove the #+RESULTS line which is an affiliated keyword
               (delete-region (org-element-property :post-affiliated context)
-                             (jupyter-org--element-end-preserve-blanks context))
-              ;; Ensure that a #+RESULTS: line is not prepended to context when
-              ;; calling `org-element-interpret-data'
-              (org-element-put-property context :results nil)
-              ;; Ensure there is no post-blank since
-              ;; `org-element-interpret-data' already normalizes the string
-              (org-element-put-property context :post-blank nil))))))
+                             (jupyter-org--element-end-preserve-blanks context)))
+            (setq result new-result))))
       (when (= result-beg (point))
+        ;; Insert the results after the #+RESULTS: line
         (forward-line))
       (insert (org-element-interpret-data result))
       (when jupyter-org-toggle-latex
