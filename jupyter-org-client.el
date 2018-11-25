@@ -564,28 +564,45 @@ As an example, if DATA only contains the mimetype
                                   &optional _metadata)
   (jupyter-org-export-block "markdown" data))
 
+(defun jupyter-org--parse-latex-element (data)
+  "Return a latex-fragment or latex-environment org-element obtained from DATA.
+DATA is inserted into a temporary buffer and an org-element latex
+fragment or environment is parsed and returned. If neither can be
+parsed, wrap DATA in a minipage environment and return it.
+
+The actual return value is a two element list whose first element
+is the org-element and whose second element is a newline
+character. This is so that a newline is guaranteed to be inserted
+after the `org-element' when converting to its text
+representation by `org-element-interpret-data'. See
+`jupyter-org--append-result'."
+  (with-temp-buffer
+    (insert data)
+    (goto-char (point-min))
+    ;; Try to determine if we are in an environment or fragment
+    (list
+     (if (save-excursion
+           (forward-char 2)
+           (org-inside-LaTeX-fragment-p))
+         (org-element-latex-fragment-parser)
+       ;; If we are not in a fragment, try to parse an environment
+       (let ((env (ignore-errors
+                    (org-element-latex-environment-parser
+                     (point-max) nil))))
+         (if (eq (org-element-type env) 'latex-environment) env
+           ;; If all else fails, wrap DATA in a minipage
+           ;; environment
+           (jupyter-org-latex-environment
+            (concat "\
+\\begin{minipage}{\\textwidth}
+\\begin{flushright}\n" data "\n\\end{flushright}
+\\end{minipage}")))))
+     "\n")))
+
 (cl-defmethod jupyter-org-result ((_mime (eql :text/latex)) params data
                                   &optional _metadata)
   (if (member "raw" (alist-get :result-params params))
-      (with-temp-buffer
-        (insert data)
-        (goto-char (point-min))
-        ;; Try to determine if we are in an environment or fragment
-        (if (save-excursion
-              (forward-char 2)
-              (org-inside-LaTeX-fragment-p))
-            (org-element-latex-fragment-parser)
-          ;; If we are not in a fragment, try to parse an environment
-          (let ((env (ignore-errors
-                       (org-element-latex-environment-parser
-                        (point-max) nil))))
-            (if (eq (org-element-type env) 'latex-environment) env
-              ;; If all else fails, wrap DATA in a minipage environment
-              (jupyter-org-latex-environment
-               (concat "\
-\\begin{minipage}{\\textwidth}
-\\begin{flushright}\n" data "\n\\end{flushright}
-\\end{minipage}\n"))))))
+      (jupyter-org--parse-latex-element data)
     (jupyter-org-export-block "latex" data)))
 
 (cl-defmethod jupyter-org-result ((_mime (eql :text/html)) _params data
@@ -659,6 +676,20 @@ new \"scalar\" result with the result of calling
         ;; `org-element-interpret-data' already normalizes the string
         (org-element-put-property context :post-blank nil)))))
 
+(defun jupyter-org--display-latex (limit)
+  "Show inline latex fragments between LIMIT and `point'."
+  (while (< limit (point))
+    (let ((delim-pos (org-inside-LaTeX-fragment-p)))
+      (when delim-pos
+        (cl-destructuring-bind (_delim . pos)
+            delim-pos
+          (goto-char pos)
+          (let ((ov (car (overlays-at pos))))
+            (unless (and ov (eq (overlay-get ov 'org-overlay-type)
+                                'org-latex-overlay))
+              (org-toggle-latex-fragment)))))
+      (backward-word))))
+
 (defun jupyter-org--append-result (req result)
   (org-with-point-at (jupyter-org-request-marker req)
     (let ((result-beg (org-babel-where-is-src-block-result 'insert))
@@ -681,25 +712,15 @@ new \"scalar\" result with the result of calling
               ;; don't remove the #+RESULTS line which is an affiliated keyword
               (delete-region (org-element-property :post-affiliated context)
                              (jupyter-org--element-end-preserve-blanks context)))
-            (setq result new-result))))
-      (when (= result-beg (point))
-        ;; Insert the results after the #+RESULTS: line
-        (forward-line))
-      (insert (org-element-interpret-data result))
-      (when jupyter-org-toggle-latex
-        (forward-line -2)
-        (end-of-line)
-        (while (< result-beg (point))
-          (let ((delim-pos (org-inside-LaTeX-fragment-p)))
-            (if delim-pos
-                (cl-destructuring-bind (_delim . pos)
-                    delim-pos
-                  (goto-char pos)
-                  (let ((ov (car (overlays-at pos))))
-                    (unless (and ov (eq (overlay-get ov 'org-overlay-type)
-                                        'org-latex-overlay))
-                      (org-toggle-latex-fragment))))
-              (backward-word))))))))
+            (setq result new-result))
+          ;; Insert the results after the #+RESULTS: line
+          (forward-line)))
+      (let ((limit (point)))
+        (insert (if (stringp result)
+                    (org-element-normalize-string result)
+                  (org-element-interpret-data result)))
+        (when jupyter-org-toggle-latex
+          (jupyter-org--display-latex limit))))))
 
 (defun jupyter-org--add-result (req result)
   "For REQ, add RESULT.
