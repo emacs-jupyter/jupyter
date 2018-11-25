@@ -75,13 +75,6 @@ source code block. Set by `org-babel-execute:jupyter'.")))
   marker
   async)
 
-;;; Predicates
-
-(defun jupyter-org-file-header-arg-p (req)
-  "Determine if the source block of REQ specifies a file header argument."
-  (let ((params (jupyter-org-request-block-params req)))
-    (member "file" (assq :result-params params))))
-
 ;;; `jupyter-kernel-client' interface
 
 (cl-defmethod jupyter-generate-request ((client jupyter-org-client) _msg

@@ -203,26 +203,6 @@ parameter will be used."
     (if buffer (pop-to-buffer buffer)
       (user-error "No source block at point"))))
 
-(defun org-babel-jupyter-clear-file-param (req)
-  "Destructively remove the file result parameters of REQ.
-Re-add the file parameters on the next call to
-`org-babel-after-execute-hook'."
-  (when (jupyter-org-file-header-arg-p req)
-    (let* ((params (jupyter-org-request-block-params req))
-           (result-params (assq :result-params params))
-           (fresult (member "file" result-params))
-           (fparam (assq :file params)))
-      (unless (jupyter-org-request-silent req)
-        (setcar fresult "scalar")
-        (delq fparam params)
-        (cl-labels
-            ((reset
-              ()
-              (setcar fresult "file")
-              (when fparam (nconc params (list fparam)))
-              (remove-hook 'org-babel-after-execute-hook #'reset t)))
-          (add-hook 'org-babel-after-execute-hook #'reset nil t))))))
-
 (defun org-babel-jupyter--after-execute (old-hook _client req)
   (advice-remove 'message #'ignore)
   (unwind-protect
