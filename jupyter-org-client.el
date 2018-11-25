@@ -568,14 +568,21 @@ As an example, if DATA only contains the mimetype
                                   &optional _metadata)
   (if (member "raw" (alist-get :result-params params))
       (with-temp-buffer
-        (save-excursion (insert data))
-        (or (save-excursion (org-element-latex-fragment-parser))
-            (let ((env (ignore-errors
-                         (org-element-latex-environment-parser
-                          (point-max) nil))))
-              (if (eq (org-element-type env) 'latex-environment) env
-                (jupyter-org-latex-environment
-                 (concat "\
+        (insert data)
+        (goto-char (point-min))
+        ;; Try to determine if we are in an environment or fragment
+        (if (save-excursion
+              (forward-char 2)
+              (org-inside-LaTeX-fragment-p))
+            (org-element-latex-fragment-parser)
+          ;; If we are not in a fragment, try to parse an environment
+          (let ((env (ignore-errors
+                       (org-element-latex-environment-parser
+                        (point-max) nil))))
+            (if (eq (org-element-type env) 'latex-environment) env
+              ;; If all else fails, wrap DATA in a minipage environment
+              (jupyter-org-latex-environment
+               (concat "\
 \\begin{minipage}{\\textwidth}
 \\begin{flushright}\n" data "\n\\end{flushright}
 \\end{minipage}\n"))))))
