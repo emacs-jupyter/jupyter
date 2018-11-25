@@ -1047,9 +1047,15 @@ last element being the newest element added to the history."
 (defmacro jupyter-org-test-src-block (block expected-result &rest args)
   "Test source code BLOCK.
 EXPECTED-RESULT is a string that the source block's results
-should match. If REGEXP is non-nil, EXPECTED-RESULT is a regular
-expression to match against the results instead of an equality
-match."
+should match. ARGS is a plist of header arguments to be set for
+the source code block. For example if ARGS is (:results \"raw\")
+then the source code block will begin like
+
+    #+BEGIN_SRC jupy-python :results raw ...
+
+Note if ARGS contains a key, regexp, then if regexp is non-nil,
+EXPECTED-RESULT is a regular expression to match against the
+results instead of an equality match."
   (let (regexp)
     (setq args
           (cl-loop for (arg val) on args by #'cddr
@@ -1083,12 +1089,14 @@ match."
         ;;
         ;; #+RESULTS:
         (if (eq (org-element-type drawer) 'keyword) ""
-          (should (eq (org-element-type drawer) 'drawer))
-          (should (equal (org-element-property :drawer-name drawer) "RESULTS"))
           (let ((result (string-trim
-                         (buffer-substring-no-properties
-                          (org-element-property :contents-begin drawer)
-                          (org-element-property :contents-end drawer)))))
+                         (if (eq (org-element-type drawer) 'drawer)
+                             (buffer-substring-no-properties
+                              (org-element-property :contents-begin drawer)
+                              (org-element-property :contents-end drawer))
+                           (buffer-substring-no-properties
+                            (org-element-property :post-affiliated drawer)
+                            (org-element-property :end drawer))))))
             (if regexp (should (string-match-p test-result result))
               (should (equal result test-result)))))))))
 
@@ -1152,7 +1160,10 @@ Latex(r'$\\alpha$')"
   :tags '(org)
   (jupyter-org-test-src-block
    "from IPython."
-   ": SyntaxError:.*"
+   "\
+    from IPython.
+                 ^
+SyntaxError: invalid syntax"
    :regexp t))
 
 (ert-deftest ob-jupyter-image-results ()
@@ -1163,12 +1174,12 @@ Latex(r'$\\alpha$')"
          (file (expand-file-name "jupyter.png"))
          (py-version
           (with-current-buffer jupyter-org-test-buffer
-            (jupyter-test-kernel-version
+            (jupyter-test-ipython-kernel-version
              (oref (oref jupyter-current-client manager) spec))))
-         ;; Implementation details of binascii.b2a_base64 (what
-         ;; IPython uses to encode images) have changed after
-         ;; python 3.6 it seems.
-         (line-breaks (version< py-version "3.6"))
+         ;; There is a change in how the IPython kernel prints base64 encoded
+         ;; images somewhere between [4.6.1, 5.1]. In 5.1, base64 encoded
+         ;; images are printed with line breaks whereas in 4.6.1 they are not.
+         (line-breaks (version< "4.6.1" py-version))
          (data (let ((buffer-file-coding-system 'binary))
                  (with-temp-buffer
                    (set-buffer-multibyte nil)
@@ -1221,7 +1232,7 @@ Image(filename='%s')" file)
 
 (ert-deftest jupyter-org-src-block-cache ()
   :tags '(org)
-  (let (jupyter-org-src-block-cache)
+  (let (jupyter-org--src-block-cache)
     (jupyter-org-test
      (insert
       "#+BEGIN_SRC jupy-python :session " jupyter-org-test-session "\n"
@@ -1232,13 +1243,13 @@ Image(filename='%s')" file)
      (goto-char (point-min))
      (forward-line)
      (end-of-line)
-     (should-not jupyter-org-src-block-cache)
+     (should-not jupyter-org--src-block-cache)
      (should-not (jupyter-org--same-src-block-p))
      (jupyter-org--set-current-src-block)
-     (should jupyter-org-src-block-cache)
+     (should jupyter-org--src-block-cache)
      (should (jupyter-org--same-src-block-p))
      (cl-destructuring-bind (params beg end)
-         jupyter-org-src-block-cache
+         jupyter-org--src-block-cache
        (should (equal (alist-get :session params) jupyter-org-test-session))
        (should (= beg (line-beginning-position)))
        (should (= end (line-beginning-position 2))))
@@ -1250,7 +1261,7 @@ Image(filename='%s')" file)
        ;; new source block text
        ;; |#+END_SRC
        (cl-destructuring-bind (params beg end)
-           jupyter-org-src-block-cache
+           jupyter-org--src-block-cache
          (should (equal (alist-get :session params) jupyter-org-test-session))
          (should (= beg (line-beginning-position -1)))
          (should (= end (line-beginning-position))))))))
