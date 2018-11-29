@@ -958,8 +958,9 @@ text/plain representation."
   (cl-check-type jupyter-current-client jupyter-kernel-client
                  "Need a client to evaluate code")
   (let ((msg (jupyter-wait-until-received :execute-result
-               (jupyter-send-execute-request jupyter-current-client
-                 :code code :store-history nil))))
+               (let ((jupyter-inhibit-handlers t))
+                 (jupyter-send-execute-request jupyter-current-client
+                   :code code :store-history nil)))))
     (when msg
       (jupyter-message-data msg (or mime :text/plain)))))
 
