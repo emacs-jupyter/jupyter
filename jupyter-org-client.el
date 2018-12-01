@@ -94,6 +94,10 @@ source code block. Set by `org-babel-execute:jupyter'.")))
                                     (req jupyter-org-request))
   (set-marker (jupyter-org-request-marker req) nil))
 
+;;; Handlers
+
+;;;; Stream
+
 (cl-defmethod jupyter-handle-stream ((_client jupyter-org-client)
                                      (req jupyter-org-request)
                                      _name
@@ -109,7 +113,7 @@ source code block. Set by `org-babel-execute:jupyter'.")))
           (insert (ansi-color-apply text)))
          (buffer-string))))
 
-;;; Errors
+;;;; Errors
 
 (defvar jupyter-org-goto-error-map
   (let ((map (make-sparse-keymap)))
@@ -133,7 +137,7 @@ line in the previous source block. See
       (org-babel-previous-src-block)
       (forward-line loc))))
 
-;;;; `jupyter-org-error-location'
+;;;;; `jupyter-org-error-location'
 ;; Inspiration from https://kitchingroup.cheme.cmu.edu/blog/2017/06/10/Adding-keymaps-to-src-blocks-via-org-font-lock-hook/
 ;; TODO: Do something similar for `jupyter-inspect-at-point' using `jupyter-org-with-src-block-client'.
 
@@ -175,6 +179,8 @@ to."
             (put-text-property pos end 'keymap jupyter-org-goto-error-map)
             (setq pos end)))))))
 
+;;;;; Error handler
+
 (cl-defmethod jupyter-handle-error ((_client jupyter-org-client)
                                     (req jupyter-org-request)
                                     ename
@@ -193,6 +199,8 @@ to."
     (when goto-error
       (jupyter-org--add-result req (concat "# " goto-error "\n")))))
 
+;;;; Execute result
+
 (cl-defmethod jupyter-handle-execute-result ((_client jupyter-org-client)
                                              (req jupyter-org-request)
                                              _execution-count
@@ -201,6 +209,8 @@ to."
   (unless (eq (jupyter-org-request-result-type req) 'output)
     (jupyter-org--add-result
      req (jupyter-org-result req data metadata))))
+
+;;;; Display data
 
 (cl-defmethod jupyter-handle-display-data ((_client jupyter-org-client)
                                            (req jupyter-org-request)
@@ -213,6 +223,8 @@ to."
                                            ;; ID?
                                            _transient)
   (jupyter-org--add-result req (jupyter-org-result req data metadata)))
+
+;;;; Execute reply
 
 (cl-defmethod jupyter-handle-execute-reply ((client jupyter-org-client)
                                             (req jupyter-org-request)
@@ -230,7 +242,6 @@ to."
   (when (jupyter-org-request-async req)
     (jupyter-org--clear-request-id req)
     (run-hooks 'org-babel-after-execute-hook)))
-
 
 ;;; Completions in code blocks
 
@@ -440,6 +451,8 @@ returned drawer has a name of \"RESULTS\"."
          results))
 
 ;;; Inserting results
+
+;;;; `jupyter-org-result'
 
 (defun jupyter-org-image-file-name (data ext)
   "Return a file name based on DATA and EXT.
