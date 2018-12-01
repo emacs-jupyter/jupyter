@@ -160,7 +160,7 @@
 (defun jupyter-test-display-id-all (id beg end)
   (not (text-property-not-all beg end 'jupyter-display id)))
 
-(ert-deftest juptyer-insert-with-ids ()
+(ert-deftest jupyter-insert-with-ids ()
   :tags '(mime display-id)
   (with-temp-buffer
     (let ((id "1")
@@ -1084,6 +1084,9 @@ results instead of an equality match."
     (save-window-excursion
       (org-babel-execute-src-block nil info))
     (org-with-point-at (org-babel-where-is-src-block-result nil info)
+      (when (equal (alist-get :async args) "yes")
+        (jupyter-wait-until-idle
+         (ring-ref (oref jupyter-current-client pending-requests) 0)))
       (let ((drawer (org-element-at-point)))
         ;; Handle empty results with just a RESULTS keyword
         ;;
@@ -1161,9 +1164,9 @@ Latex(r'$\\alpha$')"
   (jupyter-org-test-src-block
    "from IPython."
    "\
-    from IPython.
-                 ^
-SyntaxError: invalid syntax"
+:     from IPython.
+:                  ^
+: SyntaxError: invalid syntax"
    :regexp t))
 
 (ert-deftest ob-jupyter-image-results ()
@@ -1300,6 +1303,161 @@ Image(filename='%s')" file)
      (should-not (jupyter-org-when-in-src-block t))
      (forward-line)
      (should-not (jupyter-org-when-in-src-block t)))))
+
+(ert-deftest jupyter-org--stream-context-p ()
+  :tags '(org)
+  (with-temp-buffer
+    (org-mode)
+    (dolist
+        (res '(("\
+#+RESULTS:
+:RESULTS:
+: Foo
+:END:" . 27)
+               ("\
+#+RESULTS:
+: Foo
+" . 17)
+               ("\
+#+RESULTS:
+#+BEGIN_EXAMPLE
+Foo
+#+END_EXAMPLE
+" . 31)
+               ("\
+#+RESULTS:
+:RESULTS:
+#+BEGIN_EXAMPLE
+Foo
+#+END_EXAMPLE
+:END:
+" . 41)
+               ("\
+#+RESULTS:
+file:foo
+" . nil)))
+      (insert (car res))
+      (if (cdr res)
+          (should (= (jupyter-org--stream-context-p (org-element-at-point)) (cdr res)))
+        (should-not (jupyter-org--stream-context-p (org-element-at-point))))
+      (erase-buffer))))
+
+(ert-deftest jupyter-org-coalesce-stream-results ()
+  :tags '(org)
+  (ert-info ("Synchronous")
+    (jupyter-org-test-src-block
+     "\
+print(\"foo\")
+print(\"foo\", flush=True)
+print(\"foo\")"
+     "\
+: foo
+: foo
+: foo"))
+  (ert-info ("Asynchronous")
+    (ert-info ("Newline after first stream message")
+      (jupyter-org-test-src-block
+       "\
+print(\"foo\")
+print(\"foo\", flush=True)
+print(\"foo\")"
+       "\
+: foo
+: foo
+: foo"
+       :async "yes")
+      (jupyter-org-test-src-block
+       "\
+print(\"foo\", flush=True)
+print(\"foo\", end=\"\", flush=True)
+print(\"foo\")"
+       "\
+: foo
+: foofoo")
+      :async "yes")
+    (ert-info ("No newline after first stream message")
+      (jupyter-org-test-src-block
+       "\
+print(\"foo\")
+print(\"foo\", end=\"\", flush=True)
+print(\"bar\")"
+       "\
+: foo
+: foobar"
+       :async "yes"))
+    (ert-info ("Multiple newlines in appended stream message")
+      (ert-info ("Newline after first stream message")
+        (jupyter-org-test-src-block
+         "\
+print(\"foo\")
+print(\"foo\", flush=True)
+print(\"bar\\nqux\")"
+         "\
+: foo
+: foo
+: bar
+: qux"
+         :async "yes"))
+      (ert-info ("No newline after first stream message")
+        (jupyter-org-test-src-block
+         "\
+print(\"foo\")
+print(\"foo\", end=\"\", flush=True)
+print(\"bar\\nqux\")"
+         "\
+: foo
+: foobar
+: qux"
+         :async "yes")))
+    (ert-info ("fixed-width to example-block promotion")
+      (let ((org-babel-min-lines-for-block-output 2))
+        (jupyter-org-test-src-block "print(\"z\")" ": z")
+        (jupyter-org-test-src-block
+         "\
+print(\"z\", flush=True)
+print(\"z\")"
+         "\
+#+BEGIN_EXAMPLE
+z
+z
+#+END_EXAMPLE"
+         :async "yes")
+        (ert-info ("Appending after block promotion")
+          (jupyter-org-test-src-block
+           "\
+print(\"z\", flush=True)
+print(\"z\", flush=True)
+print(\"z\")"
+           "\
+#+BEGIN_EXAMPLE
+z
+z
+z
+#+END_EXAMPLE"
+           :async "yes"))
+        (ert-info ("Append to block with newline after first stream message")
+          (jupyter-org-test-src-block
+           "\
+print(\"z\\nz\", flush=True)
+print(\"z\")"
+           "\
+#+BEGIN_EXAMPLE
+z
+z
+z
+#+END_EXAMPLE"
+           :async "yes"))
+        (ert-info ("Append to block without newline after first stream message")
+          (jupyter-org-test-src-block
+           "\
+print(\"z\\nz\", end=\"\", flush=True)
+print(\"z\")"
+           "\
+#+BEGIN_EXAMPLE
+z
+zz
+#+END_EXAMPLE"
+           :async "yes"))))))
 
 ;; Local Variables:
 ;; byte-compile-warnings: (not free-vars)
