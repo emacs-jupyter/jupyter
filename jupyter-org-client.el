@@ -193,11 +193,11 @@ to."
   ;;   (pop-to-buffer (current-buffer)))
   (setq traceback (org-element-normalize-string
                    (ansi-color-apply (mapconcat #'identity traceback "\n"))))
-  (jupyter-org--add-result req traceback)
-  ;; (jupyter-org-scalar (format "%s: %s" ename (ansi-color-apply evalue)))
   (let ((goto-error (jupyter-org-goto-error-string traceback)))
     (when goto-error
-      (jupyter-org--add-result req (concat "# " goto-error "\n")))))
+      (jupyter-org--add-result req (jupyter-org-comment goto-error))))
+  ;; (jupyter-org-scalar (format "%s: %s" ename (ansi-color-apply evalue)))
+  (jupyter-org--add-result req traceback))
 
 ;;;; Execute result
 
@@ -343,6 +343,10 @@ the `syntax-table' will be set to that of the REPL buffers."
 (add-hook 'org-mode-hook 'jupyter-org-enable-completion)
 
 ;;; Constructing org syntax trees
+
+(defun jupyter-org-comment (value)
+  "Return a comment `org-element' with VALUE."
+  (list 'comment (list :value value)))
 
 (defun jupyter-org-export-block (type value)
   "Return an export-block `org-element'.
