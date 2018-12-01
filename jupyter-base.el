@@ -176,16 +176,15 @@ A longer timeout is needed, for example, when retrieving the
 
 (defmacro jupyter-with-timeout (spec &rest wait-forms)
   "Periodically evaluate WAIT-FORMS until timeout.
-Or until WAIT-FORMS evaluates to a non-nil.
+Or until WAIT-FORMS evaluates to a non-nil value.
 
 Wait until timeout SECONDS, periodically evaluating WAIT-FORMS
 until it returns non-nil. If WAIT-FORMS returns non-nil, stop
 waiting and return its value. Otherwise if timeout SECONDS
 elapses, evaluate TIMEOUT-FORMS and return its value.
 
-If PROGRESS is non-nil and evaluates to a string then, while
-waiting, a progress reporter will be used with PROGRESS as the
-message.
+If PROGRESS is non-nil and evaluates to a string then a progress
+reporter will be used with PROGRESS as the message while waiting.
 
 SPEC takes the form (PROGRESS SECONDS TIMEOUT-FORMS...).
 
