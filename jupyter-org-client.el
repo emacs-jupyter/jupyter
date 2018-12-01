@@ -357,11 +357,7 @@ VALUE."
 
 (defun jupyter-org-file-link (path)
   "Return a file link `org-element' that points to PATH."
-  ;; A link is an object not an element so :post-blank means number of spaces
-  ;; not number of newlines. Wrapping the link in a list ensures that
-  ;; `org-element-interpret-data' will insert a newline after inserting the
-  ;; link.
-  (list (list 'link (list :type "file" :path path)) "\n"))
+  (list 'link (list :type "file" :path path)))
 
 (defun jupyter-org-src-block (language parameters value &optional switches)
   "Return a src-block `org-element'.
@@ -591,36 +587,27 @@ data and metadata of the current MIME type."
   "Return a latex-fragment or latex-environment org-element obtained from DATA.
 DATA is inserted into a temporary buffer and an org-element latex
 fragment or environment is parsed and returned. If neither can be
-parsed, wrap DATA in a minipage environment and return it.
-
-The actual return value is a two element list whose first element
-is the org-element and whose second element is a newline
-character. This is so that a newline is guaranteed to be inserted
-after the `org-element' when converting to its text
-representation by `org-element-interpret-data'. See
-`jupyter-org--append-result'."
+parsed, wrap DATA in a minipage environment and return it."
   (with-temp-buffer
     (insert data)
     (goto-char (point-min))
     ;; Try to determine if we are in an environment or fragment
-    (list
-     (if (save-excursion
-           (forward-char 2)
-           (org-inside-LaTeX-fragment-p))
-         (org-element-latex-fragment-parser)
-       ;; If we are not in a fragment, try to parse an environment
-       (let ((env (ignore-errors
-                    (org-element-latex-environment-parser
-                     (point-max) nil))))
-         (if (eq (org-element-type env) 'latex-environment) env
-           ;; If all else fails, wrap DATA in a minipage
-           ;; environment
-           (jupyter-org-latex-environment
-            (concat "\
+    (if (save-excursion
+          (forward-char 2)
+          (org-inside-LaTeX-fragment-p))
+        (org-element-latex-fragment-parser)
+      ;; If we are not in a fragment, try to parse an environment
+      (let ((env (ignore-errors
+                   (org-element-latex-environment-parser
+                    (point-max) nil))))
+        (if (eq (org-element-type env) 'latex-environment) env
+          ;; If all else fails, wrap DATA in a minipage
+          ;; environment
+          (jupyter-org-latex-environment
+           (concat "\
 \\begin{minipage}{\\textwidth}
 \\begin{flushright}\n" data "\n\\end{flushright}
-\\end{minipage}")))))
-     "\n")))
+\\end{minipage}")))))))
 
 (cl-defmethod jupyter-org-result ((_mime (eql :text/latex)) params data
                                   &optional _metadata)
@@ -890,6 +877,10 @@ containing the #+RESULTS affiliated keyword, go forward a line."
                 (result
                  (cond
                   (stream-result-p (jupyter-org-scalar result))
+                  ((memq (org-element-type result) org-element-all-objects)
+                   ;; Objects do not have a newline appended so insert one when
+                   ;; the result is an object.
+                   (list result "\n"))
                   (t result))))
             (insert (org-element-interpret-data
                      (jupyter-org--wrap-result-maybe context result)))
