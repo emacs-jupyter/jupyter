@@ -705,8 +705,6 @@ new \"scalar\" result with the result of calling
     (let ((result-beg (org-babel-where-is-src-block-result 'insert))
           (inhibit-redisplay (not debug-on-error)))
       (goto-char result-beg)
-      (unless (jupyter-org-request-id-cleared-p req)
-        (jupyter-org--clear-request-id req))
       (let ((context (org-element-context)))
         (if (eq (org-element-type context) 'drawer)
             (let* ((content-end (org-element-property :contents-end context))
@@ -743,10 +741,15 @@ request."
   (if (jupyter-org-request-silent req)
       (unless (equal (jupyter-org-request-silent req) "none")
         (message "%s" (org-element-interpret-data result)))
-    (if (or (jupyter-org-request-async req)
-            (jupyter-request-idle-received-p req))
-        (jupyter-org--append-result req result)
-      (push result (jupyter-org-request-results req)))))
+    (if (not (or (jupyter-org-request-async req)
+                 ;; For sync results, an idle request is an indicator that the
+                 ;; accumulated results should be inserted into the buffer.
+                 (jupyter-request-idle-received-p req)))
+        (push result (jupyter-org-request-results req))
+      (when (and (jupyter-org-request-async req)
+                 (not (jupyter-org-request-id-cleared-p req)))
+        (jupyter-org--clear-request-id req))
+      (jupyter-org--append-result req result))))
 
 (defun jupyter-org-insert-async-id (req)
   "Insert the ID of REQ.
