@@ -379,13 +379,29 @@ meaning as a src-block `org-element'."
 
 ;; From `org-babel-insert-result'
 (defun jupyter-org-tabulablep (r)
-  ;; Non-nil when result R can be turned into
-  ;; a table.
+  "Return non-nil when R can be turned into an `org-mode' table."
   (and (listp r)
        (null (cdr (last r)))
        (cl-every
         (lambda (e) (or (atom e) (null (cdr (last e)))))
         r)))
+
+;; From `org-babel-insert-result'
+(defun jupyter-org-table-to-orgtbl (table)
+  "Return TABLE formatted as an `org-mode' table string."
+  (with-temp-buffer
+    (insert (concat (orgtbl-to-orgtbl
+                     (if (cl-every
+                          (lambda (e)
+                            (or (eq e 'hline) (listp e)))
+                          table)
+                         table
+                       (list table))
+                     nil)
+                    "\n"))
+    (goto-char (point-min))
+    (when (org-at-table-p) (org-table-align))
+    (buffer-string)))
 
 (defun jupyter-org-scalar (value)
   "Return a scalar VALUE.
@@ -396,7 +412,9 @@ or example-block depending on
 If VALUE is another `org-element' return it unchanged.
 
 If VALUE is a list and can be represented as a table, return an
-`org-mode' table as a string.
+`org-mode' table as a string. To distinguish the table from a
+regular string, it has a non-nil org-table text property on its
+first character.
 
 Otherwise, return VALUE formated as a fixed-width `org-element'."
   (cond
@@ -411,25 +429,12 @@ Otherwise, return VALUE formated as a fixed-width `org-element'."
     value)
    ((and (listp value)
          (jupyter-org-tabulablep value))
-    ;; From `org-babel-insert-result'
-    (with-temp-buffer
-      (insert (concat (orgtbl-to-orgtbl
-                       (if (cl-every
-                            (lambda (e)
-                              (or (eq e 'hline) (listp e)))
-                            value)
-                           value
-                         (list value))
-                       nil)
-                      "\n"))
-      (goto-char (point-min))
-      (when (org-at-table-p) (org-table-align))
-      (let ((table (buffer-string)))
-        (prog1 table
-          ;; We need a way to distinguish a table string that is easily removed
-          ;; from the code block vs a regular string that will need to be
-          ;; wrapped in a drawer. See `jupyter-org--append-result'.
-          (put-text-property 0 1 'org-table t table)))))
+    (let ((table (jupyter-org-table-to-orgtbl value)))
+      (prog1 table
+        ;; We need a way to distinguish a table string that is easily removed
+        ;; from the code block vs a regular string that will need to be
+        ;; wrapped in a drawer. See `jupyter-org--append-result'.
+        (put-text-property 0 1 'org-table t table))))
    (t
     (list 'fixed-width (list :value (format "%S" value))))))
 
