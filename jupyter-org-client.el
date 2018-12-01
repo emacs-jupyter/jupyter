@@ -682,7 +682,12 @@ Cleanup the buffer if needed."
                          ;; `org-element-interpret-data' already normalizes the
                          ;; string
                          (org-element-put-property context :post-blank nil))))))
-    new-result))
+    (prog1 new-result
+      (unless (or first-result (eq result new-result))
+        ;; :post-affiliated is used here as opposed to :begin so that we
+        ;; don't remove the #+RESULTS line which is an affiliated keyword
+        (delete-region (org-element-property :post-affiliated context)
+                       (jupyter-org--element-end-preserve-blanks context))))))
 
 (defun jupyter-org--display-latex (limit)
   "Show inline latex fragments between LIMIT and `point'."
@@ -709,16 +714,7 @@ Cleanup the buffer if needed."
                    (pos (or content-end
                             (jupyter-org--element-end-preserve-blanks context))))
               (goto-char pos))
-          (let ((new-result (jupyter-org--wrap-result-maybe context result)))
-            (unless (or (eq result new-result)
-                        ;; If the context is the #+RESULTS: keyword don't
-                        ;; remove it
-                        (eq (org-element-type context) 'keyword))
-              ;; :post-affiliated is used here as opposed to :begin so that we
-              ;; don't remove the #+RESULTS line which is an affiliated keyword
-              (delete-region (org-element-property :post-affiliated context)
-                             (jupyter-org--element-end-preserve-blanks context)))
-            (setq result new-result))
+          (setq result (jupyter-org--wrap-result-maybe context result))
           ;; Insert the results after the #+RESULTS: line
           (forward-line)))
       (let ((limit (point)))
