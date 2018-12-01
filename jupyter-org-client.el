@@ -77,6 +77,8 @@ source code block. Set by `org-babel-execute:jupyter'.")))
 
 ;;; `jupyter-kernel-client' interface
 
+;;;; `jupyter-request' interface
+
 (cl-defmethod jupyter-generate-request ((client jupyter-org-client) _msg
                                         &context (major-mode (eql org-mode)))
   "Return a `jupyter-org-request' for the current source code block."
@@ -93,8 +95,6 @@ source code block. Set by `org-babel-execute:jupyter'.")))
 (cl-defmethod jupyter-drop-request ((_client jupyter-org-client)
                                     (req jupyter-org-request))
   (set-marker (jupyter-org-request-marker req) nil))
-
-;;; Handlers
 
 ;;;; Stream
 
@@ -179,7 +179,7 @@ to."
             (put-text-property pos end 'keymap jupyter-org-goto-error-map)
             (setq pos end)))))))
 
-;;;;; Error handler
+;;;;; Handler
 
 (cl-defmethod jupyter-handle-error ((_client jupyter-org-client)
                                     (req jupyter-org-request)
@@ -640,6 +640,8 @@ new \"scalar\" result with the result of calling
                                   &optional _metadata)
   data)
 
+;;;; Helper functions
+
 (defun jupyter-org--clear-request-id (req)
   "Delete the ID of REQ in the `org-mode' buffer if present."
   (save-excursion
@@ -656,73 +658,235 @@ new \"scalar\" result with the result of calling
       (forward-line (- post))
       (line-beginning-position))))
 
+(defun jupyter-org-babel-result-p (result)
+  "Return non-nil if RESULT can be removed by `org-babel-remove-result'."
+  (or (and (stringp result)
+           ;; Org tables are returned as strings by this time. So we need
+           ;; something to distinguish them from regular strings. See
+           ;; `jupyter-org-scalar'.
+           (get-text-property 0 'org-table result))
+      (memq (org-element-type result)
+            '(example-block
+              export-block fixed-width item
+              link plain-list src-block table))))
+
+(defun jupyter-org-newline-ending-p (string)
+  "Return non-nil if STRING ends in a newline character."
+  (eq (aref string (1- (length string))) ?\n))
+
+(defun jupyter-org--stream-result-p (result)
+  (and (stringp result)
+       (not (get-text-property 0 'org-table result))))
+
+(defun jupyter-org--stream-context-p (context)
+  "Determine if CONTEXT is a stream result.
+Return the insertion point to append new stream output if CONTEXT
+is a stream result. Otherwise return nil."
+  (save-excursion
+    (goto-char (if (eq (org-element-type context) 'drawer)
+                   (org-element-property :contents-end context)
+                 (jupyter-org--element-end-preserve-blanks context)))
+    (beginning-of-line 0)
+    (when (looking-at-p "\\(?::[\t ]\\|#\\+END_EXAMPLE\\)")
+      (line-end-position
+       (unless (eq (char-after) ?:) 0)))))
+
+;;;; Appending stream results
+
+(defun jupyter-org--fixed-width-to-example-block (element result keep-newline)
+  "Replace the fixed-width ELEMENT with an example-block.
+Append RESULT to the contents of the block. If KEEP-NEWLINE is
+non-nil, ensure that the appended RESULT begins on a newline."
+  (goto-char (or (org-element-property :post-affiliated element)
+                 (org-element-property :begin element)))
+  (delete-region (point) (jupyter-org--element-end-preserve-blanks element))
+  (insert (org-element-interpret-data
+           (jupyter-org-example-block
+            (concat
+             (if keep-newline
+                 (org-element-property :value element)
+               (substring (org-element-property :value element) 0 -1))
+             result)))))
+
+(defsubst jupyter-org--fixed-width-inline-p (result)
+  (not (string-match "\n" result)))
+
+(defsubst jupyter-org--fixed-width-append (result keep-newline)
+  ;; Delete the following newline that is re-inserted due to
+  ;; `org-element-interpret-data'
+  (delete-char 1)
+  (if keep-newline
+      (insert "\n" (org-element-interpret-data
+                    (jupyter-org-scalar result)))
+    (insert (substring result 0 (match-end 0))
+            (org-element-interpret-data
+             (jupyter-org-scalar
+              (substring result (match-end 0)))))))
+
+(defun jupyter-org--append-to-fixed-width (result keep-newline)
+  "Append RESULT to the fixed-width element at point.
+`point' is assumed to be at the insertion point. If KEEP-NEWLINE is
+non-nil, ensure that the appended RESULT begins on a newline.
+
+If appending RESULT causes the total number of lines to exceed
+`org-babel-min-lines-for-block-output' replace the fixed-width
+element to an example-block and append to the example-block
+instead.
+
+If RESULT ends in a newline, place a non-nil
+jupyter-stream-newline property on the ending newline after
+insertion into the buffer."
+  (let* ((context (org-element-at-point))
+         (promote-to-block-p
+          (> (+ (count-lines (org-element-property :begin context)
+                             (org-element-property :end context))
+                (cl-loop
+                 with i = 0
+                 for c across result when (eq c ?\n) do (cl-incf i)
+                 finally return i))
+             org-babel-min-lines-for-block-output)))
+    (if promote-to-block-p
+        (jupyter-org--fixed-width-to-example-block context result keep-newline)
+      (if (and (jupyter-org--fixed-width-inline-p result)
+               (not keep-newline))
+          (insert result)
+        (jupyter-org--fixed-width-append result keep-newline)))))
+
+(defun jupyter-org--append-stream-result (context result)
+  "Append a stream result to the current stream results.
+Return non-nil if RESULT was appended.
+
+RESULT is appended if the most recently inserted result is a
+stream result, as determined by CONTEXT."
+  (let ((pos (jupyter-org--stream-context-p context)))
+    (when pos
+      (prog1 t
+        (goto-char pos)
+        (let ((keep-newline (get-text-property
+                             (point) 'jupyter-stream-newline)))
+          (if (eq (char-after (line-beginning-position)) ?:)
+              (jupyter-org--append-to-fixed-width result keep-newline)
+            ;; Append at the end of the current example-block. In this case
+            ;; POS is the end of the last line of contents.
+            ;;
+            ;;     ...
+            ;;     foo|
+            ;;     #+END_EXAMPLE
+            ;;
+            ;; Delete the newline that will be re-inserted by the call to
+            ;; `org-element-normalize-string'.
+            (delete-char 1)
+            (insert (concat (when keep-newline "\n")
+                            (org-element-normalize-string result)))))))))
+
+(defun jupyter-org--mark-stream-result-newline (result)
+  "Remember if RESULT ended in a newline.
+Add a non-nil jupyter-stream-newline property to the most
+recently inserted stream RESULT if it ends in a newline. This is
+so that `jupyter-org--append-stream-result' can properly insert a
+newline or not before inserting subsequent stream results.
+
+Assumes `point' is at the end of the last source block result."
+  (or (stringp result) (setq result (org-element-property :value result)))
+  (when (and result (jupyter-org-newline-ending-p result))
+    (when (looking-back "#\\+END_EXAMPLE\n"
+                        (line-beginning-position 0))
+      (goto-char (match-beginning 0)))
+    (put-text-property (1- (point)) (point) 'jupyter-stream-newline t)))
+
 ;;;; Wrapping results in a drawer
 
 (defun jupyter-org--wrap-result-maybe (context result)
-  "Depending on CONTEXT, wrap RESULT in a greater org element if needed.
-Cleanup the buffer if needed."
-  ;; If CONTEXT is a keyword, then it is the #+RESULTS: line which means RESULT
-  ;; is the first result being inserted.
-  (let* ((first-result (eq (org-element-type context) 'keyword))
-         (new-result (cond
-                      ;; First result that can be removed by
-                      ;; `org-babel-remove-result' without being wrapped in a
-                      ;; drawer
-                      ((and first-result (jupyter-org-babel-result-p result)) result)
-                      ;; First result that needs to be wrapped in a drawer
-                      (first-result (jupyter-org-results-drawer result))
-                      ;; The second result, which means CONTEXT is the first.
-                      ;; Wrap both of them in a drawer
-                      (t
-                       (prog1 (jupyter-org-results-drawer context result)
-                         ;; Ensure that a #+RESULTS: line is not prepended to
-                         ;; context when calling `org-element-interpret-data'
-                         (org-element-put-property context :results nil)
-                         ;; Ensure there is no post-blank since
-                         ;; `org-element-interpret-data' already normalizes the
-                         ;; string
-                         (org-element-put-property context :post-blank nil))))))
-    (prog1 new-result
-      (unless (or first-result (eq result new-result))
-        ;; :post-affiliated is used here as opposed to :begin so that we
-        ;; don't remove the #+RESULTS line which is an affiliated keyword
-        (delete-region (org-element-property :post-affiliated context)
-                       (jupyter-org--element-end-preserve-blanks context))))))
+  "Depending on CONTEXT, wrap RESULT in a drawer."
+  (if (eq (org-element-type context) 'drawer)
+      ;; No need to wrap a result if a drawer already exists.
+      result
+    (cond
+     ;; If a keyword is the context, this is the first result.
+     ((eq (org-element-type context) 'keyword)
+      ;; Only wrap the result if it can't be removed by `org-babel'.
+      (if (jupyter-org-babel-result-p result) result
+        (jupyter-org-results-drawer result)))
+     ;; A result already exists and is not already wrapped in a drawer, wrap
+     ;; the result already present along with the new result.
+     (t
+      (prog1 (jupyter-org-results-drawer context result)
+        ;; Ensure that a #+RESULTS: line is not prepended to context
+        ;; when calling `org-element-interpret-data'.
+        (org-element-put-property context :results nil)
+        ;; Ensure there is no post-blank since
+        ;; `org-element-interpret-data' already normalizes the string.
+        (org-element-put-property context :post-blank nil))))))
+
+(defun jupyter-org--delete-element (element)
+  "Delete an `org' ELEMENT from the buffer.
+Leave its affiliated keywords and preserve and blank lines that
+appear after the element."
+  (delete-region (org-element-property :post-affiliated element)
+                 (jupyter-org--element-end-preserve-blanks element)))
 
 (defun jupyter-org--display-latex (limit)
   "Show inline latex fragments between LIMIT and `point'."
-  (while (< limit (point))
-    (let ((delim-pos (org-inside-LaTeX-fragment-p)))
-      (when delim-pos
-        (cl-destructuring-bind (_delim . pos)
-            delim-pos
-          (goto-char pos)
-          (let ((ov (car (overlays-at pos))))
-            (unless (and ov (eq (overlay-get ov 'org-overlay-type)
-                                'org-latex-overlay))
-              (org-toggle-latex-fragment)))))
-      (backward-word))))
+  (save-excursion
+    (while (< limit (point))
+      (let ((delim-pos (org-inside-LaTeX-fragment-p)))
+        (when delim-pos
+          (cl-destructuring-bind (_delim . pos)
+              delim-pos
+            (goto-char pos)
+            (let ((ov (car (overlays-at pos))))
+              (unless (and ov (eq (overlay-get ov 'org-overlay-type)
+                                  'org-latex-overlay))
+                (org-toggle-latex-fragment)))))
+        (backward-word)))))
+
+;;;; Actually appending the results
+
+(defun jupyter-org--goto-result-insertion-point (context)
+  "Go the insertion point for new results depending on CONTEXT.
+If CONTEXT is a drawer, go to the end the last element contained
+in the drawer. Otherwise, assuming `point' is on the line
+containing the #+RESULTS affiliated keyword, go forward a line."
+  (cond
+   ((eq (org-element-type context) 'drawer)
+    ;; Go to |:END:
+    (if (org-element-property :contents-end context)
+        (goto-char (org-element-property :contents-end context))
+      (goto-char (jupyter-org-element-end-before-blanks context))
+      (beginning-of-line 0)))
+   (t
+    ;; Insert the results after the #+RESULTS: line
+    (forward-line))))
 
 (defun jupyter-org--append-result (req result)
   (org-with-point-at (jupyter-org-request-marker req)
     (let ((result-beg (org-babel-where-is-src-block-result 'insert))
           (inhibit-redisplay (not debug-on-error)))
       (goto-char result-beg)
-      (let ((context (org-element-context)))
-        (if (eq (org-element-type context) 'drawer)
-            (let* ((content-end (org-element-property :contents-end context))
-                   (pos (or content-end
-                            (jupyter-org--element-end-preserve-blanks context))))
-              (goto-char pos))
-          (setq result (jupyter-org--wrap-result-maybe context result))
-          ;; Insert the results after the #+RESULTS: line
-          (forward-line)))
-      (let ((limit (point)))
-        (insert (if (stringp result)
-                    (org-element-normalize-string result)
-                  (org-element-interpret-data result)))
-        (when jupyter-org-toggle-latex
-          (jupyter-org--display-latex limit))))))
+      (let* ((context (org-element-context))
+             (stream-result-p (jupyter-org--stream-result-p result)))
+        (cond
+         ;; Append stream results to the current stream results
+         ((and stream-result-p
+               (jupyter-org--append-stream-result context result)))
+         ;; Append everything else
+         (t
+          (jupyter-org--goto-result-insertion-point context)
+          ;; Don't delete the current result if its a drawer or if there aren't
+          ;; any results yet.
+          (unless (memq (org-element-type context) '(keyword drawer))
+            (jupyter-org--delete-element context))
+          (let ((limit (point))
+                (result
+                 (cond
+                  (stream-result-p (jupyter-org-scalar result))
+                  (t result))))
+            (insert (org-element-interpret-data
+                     (jupyter-org--wrap-result-maybe context result)))
+            (when jupyter-org-toggle-latex
+              (jupyter-org--display-latex limit)))))
+        (when stream-result-p
+          (jupyter-org--mark-stream-result-newline result))))))
 
 (defun jupyter-org--add-result (req result)
   "For REQ, add RESULT.
