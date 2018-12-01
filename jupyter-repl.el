@@ -63,8 +63,6 @@
 (require 'jupyter-kernel-manager)
 (require 'ring)
 
-(declare-function string-trim "subr-x")
-
 ;; TODO: Fallbacks for when the language doesn't have a major mode installed.
 
 ;; TODO: Define `jupyter-kernel-manager-after-restart-hook' to update the
