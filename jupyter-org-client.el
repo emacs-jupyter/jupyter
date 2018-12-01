@@ -393,6 +393,8 @@ If VALUE is a string, return either a fixed-width `org-element'
 or example-block depending on
 `org-babel-min-lines-for-block-output'.
 
+If VALUE is another `org-element' return it unchanged.
+
 If VALUE is a list and can be represented as a table, return an
 `org-mode' table as a string.
 
@@ -404,8 +406,10 @@ Otherwise, return VALUE formated as a fixed-width `org-element'."
         (jupyter-org-example-block value)
       (list 'fixed-width (list :value value))))
    ((and (listp value)
-         (not (or (memq (car value) org-element-all-objects)
-                  (memq (car value) org-element-all-elements)))
+         (or (memq (car value) org-element-all-objects)
+             (memq (car value) org-element-all-elements)))
+    value)
+   ((and (listp value)
          (jupyter-org-tabulablep value))
     ;; From `org-babel-insert-result'
     (with-temp-buffer
