@@ -345,6 +345,19 @@ the `syntax-table' will be set to that of the REPL buffers."
 
 ;;; Constructing org syntax trees
 
+(defun jupyter-org-raw-string-p (str)
+  "Return non-nil if STR can be inserted as is during result insertion."
+  (and (stringp str) (get-text-property 0 'jupyter-org str)))
+
+(defun jupyter-org-raw-string (str)
+  "Return STR, ensuring that it is flagged as already being `org' syntax.
+Adds a non-nil jupyter-org text property on the first character
+of STR. If a string returned by `jupyter-org-result' has a
+non-nil jupyter-org property on the first character, it is
+inserted without modification as the result of a code block."
+  (prog1 str
+    (put-text-property 0 1 'jupyter-org t str)))
+
 (defun jupyter-org-comment (value)
   "Return a comment `org-element' with VALUE."
   (list 'comment (list :value value)))
@@ -426,7 +439,7 @@ Otherwise, return VALUE formated as a fixed-width `org-element'."
     value)
    ((and (listp value)
          (jupyter-org-tabulablep value))
-    (let ((table (jupyter-org-table-to-orgtbl value)))
+    (let ((table (jupyter-org-raw-string (jupyter-org-table-to-orgtbl value))))
       (prog1 table
         ;; We need a way to distinguish a table string that is easily removed
         ;; from the code block vs a regular string that will need to be
@@ -564,7 +577,7 @@ data and metadata of the current MIME type."
 
 (cl-defmethod jupyter-org-result ((_mime (eql :text/org)) _params data
                                   &optional _metadata)
-  data)
+  (jupyter-org-raw-string data))
 
 (cl-defmethod jupyter-org-result ((mime (eql :image/png)) params data
                                   &optional _metadata)
@@ -674,7 +687,7 @@ new \"scalar\" result with the result of calling
 
 (defun jupyter-org--stream-result-p (result)
   (and (stringp result)
-       (not (get-text-property 0 'org-table result))))
+       (not (jupyter-org-raw-string-p result))))
 
 (defun jupyter-org--stream-context-p (context)
   "Determine if CONTEXT is a stream result.
