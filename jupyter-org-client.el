@@ -119,7 +119,8 @@ source code block. Set by `org-babel-execute:jupyter'.")))
   (let ((map (make-sparse-keymap)))
     (define-key map [mouse-2] #'jupyter-org-goto-error)
     (define-key map (kbd "RET") #'jupyter-org-goto-error)
-    map))
+    map)
+  "Keymap for jumping to an error in a source code block.")
 
 (defun jupyter-org-goto-error ()
   "Go to the error location specified by the jupyter-error-loc text property.
