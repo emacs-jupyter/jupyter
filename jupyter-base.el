@@ -42,6 +42,7 @@
 (declare-function tramp-tramp-file-p "tramp" (name))
 (declare-function tramp-file-name-user "tramp")
 (declare-function tramp-file-name-host "tramp")
+(declare-function jupyter-message-content "jupyter-messages" (msg))
 
 ;;; Custom variables
 
@@ -555,6 +556,29 @@ the ROUTING-ID of the socket. Return the created socket."
   "Read a property list from a JSON encoded STRING."
   (let ((json-object-type 'plist))
     (json-read-from-string string)))
+
+(defun jupyter-normalize-data (plist &optional metadata)
+  "Return a list (DATA META) from PLIST.
+DATA is a property list of mimetype data extracted from PLIST. If
+PLIST is a message plist, then DATA will be the value of the
+:data key in the messages contents. If PLIST is not a message
+plist, then DATA is either the :data key of PLIST or PLIST
+itself.
+
+A similar extraction process is performed for the :metadata key
+of PLIST which will be the META argument in the return value. If
+no :metadata key can be found, then META will be METADATA."
+  (list
+   (or
+    ;; Allow for passing message plists
+    (plist-get (jupyter-message-content plist) :data)
+    ;; Allow for passing (jupyter-message-content msg)
+    (plist-get plist :data)
+    ;; Otherwise assume the plist contains mimetypes
+    plist)
+   (or (plist-get (jupyter-message-content plist) :metadata)
+       (plist-get plist :metadata)
+       metadata)))
 
 (provide 'jupyter-base)
 

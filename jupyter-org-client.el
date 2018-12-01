@@ -484,34 +484,6 @@ is created."
             (base64-decode-region (point-min) (point-max))))))
     (jupyter-org-file-link file)))
 
-(cl-defmethod jupyter-org-result ((req jupyter-org-request) data &optional metadata)
-  "For REQ, return the rendered DATA.
-DATA is a plist, (:mimetype1 value1 ...), containing the
-different representations of a result returned by a kernel.
-
-METADATA is the metadata plist used to render DATA with, as
-returned by the Jupyter kernel. This plist typically contains
-information such as the size of an image to be rendered. The
-metadata plist is currently unused.
-
-Using the `jupyter-org-request-block-params' of REQ, loop over
-the MIME types in `jupyter-org-mime-types' calling
-
-    (jupyter-org-result MIME PARAMS DATA METADATA)
-
-for each MIME type. Return the result of the first iteration in
-which the above call returns a non-nil value. PARAMS is the REQ's
-`jupyter-org-request-block-params', DATA and METADATA are the
-data and metadata of the current MIME type."
-  (cl-assert data json-plist)
-  (let* ((params (jupyter-org-request-block-params req)))
-    (or (jupyter-loop-over-mime
-            jupyter-org-mime-types mime data metadata
-          (jupyter-org-result mime params data metadata))
-        (prog1 nil
-          (warn "No valid mimetype found %s"
-                (cl-loop for (k _v) on data by #'cddr collect k))))))
-
 (cl-defgeneric jupyter-org-result (_mime _params _data &optional _metadata)
   "Return an `org-element' representing a result.
 Either a string or an `org-element' is a valid return value of
@@ -529,6 +501,38 @@ As an example, if DATA only contains the mimetype
 
     (jupyter-org-export-block \"markdown\" data)"
   (ignore))
+
+(cl-defmethod jupyter-org-result ((req jupyter-org-request) plist &optional metadata)
+  "For REQ, return the rendered DATA.
+PLIST is a property list, (:mimetype1 value1 ...), containing the
+different representations of a result returned by a kernel. Note,
+PLIST can also be a full message property list or a property list
+with a :data and :metadata key.
+
+METADATA is the metadata plist used to render PLIST with, as
+returned by the Jupyter kernel. METADATA typically contains
+information such as the size of an image to be rendered.
+
+
+Using the `jupyter-org-request-block-params' of REQ, loop over
+the MIME types in `jupyter-org-mime-types' calling
+
+    (jupyter-org-result MIME PARAMS DATA METADATA)
+
+for each MIME type. Return the result of the first iteration in
+which the above call returns a non-nil value. PARAMS is the REQ's
+`jupyter-org-request-block-params', DATA and METADATA are the
+data and metadata of the current MIME type."
+  (cl-assert plist json-plist)
+  (let ((params (jupyter-org-request-block-params req)))
+    (cl-destructuring-bind (data metadata)
+        (jupyter-normalize-data plist metadata)
+      (or (jupyter-loop-over-mime
+              jupyter-org-mime-types mime data metadata
+            (jupyter-org-result mime params data metadata))
+          (prog1 nil
+            (warn "No valid mimetype found %s"
+                  (cl-loop for (k _v) on data by #'cddr collect k)))))))
 
 (cl-defmethod jupyter-org-result ((_mime (eql :application/vnd.jupyter.widget-view+json))
                                   _params _data &optional _metadata)
