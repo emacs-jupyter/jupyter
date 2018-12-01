@@ -236,7 +236,8 @@ the PARAMS alist."
       (jupyter-org-insert-async-id req))
      (t
       (jupyter-wait-until-idle req most-positive-fixnum)
-      (jupyter-org-insert-sync-results req)))))
+      (nconc (alist-get :result-params params) (list "raw"))
+      (jupyter-org-sync-results req)))))
 
 (defun org-babel-jupyter-make-language-alias (kernel lang)
   "Simimilar to `org-babel-make-language-alias' but for Jupyter src-blocks.

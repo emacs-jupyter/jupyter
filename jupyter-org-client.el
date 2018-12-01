@@ -927,37 +927,69 @@ request."
         (jupyter-org--clear-request-id req))
       (jupyter-org--append-result req result))))
 
+(defun jupyter-org--coalesce-stream-results (results)
+  "Return RESULTS with all contiguous stream results concatenated.
+All stream results are then turned into fixed-width or
+example-block elements."
+  (let ((head (nreverse
+               (cl-reduce
+                (lambda (a b)
+                  (if (and (jupyter-org--stream-result-p b)
+                           (jupyter-org--stream-result-p (car a)))
+                      (setcar a (concat (car a) b))
+                    (push b a))
+                  a)
+                results
+                :initial-value nil))))
+    (prog1 head
+      (setq results head)
+      (while results
+        (when (jupyter-org--stream-result-p (car results))
+          (setcar results (jupyter-org-scalar (car results))))
+        (pop results)))))
+
+;;; org-babel functions
+;; These are meant to be called by `org-babel-execute:jupyter'
+
+(defun jupyter-org--restore-message-function ()
+  (advice-remove 'message #'ignore)
+  (remove-hook 'pre-command-hook #'jupyter-org--restore-message-function))
+
+(defun jupyter-org--ignore-message-until-command ()
+  (advice-add 'message :override #'ignore)
+  (add-hook 'pre-command-hook #'jupyter-org--restore-message-function))
+
 (defun jupyter-org-insert-async-id (req)
   "Insert the ID of REQ.
 Meant to be used as the return value of
 `org-babel-execute:jupyter'."
   (prog1 nil
-    (advice-add 'message :override #'ignore)
+    (jupyter-org--ignore-message-until-command)
     (setq org-babel-after-execute-hook
           (let ((hook org-babel-after-execute-hook))
             (lambda ()
-              (advice-remove 'message #'ignore)
+              (jupyter-org--restore-message-function)
               (unwind-protect
                   (jupyter-org--add-result
                    req (jupyter-org-scalar (jupyter-org-request-id req)))
                 (setq org-babel-after-execute-hook hook)
                 (run-hooks 'org-babel-after-execute-hook)))))))
 
-(defun jupyter-org-insert-sync-results (req)
-  "Insert the results of REQ.
-Meant to be used as the return value of `org-babel-execute:jupyter'."
-  (prog1 nil
-    (advice-add 'message :override #'ignore)
-    (setq org-babel-after-execute-hook
-          (let ((hook org-babel-after-execute-hook))
-            (lambda ()
-              (advice-remove 'message #'ignore)
-              (unwind-protect
-                  (cl-loop
-                   for result in (nreverse (jupyter-org-request-results req))
-                   do (jupyter-org--add-result req result))
-                (setq org-babel-after-execute-hook hook)
-                (run-hooks 'org-babel-after-execute-hook)))))))
+(defun jupyter-org-sync-results (req)
+  "Return the result string in org syntax for the results of REQ.
+Meant to be used as the return value of
+`org-babel-execute:jupyter'."
+  (let ((results (jupyter-org--coalesce-stream-results
+                  (nreverse (jupyter-org-request-results req)))))
+    (when results
+      (let* ((params (jupyter-org-request-block-params req))
+             (result-params (alist-get :result-params params)))
+        (org-element-interpret-data
+         (if (or (and (= (length results) 1)
+                      (jupyter-org-babel-result-p (car results)))
+                 (member "raw" result-params))
+             (car results)
+           (apply #'jupyter-org-results-drawer results)))))))
 
 (provide 'jupyter-org-client)
 
