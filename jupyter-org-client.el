@@ -396,7 +396,7 @@ Otherwise, return VALUE formated as a fixed-width `org-element'."
   (cond
    ((stringp value)
     (if (cl-loop with i = 0 for c across value if (eq c ?\n) do (cl-incf i)
-                 thereis (> i org-babel-min-lines-for-block-output))
+                 thereis (>= i org-babel-min-lines-for-block-output))
         (jupyter-org-example-block value)
       (list 'fixed-width (list :value value))))
    ((and (listp value)
@@ -738,13 +738,13 @@ jupyter-stream-newline property on the ending newline after
 insertion into the buffer."
   (let* ((context (org-element-at-point))
          (promote-to-block-p
-          (> (+ (count-lines (org-element-property :begin context)
-                             (org-element-property :end context))
-                (cl-loop
-                 with i = 0
-                 for c across result when (eq c ?\n) do (cl-incf i)
-                 finally return i))
-             org-babel-min-lines-for-block-output)))
+          (>= (+ (count-lines (org-element-property :begin context)
+                              (org-element-property :end context))
+                 (cl-loop
+                  with i = 0
+                  for c across result when (eq c ?\n) do (cl-incf i)
+                  finally return i))
+              org-babel-min-lines-for-block-output)))
     (if promote-to-block-p
         (jupyter-org--fixed-width-to-example-block context result keep-newline)
       (if (and (jupyter-org--fixed-width-inline-p result)
