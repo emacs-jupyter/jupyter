@@ -656,35 +656,33 @@ new \"scalar\" result with the result of calling
       (forward-line (- post))
       (line-beginning-position))))
 
+;;;; Wrapping results in a drawer
+
 (defun jupyter-org--wrap-result-maybe (context result)
-  "Depending on CONTEXT, wrap RESULT in a drawer."
+  "Depending on CONTEXT, wrap RESULT in a greater org element if needed.
+Cleanup the buffer if needed."
   ;; If CONTEXT is a keyword, then it is the #+RESULTS: line which means RESULT
   ;; is the first result being inserted.
-  (let ((first-result (eq (org-element-type context) 'keyword)))
-    (if first-result
-        (if (or (and (stringp result)
-                     ;; Org tables are returned as strings by this time. So we need
-                     ;; something to distinguish them from regular strings. See
-                     ;; `jupyter-org-scalar'.
-                     (get-text-property 0 'org-table result))
-                (memq (org-element-type result)
-                      '(example-block
-                        export-block fixed-width item
-                        plain-list src-block table)))
-            ;; No need to wrap result types that can be recognized by
-            ;; `org-babel-remove-result'
-            result
-          (jupyter-org-results-drawer result))
-      ;; If this is not the first result, then it is a result that is being
-      ;; appended to the current results. This means CONTEXT was the first
-      ;; result and we need to wrap both CONTEXT and RESULT in a drawer.
-      (prog1 (jupyter-org-results-drawer context result)
-        ;; Ensure that a #+RESULTS: line is not prepended to context when
-        ;; calling `org-element-interpret-data'
-        (org-element-put-property context :results nil)
-        ;; Ensure there is no post-blank since
-        ;; `org-element-interpret-data' already normalizes the string
-        (org-element-put-property context :post-blank nil)))))
+  (let* ((first-result (eq (org-element-type context) 'keyword))
+         (new-result (cond
+                      ;; First result that can be removed by
+                      ;; `org-babel-remove-result' without being wrapped in a
+                      ;; drawer
+                      ((and first-result (jupyter-org-babel-result-p result)) result)
+                      ;; First result that needs to be wrapped in a drawer
+                      (first-result (jupyter-org-results-drawer result))
+                      ;; The second result, which means CONTEXT is the first.
+                      ;; Wrap both of them in a drawer
+                      (t
+                       (prog1 (jupyter-org-results-drawer context result)
+                         ;; Ensure that a #+RESULTS: line is not prepended to
+                         ;; context when calling `org-element-interpret-data'
+                         (org-element-put-property context :results nil)
+                         ;; Ensure there is no post-blank since
+                         ;; `org-element-interpret-data' already normalizes the
+                         ;; string
+                         (org-element-put-property context :post-blank nil))))))
+    new-result))
 
 (defun jupyter-org--display-latex (limit)
   "Show inline latex fragments between LIMIT and `point'."
