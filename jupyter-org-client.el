@@ -650,13 +650,10 @@ new \"scalar\" result with the result of calling
                      (1+ (line-end-position)))
       (setf (jupyter-org-request-id-cleared-p req) t))))
 
-(defun jupyter-org--element-end-preserve-blanks (el)
-  (let ((end (org-element-property :end el))
-        (post (or (org-element-property :post-blank el) 0)))
-    (save-excursion
-      (goto-char end)
-      (forward-line (- post))
-      (line-beginning-position))))
+(defun jupyter-org-element-end-before-blanks (el)
+  "Return the end position of EL, before any :post-blank lines."
+  (- (org-element-property :end el)
+     (or (org-element-property :post-blank el) 0)))
 
 (defun jupyter-org-babel-result-p (result)
   "Return non-nil if RESULT can be removed by `org-babel-remove-result'."
@@ -685,7 +682,7 @@ is a stream result. Otherwise return nil."
   (save-excursion
     (goto-char (if (eq (org-element-type context) 'drawer)
                    (org-element-property :contents-end context)
-                 (jupyter-org--element-end-preserve-blanks context)))
+                 (jupyter-org-element-end-before-blanks context)))
     (beginning-of-line 0)
     (when (looking-at-p "\\(?::[\t ]\\|#\\+END_EXAMPLE\\)")
       (line-end-position
@@ -699,7 +696,7 @@ Append RESULT to the contents of the block. If KEEP-NEWLINE is
 non-nil, ensure that the appended RESULT begins on a newline."
   (goto-char (or (org-element-property :post-affiliated element)
                  (org-element-property :begin element)))
-  (delete-region (point) (jupyter-org--element-end-preserve-blanks element))
+  (delete-region (point) (jupyter-org-element-end-before-blanks element))
   (insert (org-element-interpret-data
            (jupyter-org-example-block
             (concat
@@ -823,7 +820,7 @@ Assumes `point' is at the end of the last source block result."
 Leave its affiliated keywords and preserve and blank lines that
 appear after the element."
   (delete-region (org-element-property :post-affiliated element)
-                 (jupyter-org--element-end-preserve-blanks element)))
+                 (jupyter-org-element-end-before-blanks element)))
 
 (defun jupyter-org--display-latex (limit)
   "Show inline latex fragments between LIMIT and `point'."
