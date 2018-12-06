@@ -909,8 +909,7 @@ element in that direction relative to the current REPL history.
 If the sentinel value is found before rotating N times, return
 nil."
   (if (> n 0)
-      (if (eq (ring-ref jupyter-repl-history -1) 'jupyter-repl-history)
-          nil
+      (unless (eq (ring-ref jupyter-repl-history -1) 'jupyter-repl-history)
         (ring-insert jupyter-repl-history
                      (ring-remove jupyter-repl-history -1))
         (jupyter-repl-history--next (1- n)))
@@ -926,15 +925,14 @@ older history elements."
   (or n (setq n 1))
   (if (< n 0) (jupyter-repl-history-previous (- n))
     (goto-char (point-max))
-    (let ((elem (jupyter-repl-history--next n)))
-      (if (and (null elem) (equal (jupyter-repl-cell-code) ""))
+    (let ((code (jupyter-repl-history--next n)))
+      (if (and (null code) (equal (jupyter-repl-cell-code) ""))
           (error "End of history")
-        (if (null elem)
+        (if (null code)
             ;; When we have reached the last history element in the forward
             ;; direction and the cell code is not empty, make it empty.
             (jupyter-repl-replace-cell-code "")
-          (jupyter-repl-replace-cell-code
-           (ring-ref jupyter-repl-history 0)))))))
+          (jupyter-repl-replace-cell-code code))))))
 
 (defun jupyter-repl-history--previous (n)
   "Helper function for `jupyter-repl-history-previous'.
@@ -944,8 +942,7 @@ element in that direction relative to the current REPL history.
 If the sentinel value is found before rotating N times, return
 nil."
   (if (> n 0)
-      (if (eq (ring-ref jupyter-repl-history 1) 'jupyter-repl-history)
-          nil
+      (unless (eq (ring-ref jupyter-repl-history 1) 'jupyter-repl-history)
         (ring-insert-at-beginning
          jupyter-repl-history (ring-remove jupyter-repl-history 0))
         (jupyter-repl-history--previous (1- n)))
@@ -964,11 +961,10 @@ elements."
     (unless (equal (jupyter-repl-cell-code)
                    (ring-ref jupyter-repl-history 0))
       (setq n (1- n)))
-    (let ((elem (jupyter-repl-history--previous n)))
-      (if (null elem)
+    (let ((code (jupyter-repl-history--previous n)))
+      (if (null code)
           (error "Beginning of history")
-        (jupyter-repl-replace-cell-code
-         (ring-ref jupyter-repl-history 0))))))
+        (jupyter-repl-replace-cell-code code)))))
 
 (cl-defmethod jupyter-handle-history-reply ((client jupyter-repl-client) _req history)
   (jupyter-with-repl-buffer client
