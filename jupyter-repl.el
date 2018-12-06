@@ -87,6 +87,14 @@
   "Face used for the output prompt."
   :group 'jupyter-repl)
 
+(defface jupyter-repl-traceback
+  '((((class color) (min-colors 88) (background light))
+     :background "darkred")
+    (((class color) (min-colors 88) (background dark))
+     :background "firebrick"))
+  "Face used for a traceback."
+  :group 'jupyter-repl)
+
 (defcustom jupyter-repl-maximum-size 1024
   "Maximum number of lines before the buffer is truncated."
   :type 'integer
@@ -898,8 +906,11 @@ buffer to display TEXT."
       (jupyter-display-traceback traceback))
      (t
       (jupyter-repl-append-output client req
-        (jupyter-insert-ansi-coded-text
-         (concat (mapconcat #'identity traceback "\n") "\n")))))))
+        (jupyter-with-insertion-bounds
+            beg end (jupyter-insert-ansi-coded-text
+                     (concat (mapconcat #'identity traceback "\n") "\n"))
+          (font-lock-prepend-text-property
+           beg end 'font-lock-face 'jupyter-repl-traceback)))))))
 
 (defun jupyter-repl-history--next (n)
   "Helper function for `jupyter-repl-history-next'.
