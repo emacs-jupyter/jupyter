@@ -1671,10 +1671,11 @@ NOTE: Only intended to be added as advice to `switch-to-buffer',
                            (car args)
                          win-or-buffer))
          (buffer (or (and jupyter-repl-interaction-mode (current-buffer))
-                     (jupyter-repl-available-repl-buffers
-                      (with-current-buffer other-buffer major-mode)
-                      'first))))
-    (when buffer
+                     (and (buffer-live-p other-buffer)
+                          (jupyter-repl-available-repl-buffers
+                           (with-current-buffer other-buffer major-mode)
+                           'first)))))
+    (when (buffer-live-p buffer)
       (with-current-buffer buffer
         (let ((client jupyter-current-client)
               (mode (if (eq major-mode 'jupyter-repl-mode)
