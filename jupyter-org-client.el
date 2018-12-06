@@ -255,10 +255,13 @@ BEG and END are the bounds of the source block which made the
 most recent completion request.")
 
 (defun jupyter-org--same-src-block-p ()
-  (and jupyter-org--src-block-cache
-       (cl-destructuring-bind (_ beg end)
-           jupyter-org--src-block-cache
-         (<= beg (point) end))))
+  (when jupyter-org--src-block-cache
+    (cl-destructuring-bind (_ beg end)
+        jupyter-org--src-block-cache
+      (and
+       (marker-position beg)
+       (marker-position end)
+       (<= beg (point) end)))))
 
 (defun jupyter-org--set-current-src-block ()
   (unless (jupyter-org--same-src-block-p)
