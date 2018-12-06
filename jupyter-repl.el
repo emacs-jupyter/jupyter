@@ -1556,9 +1556,6 @@ it."
          (req (let ((jupyter-inhibit-handlers t))
                 (jupyter-send-execute-request client :code "" :silent t))))
     (jupyter-add-callback req
-      :status (lambda (msg)
-                (oset client execution-state
-                      (jupyter-message-get msg :execution_state)))
       :execute-reply (lambda (msg)
                        (oset client execution-count
                              (1+ (jupyter-message-get msg :execution_count)))))
