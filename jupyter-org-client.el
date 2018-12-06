@@ -254,6 +254,12 @@ a code block between BEG and END.
 BEG and END are the bounds of the source block which made the
 most recent completion request.")
 
+(defsubst jupyter-org--src-block-beg ()
+  (nth 1 jupyter-org--src-block-cache))
+
+(defsubst jupyter-org--src-block-end ()
+  (nth 2 jupyter-org--src-block-cache))
+
 (defun jupyter-org--same-src-block-p ()
   (when jupyter-org--src-block-cache
     (cl-destructuring-bind (_ beg end)
@@ -333,8 +339,12 @@ the `syntax-table' will be set to that of the REPL buffers."
 
 (cl-defmethod jupyter-code-context ((_type (eql completion))
                                     &context (major-mode org-mode))
-  (when (org-in-src-block-p 'inside)
-    (jupyter-line-context)))
+  ;; Always called from within a valid code block. See
+  ;; `jupyter-org-completion-at-point'.
+  (list (buffer-substring-no-properties
+         (jupyter-org--src-block-beg)
+         (jupyter-org--src-block-end))
+        (- (point) (jupyter-org--src-block-beg))))
 
 (defun jupyter-org-completion-at-point ()
   (jupyter-org-with-src-block-client
