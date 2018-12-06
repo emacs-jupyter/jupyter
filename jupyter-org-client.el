@@ -744,8 +744,8 @@ non-nil, ensure that the appended RESULT begins on a newline.
 
 If appending RESULT causes the total number of lines to exceed
 `org-babel-min-lines-for-block-output' replace the fixed-width
-element to an example-block and append to the example-block
-instead.
+element by an example-block containing both the original contents
+of the fixed-width element and RESULT concatenated together.
 
 If RESULT ends in a newline, place a non-nil
 jupyter-stream-newline property on the ending newline after

@@ -183,7 +183,7 @@ until it returns non-nil. If WAIT-FORMS returns non-nil, stop
 waiting and return its value. Otherwise if timeout SECONDS
 elapses, evaluate TIMEOUT-FORMS and return its value.
 
-If PROGRESS is non-nil and evaluates to a string then a progress
+If PROGRESS is non-nil and evaluates to a string, a progress
 reporter will be used with PROGRESS as the message while waiting.
 
 SPEC takes the form (PROGRESS SECONDS TIMEOUT-FORMS...).
@@ -209,7 +209,8 @@ SPEC takes the form (PROGRESS SECONDS TIMEOUT-FORMS...).
 The END marker will advance if BODYFORM inserts text in the
 current buffer. Thus after BODYFORM is evaluated, AFTERFORMS will
 have access to the bounds of the text inserted by BODYFORM in the
-variables BEG and END. The value of BODYFORM is returned."
+variables BEG and END. The result of evaluating BODYFORM is
+returned."
   (declare (indent 3) (debug (symbolp symbolp form body)))
   `(let ((,beg (point-marker))
          (,end (point-marker)))

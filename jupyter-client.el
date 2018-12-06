@@ -1126,7 +1126,7 @@ BUFFER and DETAIL have the same meaning as in `jupyter-inspect'."
 
 (defun jupyter-inspect (code &optional pos buffer detail)
   "Inspect CODE.
-Send an `:inspect-request' to the `jupyter-current-client' and
+Send an `:inspect-request' with the `jupyter-current-client' and
 display the results in a BUFFER.
 
 CODE is the code to inspect and POS is your position in the CODE.
@@ -1230,8 +1230,7 @@ returned list."
 
 (defun jupyter-line-or-region-context ()
   "Return the code context of the region or line.
-If the region is active, return the active region context.
-Otherwise return the line context."
+If the region is active, return it. Otherwise return the line."
   (if (region-active-p)
       (jupyter-region-context (region-beginning) (region-end))
     (jupyter-line-context)))
@@ -1245,11 +1244,14 @@ Otherwise return the line context."
 ;;;;; Helpers for completion interface
 
 (defun jupyter-completion-symbol-beginning (&optional pos)
-  "Return the starting position of a completion symbol.
-If POS is non-nil return the position of the symbol before POS
-otherwise return the position of the symbol before point."
+  "Return the beginning position of a completion symbol.
+The beginning position of the symbol around `point' is returned.
+If no symbol exists around point, then `point' is returned.
+
+If POS is non-nil, goto POS first."
   (save-excursion
     (and pos (goto-char pos))
+    ;; FIXME: This is language specific
     (if (and (eq (char-syntax (char-before)) ?.)
              (not (eq (char-before) ?.)))
         ;; Complete operators, but not the field/attribute
