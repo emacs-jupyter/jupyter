@@ -170,15 +170,13 @@ in a buffer whose contents contain TRACEBACK."
 Search up to LIMIT from `point' for any text to add the keymap
 to."
   (save-restriction
-    (save-restriction
-      (narrow-to-region (point) limit)
-      (goto-char (point-min))
-      (let ((pos (point)) end)
-        (while (setq pos (next-single-property-change pos 'jupyter-error-loc))
-          (when (get-text-property pos 'jupyter-error-loc)
-            (setq end (next-single-property-change pos 'jupyter-error-loc))
-            (put-text-property pos end 'keymap jupyter-org-goto-error-map)
-            (setq pos end)))))))
+    (narrow-to-region (point) limit)
+    (let ((pos (point)) end)
+      (while (setq pos (next-single-property-change pos 'jupyter-error-loc))
+        (when (get-text-property pos 'jupyter-error-loc)
+          (setq end (next-single-property-change pos 'jupyter-error-loc))
+          (put-text-property pos end 'keymap jupyter-org-goto-error-map)
+          (setq pos end))))))
 
 ;;;;; Handler
 
