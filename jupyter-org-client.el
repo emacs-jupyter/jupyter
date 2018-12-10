@@ -925,10 +925,7 @@ request."
   (if (jupyter-org-request-silent req)
       (unless (equal (jupyter-org-request-silent req) "none")
         (message "%s" (org-element-interpret-data result)))
-    (if (not (or (jupyter-org-request-async req)
-                 ;; For sync results, an idle request is an indicator that the
-                 ;; accumulated results should be inserted into the buffer.
-                 (jupyter-request-idle-received-p req)))
+    (if (not (jupyter-org-request-async req))
         (push result (jupyter-org-request-results req))
       (when (and (jupyter-org-request-async req)
                  (not (jupyter-org-request-id-cleared-p req)))
