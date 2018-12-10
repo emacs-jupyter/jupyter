@@ -434,6 +434,14 @@ should be a face that the prompt will use and defaults to
       (jupyter-repl-cell-update-prompt
        (format "In [%d] " (jupyter-repl-cell-count))))))
 
+(defun jupyter-repl-update-cell-count (n)
+  "Set the current cell count to N."
+  (setf (nth 1 (get-text-property
+                (jupyter-repl-cell-beginning-position)
+                'jupyter-cell))
+        n)
+  (jupyter-repl-cell-reset-prompt))
+
 (defun jupyter-repl-cell-count ()
   "Return the cell count of the cell at `point'."
   (let ((pos (if (jupyter-repl-cell-beginning-p) (point)
@@ -864,7 +872,10 @@ lines, truncate it to something less than
       (save-excursion
         (when (ignore-errors
                 (progn (jupyter-repl-goto-cell req) t))
-          (jupyter-repl-cell-unmark-busy)))))
+          (jupyter-repl-cell-unmark-busy))
+        ;; Update the cell count and reset the prompt
+        (goto-char (point-max))
+        (jupyter-repl-update-cell-count (oref client execution-count)))))
   (force-mode-line-update))
 
 (defun jupyter-repl-display-other-output (client stream text)
@@ -1565,7 +1576,12 @@ it."
     (jupyter-add-callback req
       :execute-reply (lambda (msg)
                        (oset client execution-count
-                             (1+ (jupyter-message-get msg :execution_count)))))
+                             (1+ (jupyter-message-get msg :execution_count)))
+                       (unless (equal (jupyter-execution-state client) "busy")
+                         ;; Set the cell count and update the prompt
+                         (jupyter-with-repl-buffer client
+                           (jupyter-repl-update-cell-count
+                            (oref client execution-count))))))
     ;; Waiting longer here to account for initial startup of the Jupyter
     ;; kernel. Sometimes the idle message won't be received if another long
     ;; running execute request is sent right after.
