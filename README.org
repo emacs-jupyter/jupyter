@@ -208,10 +208,13 @@ keybindings for interacting with the REPL:
 | =C-c C-s=   | =jupyter-repl-scratch-buffer=      |
 | =C-c C-r=   | =jupyter-repl-restart-kernel=      |
 | =C-c M-:=   | =jupyter-repl-eval-string=         |
-** TODO =jupyter-repl-persistent-mode=
-:LOGBOOK:
-- State "TODO"       from              [2018-11-29 Thu 13:24]
-:END:
+** =jupyter-repl-persistent-mode=
+
+A global minor mode that will persist the current Jupyter kernel connection if
+the current buffer is in =jupyter-repl-interaction-mode= and a buffer with the
+same =major-mode= as the current buffer is displayed or switched to. This mode
+is automatically enabled whenever =jupyter-run-repl= or =jupyter-connect-repl=
+is called.
 ** Widget support
 
 There is also support for Jupyter widgets integrated into the REPL. If any of
@@ -364,13 +367,19 @@ Host ec2
 
 to your =~/.ssh/config= file.
 ** TODO Standard output, displayed data, and code block results
-:LOGBOOK:
-- State "TODO"       from              [2018-11-29 Thu 02:50]
-:END:
 
-In addition to the results of a code block, a kernel can generate printed
-output from the kernel's standard output stream or request that the frontend
-display information in addition to the result of a code block.
+One significant difference between Jupyter code blocks and regular =org-mode=
+code blocks is that the underlying Jupyter kernel can request that the client
+display extra data in addition to output or the result of a code block. See
+[[https://jupyter-client.readthedocs.io/en/stable/messaging.html#display-data][display_data messages]].
+
+To account for this, Jupyter code blocks do not go through the normal =org-mode=
+result insertion mechanism (see =org-babel-insert-result=). The downside of
+this is that, compared to normal code blocks, only a small subset of the header
+arguments common to all code blocks are supported. Currently this is only the
+=:file= argument for image results and =:results raw= for inserting raw latex
+fragments sent by the kernel. The upside is that all forms of results produced
+by a kernel can be inserted into the buffer similar to a Jupyter notebook.
 
 The implementation of =org-mode= code blocks is really meant to handle either
 capturing the standard output /or/ the result of a code block. When using
