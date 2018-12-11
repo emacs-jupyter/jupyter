@@ -715,13 +715,19 @@ is a stream result. Otherwise return nil."
 
 ;;;; Appending stream results
 
+(defun jupyter-org--delete-element (element)
+  "Delete an `org' ELEMENT from the buffer.
+Leave its affiliated keywords and preserve and blank lines that
+appear after the element."
+  (delete-region (or (org-element-property :post-affiliated element)
+                     (org-element-property :begin element))
+                 (jupyter-org-element-end-before-blanks element)))
+
 (defun jupyter-org--fixed-width-to-example-block (element result keep-newline)
   "Replace the fixed-width ELEMENT with an example-block.
 Append RESULT to the contents of the block. If KEEP-NEWLINE is
 non-nil, ensure that the appended RESULT begins on a newline."
-  (goto-char (or (org-element-property :post-affiliated element)
-                 (org-element-property :begin element)))
-  (delete-region (point) (jupyter-org-element-end-before-blanks element))
+  (jupyter-org--delete-element element)
   (insert (org-element-interpret-data
            (jupyter-org-example-block
             (concat
@@ -839,13 +845,6 @@ Assumes `point' is at the end of the last source block result."
         ;; Ensure there is no post-blank since
         ;; `org-element-interpret-data' already normalizes the string.
         (org-element-put-property context :post-blank nil))))))
-
-(defun jupyter-org--delete-element (element)
-  "Delete an `org' ELEMENT from the buffer.
-Leave its affiliated keywords and preserve and blank lines that
-appear after the element."
-  (delete-region (org-element-property :post-affiliated element)
-                 (jupyter-org-element-end-before-blanks element)))
 
 (defun jupyter-org--display-latex (limit)
   "Show inline latex fragments between LIMIT and `point'."
