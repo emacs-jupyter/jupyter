@@ -182,8 +182,8 @@ to."
 
 (cl-defmethod jupyter-handle-error ((_client jupyter-org-client)
                                     (req jupyter-org-request)
-                                    ename
-                                    evalue
+                                    _ename
+                                    _evalue
                                     traceback)
   ;; (jupyter-with-display-buffer "traceback" 'reset
   ;;   (jupyter-insert-ansi-coded-text
