@@ -976,7 +976,7 @@ long, the result is displayed in the minibuffer.
 CB is a function to call with the `:execute-result' message when
 the evalution is succesful. When CB is nil, its behavior defaults
 to the above explanation."
-  (interactive (list (jupyter-read-expression) current-prefix-arg nil))
+  (interactive (list (jupyter-read-expression) nil))
   (unless jupyter-current-client
     (user-error "No `jupyter-current-client' set"))
   (let* ((jupyter-inhibit-handlers t)
