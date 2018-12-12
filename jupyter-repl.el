@@ -513,15 +513,9 @@ There is an extra invisible character after the prompt."
 
 (defun jupyter-repl-cell-code-end-position ()
   "Return the end of the current cell's code.
-The code ending position is
-
-   `jupyter-repl-cell-end-position' - 1
-
 In the case of the last cell in the REPL buffer, i.e. an
 unfinalized cell, the code ending position is `point-max'."
-  (let ((pos (jupyter-repl-cell-end-position)))
-    (if (= pos (point-max)) (point-max)
-      (1- pos))))
+  (jupyter-repl-cell-end-position))
 
 (defun jupyter-repl-next-cell (&optional N)
   "Go to the beginning of the next cell.
