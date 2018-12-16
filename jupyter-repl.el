@@ -228,14 +228,12 @@ running BODY."
   "Narrow to the current cell, run BODY, then widen.
 The cell is narrowed to the region between and including
 `jupyter-repl-cell-code-beginning-position' and
-`jupyter-repl-cell-code-end-position'. When BODY is run, `point' will
-be at the `jupyter-repl-cell-code-beginning-position'."
+`jupyter-repl-cell-code-end-position'."
   (declare (indent 0) (debug (&rest form)))
   `(save-excursion
      (save-restriction
        (narrow-to-region (jupyter-repl-cell-code-beginning-position)
                          (jupyter-repl-cell-code-end-position))
-       (goto-char (point-min))
        ,@body)))
 
 ;;; Convenience functions
