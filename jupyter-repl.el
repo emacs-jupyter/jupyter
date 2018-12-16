@@ -436,11 +436,13 @@ should be a face that the prompt will use and defaults to
 
 (defun jupyter-repl-update-cell-count (n)
   "Set the current cell count to N."
-  (setf (nth 1 (get-text-property
-                (jupyter-repl-cell-beginning-position)
-                'jupyter-cell))
-        n)
-  (jupyter-repl-cell-reset-prompt))
+  (when (or (jupyter-repl-cell-beginning-p)
+            (zerop (save-excursion (jupyter-repl-previous-cell))))
+    (setf (nth 1 (get-text-property
+                  (jupyter-repl-cell-beginning-position)
+                  'jupyter-cell))
+          n)
+    (jupyter-repl-cell-reset-prompt)))
 
 (defun jupyter-repl-cell-count ()
   "Return the cell count of the cell at `point'."
