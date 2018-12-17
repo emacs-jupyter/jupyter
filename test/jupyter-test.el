@@ -959,7 +959,7 @@ last element being the newest element added to the history."
       (goto-char (1- (jupyter-repl-cell-beginning-position)))
       (should (jupyter-repl-cell-end-p))
       (should (= (jupyter-repl-cell-end-position) (point)))
-      (should (= (jupyter-repl-cell-code-end-position) (1- (point))))
+      (should (= (jupyter-repl-cell-code-end-position) (point)))
       (should (jupyter-repl-cell-finalized-p)))
     (jupyter-ert-info ("Cell boundary errors")
       (goto-char (point-max))
