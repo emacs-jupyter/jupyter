@@ -897,17 +897,16 @@ containing the #+RESULTS affiliated keyword, go forward a line."
           ;; any results yet.
           (unless (memq (org-element-type context) '(keyword drawer))
             (jupyter-org--delete-element context))
-          (let ((limit (point))
-                (result
-                 (cond
-                  (stream-result-p (jupyter-org-scalar result))
-                  ((memq (org-element-type result) org-element-all-objects)
-                   ;; Objects do not have a newline appended so insert one when
-                   ;; the result is an object.
-                   (list result "\n"))
-                  (t result))))
+          (let ((limit (point)))
             (insert (org-element-interpret-data
-                     (jupyter-org--wrap-result-maybe context result)))
+                     (jupyter-org--wrap-result-maybe
+                      context (if stream-result-p
+                                  (jupyter-org-scalar result)
+                                result))))
+            ;; Objects do not have a newline appended so insert one when
+            ;; the result is an object.
+            (when (memq (org-element-type result) org-element-all-objects)
+              (insert "\n"))
             (when jupyter-org-toggle-latex
               (jupyter-org--display-latex limit)))))
         (when stream-result-p
