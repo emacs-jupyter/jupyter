@@ -663,7 +663,7 @@ new \"scalar\" result with the result of calling
 
 (cl-defmethod jupyter-org-result ((_mime (eql :text/plain)) _params data
                                   &optional _metadata)
-  data)
+  (ansi-color-apply data))
 
 ;;;; Helper functions
 
