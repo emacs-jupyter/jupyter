@@ -1574,8 +1574,10 @@ it."
                        (unless (equal (jupyter-execution-state client) "busy")
                          ;; Set the cell count and update the prompt
                          (jupyter-with-repl-buffer client
-                           (jupyter-repl-update-cell-count
-                            (oref client execution-count))))))
+                           (save-excursion
+                             (goto-char (point-max))
+                             (jupyter-repl-update-cell-count
+                              (oref client execution-count)))))))
     ;; Waiting longer here to account for initial startup of the Jupyter
     ;; kernel. Sometimes the idle message won't be received if another long
     ;; running execute request is sent right after.
