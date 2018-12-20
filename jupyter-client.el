@@ -903,6 +903,12 @@ particular language."
 The evaluation history is used when reading code to evaluate from
 the minibuffer.")
 
+(defun jupyter--teardown-minibuffer ()
+  "Remove Jupyter related variables and hooks from the minibuffer."
+  (setq jupyter-current-client nil)
+  (remove-hook 'completion-at-point-functions 'jupyter-completion-at-point t)
+  (remove-hook 'minibuffer-exit-hook 'jupyter--teardown-minibuffer t))
+
 (cl-defgeneric jupyter-read-expression ()
   "Read an expression using the `jupyter-current-client' for completion.
 The expression is read from the minibuffer and the expression
@@ -922,7 +928,9 @@ Methods that extend this generic function should
             ;; `jupyter-repl-language-mode', but there are
             ;; issues with enabling a major mode.
             (add-hook 'completion-at-point-functions
-                      'jupyter-completion-at-point nil t))
+                      'jupyter-completion-at-point nil t)
+            (add-hook 'minibuffer-exit-hook
+                      'jupyter--teardown-minibuffer nil t))
         (read-from-minibuffer
          "Jupyter Ex: " nil
          read-expression-map
