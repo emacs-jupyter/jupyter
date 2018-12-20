@@ -1145,6 +1145,9 @@ Otherwise insert the results in BUFFER but do not display it.
 DETAIL is the detail level to use for the request and defaults to
 0."
   (setq pos (or pos (length code)))
+  (unless (and jupyter-current-client
+               (object-of-class-p jupyter-current-client 'jupyter-kernel-client))
+    (error "Need a valid `jupyter-current-client'"))
   (let ((client jupyter-current-client)
         (msg (jupyter-wait-until-received :inspect-reply
                (jupyter-send-inspect-request jupyter-current-client
