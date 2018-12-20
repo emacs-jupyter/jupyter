@@ -1343,7 +1343,7 @@ Works for Julia and Python."
            (string-trim
             (buffer-substring-no-properties
              start (1- (point)))))))
-    (while (re-search-forward ",\\|::" nil t)
+    (while (re-search-forward ",\\|::\\|;" nil t)
       (setq ppss (syntax-ppss)
             depth (nth 0 ppss)
             inner (nth 1 ppss))
@@ -1352,15 +1352,16 @@ Works for Julia and Python."
          (if (eq (char-after) ?{)
              (push (jupyter-completion--arg-extract-1 (point)) inner-args)
            (push (list (list (funcall get-sexp))) inner-args)))
-        (?,
+        ((or ?, ?\;)
          (if (/= depth 1)
              (push (jupyter-completion--arg-extract-1 inner) inner-args)
-           (push (cons (funcall get-string start) (pop inner-args))
+           ;; ((string . sep) . inner-args)
+           (push (cons (cons (funcall get-string start) (char-before)) (pop inner-args))
                  arg-info)
            (skip-syntax-forward "-")
            (setq start (point))))))
     (goto-char (point-max))
-    (push (cons (funcall get-string start) (pop inner-args)) arg-info)
+    (push (cons (cons (funcall get-string start) nil) (pop inner-args)) arg-info)
     (nreverse arg-info)))
 
 (defun jupyter-completion--make-arg-snippet (args)
@@ -1369,11 +1370,12 @@ Works for Julia and Python."
    with i = 1
    for top-args in args
    ;; TODO: Handle nested arguments
-   for (arg . inner-args) = top-args
-   collect (format "${%d:%s}" i arg) into constructs
+   for ((arg . sep) . inner-args) = top-args
+   collect (format (concat "${%d:%s}" (when sep "%c")) i arg sep)
+   into constructs
    and do (setq i (1+ i))
    finally return
-   (concat "(" (mapconcat #'identity constructs ", ") ")")))
+   (concat "(" (mapconcat #'identity constructs " ") ")")))
 
 ;;;;; Completion prefix
 
