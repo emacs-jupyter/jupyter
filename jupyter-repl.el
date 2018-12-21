@@ -145,16 +145,6 @@ current output of the cell. Set when the kernel sends a
 (defvar-local jupyter-repl-history nil
   "The history of the current Jupyter REPL.")
 
-(defvar-local jupyter-repl-propertize-regex "\"\\|'\\|`"
-  "Regular expression used when adding syntax properties to output.
-When a kernel inserts output into the REPL buffer, the output is
-scanned using this regular expression. Any matching text will
-have its syntax-table property set to symbol syntax.
-
-This is most useful for ensuring that the output produced by a
-kernel doesn't get mistakenly fontified as strings from the
-kernel's language.")
-
 (defvar-local jupyter-repl-use-builtin-is-complete nil
   "Whether or not to send `:is-complete-request's to a kernel.
 If a Jupyter kernel does not respond to an is_complete_request,
@@ -1498,36 +1488,29 @@ When the kernel restarts, insert a new prompt."
   (jupyter-add-hook jupyter-current-client 'jupyter-iopub-message-hook
     #'jupyter-repl-on-kernel-restart))
 
-(defun jupyter-repl-propertize-output (beg end)
-  "Remove string syntax from quote characters between BEG and END."
-  (save-excursion
-    (save-restriction
-      (narrow-to-region beg end)
-      (goto-char (point-min))
-      (while (and (re-search-forward jupyter-repl-propertize-regex nil t)
-                  (/= (point) (point-max)))
-        (put-text-property
-         (match-beginning 0) (point)
-         'syntax-table '(3 . ?_))))))
-
-(defun jupyter-repl--syntax-propertize (spf beg end)
-  "Propertize region between BEG and END, take into account output/input cells.
-SPF is a `syntax-propertize-function' for the REPL's kernel
-language and will be called for any regions between BEG and END
-that have a field text property of cell-code.
-
-All other regions are assumed to be output and are propertized
-using `jupyter-repl-propertize-output'."
+(defun jupyter-repl-font-lock-fontify-region (fontify-fun beg end &optional verbose)
+  "Use FONTIFY-FUN to fontify input cells between BEG and END.
+VERBOSE has the same meaning as in
+`font-lock-fontify-region-function'."
   (let ((start beg) next)
     (while (/= start end)
       (cond
        ((eq (get-text-property start 'field) 'cell-code)
         (setq next (min end (field-end start)))
-        (funcall spf start next))
+        ;; It is OK that we do not update BEG and END using the return value of
+        ;; this function as long as the default value of
+        ;; `font-lock-extend-region-functions' is used since an input cell
+        ;; always starts at the beginning of a line and ends at the end of a
+        ;; line and does not use the font-lock-multiline property (2018-12-20).
+        (funcall fontify-fun start next verbose))
        (t
         (setq next (or (text-property-any start end 'field 'cell-code) end))
-        (jupyter-repl-propertize-output start next)))
-      (setq start next))))
+        ;; Unfontify the region mainly to remove the font-lock-multiline
+        ;; property in the output, e.g. added by markdown. These regions will
+        ;; get highlighted syntactically in some scenarios.
+        (font-lock-unfontify-region start next)))
+      (setq start next)))
+  `(jit-lock-bounds ,beg . ,end))
 
 (defun jupyter-repl-initialize-fontification ()
   "Initialize fontification for the current REPL buffer."
@@ -1536,6 +1519,7 @@ using `jupyter-repl-propertize-output'."
       ;; TODO: Take into account minor modes that may add to
       ;; `font-lock-keywords', e.g. `rainbow-delimiters-mode'.
       (setq fld font-lock-defaults
+            frf font-lock-fontify-region-function
             sff font-lock-syntactic-face-function
             spf syntax-propertize-function
             comment comment-start))
@@ -1549,17 +1533,14 @@ using `jupyter-repl-propertize-output'."
                           ;; Needed to ensure that " characters are not treated
                           ;; syntactically in cell output
                           (cons 'parse-sexp-lookup-properties t)
-                          (cons 'syntax-propertize-function
-                                (apply-partially 'jupyter-repl--syntax-propertize
-                                                 (or spf #'ignore)))
+                          (cons 'syntax-propertize-function spf)
+                          (cons 'font-lock-fontify-region-function
+                                (apply-partially 'jupyter-repl-font-lock-fontify-region
+                                                 'font-lock-default-fontify-region))
                           (cons 'font-lock-syntactic-face-function sff))))
       (setq-local comment-start comment)
       (setq font-lock-defaults
-            (apply #'list kws kws-only case-fold syntax-alist vars))
-      (when comment
-        (setq jupyter-repl-propertize-regex
-              (concat jupyter-repl-propertize-regex
-                      "\\|" (regexp-quote (string-trim comment))))))
+            (apply #'list kws kws-only case-fold syntax-alist vars)))
     (font-lock-mode)))
 
 (defun jupyter-repl-insert-banner (banner)
