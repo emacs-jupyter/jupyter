@@ -1559,7 +1559,7 @@ using `jupyter-repl-propertize-output'."
       (when comment
         (setq jupyter-repl-propertize-regex
               (concat jupyter-repl-propertize-regex
-                      "\\|" (string-trim comment)))))
+                      "\\|" (regexp-quote (string-trim comment))))))
     (font-lock-mode)))
 
 (defun jupyter-repl-insert-banner (banner)
