@@ -1510,6 +1510,25 @@ When the kernel restarts, insert a new prompt."
          (match-beginning 0) (point)
          'syntax-table '(3 . ?_))))))
 
+(defun jupyter-repl--syntax-propertize (spf beg end)
+  "Propertize region between BEG and END, take into account output/input cells.
+SPF is a `syntax-propertize-function' for the REPL's kernel
+language and will be called for any regions between BEG and END
+that have a field text property of cell-code.
+
+All other regions are assumed to be output and are propertized
+using `jupyter-repl-propertize-output'."
+  (let ((start beg) next)
+    (while (/= start end)
+      (cond
+       ((eq (get-text-property start 'field) 'cell-code)
+        (setq next (min end (field-end start)))
+        (funcall spf start next))
+       (t
+        (setq next (or (text-property-any start end 'field 'cell-code) end))
+        (jupyter-repl-propertize-output start next)))
+      (setq start next))))
+
 (defun jupyter-repl-initialize-fontification ()
   "Initialize fontification for the current REPL buffer."
   (let (fld sff spf comment)
@@ -1531,16 +1550,8 @@ When the kernel restarts, insert a new prompt."
                           ;; syntactically in cell output
                           (cons 'parse-sexp-lookup-properties t)
                           (cons 'syntax-propertize-function
-                                (lambda (beg end)
-                                  (let ((cell-pos (text-property-any beg end 'field 'cell-code)))
-                                    (if (not cell-pos)
-                                        ;; Currently this just adds a different
-                                        ;; syntax to quote characters in output
-                                        (jupyter-repl-propertize-output beg end)
-                                      (when (functionp spf)
-                                        (goto-char cell-pos)
-                                        (jupyter-with-repl-cell
-                                          (funcall spf (point-min) (point-max))))))))
+                                (apply-partially 'jupyter-repl--syntax-propertize
+                                                 (or spf #'ignore)))
                           (cons 'font-lock-syntactic-face-function sff))))
       (setq-local comment-start comment)
       (setq font-lock-defaults
