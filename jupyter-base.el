@@ -321,7 +321,7 @@ the output buffer."
 (define-hmac-function jupyter-hmac-sha256 jupyter-sha256 64 32)
 
 (defun jupyter-new-uuid ()
-  "Make a version 4 UUID."
+  "Return a version 4 UUID."
   (format "%04x%04x-%04x-%04x-%04x-%06x%06x"
           (cl-random 65536)
           (cl-random 65536)

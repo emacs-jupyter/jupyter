@@ -989,7 +989,7 @@ displaying the results is shown. For results less than 10 lines
 long, the result is displayed in the minibuffer.
 
 CB is a function to call with the `:execute-result' message when
-the evalution is succesful. When CB is nil, its behavior defaults
+the evalution is successful. When CB is nil, its behavior defaults
 to the above explanation."
   (interactive (list (jupyter-read-expression) nil))
   (unless jupyter-current-client
@@ -1056,11 +1056,11 @@ ignored when called interactively."
 
 (defun jupyter-eval-line-or-region (insert)
   "Evaluate the current line or region with the `jupyter-current-client'.
-If the current region is active send the current region using
+If the current region is active send it using
 `jupyter-eval-region', otherwise send the current line.
 
-With a prefix argument, evaluate and INSERT the results in the
-current buffer."
+With a prefix argument, evaluate and INSERT the text/plain
+representation of the results in the current buffer."
   (interactive "P")
   (let ((cb (when insert
               (apply-partially
