@@ -1001,11 +1001,13 @@ to the above explanation."
     (jupyter-add-callback req
       :execute-reply
       (lambda (msg)
-        (jupyter-with-message-content msg (status evalue)
+        (jupyter-with-message-content msg (status ename evalue)
           (if (equal status "ok")
               (unless had-result
                 (message "jupyter: eval done"))
-            (message "%s" (ansi-color-apply evalue)))))
+            (message "%s: %s"
+                     (ansi-color-apply ename)
+                     (ansi-color-apply evalue)))))
       :execute-result
       (or (and (functionp cb) cb)
           (lambda (msg)
