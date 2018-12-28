@@ -279,6 +279,7 @@ aligns on the current line."
 ;;; Markdown
 
 (defvar markdown-hide-markup)
+(defvar markdown-enable-math)
 (defvar markdown-hide-urls)
 (defvar markdown-fontify-code-blocks-natively)
 (defvar markdown-mode-mouse-map)
@@ -308,6 +309,7 @@ aligns on the current line."
     (insert
      (let ((markdown-hide-markup t)
            (markdown-hide-urls t)
+           (markdown-enable-math t)
            (markdown-fontify-code-blocks-natively t))
        (jupyter-fontify-according-to-mode 'markdown-mode text)))
     ;; Update keymaps
