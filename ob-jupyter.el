@@ -206,9 +206,8 @@ parameter will be used."
 (defun org-babel-jupyter--after-execute (old-hook _client req)
   (advice-remove 'message #'ignore)
   (unwind-protect
-      (org-with-point-at (jupyter-org-request-marker req)
-        (jupyter-org--append-result
-         req (jupyter-org-scalar (jupyter-org-request-id req))))
+      (jupyter-org--append-result
+       req (jupyter-org-scalar (jupyter-org-request-id req)))
     (setq org-babel-after-execute-hook old-hook)
     (run-hooks 'org-babel-after-execute-hook)))
 
