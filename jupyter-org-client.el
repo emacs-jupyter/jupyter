@@ -669,7 +669,7 @@ new \"scalar\" result with the result of calling
 
 (defun jupyter-org--clear-request-id (req)
   "Delete the ID of REQ in the `org-mode' buffer if present."
-  (save-excursion
+  (org-with-point-at (jupyter-org-request-marker req)
     (when (search-forward (jupyter-request-id req) nil t)
       (delete-region (line-beginning-position)
                      (1+ (line-end-position)))
