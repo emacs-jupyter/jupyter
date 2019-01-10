@@ -203,6 +203,11 @@ running BODY."
 Assumes that SPEC is a kernelspec for a Python kernel and
 extracts the IPython kernel's semver."
   (let* ((cmd (aref (plist-get spec :argv) 0))
+         (process-environment
+          (append
+           (cl-loop for (key val) on (plist-get spec :env) by #'cddr
+                    collect (concat (substring (symbol-name key) 1) "=" val))
+           process-environment))
          (version (shell-command-to-string
                    (concat cmd " -c 'import ipykernel; \
 print(\"{}.{}.{}\".format(*ipykernel.version_info[:3]))'"))))
