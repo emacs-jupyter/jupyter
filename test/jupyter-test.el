@@ -1192,11 +1192,34 @@ Latex(r'$\\alpha$')"
                    (buffer-substring-no-properties (point-min) (point-max)))))
          (image-file-name (jupyter-org-image-file-name data "png")))
     (unwind-protect
-        (jupyter-org-test-src-block
-         (format "\
+        (progn
+          (jupyter-org-test-src-block
+           (format "\
 from IPython.display import Image
 Image(filename='%s')" file)
-         (format "[[file:%s]]" image-file-name))
+           (format "[[file:%s]]" image-file-name))
+          ;; Creates a drawer containing both file links
+          (jupyter-org-test-src-block
+           (format "\
+from IPython.display import Image
+from IPython.display import display
+display(Image(filename='%s'))
+Image(filename='%s')" file file)
+           (concat
+            (format "[[file:%s]]" image-file-name) "\n"
+            (format "[[file:%s]]" image-file-name)))
+          ;; Append a file link to a drawer
+          (jupyter-org-test-src-block
+           (format "\
+from IPython.display import Image
+from IPython.display import display
+display(Image(filename='%s'))
+display(Image(filename='%s'))
+Image(filename='%s')" file file file)
+           (concat
+            (format "[[file:%s]]" image-file-name) "\n"
+            (format "[[file:%s]]" image-file-name) "\n"
+            (format "[[file:%s]]" image-file-name))))
       (when (file-exists-p image-file-name)
         (delete-file image-file-name)))))
 
