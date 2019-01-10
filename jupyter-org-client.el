@@ -356,6 +356,10 @@ the `syntax-table' will be set to that of the REPL buffers."
 
 ;;; Constructing org syntax trees
 
+(defun jupyter-org-object-p (element)
+  "Return non-nil if ELEMENT's type is a member of `org-element-all-objects'."
+  (memq (org-element-type element) org-element-all-objects))
+
 (defun jupyter-org-raw-string-p (str)
   "Return non-nil if STR can be inserted as is during result insertion."
   (and (stringp str) (get-text-property 0 'jupyter-org str)))
@@ -469,20 +473,29 @@ Otherwise, return VALUE formated as a fixed-width `org-element'."
 
 (defun jupyter-org-results-drawer (&rest results)
   "Return a drawer `org-element' containing RESULTS.
-RESULTS can be either strings or other `org-element's. The
-returned drawer has a name of \"RESULTS\"."
-  ;; Ensure the last element has a newline if it is already a string. This is
-  ;; to avoid situations like
-  ;;
-  ;; :RESULTS:
-  ;; foo:END:
-  (let ((last (last results)))
-    (when (and (stringp (car last))
-               (not (zerop (length (car last)))))
-      (setcar last (org-element-normalize-string (car last)))))
+RESULTS can be either strings or other `org-element's. Newlines
+are added after every `org-element' object in RESULTS, such as
+file links, so that each result appears on a single line in the
+string representation of the drawer. The returned drawer has a
+name of \"RESULTS\"."
   (apply #'org-element-set-contents
          (list 'drawer (list :drawer-name "RESULTS"))
-         results))
+         (cl-loop
+          for res in results
+          if (jupyter-org-object-p res)
+          collect res into ret and collect "\n" into ret
+          else collect res into ret
+          finally return
+          (let ((last (last ret)))
+            ;; Ensure the last element has a newline if it is already a string.
+            ;; This is to avoid situations like
+            ;;
+            ;; :RESULTS:
+            ;; foo:END:
+            (when (and (stringp (car last))
+                       (not (zerop (length (car last)))))
+              (setcar last (org-element-normalize-string (car last))))
+            ret))))
 
 ;;; Inserting results
 
@@ -866,8 +879,7 @@ Assumes `point' is at the end of the last source block result."
 (defun jupyter-org--goto-result-insertion-point (context)
   "Go the insertion point for new results depending on CONTEXT.
 If CONTEXT is a drawer, go to the end the last element contained
-in the drawer. Otherwise, assuming `point' is on the line
-containing the #+RESULTS affiliated keyword, go forward a line."
+in the drawer. Otherwise do nothing."
   (cond
    ((eq (org-element-type context) 'drawer)
     ;; Go to |:END:
@@ -875,15 +887,16 @@ containing the #+RESULTS affiliated keyword, go forward a line."
         (goto-char (org-element-property :contents-end context))
       (goto-char (jupyter-org-element-end-before-blanks context))
       (beginning-of-line 0)))
-   (t
-    ;; Insert the results after the #+RESULTS: line
-    (forward-line))))
+   (t nil)))
 
 (defun jupyter-org--append-result (req result)
   (org-with-point-at (jupyter-org-request-marker req)
     (let ((result-beg (org-babel-where-is-src-block-result 'insert))
           (inhibit-redisplay (not debug-on-error)))
       (goto-char result-beg)
+      ;; Move past the #+RESULTS: keyword. This is needed so that we can pick
+      ;; up object contexts like file links as opposed to paragraph contexts.
+      (forward-line)
       (let* ((context (org-element-context))
              (stream-result-p (jupyter-org--stream-result-p result)))
         (cond
@@ -894,7 +907,8 @@ containing the #+RESULTS affiliated keyword, go forward a line."
          (t
           (jupyter-org--goto-result-insertion-point context)
           ;; Don't delete the current result if its a drawer or if there aren't
-          ;; any results yet.
+          ;; any results yet, in this case the context is just the #+RESULTS:
+          ;; keyword.
           (unless (memq (org-element-type context) '(keyword drawer))
             (jupyter-org--delete-element context))
           (let ((limit (point)))
@@ -903,9 +917,10 @@ containing the #+RESULTS affiliated keyword, go forward a line."
                       context (if stream-result-p
                                   (jupyter-org-scalar result)
                                 result))))
-            ;; Objects do not have a newline appended so insert one when
-            ;; the result is an object.
-            (when (memq (org-element-type result) org-element-all-objects)
+            (when (/= (point) (line-beginning-position))
+              ;; Org objects such as file links do not have a newline added
+              ;; when converting to their string representation by
+              ;; `org-element-interpret-data' so insert one in these cases.
               (insert "\n"))
             (when jupyter-org-toggle-latex
               (jupyter-org--display-latex limit)))))
