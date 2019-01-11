@@ -203,14 +203,6 @@ parameter will be used."
     (if buffer (pop-to-buffer buffer)
       (user-error "No source block at point"))))
 
-(defun org-babel-jupyter--after-execute (old-hook _client req)
-  (advice-remove 'message #'ignore)
-  (unwind-protect
-      (jupyter-org--append-result
-       req (jupyter-org-scalar (jupyter-org-request-id req)))
-    (setq org-babel-after-execute-hook old-hook)
-    (run-hooks 'org-babel-after-execute-hook)))
-
 (defun org-babel-execute:jupyter (body params)
   "Execute BODY according to PARAMS.
 BODY is the code to execute for the current Jupyter `:session' in
