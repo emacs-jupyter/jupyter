@@ -903,6 +903,12 @@ particular language."
 The evaluation history is used when reading code to evaluate from
 the minibuffer.")
 
+(defun jupyter--teardown-minibuffer ()
+  "Remove Jupyter related variables and hooks from the minibuffer."
+  (setq jupyter-current-client nil)
+  (remove-hook 'completion-at-point-functions 'jupyter-completion-at-point t)
+  (remove-hook 'minibuffer-exit-hook 'jupyter--teardown-minibuffer t))
+
 (cl-defgeneric jupyter-read-expression ()
   "Read an expression using the `jupyter-current-client' for completion.
 The expression is read from the minibuffer and the expression
@@ -922,7 +928,9 @@ Methods that extend this generic function should
             ;; `jupyter-repl-language-mode', but there are
             ;; issues with enabling a major mode.
             (add-hook 'completion-at-point-functions
-                      'jupyter-completion-at-point nil t))
+                      'jupyter-completion-at-point nil t)
+            (add-hook 'minibuffer-exit-hook
+                      'jupyter--teardown-minibuffer nil t))
         (read-from-minibuffer
          "Jupyter Ex: " nil
          read-expression-map
@@ -958,8 +966,16 @@ text/plain representation."
   (cl-check-type jupyter-current-client jupyter-kernel-client
                  "Need a client to evaluate code")
   (let ((msg (jupyter-wait-until-received :execute-result
-               (jupyter-send-execute-request jupyter-current-client
-                 :code code :store-history nil))))
+               (let* ((jupyter-inhibit-handlers t)
+                      (req (jupyter-send-execute-request jupyter-current-client
+                             :code code :store-history nil)))
+                 (prog1 req
+                   (jupyter-add-callback req
+                     :execute-reply
+                     (lambda (msg)
+                       (jupyter-with-message-content msg (status evalue)
+                         (unless (equal status "ok")
+                           (error "%s" (ansi-color-apply evalue)))))))))))
     (when msg
       (jupyter-message-data msg (or mime :text/plain)))))
 
@@ -973,9 +989,9 @@ displaying the results is shown. For results less than 10 lines
 long, the result is displayed in the minibuffer.
 
 CB is a function to call with the `:execute-result' message when
-the evalution is succesful. When CB is nil, its behavior defaults
+the evalution is successful. When CB is nil, its behavior defaults
 to the above explanation."
-  (interactive (list (jupyter-read-expression) current-prefix-arg nil))
+  (interactive (list (jupyter-read-expression) nil))
   (unless jupyter-current-client
     (user-error "No `jupyter-current-client' set"))
   (let* ((jupyter-inhibit-handlers t)
@@ -985,11 +1001,13 @@ to the above explanation."
     (jupyter-add-callback req
       :execute-reply
       (lambda (msg)
-        (jupyter-with-message-content msg (status evalue)
+        (jupyter-with-message-content msg (status ename evalue)
           (if (equal status "ok")
               (unless had-result
                 (message "jupyter: eval done"))
-            (message "%s" (ansi-color-apply evalue)))))
+            (message "%s: %s"
+                     (ansi-color-apply ename)
+                     (ansi-color-apply evalue)))))
       :execute-result
       (or (and (functionp cb) cb)
           (lambda (msg)
@@ -1040,11 +1058,11 @@ ignored when called interactively."
 
 (defun jupyter-eval-line-or-region (insert)
   "Evaluate the current line or region with the `jupyter-current-client'.
-If the current region is active send the current region using
+If the current region is active send it using
 `jupyter-eval-region', otherwise send the current line.
 
-With a prefix argument, evaluate and INSERT the results in the
-current buffer."
+With a prefix argument, evaluate and INSERT the text/plain
+representation of the results in the current buffer."
   (interactive "P")
   (let ((cb (when insert
               (apply-partially
@@ -1125,7 +1143,7 @@ BUFFER and DETAIL have the same meaning as in `jupyter-inspect'."
 
 (defun jupyter-inspect (code &optional pos buffer detail)
   "Inspect CODE.
-Send an `:inspect-request' to the `jupyter-current-client' and
+Send an `:inspect-request' with the `jupyter-current-client' and
 display the results in a BUFFER.
 
 CODE is the code to inspect and POS is your position in the CODE.
@@ -1137,6 +1155,9 @@ Otherwise insert the results in BUFFER but do not display it.
 DETAIL is the detail level to use for the request and defaults to
 0."
   (setq pos (or pos (length code)))
+  (unless (and jupyter-current-client
+               (object-of-class-p jupyter-current-client 'jupyter-kernel-client))
+    (error "Need a valid `jupyter-current-client'"))
   (let ((client jupyter-current-client)
         (msg (jupyter-wait-until-received :inspect-reply
                (jupyter-send-inspect-request jupyter-current-client
@@ -1229,8 +1250,7 @@ returned list."
 
 (defun jupyter-line-or-region-context ()
   "Return the code context of the region or line.
-If the region is active, return the active region context.
-Otherwise return the line context."
+If the region is active, return it. Otherwise return the line."
   (if (region-active-p)
       (jupyter-region-context (region-beginning) (region-end))
     (jupyter-line-context)))
@@ -1244,11 +1264,14 @@ Otherwise return the line context."
 ;;;;; Helpers for completion interface
 
 (defun jupyter-completion-symbol-beginning (&optional pos)
-  "Return the starting position of a completion symbol.
-If POS is non-nil return the position of the symbol before POS
-otherwise return the position of the symbol before point."
+  "Return the beginning position of a completion symbol.
+The beginning position of the symbol around `point' is returned.
+If no symbol exists around point, then `point' is returned.
+
+If POS is non-nil, goto POS first."
   (save-excursion
     (and pos (goto-char pos))
+    ;; FIXME: This is language specific
     (if (and (eq (char-syntax (char-before)) ?.)
              (not (eq (char-before) ?.)))
         ;; Complete operators, but not the field/attribute
@@ -1330,7 +1353,7 @@ Works for Julia and Python."
            (string-trim
             (buffer-substring-no-properties
              start (1- (point)))))))
-    (while (re-search-forward ",\\|::" nil t)
+    (while (re-search-forward ",\\|::\\|;" nil t)
       (setq ppss (syntax-ppss)
             depth (nth 0 ppss)
             inner (nth 1 ppss))
@@ -1339,14 +1362,16 @@ Works for Julia and Python."
          (if (eq (char-after) ?{)
              (push (jupyter-completion--arg-extract-1 (point)) inner-args)
            (push (list (list (funcall get-sexp))) inner-args)))
-        (?,
+        ((or ?, ?\;)
          (if (/= depth 1)
              (push (jupyter-completion--arg-extract-1 inner) inner-args)
-           (push (cons (funcall get-string start) (pop inner-args))
+           ;; ((string . sep) . inner-args)
+           (push (cons (cons (funcall get-string start) (char-before)) (pop inner-args))
                  arg-info)
-           (setq start (1+ (point)))))))
+           (skip-syntax-forward "-")
+           (setq start (point))))))
     (goto-char (point-max))
-    (push (cons (funcall get-string start) (pop inner-args)) arg-info)
+    (push (cons (cons (funcall get-string start) nil) (pop inner-args)) arg-info)
     (nreverse arg-info)))
 
 (defun jupyter-completion--make-arg-snippet (args)
@@ -1355,11 +1380,12 @@ Works for Julia and Python."
    with i = 1
    for top-args in args
    ;; TODO: Handle nested arguments
-   for (arg . inner-args) = top-args
-   collect (format "${%d:%s}" i arg) into constructs
+   for ((arg . sep) . inner-args) = top-args
+   collect (format (concat "${%d:%s}" (when sep "%c")) i arg sep)
+   into constructs
    and do (setq i (1+ i))
    finally return
-   (concat "(" (mapconcat #'identity constructs ", ") ")")))
+   (concat "(" (mapconcat #'identity constructs " ") ")")))
 
 ;;;;; Completion prefix
 

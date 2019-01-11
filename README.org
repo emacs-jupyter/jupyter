@@ -96,8 +96,7 @@ make widgets
 #+END_SRC
 * How does this package compare to other similar packages?
 
-There are two popular packages that implement similar functionality to this
-package
+There are two popular packages that implement similar functionality to this one
 
 - ob-ipython :: https://github.com/gregsexton/ob-ipython
   - Interacts with a Jupyter kernel via =org-mode= source blocks.
@@ -108,24 +107,28 @@ package
 =org-mode= and providing a better REPL interface to the kernel. For example,
 =ob-ipython= currently does not provide a function for
 =org-babel-load-in-session=. =ob-ipython= also starts a new process for every
-inspect and completion request whereas =emacs-jupyter= starts one process for
-every new client connection and pushes all the message sending/receiving into
-the subprocess so that the parent Emacs session does not spend much time
-encoding/decoding JSON. Also =ob-ipython= relies on a Python script for
-communication between Emacs and a Jupyter kernel, whereas =emacs-jupyter= uses
-=zmq= sockets.
+request since it relies on calling a Python script to send and receive messages
+whereas =emacs-jupyter= directly uses =zmq= sockets via =emacs-zmq= for
+communication and only starts a process on every new client connection. This
+difference in how messages are passed between Emacs and a kernel is notable
+when making completion requests. =ob-ipython= will incur the overhead of
+starting up a new process /and/ new sockets on every completion request which
+can potentially be every keystroke if you type slow enough.
 
 =ein= is more of a full featured solution for a Jupyter notebook interface in
-Emacs and looks like a good solution if you want to work with Jupyter notebooks
-in Emacs. The goals of =emacs-jupyter= and =ein= are different. =ein= aims to
-be a frontend to the Jupyter notebook server API
+Emacs. The goals of =emacs-jupyter= and =ein= are different. =ein= aims to be a
+frontend to the Jupyter notebook server API
 (https://github.com/jupyter/jupyter/wiki/Jupyter-Notebook-Server-API) which is
 an extra layer between the user and a kernel
 (https://jupyter.readthedocs.io/en/latest/architecture/how_jupyter_ipython_work.html#notebooks).
-The goal of =emacs-jupyter= is to directly connect to a kernel through =zmq=
-sockets. In the future, it would be nice to add some kind of notebook interface
-in =emacs-jupyter= or at least an efficient conversion process between notebook
-files and =org-mode=.
+In addition to being notebook client, =ein= offers many more powerful features
+for Python kernels. =emacs-jupyter=, on the other hand, offers an API that
+implements the Jupyter messaging protocol for communication with a kernel via
+=zmq= sockets. The API tries to integrate the interaction between the user and
+a kernel with built-in Emacs features. The REPL support and =org-mode=
+integration are examples of how the API can be used. In the future, it would be
+nice to add some kind of notebook interface in =emacs-jupyter= or at least an
+efficient conversion process between notebook files and =org-mode=.
 * Jupyter REPL
 
 To start a new kernel on the =localhost= and connect a REPL client to it, run
@@ -203,6 +206,13 @@ keybindings for interacting with the REPL:
 | =C-c C-r=   | =jupyter-repl-restart-kernel=      |
 | =C-c C-s=   | =jupyter-repl-scratch-buffer=      |
 | =C-c M-:=   | =jupyter-eval-string=              |
+** =jupyter-repl-persistent-mode=
+
+A global minor mode that will persist the current Jupyter kernel connection if
+the current buffer is in =jupyter-repl-interaction-mode= and a buffer with the
+same =major-mode= as the current buffer is displayed or switched to. This mode
+is automatically enabled whenever =jupyter-run-repl= or =jupyter-connect-repl=
+is called.
 ** Widget support
 
 There is also support for Jupyter widgets integrated into the REPL. If any of
@@ -258,9 +268,8 @@ x + ' ' + y
 #+END_SRC
 
 Since a particular language may have multiple kernels available, the default
-kernel used for a language is the first kernelspec found by
-=jupyter-available-kernelspecs= for the language. To change the kernel, set the
-=:kernel= parameter:
+kernel used will be the first one found by =jupyter-available-kernelspecs= for
+the language. To change the kernel, set the =:kernel= parameter:
 
 #+BEGIN_SRC org
 ,#+BEGIN_SRC jupy-python :session py :async yes :kernel python2
@@ -271,12 +280,11 @@ x + ' ' + y
 #+END_SRC
 
 Note, the same session name can be used for different values of =:kernel= since
-the underlying REPL buffer for a source code block is a based on both
-=:session= and =:kernel=.
+the underlying REPL buffer's name is based on both =:session= and =:kernel=.
 
-In addition, any of the defaults for a language can be changed by setting
+Any of the defaults for a language can be changed by setting
 =org-babel-default-header-args:jupy-LANG= to an appropriate value. For example
-to change the default header arguments of the =julia= kernel, you can set
+to change the defaults for the =julia= kernel, you can set
 =org-babel-default-header-args:jupy-julia= to something like
 
 #+BEGIN_SRC elisp
@@ -301,10 +309,10 @@ code block.
 
 Below are the supported mimetypes ordered by priority
 - text/org
+- image/svg+xml, image/jpeg, image/png
 - text/html
 - text/markdown
 - text/latex
-- image/png, image/jpg, image/svg+xml
 - text/plain
 *** Image output without the =:file= header argument
 
@@ -356,6 +364,25 @@ Host ec2
 #+END_SRC
 
 to your =~/.ssh/config= file.
+** TODO Standard output, displayed data, and code block results
+
+One significant difference between Jupyter code blocks and regular =org-mode=
+code blocks is that the underlying Jupyter kernel can request that the client
+display extra data in addition to output or the result of a code block. See
+[[https://jupyter-client.readthedocs.io/en/stable/messaging.html#display-data][display_data messages]].
+
+To account for this, Jupyter code blocks do not go through the normal =org-mode=
+result insertion mechanism (see =org-babel-insert-result=). The downside of
+this is that, compared to normal code blocks, only a small subset of the header
+arguments common to all code blocks are supported. Currently this is only the
+=:file= argument for image results and =:results raw= for inserting raw latex
+fragments sent by the kernel. The upside is that all forms of results produced
+by a kernel can be inserted into the buffer similar to a Jupyter notebook.
+
+The implementation of =org-mode= code blocks is really meant to handle either
+capturing the standard output /or/ the result of a code block. When using
+Jupyter code blocks, if the kernel produces standard output or asks to display
+extra information, the results are appended to a =:RESULTS:= drawer.
 * API
 ** Naming conventions
 
@@ -387,15 +414,18 @@ Methods that require a message type as an argument such as
 **** Lower level classes
 
 - =jupyter-ioloop= :: A general class for asynchronous communication with a
-     subprocess. "Events" are sent to the subprocess for processing and are
-     return values from the subprocess back to the parent are handled by
-     extending the =jupyter-ioloop-handler= method.
+     subprocess. The subprocess polls its standard input for "events" from the
+     parent process. To add a new event to be handled by the subprocess you use
+     =jupyter-ioloop-add-event=. The resulting subprocess event handler created
+     using =jupyter-ioloop-add-event= can potentially send an event back to the
+     parent process. In the parent, events are handled by extending the
+     =jupyter-ioloop-handler= method.
 - =jupyter-channel-ioloop= :: A subclass of =jupyter-ioloop= configured to
-     process messages being passed between a kernel and the parent Emacs
-     process. This is what =jupyter-kernel-client= uses to communicate with a
-     kernel.
-*** Communicating with the kernel
-**** Initializing the connection
+     start a subprocess that handles messages being passed on Jupyter channels
+     between a kernel and the parent Emacs process. This is what
+     =jupyter-kernel-client= uses to communicate with a kernel.
+*** Communicating with a kernel
+**** Initializing a connection
 
 For a =jupyter-kernel-client= to start communicating with a kernel, the
 following steps are taken:
@@ -1025,28 +1055,16 @@ supported mimetypes are handled in a similar way.
 
 The main entry point for extending how results are inserted into the =org-mode=
 buffer is the method help:jupyter-org-result, which dispatches on the MIME type
-of a result returned from the Jupyter kernel. The MIME type priority is given
-in =jupyter-org-mime-types=. =jupyter-org-result= returns a cons cell of the
-form =(RENDER-PARAM . RESULT)= where =RENDER-PARAM= can be either a string or a
-cons cell of the form =(:wrap . "SRC markdown")=. If =RENDER-PARAM= is a string
-it will be added to the result parameters of the code block. If it is a cons
-cell it will be appended to the source block arguments, see
-help:org-babel-insert-result. =RESULT= is the result that will be inserted into
-the =org-mode= buffer using =RENDER-PARAM= and should be based on the mime data
-returned by the Jupyter kernel.
+of a result returned from a kernel. The MIME type priority is given in
+=jupyter-org-mime-types=. =jupyter-org-result= can return either an
+=org-element= object or a string. In the former case, the =org-element= is
+transformed into its string representation before insertion into the buffer. In
+the later case, the string is inserted into the =org-mode= buffer as is,
+without any further processing.
 
-For example, suppose Jupyter returns a =png= image to be displayed. The default
-method of =jupyter-org-result= will create an image with a file name based on
-the =sha1= hash of the image data and place the file in
-=org-babel-jupyter-resource-directory=. The return value will be
-
-#+BEGIN_SRC elisp
-(cons "file" "<file-name>.png")
-#+END_SRC
-
-where =<file-name>= is the file name based on the image data. Since
-=RENDER-PARAM= is ="file"=, =org-mode= will wrap =<file-name>.png= in an
-=org-mode= file link.
+There are helper functions for generating =org-element= objects which have
+names like =jupyter-org-scalar=, =jupyter-org-export-block=,
+=jupyter-org-file-link=, etc.
 ***** Extending =jupyter-org-result=
 
 For a kernel language to extend the behavior of how results are inserted, the
@@ -1059,13 +1077,12 @@ For a kernel language to extend the behavior of how results are inserted, the
                                   &rest _)
   (let ((result (cl-call-next-method)))
     (cond
-     ((and (equal (car result) "scalar")
-           (stringp (cdr result)))
-      (cons "scalar" (org-babel-python-table-or-string (cdr result))))
+     ((stringp result)
+      (org-babel-python-table-or-string result))
      (t result))))
 #+END_SRC
 
 =cl-call-next-method= calls down to a less specialized method of
 =jupyter-org-result= and if the returned result is still expected to be plain
 text, calls =org-babel-python-table-org-string= to convert any results that
-look like Python arrays into =org-mode= tables before returning its results.
+look like Python arrays into =org-mode= tables before returning its result.

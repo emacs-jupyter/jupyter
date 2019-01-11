@@ -53,6 +53,7 @@ buffer."
                         (- (point) (line-beginning-position))
                         (- (line-end-position) (point)))))
             (jupyter-repl-insert
+             :inherit t
              (make-string (if (> len 4) len 4) ? ))))))))
 
 (cl-defmethod jupyter-insert :around ((msg cons)

@@ -42,6 +42,7 @@
 (declare-function tramp-tramp-file-p "tramp" (name))
 (declare-function tramp-file-name-user "tramp")
 (declare-function tramp-file-name-host "tramp")
+(declare-function jupyter-message-content "jupyter-messages" (msg))
 
 ;;; Custom variables
 
@@ -175,16 +176,15 @@ A longer timeout is needed, for example, when retrieving the
 
 (defmacro jupyter-with-timeout (spec &rest wait-forms)
   "Periodically evaluate WAIT-FORMS until timeout.
-Or until WAIT-FORMS evaluates to a non-nil.
+Or until WAIT-FORMS evaluates to a non-nil value.
 
 Wait until timeout SECONDS, periodically evaluating WAIT-FORMS
 until it returns non-nil. If WAIT-FORMS returns non-nil, stop
 waiting and return its value. Otherwise if timeout SECONDS
 elapses, evaluate TIMEOUT-FORMS and return its value.
 
-If PROGRESS is non-nil and evaluates to a string then, while
-waiting, a progress reporter will be used with PROGRESS as the
-message.
+If PROGRESS is non-nil and evaluates to a string, a progress
+reporter will be used with PROGRESS as the message while waiting.
 
 SPEC takes the form (PROGRESS SECONDS TIMEOUT-FORMS...).
 
@@ -209,7 +209,8 @@ SPEC takes the form (PROGRESS SECONDS TIMEOUT-FORMS...).
 The END marker will advance if BODYFORM inserts text in the
 current buffer. Thus after BODYFORM is evaluated, AFTERFORMS will
 have access to the bounds of the text inserted by BODYFORM in the
-variables BEG and END. The value of BODYFORM is returned."
+variables BEG and END. The result of evaluating BODYFORM is
+returned."
   (declare (indent 3) (debug (symbolp symbolp form body)))
   `(let ((,beg (point-marker))
          (,end (point-marker)))
@@ -320,7 +321,7 @@ the output buffer."
 (define-hmac-function jupyter-hmac-sha256 jupyter-sha256 64 32)
 
 (defun jupyter-new-uuid ()
-  "Make a version 4 UUID."
+  "Return a version 4 UUID."
   (format "%04x%04x-%04x-%04x-%04x-%06x%06x"
           (cl-random 65536)
           (cl-random 65536)
@@ -555,6 +556,29 @@ the ROUTING-ID of the socket. Return the created socket."
   "Read a property list from a JSON encoded STRING."
   (let ((json-object-type 'plist))
     (json-read-from-string string)))
+
+(defun jupyter-normalize-data (plist &optional metadata)
+  "Return a list (DATA META) from PLIST.
+DATA is a property list of mimetype data extracted from PLIST. If
+PLIST is a message plist, then DATA will be the value of the
+:data key in the messages contents. If PLIST is not a message
+plist, then DATA is either the :data key of PLIST or PLIST
+itself.
+
+A similar extraction process is performed for the :metadata key
+of PLIST which will be the META argument in the return value. If
+no :metadata key can be found, then META will be METADATA."
+  (list
+   (or
+    ;; Allow for passing message plists
+    (plist-get (jupyter-message-content plist) :data)
+    ;; Allow for passing (jupyter-message-content msg)
+    (plist-get plist :data)
+    ;; Otherwise assume the plist contains mimetypes
+    plist)
+   (or (plist-get (jupyter-message-content plist) :metadata)
+       (plist-get plist :metadata)
+       metadata)))
 
 (provide 'jupyter-base)
 

@@ -206,9 +206,8 @@ parameter will be used."
 (defun org-babel-jupyter--after-execute (old-hook _client req)
   (advice-remove 'message #'ignore)
   (unwind-protect
-      (org-with-point-at (jupyter-org-request-marker req)
-        (jupyter-org--append-result
-         req (jupyter-org-scalar (jupyter-org-request-id req))))
+      (jupyter-org--append-result
+       req (jupyter-org-scalar (jupyter-org-request-id req)))
     (setq org-babel-after-execute-hook old-hook)
     (run-hooks 'org-babel-after-execute-hook)))
 
@@ -236,7 +235,10 @@ the PARAMS alist."
       (jupyter-org-insert-async-id req))
      (t
       (jupyter-wait-until-idle req most-positive-fixnum)
-      (jupyter-org-insert-sync-results req)))))
+      (prog1 (jupyter-org-sync-results req)
+        ;; Add after since the initial result params are used in
+        ;; `jupyter-org-client'
+        (nconc (alist-get :result-params params) (list "raw")))))))
 
 (defun org-babel-jupyter-make-language-alias (kernel lang)
   "Simimilar to `org-babel-make-language-alias' but for Jupyter src-blocks.

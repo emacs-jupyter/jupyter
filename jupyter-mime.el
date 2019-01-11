@@ -211,26 +211,18 @@ used instead of `jupyter-mime-types'.
 When no valid mimetype is present, a warning is shown and nil is
 returned."
   (cl-assert plist json-plist)
-  (let* ((data (or
-                ;; Allow for passing message plists
-                (plist-get (jupyter-message-content plist) :data)
-                ;; Allow for passing (jupyter-message-content msg)
-                (plist-get plist :data)
-                ;; Otherwise assume the plist contains mimetypes
-                plist))
-         (metadata (if (eq data plist) metadata
-                     (plist-get plist :metadata))))
-    (when data
-      (or (let ((tick (buffer-modified-tick)))
-            (jupyter-loop-over-mime (if (display-graphic-p) jupyter-mime-types
-                                      jupyter-nongraphic-mime-types)
-                mime data metadata
-              (and (or (jupyter-insert mime data metadata)
-                       (/= tick (buffer-modified-tick)))
-                   mime)))
-          (prog1 nil
-            (warn "No valid mimetype found %s"
-                  (cl-loop for (k _v) on data by #'cddr collect k)))))))
+  (cl-destructuring-bind (data metadata)
+      (jupyter-normalize-data plist metadata)
+    (or (let ((tick (buffer-modified-tick)))
+          (jupyter-loop-over-mime (if (display-graphic-p) jupyter-mime-types
+                                    jupyter-nongraphic-mime-types)
+              mime data metadata
+            (and (or (jupyter-insert mime data metadata)
+                     (/= tick (buffer-modified-tick)))
+                 mime)))
+        (prog1 nil
+          (warn "No valid mimetype found %s"
+                (cl-loop for (k _v) on data by #'cddr collect k))))))
 
 ;;; HTML
 
@@ -287,6 +279,7 @@ aligns on the current line."
 ;;; Markdown
 
 (defvar markdown-hide-markup)
+(defvar markdown-enable-math)
 (defvar markdown-hide-urls)
 (defvar markdown-fontify-code-blocks-natively)
 (defvar markdown-mode-mouse-map)
@@ -316,6 +309,7 @@ aligns on the current line."
     (insert
      (let ((markdown-hide-markup t)
            (markdown-hide-urls t)
+           (markdown-enable-math t)
            (markdown-fontify-code-blocks-natively t))
        (jupyter-fontify-according-to-mode 'markdown-mode text)))
     ;; Update keymaps

@@ -192,6 +192,8 @@ kernel. Starting a kernel involves the following steps:
              (conn-file (make-temp-file "emacs-kernel-" nil ".json")))
         ;; Write the connection info file
         (let ((json-encoding-pretty-print t))
+          (unless (file-directory-p jupyter-runtime-directory)
+            (make-directory jupyter-runtime-directory 'parents))
           (with-temp-file conn-file
             (insert (json-encode-plist conn-info))))
         ;; Start the process
@@ -361,7 +363,7 @@ instance, see `jupyter-make-client'."
                          (jupyter-message-status-starting-p msg)))))
         (jupyter-add-hook client 'jupyter-iopub-message-hook cb)
         (jupyter-start-channels client)
-        (jupyter-start-kernel manager 10)
+        (jupyter-start-kernel manager)
         (jupyter-with-timeout
             ("Kernel starting up..." jupyter-long-timeout
              (message "Kernel did not send startup message"))
