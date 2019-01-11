@@ -949,22 +949,25 @@ request."
   "Return RESULTS with all contiguous stream results concatenated.
 All stream results are then turned into fixed-width or
 example-block elements."
-  (let ((head (nreverse
-               (cl-reduce
-                (lambda (a b)
-                  (if (and (jupyter-org--stream-result-p b)
-                           (jupyter-org--stream-result-p (car a)))
-                      (setcar a (concat (car a) b))
-                    (push b a))
-                  a)
-                results
-                :initial-value nil))))
-    (prog1 head
-      (setq results head)
-      (while results
-        (when (jupyter-org--stream-result-p (car results))
-          (setcar results (jupyter-org-scalar (car results))))
-        (pop results)))))
+  (let ((head-to-scalar (lambda (a)
+                          ;; Convert the head element of A to a scalar if its a
+                          ;; stream result, return A.
+                          (when (jupyter-org--stream-result-p (car a))
+                            (setcar a (jupyter-org-scalar (car a))))
+                          a)))
+    (nreverse
+     (funcall
+      head-to-scalar
+      (cl-reduce
+       (lambda (a b)
+         (if (and (jupyter-org--stream-result-p b)
+                  (jupyter-org--stream-result-p (car a)))
+             (setcar a (concat (car a) b))
+           (funcall head-to-scalar a)
+           (push b a))
+         a)
+       results
+       :initial-value nil)))))
 
 ;;; org-babel functions
 ;; These are meant to be called by `org-babel-execute:jupyter'
