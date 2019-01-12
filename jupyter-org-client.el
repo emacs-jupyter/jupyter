@@ -348,11 +348,75 @@ the `syntax-table' will be set to that of the REPL buffers."
   (jupyter-org-with-src-block-client
    (jupyter-completion-at-point)))
 
-(defun jupyter-org-enable-completion ()
-  "Enable autocompletion in Jupyter source code blocks."
-  (add-hook 'completion-at-point-functions 'jupyter-org-completion-at-point nil t))
+;;; Key bindings in code blocks
 
-(add-hook 'org-mode-hook 'jupyter-org-enable-completion)
+;; From http://endlessparentheses.com/define-context-aware-keys-in-emacs.html
+(defvar jupyter-org-interaction-mode-map (make-sparse-keymap))
+
+(defun jupyter-org--define-key-filter (def &rest _)
+  (jupyter-org-when-in-src-block def))
+
+(defun jupyter-org--call-with-src-block-client (def)
+  (jupyter-org-with-src-block-client
+   (call-interactively def)))
+
+(defun jupyter-org-define-key (key def)
+  "Bind KEY to DEF, but only when inside a Jupyter code block.
+
+When `point' is inside a Jupyter code block, DEF is called using
+the `jupyter-current-client' of the session associated with the
+code block, see `jupyter-org-with-src-block-client'.
+
+Note, KEY is bound to `jupyter-org-interaction-mode-map' and only takes
+effect when `jupyter-org-interaction-mode' is enabled."
+  (define-key jupyter-org-interaction-mode-map key
+    `(menu-item
+      ,(format "jupyter-%s" (cl-gensym)) nil
+      :filter
+      ,(apply-partially
+        #'jupyter-org--define-key-filter
+        (lambda ()
+          (interactive)
+          (jupyter-org--call-with-src-block-client def))))))
+
+(jupyter-org-define-key (kbd "C-x C-e") #'jupyter-eval-line-or-region)
+(jupyter-org-define-key (kbd "C-M-x") #'jupyter-eval-defun)
+(jupyter-org-define-key (kbd "M-i") #'jupyter-inspect-at-point)
+(jupyter-org-define-key (kbd "C-c C-r") #'jupyter-repl-restart-kernel)
+(jupyter-org-define-key (kbd "C-c C-i") #'jupyter-repl-interrupt-kernel)
+
+;;; `jupyter-org-interaction-mode'
+
+(define-minor-mode jupyter-org-interaction-mode
+  "Minor mode for interacting with a Jupyter REPL from an `org-mode' buffer.
+When this minor mode is enabled, some of the keybindings
+available in `jupyter-repl-interaction-mode' are also available
+when `point' is inside a Jupyter code block. Completion is also
+enabled when `point' is inside a code block.
+
+By default this mode is enabled in every `org-mode' buffer.
+
+key             binding
+---             -------
+
+C-M-x           `jupyter-eval-defun'
+M-i             `jupyter-inspect-at-point'
+
+C-c TAB         `jupyter-repl-interrupt-kernel'
+C-c C-r         `jupyter-repl-restart-kernel'
+
+C-x C-e         `jupyter-eval-line-or-region'"
+  :group 'ob-jupyter
+  :init-value nil
+  (cond
+   (jupyter-org-interaction-mode
+    (add-hook 'completion-at-point-functions 'jupyter-org-completion-at-point nil t)
+    (add-hook 'after-revert-hook 'jupyter-org-interaction-mode nil t))
+   (t
+    (remove-hook 'completion-at-point-functions 'jupyter-org-completion-at-point t)
+    (remove-hook 'after-revert-hook 'jupyter-org-interaction-mode t))))
+
+(add-hook 'org-mode-hook 'jupyter-org-interaction-mode)
 
 ;;; Constructing org syntax trees
 
