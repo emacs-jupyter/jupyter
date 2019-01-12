@@ -1541,7 +1541,15 @@ Run FUN when the completions are available."
 (defun jupyter-completion-at-point ()
   "Function to add to `completion-at-point-functions'."
   (let ((prefix (jupyter-completion-prefix)) req)
-    (when (and prefix jupyter-current-client)
+    (when (and
+           prefix jupyter-current-client
+           ;; Don't try to send completion requests when the kernel is busy
+           ;; since it doesn't appear that kernels respond to these requests
+           ;; when the kernel is busy, at least the Julia kernel doesn't.
+           ;;
+           ;; FIXME: Maybe this is kernel dependent
+           (not (equal "busy"
+                       (jupyter-execution-state jupyter-current-client))))
       (when (consp prefix)
         (setq prefix (car prefix))
         (when (and (bound-and-true-p company-mode)
