@@ -247,13 +247,20 @@ the PARAMS alist."
     (cond
      ((or (equal (alist-get :async params) "yes")
           (plist-member params :async))
-      (jupyter-org-insert-async-id req))
+      (if (jupyter-org-request-inline-block-p req) ""
+        (jupyter-org-insert-async-id req)))
      (t
       (jupyter-wait-until-idle req most-positive-fixnum)
-      (prog1 (jupyter-org-sync-results req)
-        ;; Add after since the initial result params are used in
-        ;; `jupyter-org-client'
-        (nconc (alist-get :result-params params) (list "raw")))))))
+      (if (jupyter-org-request-inline-block-p req)
+          ;; In the case of synchronous inline results, only the result of the
+          ;; execute-result message will be added to
+          ;; `jupyter-org-request-results', stream results and any display data
+          ;; messages will be displayed in a separate buffer.
+          (car (jupyter-org-request-results req))
+        (prog1 (jupyter-org-sync-results req)
+          ;; Add after since the initial result params are used in
+          ;; `jupyter-org-client'
+          (nconc (alist-get :result-params params) (list "raw"))))))))
 
 (defun org-babel-jupyter-make-language-alias (kernel lang)
   "Similar to `org-babel-make-language-alias' but for Jupyter src-blocks.

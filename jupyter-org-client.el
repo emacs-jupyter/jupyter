@@ -32,6 +32,7 @@
 (require 'org-element)
 
 (declare-function org-at-drawer-p "org")
+(declare-function org-element-context "org-element" (&optional element))
 (declare-function org-in-regexp "org" (regexp &optional nlines visually))
 (declare-function org-in-src-block-p "org" (&optional inside))
 (declare-function org-babel-python-table-or-string "ob-python" (results))
@@ -72,6 +73,7 @@ source code block. Set by `org-babel-execute:jupyter'.")))
   results
   silent
   id-cleared-p
+  inline-block-p
   marker
   async)
 
@@ -86,6 +88,11 @@ source code block. Set by `org-babel-execute:jupyter'.")))
          (result-params (alist-get :result-params block-params)))
     (jupyter-org-request
      :marker (copy-marker org-babel-current-src-block-location)
+     :inline-block-p (save-excursion
+                       (goto-char org-babel-current-src-block-location)
+                       (and (memq (org-element-type (org-element-context))
+                                  '(inline-babel-call inline-src-block))
+                            t))
      :result-type (alist-get :result-type block-params)
      :block-params block-params
      :async (equal (alist-get :async block-params) "yes")
@@ -102,11 +109,16 @@ source code block. Set by `org-babel-execute:jupyter'.")))
                                      (req jupyter-org-request)
                                      _name
                                      text)
-  (jupyter-org--add-result
-   req (with-temp-buffer
-         (jupyter-with-control-code-handling
-          (insert (ansi-color-apply text)))
-         (buffer-string))))
+  (if (jupyter-org-request-inline-block-p req)
+      (jupyter-with-display-buffer "org-results" req
+        (jupyter-with-control-code-handling
+         (insert (ansi-color-apply text)))
+        (pop-to-buffer (current-buffer)))
+    (jupyter-org--add-result
+     req (with-temp-buffer
+           (jupyter-with-control-code-handling
+            (insert (ansi-color-apply text)))
+           (buffer-string)))))
 
 ;;;; Errors
 
@@ -179,18 +191,22 @@ to."
                                     _ename
                                     _evalue
                                     traceback)
-  ;; (jupyter-with-display-buffer "traceback" 'reset
-  ;;   (jupyter-insert-ansi-coded-text
-  ;;    (mapconcat #'identity traceback "\n"))
-  ;;   (goto-char (line-beginning-position))
-  ;;   (pop-to-buffer (current-buffer)))
-  (setq traceback (org-element-normalize-string
-                   (ansi-color-apply (mapconcat #'identity traceback "\n"))))
-  (let ((goto-error (jupyter-org-goto-error-string traceback)))
-    (when goto-error
-      (jupyter-org--add-result req (jupyter-org-comment goto-error))))
-  ;; (jupyter-org-scalar (format "%s: %s" ename (ansi-color-apply evalue)))
-  (jupyter-org--add-result req traceback))
+  (if (jupyter-org-request-inline-block-p req)
+      (jupyter-with-display-buffer "traceback" 'reset
+        ;; Remove any old inline result
+        (org-with-point-at (jupyter-org-request-marker req)
+          (org-babel-remove-inline-result))
+        (jupyter-insert-ansi-coded-text
+         (mapconcat #'identity traceback "\n"))
+        (goto-char (line-beginning-position))
+        (pop-to-buffer (current-buffer)))
+    (setq traceback (org-element-normalize-string
+                     (ansi-color-apply (mapconcat #'identity traceback "\n"))))
+    (let ((goto-error (jupyter-org-goto-error-string traceback)))
+      (when goto-error
+        (jupyter-org--add-result req (jupyter-org-comment goto-error))))
+    ;; (jupyter-org-scalar (format "%s: %s" ename (ansi-color-apply evalue)))
+    (jupyter-org--add-result req traceback)))
 
 ;;;; Execute result
 
@@ -200,8 +216,20 @@ to."
                                              data
                                              metadata)
   (unless (eq (jupyter-org-request-result-type req) 'output)
-    (jupyter-org--add-result
-     req (jupyter-org-result req data metadata))))
+    (if (not (jupyter-org-request-inline-block-p req))
+        (jupyter-org--add-result
+         req (jupyter-org-result req data metadata))
+      ;; For inline results, only text/plain results are allowed
+      ;;
+      ;; TODO: Possibly file links are allowed as well. See
+      ;; `org-babel-insert-result'
+      (setq data (plist-get data :text/plain))
+      (if (jupyter-org-request-async req)
+          (org-with-point-at (jupyter-org-request-marker req)
+            (org-babel-insert-result data))
+        ;; The results are returned in `org-babel-execute:jupyter' in the
+        ;; synchronous case
+        (jupyter-org--add-result req data)))))
 
 ;;;; Display data
 
@@ -215,7 +243,14 @@ to."
                                            ;; can #+NAME be used as a display
                                            ;; ID?
                                            _transient)
-  (jupyter-org--add-result req (jupyter-org-result req data metadata)))
+  ;; Only the data of the execute-result message is inserted into the buffer
+  ;; for inline code blocks.
+  (if (jupyter-org-request-inline-block-p req)
+      (jupyter-with-display-buffer "org-results" req
+        (jupyter-insert data metadata)
+        (pop-to-buffer (current-buffer))
+        (set-window-point (get-buffer-window (current-buffer)) (point-min)))
+    (jupyter-org--add-result req (jupyter-org-result req data metadata))))
 
 ;;;; Execute reply
 
