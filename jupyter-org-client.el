@@ -384,34 +384,64 @@ the `syntax-table' will be set to that of the REPL buffers."
 
 ;;; Key bindings in code blocks
 
-;; From http://endlessparentheses.com/define-context-aware-keys-in-emacs.html
 (defvar jupyter-org-interaction-mode-map (make-sparse-keymap))
 
-(defun jupyter-org--define-key-filter (def &rest _)
-  (jupyter-org-when-in-src-block def))
+(defun jupyter-org--key-def (key vect)
+  (let* ((map (lookup-key jupyter-org-interaction-mode-map vect))
+         (cmd (and (keymapp map) (lookup-key map key))))
+    (and (functionp cmd) cmd)))
+
+(defun jupyter-org--define-key-filter (key &rest _)
+  (jupyter-org-with-src-block-client
+   (let ((lang (intern (jupyter-kernel-language jupyter-current-client))))
+     (or (jupyter-org--key-def key `[,lang])
+         (jupyter-org--key-def key [jupyter])))))
 
 (defun jupyter-org--call-with-src-block-client (def)
   (jupyter-org-with-src-block-client
    (call-interactively def)))
 
-(defun jupyter-org-define-key (key def)
+(defun jupyter-org-define-key (key def &optional lang)
   "Bind KEY to DEF, but only when inside a Jupyter code block.
 
 When `point' is inside a Jupyter code block, DEF is called using
 the `jupyter-current-client' of the session associated with the
 code block, see `jupyter-org-with-src-block-client'.
 
-Note, KEY is bound to `jupyter-org-interaction-mode-map' and only takes
-effect when `jupyter-org-interaction-mode' is enabled."
+If LANG is non-nil, it is a language symbol such as python or
+julia. Only bind KEY to DEF whenever the underlying kernel
+language is LANG. If LANG is nil, then KEY is bound to DEF
+regardless of kernel language. Note, the same key can be bound
+for different kernel languages.
+
+All of the keys are bound in `jupyter-org-interaction-mode-map'
+and they only takes effect when `jupyter-org-interaction-mode' is
+enabled."
+  ;; From http://endlessparentheses.com/define-context-aware-keys-in-emacs.html
+  ;;
+  ;; But the dynamic keybindings in code blocks is inspired by John Kitchin's
+  ;; extensions to ob-ipython.
+  (setq lang `[,(or lang 'jupyter)])
+  (let ((map (or (lookup-key jupyter-org-interaction-mode-map lang)
+                 (define-key jupyter-org-interaction-mode-map lang
+                   (make-sparse-keymap)))))
+    (define-key map key
+      (let ((cmd (lambda ()
+                   (interactive)
+                   (jupyter-org--call-with-src-block-client def))))
+        (if (symbolp def)
+            (defalias (make-symbol (symbol-name def))
+              cmd (documentation def))
+          cmd))))
+  ;; FIXME: This will set the key multiple times if the same binding is used
+  ;; for different kernel languages even though it only needs to be defined
+  ;; once. `lookup-key' won't work for checking if it is already defined since
+  ;; the filter function of the menu-item returns nil if a client isn't
+  ;; defined.
   (define-key jupyter-org-interaction-mode-map key
     `(menu-item
-      ,(format "jupyter-%s" (cl-gensym)) nil
-      :filter
-      ,(apply-partially
-        #'jupyter-org--define-key-filter
-        (lambda ()
-          (interactive)
-          (jupyter-org--call-with-src-block-client def))))))
+      "" nil :filter
+      ,(apply-partially #'jupyter-org--define-key-filter key))))
 
 (jupyter-org-define-key (kbd "C-x C-e") #'jupyter-eval-line-or-region)
 (jupyter-org-define-key (kbd "C-M-x") #'jupyter-eval-defun)
