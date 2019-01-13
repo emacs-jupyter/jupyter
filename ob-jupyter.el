@@ -93,6 +93,19 @@ exist or if LANG cannot be determined, assign variables using
     (if (functionp fun) (funcall fun params)
       (org-babel-variable-assignments:python params))))
 
+(cl-defgeneric org-babel-jupyter-transform-code (code _changelist)
+  "Transform CODE according to CHANGELIST, return the transformed CODE.
+CHANGELIST is a property list containing the requested changes. The default
+implementation returns CODE unchanged.
+
+This is useful for kernel languages to extend using the
+jupyter-lang method specializer, e.g. to return new code to change
+directories before evaluating CODE.
+
+See `org-babel-expand-body:jupyter' for possible changes that can
+be in CHANGELIST."
+  code)
+
 (defun org-babel-expand-body:jupyter (body params &optional var-lines lang)
   "Expand BODY according to PARAMS.
 
@@ -109,16 +122,27 @@ provided.
 BODY is expanded by calling the function
 `org-babel-expand-body:LANG'. If this function doesn't exist or
 if LANG cannot be determined, fall back to
-`org-babel-expand-body:generic'."
+`org-babel-expand-body:generic'.
+
+If PARAMS has a :dir parameter, the expanded code is passed to
+`org-babel-jupyter-transform-code' with a changelist that
+includes the :dir parameter with the directory being an absolute
+path."
   (let* ((lang (or lang
                    (save-excursion
                      (when (re-search-backward
                             org-babel-jupyter-language-regex nil t)
                        (match-string 1)))))
-         (fun (when lang
-                (intern (concat "org-babel-expand-body:" lang)))))
-    (if (functionp fun) (funcall fun body params var-lines)
-      (org-babel-expand-body:generic body params var-lines))))
+         (expander (when lang
+                     (intern (concat "org-babel-expand-body:" lang))))
+         (expanded (if (functionp expander)
+                       (funcall expander body params var-lines)
+                     (org-babel-expand-body:generic body params var-lines)))
+         (changelist nil))
+    (when (alist-get :dir params)
+      (plist-put changelist :dir (expand-file-name (alist-get :dir params))))
+    (if changelist (org-babel-jupyter-transform-code expanded changelist)
+      expanded)))
 
 (defun org-babel-edit-prep:jupyter (info)
   "Prepare the edit buffer according to INFO."
@@ -151,7 +175,7 @@ variables in PARAMS."
   (save-window-excursion
     (let ((buffer (org-babel-prep-session:jupyter session params 'delay-eval)))
       (with-current-buffer buffer
-        (insert (org-babel-chomp body))
+        (insert (org-babel-expand-body:jupyter (org-babel-chomp body) params))
         (current-buffer)))))
 
 (defun org-babel-jupyter-initiate-session-by-key (session params)
@@ -225,20 +249,20 @@ Do this only if the file exists in
   "Execute BODY according to PARAMS.
 BODY is the code to execute for the current Jupyter `:session' in
 the PARAMS alist."
-  (let* ((default-directory (or (alist-get :dir params) default-directory))
-         (client (with-current-buffer
-                     (org-babel-jupyter-initiate-session
-                      (alist-get :session params) params)
-                   jupyter-current-client))
-         (kernel-lang (jupyter-kernel-language client))
+  (let* ((jupyter-current-client (with-current-buffer
+                                     (org-babel-jupyter-initiate-session
+                                      (alist-get :session params) params)
+                                   jupyter-current-client))
+         (kernel-lang (jupyter-kernel-language jupyter-current-client))
          (vars (org-babel-variable-assignments:jupyter params kernel-lang))
          (code (org-babel-expand-body:jupyter body params vars kernel-lang))
          (req (progn
                 ;; This needs to be set to the same parameter object used
                 ;; internally by org-babel since insertion of results will
                 ;; manipulate it.
-                (oset client block-params params)
-                (jupyter-send-execute-request client :code code))))
+                (oset jupyter-current-client block-params params)
+                (jupyter-send-execute-request jupyter-current-client
+                  :code code))))
     (when (member "replace" (assq :result-params params))
       (let ((pos (org-babel-where-is-src-block-result)))
         (when pos

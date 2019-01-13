@@ -94,6 +94,20 @@ buffer."
            (re-search-forward "^[\t ]*File.+line \\([0-9]+\\)$" nil t))
        (string-to-number (match-string 1))))
 
+(cl-defmethod org-babel-jupyter-transform-code (code changelist &context (jupyter-lang python))
+  (when (plist-get changelist :dir)
+    (setq code
+          (format "\
+import os as _ejupy_os
+__ejupy_old_dir = _ejupy_os.getcwd()
+_ejupy_os.chdir(\"%s\")
+try:
+    get_ipython().run_cell(\"\"\"%s\"\"\")
+finally:
+    _ejupy_os.chdir(__ejupy_old_dir)"
+                  (plist-get changelist :dir) code)))
+  code)
+
 (provide 'jupyter-python)
 
 ;;; jupyter-python.el ends here
