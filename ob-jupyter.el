@@ -227,23 +227,25 @@ parameter will be used."
     (if buffer (pop-to-buffer buffer)
       (user-error "No source block at point"))))
 
-(defun org-babel-jupyter--cleanup-file-links ()
-  "Delete files of image links that are being replaced for the current result.
+(defun org-babel-jupyter-cleanup-file-links ()
+  "Delete the files of image links for the current source block result.
 Do this only if the file exists in
 `org-babel-jupyter-resource-directory'."
-  (save-restriction
-    (narrow-to-region (point) (org-babel-result-end))
-    ;; This assumes that `jupyter-org-client' only emits bracketed links as
-    ;; images
-    (let ((re (format "^[ \t]*%s[ \t]*$" org-bracket-link-regexp)))
-      (while (re-search-forward re nil t)
-        (let* ((link (org-element-context))
-               (path (org-element-property :path link)))
-          (when (and
-                 (equal (expand-file-name org-babel-jupyter-resource-directory)
-                        (expand-file-name (file-name-directory path)))
-                 (file-exists-p path))
-            (delete-file path)))))))
+  (when-let ((result-pos (org-babel-where-is-src-block-result))
+             (link-re (format "^[ \t]*%s[ \t]*$" org-bracket-link-regexp))
+             (bound (org-babel-result-end)))
+    (save-excursion
+      (goto-char result-pos)
+      ;; This assumes that `jupyter-org-client' only emits bracketed links as
+      ;; images
+      (while (re-search-forward link-re bound t)
+        (let* ((link-path (org-element-property :path (org-element-context)))
+               (link-dir (expand-file-name (file-name-directory link-path)))
+               (resource-dir
+                (expand-file-name org-babel-jupyter-resource-directory)))
+          (when (and (equal link-dir resource-dir)
+                     (file-exists-p link-path))
+            (delete-file link-path)))))))
 
 (defun org-babel-execute:jupyter (body params)
   "Execute BODY according to PARAMS.
@@ -264,10 +266,7 @@ the PARAMS alist."
                 (jupyter-send-execute-request jupyter-current-client
                   :code code))))
     (when (member "replace" (assq :result-params params))
-      (let ((pos (org-babel-where-is-src-block-result)))
-        (when pos
-          (org-with-point-at pos
-            (org-babel-jupyter--cleanup-file-links)))))
+      (org-babel-jupyter-cleanup-file-links))
     (cond
      ((or (equal (alist-get :async params) "yes")
           (plist-member params :async))
