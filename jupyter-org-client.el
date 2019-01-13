@@ -353,11 +353,10 @@ returned."
        ;; Invalidate cache when going outside of a source block. This way if
        ;; the language of the block changes we don't end up using the cache
        ;; since it is only used for Jupyter blocks.
-       (prog1 nil
-         (when jupyter-org--src-block-cache
-           (set-marker (nth 1 jupyter-org--src-block-cache) nil)
-           (set-marker (nth 2 jupyter-org--src-block-cache) nil)
-           (setq jupyter-org--src-block-cache nil)))
+       (when jupyter-org--src-block-cache
+         (set-marker (nth 1 jupyter-org--src-block-cache) nil)
+         (set-marker (nth 2 jupyter-org--src-block-cache) nil)
+         (setq jupyter-org--src-block-cache nil))
      (jupyter-org--set-current-src-block)
      (when (jupyter-org--same-src-block-p)
        ,@body)))
