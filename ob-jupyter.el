@@ -203,6 +203,24 @@ parameter will be used."
     (if buffer (pop-to-buffer buffer)
       (user-error "No source block at point"))))
 
+(defun org-babel-jupyter--cleanup-file-links ()
+  "Delete files of image links that are being replaced for the current result.
+Do this only if the file exists in
+`org-babel-jupyter-resource-directory'."
+  (save-restriction
+    (narrow-to-region (point) (org-babel-result-end))
+    ;; This assumes that `jupyter-org-client' only emits bracketed links as
+    ;; images
+    (let ((re (format "^[ \t]*%s[ \t]*$" org-bracket-link-regexp)))
+      (while (re-search-forward re nil t)
+        (let* ((link (org-element-context))
+               (path (org-element-property :path link)))
+          (when (and
+                 (equal (expand-file-name org-babel-jupyter-resource-directory)
+                        (expand-file-name (file-name-directory path)))
+                 (file-exists-p path))
+            (delete-file path)))))))
+
 (defun org-babel-execute:jupyter (body params)
   "Execute BODY according to PARAMS.
 BODY is the code to execute for the current Jupyter `:session' in
@@ -221,6 +239,11 @@ the PARAMS alist."
                 ;; manipulate it.
                 (oset client block-params params)
                 (jupyter-send-execute-request client :code code))))
+    (when (member "replace" (assq :result-params params))
+      (let ((pos (org-babel-where-is-src-block-result)))
+        (when pos
+          (org-with-point-at pos
+            (org-babel-jupyter--cleanup-file-links)))))
     (cond
      ((or (equal (alist-get :async params) "yes")
           (plist-member params :async))
