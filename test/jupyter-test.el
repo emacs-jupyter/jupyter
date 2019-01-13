@@ -1222,6 +1222,14 @@ Image(filename='%s')" file file file)
               (format "[[file:%s]]" image-file-name) "\n"
               (format "[[file:%s]]" image-file-name))
              :async "yes"))
+          (ert-info ("Image with width and height metadata")
+            (jupyter-org-test-src-block
+             (format "\
+from IPython.display import Image
+Image(filename='%s', width=300)" file)
+             (concat
+              "#+ATTR_ORG: :width 300\n"
+              (format "[[file:%s]]" image-file-name)))))
       (when (file-exists-p image-file-name)
         (delete-file image-file-name)))))
 

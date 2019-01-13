@@ -452,6 +452,31 @@ VALUE."
   "Return a file link `org-element' that points to PATH."
   (list 'link (list :type "file" :path path)))
 
+(defun jupyter-org-image-link (path &optional width height)
+  "Return an `org-element' for an image at PATH.
+If a WIDTH or HEIGHT are provided, then return a paragraph
+element with an affiliated keyword ATTR_ORG. So that the image
+link will be rendered like
+
+    #+ATTR_ORG :width 300 :height 300
+    [[file:<path>]]
+
+Otherwise return a `jupyter-org-file-link' for PATH."
+  (if (or width height)
+      (let ((attrs (format
+                    "%s%s"
+                    (if width
+                        (concat ":width " (number-to-string width))
+                      "")
+                    (if height
+                        (concat (when width " ")
+                                ":height " (number-to-string height))
+                      ""))))
+        (list 'paragraph (list :attr_org (list attrs))
+              (jupyter-org-file-link path)
+              "\n"))
+    (jupyter-org-file-link path)))
+
 (defun jupyter-org-src-block (language parameters value &optional switches)
   "Return a src-block `org-element'.
 LANGUAGE, PARAMETERS, VALUE, and SWITCHES all have the same
@@ -577,7 +602,7 @@ EXT is used as the extension."
                (concat "." ext))))
     (concat (file-name-as-directory dir) (sha1 data) ext)))
 
-(defun jupyter-org--image-result (mime params data)
+(defun jupyter-org--image-result (mime params data &optional metadata)
   "Return a cons cell (\"file\" . FILENAME).
 MIME is the image mimetype, PARAMS is the
 `jupyter-org-request-block-params' that caused this result to be
@@ -606,7 +631,9 @@ is created."
           (insert data)
           (when base64-encoded
             (base64-decode-region (point-min) (point-max))))))
-    (jupyter-org-file-link file)))
+    (cl-destructuring-bind (&key width height &allow-other-keys)
+        metadata
+      (jupyter-org-image-link file width height))))
 
 (cl-defgeneric jupyter-org-result (_mime _params _data &optional _metadata)
   "Return an `org-element' representing a result.
@@ -668,18 +695,16 @@ data and metadata of the current MIME type."
   (jupyter-org-raw-string data))
 
 (cl-defmethod jupyter-org-result ((mime (eql :image/png)) params data
-                                  &optional _metadata)
-  ;; TODO: Add ATTR_ORG with the width and height. This can be done for example
-  ;; by adding a function to `org-babel-after-execute-hook'.
-  (jupyter-org--image-result mime params data))
+                                  &optional metadata)
+  (jupyter-org--image-result mime params data metadata))
 
 (cl-defmethod jupyter-org-result ((mime (eql :image/jpeg)) params data
-                                  &optional _metadata)
-  (jupyter-org--image-result mime params data))
+                                  &optional metadata)
+  (jupyter-org--image-result mime params data metadata))
 
 (cl-defmethod jupyter-org-result ((mime (eql :image/svg+xml)) params data
-                                  &optional _metadata)
-  (jupyter-org--image-result mime params data))
+                                  &optional metadata)
+  (jupyter-org--image-result mime params data metadata))
 
 (cl-defmethod jupyter-org-result ((_mime (eql :text/markdown)) _params data
                                   &optional _metadata)
