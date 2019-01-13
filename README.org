@@ -299,11 +299,10 @@ this information is already provided in the messages passed between a Jupyter
 kernel and its frontends.
 
 When a kernel provides representations of results other than plain text, those
-richer representations are prioritized over plain text. For example if the
-kernel returns LaTeX code, the results are wrapped in a LaTeX source block.
-Similarly for HTML and markdown. If an image is returned, the image is
-automatically saved to file and a link to the file will be the result of the
-code block.
+richer representations have priority. For example if the kernel returns LaTeX
+code, the results are wrapped in a LaTeX source block. Similarly for HTML and
+markdown. If an image is returned, the image is automatically saved to file and
+a link to the file will be the result of the code block.
 
 Below are the supported mimetypes ordered by priority
 - text/org
@@ -312,6 +311,12 @@ Below are the supported mimetypes ordered by priority
 - text/markdown
 - text/latex
 - text/plain
+
+Since it is possible to determine how a result should be represented in
+=org-mode= via its MIME type, only a few header arguments are supported.
+Currently this is only the =:file= argument for image results and =:results
+raw= for inserting raw latex fragments sent by the kernel.
+
 *** Image output without the =:file= header argument
 
 For images sent by the kernel, if no =:file= parameter is provided to the code
@@ -369,18 +374,41 @@ code blocks is that the underlying Jupyter kernel can request that the client
 display extra data in addition to output or the result of a code block. See
 [[https://jupyter-client.readthedocs.io/en/stable/messaging.html#display-data][display_data messages]].
 
-To account for this, Jupyter code blocks do not go through the normal =org-mode=
-result insertion mechanism (see =org-babel-insert-result=). The downside of
-this is that, compared to normal code blocks, only a small subset of the header
-arguments common to all code blocks are supported. Currently this is only the
-=:file= argument for image results and =:results raw= for inserting raw latex
-fragments sent by the kernel. The upside is that all forms of results produced
-by a kernel can be inserted into the buffer similar to a Jupyter notebook.
+To account for this, Jupyter code blocks do not go through the normal
+=org-mode= result insertion mechanism (see =org-babel-insert-result=). The
+downside of this is that, compared to normal code blocks, only a small subset
+of the header arguments common to all code blocks are supported. The upside is
+that all forms of results produced by a kernel can be inserted into the buffer
+similar to a Jupyter notebook.
 
 The implementation of =org-mode= code blocks is really meant to handle either
 capturing the standard output /or/ the result of a code block. When using
 Jupyter code blocks, if the kernel produces output or asks to display extra
 information, the results are appended to a =:RESULTS:= drawer.
+** =jupyter-org-interaction-mode=
+
+A minor mode that enables completion and custom keybindings when =point= is
+inside a Jupyter code block. This mode is enabled by default in =org-mode=
+buffers, but only has an effect when =point= is inside a Jupyter code block.
+
+*** Custom keybindings inside Jupyter code blocks
+
+You can define new keybindings that are enabled when =point= is inside a
+Jupyter code block by using the function =jupyter-org-define-key=. These
+bindings are added to =jupyter-org-interaction-mode-map= and are only active
+when =jupyter-org-interaction-mode= is enabled.
+
+By default the following keybindings from =jupyter-repl-interaction-mode= are
+available when =jupyter-org-interaction-mode= is enabled
+
+| Key binding | Command                         |
+|-------------+---------------------------------|
+| =C-M-x=     | =jupyter-eval-defun=            |
+| =M-i=       | =jupyter-inspect-at-point=      |
+| =C-x C-e=   | =jupyter-eval-line-or-region=   |
+| =C-c C-i=   | =jupyter-repl-interrupt-kernel= |
+| =C-c C-r=   | =jupyter-repl-restart-kernel=   |
+
 * API
 ** Naming conventions
 
@@ -1007,17 +1035,19 @@ kernel language is =julia= for indenting the current line:
 There are many other entry points where methods may be overridden in such a
 way. Below is the full list of methods that can be overridden in this way
 
-| Method                               | Purpose                                                                |
-|--------------------------------------+------------------------------------------------------------------------|
-| =jupyter-insert=                     | Insert Jupyter results into the current buffer                         |
-| =jupyter-code-context=               | Return the code and position for inspect and complete requests         |
-| =jupyter-indent-line=                | Indent the current cell in the REPL buffer                             |
-| =jupyter-completion-prefix=          | Return the completion prefix for the current completion context        |
-| =jupyter-completion-post-completion= | Evaluate code when a completion candidate has been selected            |
-| =jupyter-repl-after-init=            | Evaluate code after a REPL buffer has been initialized                 |
-| =jupyter-repl-after-change=          | Called when input cell code changes                                    |
-| =jupyter-markdown-follow-link=       | Follow a markdown link at point                                        |
-| =jupyter-org-result=                 | Modify the result of a Jupyter code block before display in =org-mode= |
+| Method                               | Purpose                                                       |
+|--------------------------------------+---------------------------------------------------------------|
+| =jupyter-insert=                     | Insert Jupyter results into the buffer                        |
+| =jupyter-code-context=               | Return code and position for inspect and complete requests    |
+| =jupyter-indent-line=                | Indent the current cell in the REPL buffer                    |
+| =jupyter-completion-prefix=          | Return the completion prefix for the current context          |
+| =jupyter-completion-post-completion= | Evaluate code when a completion candidate has been selected   |
+| =jupyter-repl-after-init=            | Evaluate code after a REPL buffer has been initialized        |
+| =jupyter-repl-after-change=          | Evaluate code when the input cell code changes                |
+| =jupyter-markdown-follow-link=       | Follow a markdown link at point                               |
+| =jupyter-handle-payload=             | Handle a payload sent by the kernel                           |
+| =jupyter-org-result=                 | Transform result of execution into an =org= representation    |
+| =org-babel-jupyter-transform-code=   | Transform code of a src-block before sending it to the kernel |
 
 In addition to the =jupyter-lang= context, there is also the
 =jupyter-repl-mode= context which is identical to the =derived-mode= context
@@ -1034,18 +1064,6 @@ use =font-lock=.
 A =jupyter-org-client= is a subclass of =jupyter-kernel-client= meant to
 display the results of a Jupyter code block in an =org-mode= buffer.
 
-Since the Jupyter spec provides rich output, a code block does not know before
-obtaining the results from the kernel what type of results to expect. Typically
-this is handled in the =org-mode= document by the user specifying the kind of
-results it expects in header arguments.
-
-The Jupyter messaging spec provides enough information for the results of an
-execution so that the user shouldn't have to specify any header arguments. A
-=jupyter-org-client= uses this information to dynamically update the results of
-a source block based on the mime type of the Jupyter result. If the kernel
-returns results that can be formatted as LaTeX, the results are wrapped in a
-LaTeX code block. If the result is an image, a file link is inserted. Other
-supported mimetypes are handled in a similar way.
 **** =jupyter-org-result=
 
 The main entry point for extending how results are inserted into the =org-mode=
@@ -1081,3 +1099,12 @@ For a kernel language to extend the behavior of how results are inserted, the
 =jupyter-org-result= and if the returned result is still expected to be plain
 text, calls =org-babel-python-table-org-string= to convert any results that
 look like Python arrays into =org-mode= tables before returning its result.
+*** =jupyter-org-define-key=
+
+Bind a key that is only available when =point= is inside a Jupyter code block.
+When the command bound to the key is evaluated, =jupyter-current-client= will
+be bound to the client of the current code block, also the syntax table will be
+the same as the underlying kernel language's (see
+=jupyter-org-with-src-block-client=).
+
+These keys only have an effect when =jupyter-org-interaction-mode= is enabled.
