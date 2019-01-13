@@ -110,7 +110,7 @@ subprocess is the following
 of an ioloop and can be conveniently added to using
 `jupyter-ioloop-add-setup'.
 
-<jupyter-ioloop-teardown> is replaced with the teardown slow and
+<jupyter-ioloop-teardown> is replaced with the teardown slot and
 can be added to using `jupyter-ioloop-add-teardown'.
 
 <poll for stdin/socket events> is replaced by code that will

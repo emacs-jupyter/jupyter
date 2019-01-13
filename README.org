@@ -15,15 +15,13 @@ The base Jupyter client class tries to provide good default implementations for
 handling common message replies from a kernel that integrate well with Emacs'
 built-in features. For example sending an inspect request will display the
 inspect reply in the =*Help*= buffer and previous inspect requests can be
-revisited by calling =help-go-back= or =help=go-forward= in the =*Help*=
-buffer, making completion requests to a kernel is done through the
-=completion-at-point= interface, and if the kernel asks for input from the
-user, a prompt is displayed in the minibuffer. These are just a few of the ways
-that this package integrates with Emacs' built-in features.
+revisited by calling =help-go-back= or =help-go-forward= while in the =*Help*=
+buffer. Making completion requests to a kernel is done through the
+=completion-at-point= interface. If the kernel asks for input from the user, a
+prompt is displayed in the minibuffer. These are just a few of the ways that
+this package integrates with Emacs' built-in features.
 
-** Other features
-
-*** Support differences between kernel languages
+** Support differences between kernel languages
 
 To take into account differences between kernel languages, there are many
 methods that can be extended to take into account these differences. This is
@@ -164,8 +162,8 @@ display output.
 | =text/plain=                               | none                      |
 ** Inspection
 
-To send an inspect request to the kernel, press =C-c C-f= when the cursor is at
-the location of the code you would like to inspect.
+To send an inspect request to the kernel, press =M-i= when the cursor is at the
+location of the code you would like to inspect.
 ** Completion
 
 Completion is implemented through the =completion-at-point= interface. In
@@ -319,7 +317,7 @@ Below are the supported mimetypes ordered by priority
 For images sent by the kernel, if no =:file= parameter is provided to the code
 block, a file name is automatically generated based on the image data and the
 image is written to file in =org-babel-jupyter-resource-directory=. This is
-great for quickly generating throw-away plots while your are working on your
+great for quickly generating throw-away plots while you are working on your
 code. Once you are happy with your results you can specify the =:file=
 parameter to fix the file name.
 ** Editing the contents of a code block
@@ -381,8 +379,8 @@ by a kernel can be inserted into the buffer similar to a Jupyter notebook.
 
 The implementation of =org-mode= code blocks is really meant to handle either
 capturing the standard output /or/ the result of a code block. When using
-Jupyter code blocks, if the kernel produces standard output or asks to display
-extra information, the results are appended to a =:RESULTS:= drawer.
+Jupyter code blocks, if the kernel produces output or asks to display extra
+information, the results are appended to a =:RESULTS:= drawer.
 * API
 ** Naming conventions
 
@@ -693,23 +691,20 @@ local variables and functions can be added to or removed from them using
 Manage the lifetime of a kernel on the =localhost=.
 *** Kernelspecs
 
-To get a list of kernelspecs on your system, as represented
-in Emacs, use =jupyter-available-kernelspecs= which
-processes the output of the shell command
+To get a list of kernelspecs on your system, as represented in Emacs, use
+=jupyter-available-kernelspecs= which processes the output of the shell command
 
 #+BEGIN_SRC sh
 jupyter kernelspec list
 #+END_SRC
 
-to construct the list of kernelspecs. This command also
-supports remote hosts. So if the =default-directory= points
-to a remote system, the returned kernelspecs are those on
-the remote system.
+to construct the list of kernelspecs. =jupyter-available-kernelspecs= also
+supports remote hosts. If the =default-directory= points to a remote system,
+the returned kernelspecs are those on the remote system.
 
-To find all kernelspecs whose kernels match some regular
-expression use =jupyter-find-kernelspecs=. In the case you
-would like to get the kernelspec for a specific kernel, use
-=jupyter-get-kernelspec=.
+To find all kernelspecs whose kernels match some regular expression use
+=jupyter-find-kernelspecs=. In case you would like to get the kernelspec for a
+specific kernel, use =jupyter-get-kernelspec=.
 
 You may also use =jupyter-completing-read-kernelspec= in an
 =interactive= spec to ask the user to select a kernel from
