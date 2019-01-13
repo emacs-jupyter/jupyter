@@ -102,11 +102,6 @@ source code block. Set by `org-babel-execute:jupyter'.")))
                                      (req jupyter-org-request)
                                      _name
                                      text)
-  ;; TODO: This is not good because there can be arbitrary output which may get
-  ;; recognized as org syntax. We need to wrap this into a an example block or
-  ;; scalar block. Probably an example block and then coalesce any output into
-  ;; a single example block when new output comes in and the last results in a
-  ;; drawer is an example block.
   (jupyter-org--add-result
    req (with-temp-buffer
          (jupyter-with-control-code-handling
@@ -140,7 +135,6 @@ line in the previous source block. See
 
 ;;;;; `jupyter-org-error-location'
 ;; Inspiration from https://kitchingroup.cheme.cmu.edu/blog/2017/06/10/Adding-keymaps-to-src-blocks-via-org-font-lock-hook/
-;; TODO: Do something similar for `jupyter-inspect-at-point' using `jupyter-org-with-src-block-client'.
 
 (cl-defgeneric jupyter-org-error-location ()
   "Return the line number corresponding to an error from a traceback.
@@ -603,7 +597,7 @@ EXT is used as the extension."
     (concat (file-name-as-directory dir) (sha1 data) ext)))
 
 (defun jupyter-org--image-result (mime params data &optional metadata)
-  "Return a cons cell (\"file\" . FILENAME).
+  "Return an org-element suitable for inserting an image.
 MIME is the image mimetype, PARAMS is the
 `jupyter-org-request-block-params' that caused this result to be
 returned and DATA is the image DATA.
@@ -613,7 +607,11 @@ Otherwise a file name is created, see
 `jupyter-org-image-file-name'. Note, when PARAMS contains a :file
 key any existing file with the file name will be overwritten when
 writing the image data. This is not the case when a new file name
-is created."
+is created.
+
+If METADATA contains a :width or :height key, then the returned
+org-element will have an ATTR_ORG affiliated keyword containing
+the width or height of the image."
   (let* ((overwrite (not (null (alist-get :file params))))
          (base64-encoded (memq mime '(:image/png :image/jpeg)))
          (file (or (alist-get :file params)

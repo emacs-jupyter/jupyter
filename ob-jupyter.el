@@ -38,7 +38,7 @@
 ;;; Code:
 
 (defgroup ob-jupyter nil
-  "Jupyter integration with org-mdoe"
+  "Jupyter integration with org-mode"
   :group 'org-babel)
 
 (require 'jupyter-org-client)
@@ -256,7 +256,7 @@ the PARAMS alist."
         (nconc (alist-get :result-params params) (list "raw")))))))
 
 (defun org-babel-jupyter-make-language-alias (kernel lang)
-  "Simimilar to `org-babel-make-language-alias' but for Jupyter src-blocks.
+  "Similar to `org-babel-make-language-alias' but for Jupyter src-blocks.
 KERNEL should be the name of the default kernel to use for kernel
 LANG. All necessary org-babel functions for a language with the
 name jupy-LANG will be aliased to the Jupyter functions."

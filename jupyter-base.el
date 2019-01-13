@@ -284,11 +284,11 @@ If ARG is a `jupyter-request', reset the buffer if ARG's
     arg))
 
 (defmacro jupyter-with-display-buffer (name reset &rest body)
-  "With the REPL output buffer corresponding to NAME, run BODY.
+  "With a display buffer corresponding to NAME current, run BODY.
 The buffer corresponding to NAME will be obtained by a call to
-`jupyter-get-buffer-create'. An output buffer differs from a
-documentation buffer by maintaining its previous output and
-moving `point' to the end of the last output.
+`jupyter-get-buffer-create'. A display buffer is similar to a
+*Help* buffer but maintains its previous output. Before BODY is
+evaluated `point' is moved to the end of the most recent output.
 
 RESET should be a form or symbol to determine if the output
 buffer should be reset before evaluating BODY. If RESET is nil,
