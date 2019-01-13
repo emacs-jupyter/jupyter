@@ -729,29 +729,11 @@ lines, truncate it to something less than
          (jupyter-repl-insert-prompt 'in))
         req))))
 
-(defun jupyter-repl--handle-payload (payload)
-  "Do the client actions in PAYLOAD."
-  (cl-loop
-   for pl across payload
-   do (pcase (plist-get pl :source)
-        ("page"
-         (let ((text (plist-get (plist-get pl :data) :text/plain))
-               (line (or (plist-get pl :start) 0)))
-           (jupyter-with-display-buffer "pager" 'reset
-             (jupyter-insert-ansi-coded-text text)
-             (goto-char (point-min))
-             (forward-line line)
-             (display-buffer (current-buffer)))))
-        ((or "edit" "edit_magic")
-         (with-current-buffer (find-file-other-window
-                               (plist-get pl :filename))
-           (goto-char (point-min))
-           (forward-line (plist-get pl :line_number))
-           (set-window-start (selected-window) (point))))
-        ("set_next_input"
-         (goto-char (point-max))
-         (jupyter-repl-previous-cell)
-         (jupyter-repl-replace-cell-code (plist-get pl :text))))))
+(cl-defmethod jupyter-handle-payload ((_source (eql set_next_input)) pl
+                                      &context (major-mode jupyter-repl-mode))
+  (goto-char (point-max))
+  (jupyter-repl-previous-cell)
+  (jupyter-repl-replace-cell-code (plist-get pl :text)))
 
 (cl-defmethod jupyter-handle-execute-reply ((client jupyter-repl-client)
                                             _req
@@ -762,7 +744,7 @@ lines, truncate it to something less than
   (oset client execution-count (1+ execution-count))
   (jupyter-with-repl-buffer client
     (when payload
-      (jupyter-repl--handle-payload payload))))
+      (jupyter-handle-payload payload))))
 
 (cl-defmethod jupyter-handle-execute-input ((client jupyter-repl-client)
                                             _req

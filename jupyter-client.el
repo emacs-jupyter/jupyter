@@ -1118,6 +1118,38 @@ representation of the results in the current buffer."
               :stop-on-error stop-on-error)))
     (jupyter-send client :shell :execute-request msg)))
 
+(cl-defgeneric jupyter-handle-payload ((source symbol) _payload)
+  "Execute the action in a Jupyter PAYLOAD.
+SOURCE is the type of payload and PAYLOAD will be a property list
+containing the necessary information to perform the actions of
+SOURCE."
+  (error "Unhandled payload (%s)" source))
+
+(cl-defmethod jupyter-handle-payload ((payloads vector))
+  "Loop over PAYLOADS, calling `jupyter-handle-payload' for each one."
+  (cl-loop
+   for pl across payloads
+   do (jupyter-handle-payload (intern (plist-get pl :source)) pl)))
+
+(cl-defmethod jupyter-handle-payload ((_source (eql page)) pl)
+  (let ((text (plist-get (plist-get pl :data) :text/plain))
+        (line (or (plist-get pl :start) 0)))
+    (jupyter-with-display-buffer "pager" 'reset
+      (jupyter-insert-ansi-coded-text text)
+      (goto-char (point-min))
+      (forward-line line)
+      (display-buffer (current-buffer)))))
+
+(cl-defmethod jupyter-handle-payload ((_source (eql edit)) pl)
+  (with-current-buffer (find-file-other-window
+                        (plist-get pl :filename))
+    (goto-char (point-min))
+    (forward-line (plist-get pl :line_number))
+    (set-window-start (selected-window) (point))))
+
+(cl-defmethod jupyter-handle-payload ((_source (eql edit_magic)) pl)
+  (jupyter-handle-payload 'edit pl))
+
 (cl-defgeneric jupyter-handle-execute-reply ((_client jupyter-kernel-client)
                                              _req
                                              _status

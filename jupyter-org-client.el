@@ -259,6 +259,23 @@ to."
 
 ;;;; Execute reply
 
+(cl-defmethod jupyter-handle-payload ((_source (eql set_next_input)) pl
+                                      &context (major-mode org-mode))
+  ;; Assumes `point' is at a src-block element
+  (let ((src-block (org-element-at-point))
+        (result-p (org-babel-where-is-src-block-result)))
+    (save-excursion
+      (goto-char (jupyter-org-element-end-before-blanks src-block))
+      (forward-line -1)
+      ;; Create an empty src-block after the current one but before any of the
+      ;; current source block's results
+      (org-babel-demarcate-block)
+      (org-next-block 1)
+      (when result-p
+        (org-drag-element-forward))
+      (forward-line)
+      (insert (org-element-normalize-string (plist-get pl :text))))))
+
 (cl-defmethod jupyter-handle-execute-reply ((client jupyter-org-client)
                                             (req jupyter-org-request)
                                             status
@@ -268,7 +285,9 @@ to."
   ;; TODO: Re-use the REPL's handler somehow?
   (oset client execution-count (1+ execution-count))
   (when payload
-    (jupyter-repl--handle-payload payload))
+    (save-excursion
+      (goto-char (jupyter-org-request-marker req))
+      (jupyter-handle-payload payload)))
   (if (equal status "ok")
       (message "Code block evaluation complete.")
     (message "An error occurred when evaluating code block."))
