@@ -84,20 +84,25 @@ source code block. Set by `org-babel-execute:jupyter'.")))
 (cl-defmethod jupyter-generate-request ((client jupyter-org-client) _msg
                                         &context (major-mode (eql org-mode)))
   "Return a `jupyter-org-request' for the current source code block."
-  (let* ((block-params (oref client block-params))
-         (result-params (alist-get :result-params block-params)))
-    (jupyter-org-request
-     :marker (copy-marker org-babel-current-src-block-location)
-     :inline-block-p (save-excursion
-                       (goto-char org-babel-current-src-block-location)
-                       (and (memq (org-element-type (org-element-context))
-                                  '(inline-babel-call inline-src-block))
-                            t))
-     :result-type (alist-get :result-type block-params)
-     :block-params block-params
-     :async (equal (alist-get :async block-params) "yes")
-     :silent (car (or (member "none" result-params)
-                      (member "silent" result-params))))))
+  (if org-babel-current-src-block-location
+      ;; Only use a `jupyter-org-request' when executing code blocks, setting
+      ;; the `major-mode' context isn't enough, consider when a client is
+      ;; started due to sending a completion request.
+      (let* ((block-params (oref client block-params))
+             (result-params (alist-get :result-params block-params)))
+        (jupyter-org-request
+         :marker (copy-marker org-babel-current-src-block-location)
+         :inline-block-p (save-excursion
+                           (goto-char org-babel-current-src-block-location)
+                           (and (memq (org-element-type (org-element-context))
+                                      '(inline-babel-call inline-src-block))
+                                t))
+         :result-type (alist-get :result-type block-params)
+         :block-params block-params
+         :async (equal (alist-get :async block-params) "yes")
+         :silent (car (or (member "none" result-params)
+                          (member "silent" result-params)))))
+    (cl-call-next-method)))
 
 (cl-defmethod jupyter-drop-request ((_client jupyter-org-client)
                                     (req jupyter-org-request))
