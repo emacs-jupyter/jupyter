@@ -95,6 +95,12 @@ client's ioloop slot.")
     :initform "idle"
     :documentation "The current state of the kernel. Can be
 either \"idle\", \"busy\", or \"starting\".")
+   (execution-count
+    :type integer
+    :initform 1
+    :documentation "The *next* execution count of the kernel.
+I.e., the execution count that will be assigned to the
+next :execute-request sent to the kernel.")
    (requests
     :type hash-table
     :initform (make-hash-table :test 'equal)
@@ -1906,6 +1912,13 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
   "Default execute input handler."
   (declare (indent 1))
   nil)
+
+(cl-defmethod jupyter-handle-execute-input :before ((client jupyter-kernel-client)
+                                                    _req
+                                                    _code
+                                                    execution-count)
+  "Set CLIENT's execution-count slot to 1 + EXECUTION-COUNT."
+  (oset client execution-count (1+ execution-count)))
 
 (cl-defgeneric jupyter-handle-execute-result ((_client jupyter-kernel-client)
                                               _req

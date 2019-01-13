@@ -130,11 +130,7 @@ timeout, the built-in is-complete handler is used."
     :initform nil
     :documentation "Whether or not we should wait to clear the
 current output of the cell. Set when the kernel sends a
-`:clear-output' message.")
-   (execution-count
-    :type integer
-    :initform 1
-    :documentation "The current execution count of the kernel.")))
+`:clear-output' message.")))
 
 (defvar-local jupyter-repl-lang-buffer nil
   "A buffer with the `major-mode' set to the REPL language's `major-mode'.")
@@ -738,10 +734,9 @@ lines, truncate it to something less than
 (cl-defmethod jupyter-handle-execute-reply ((client jupyter-repl-client)
                                             _req
                                             _status
-                                            execution-count
+                                            _execution-count
                                             _user-expressions
                                             payload)
-  (oset client execution-count (1+ execution-count))
   (jupyter-with-repl-buffer client
     (when payload
       (jupyter-handle-payload payload))))

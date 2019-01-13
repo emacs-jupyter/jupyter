@@ -276,14 +276,12 @@ to."
       (forward-line)
       (insert (org-element-normalize-string (plist-get pl :text))))))
 
-(cl-defmethod jupyter-handle-execute-reply ((client jupyter-org-client)
+(cl-defmethod jupyter-handle-execute-reply ((_client jupyter-org-client)
                                             (req jupyter-org-request)
                                             status
-                                            execution-count
+                                            _execution-count
                                             _user-expressions
                                             payload)
-  ;; TODO: Re-use the REPL's handler somehow?
-  (oset client execution-count (1+ execution-count))
   (when payload
     (save-excursion
       (goto-char (jupyter-org-request-marker req))
