@@ -283,8 +283,7 @@ to."
                                             _user-expressions
                                             payload)
   (when payload
-    (save-excursion
-      (goto-char (jupyter-org-request-marker req))
+    (org-with-point-at (jupyter-org-request-marker req)
       (jupyter-handle-payload payload)))
   (if (equal status "ok")
       (message "Code block evaluation complete.")
