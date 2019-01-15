@@ -736,7 +736,8 @@ As an example, if DATA only contains the mimetype
     (jupyter-org-export-block \"markdown\" data)"
   (ignore))
 
-(cl-defmethod jupyter-org-result ((req jupyter-org-request) plist &optional metadata)
+(cl-defmethod jupyter-org-result ((req jupyter-org-request) plist
+                                  &optional metadata &rest _)
   "For REQ, return the rendered DATA.
 PLIST is a property list, (:mimetype1 value1 ...), containing the
 different representations of a result returned by a kernel. Note,
