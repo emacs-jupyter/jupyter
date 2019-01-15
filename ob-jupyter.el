@@ -235,9 +235,10 @@ Do this only if the file exists in
              (link-re (format "^[ \t]*%s[ \t]*$" org-bracket-link-regexp)))
     (save-excursion
       (goto-char result-pos)
-      ;; This assumes that `jupyter-org-client' only emits bracketed links as
-      ;; images
+      (forward-line)
       (let ((bound (org-babel-result-end)))
+        ;; This assumes that `jupyter-org-client' only emits bracketed links as
+        ;; images
         (while (re-search-forward link-re bound t)
           (let* ((link-path (org-element-property :path (org-element-context)))
                  (link-dir (expand-file-name (file-name-directory link-path)))
