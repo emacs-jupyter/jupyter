@@ -533,6 +533,62 @@ Note only SSH tunnels are currently supported."
 
 ;;; Helper functions
 
+(defvar server-buffer)
+(defvar jupyter-current-client)
+(defvar jupyter-server-mode-client-timer nil
+  "Timer used to unset `jupyter-current-client' from `server-buffer'.")
+
+;; FIXME: This works if we only consider a single send request that will also
+;; finish within TIMEOUT which is probably 99% of the cases. It doesn't work
+;; for multiple requests that have been sent using different clients where one
+;; sets the client in `server-buffer' and, before a file is opened by the
+;; underlying kernel, another sets the client in `server-buffer'.
+
+(defun jupyter-server-mode-set-client (client &optional timeout)
+  "Set CLIENT as the `jupyter-current-client' in the `server-buffer'.
+Kill `jupyter-current-client's local value in `server-buffer'
+after TIMEOUT seconds, defaulting to `jupyter-long-timeout'.
+
+If a function causes a buffer to be displayed through
+emacsclient, e.g. when a function calls an external command that
+invokes the EDITOR, we don't know when the buffer will be
+displayed. All we know is that the buffer that will be current
+before display will be the `server-buffer'. So we temporarily set
+`jupyter-current-client' in `server-buffer' so that the client
+gets a chance to be propagated to the displayed buffer, see
+`jupyter-repl-persistent-mode'.
+
+For this to work properly you should have something like the
+following in your Emacs configuration
+
+    (server-mode 1)
+    (setenv \"EDITOR\" \"emacsclient\")
+
+before starting any Jupyter kernels. The kernel also has to know
+that it should use EDITOR to open files."
+  (when (bound-and-true-p server-mode)
+    (with-current-buffer (get-buffer-create server-buffer)
+      (setq jupyter-current-client client)
+      (jupyter-server-mode--unset-client-soon timeout))))
+
+(defun jupyter-server-mode-unset-client ()
+  "Set `jupyter-current-client' to nil in `server-buffer'."
+  (when (and (bound-and-true-p server-mode)
+             (get-buffer server-buffer))
+    (with-current-buffer server-buffer
+      (setq jupyter-current-client nil))))
+
+(defun jupyter-server-mode--unset-client-soon (&optional timeout)
+  (when (timerp jupyter-server-mode-client-timer)
+    (cancel-timer jupyter-server-mode-client-timer))
+  (setq jupyter-server-mode-client-timer
+        (run-at-time (or timeout jupyter-long-timeout)
+                     nil #'jupyter-server-mode-unset-client)))
+
+;; After switching to a server buffer, keep the client alive in `server-buffer'
+;; to account for multiple files being opened by the server.
+(add-hook 'server-switch-hook #'jupyter-server-mode--unset-client-soon)
+
 (defun jupyter-read-plist (file)
   "Read a JSON encoded FILE as a property list."
   (let ((json-object-type 'plist))

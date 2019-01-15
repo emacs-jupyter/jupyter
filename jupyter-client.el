@@ -1152,7 +1152,8 @@ representation of the results in the current buffer."
               :user-expressions user-expressions
               :allow-stdin allow-stdin
               :stop-on-error stop-on-error)))
-    (jupyter-send client :shell :execute-request msg)))
+    (prog1 (jupyter-send client :shell :execute-request msg)
+      (jupyter-server-mode-set-client client))))
 
 (cl-defgeneric jupyter-handle-payload ((source symbol) _payload)
   "Execute the action in a Jupyter PAYLOAD.

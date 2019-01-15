@@ -843,6 +843,23 @@
       (should-not (string-match-p "jupyter-available-local-ports"
                                   (process-name proc))))))
 
+(defvar server-mode)
+(defvar server-buffer)
+
+(ert-deftest jupyter-server-mode-set-client ()
+  :tags '(client)
+  (let (server-buffer)
+    (with-temp-buffer
+      (setq server-buffer (buffer-name))
+      (let ((server-mode t)
+            (client (jupyter-kernel-client)))
+        (should-not jupyter-current-client)
+        (with-temp-buffer
+          (jupyter-server-mode-set-client client 0.01))
+        (should jupyter-current-client)
+        (sleep-for 0.02)
+        (should-not jupyter-current-client)))))
+
 ;;; IOloop
 
 (ert-deftest jupyter-ioloop-lifetime ()

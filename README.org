@@ -282,6 +282,28 @@ keybindings for interacting with the REPL:
 | =C-c C-r=   | =jupyter-repl-restart-kernel=      |
 | =C-c C-s=   | =jupyter-repl-scratch-buffer=      |
 | =C-c M-:=   | =jupyter-eval-string=              |
+
+**** Integration with =emacsclient=
+
+If code sent for evaluation causes a file to be opened via =emacsclient=, the
+opened file is associated with the corresponding REPL client if possible. This
+behavior is most useful, for example, when using the =edit= function in IJulia.
+
+To enable =server-mode= in Emacs you should have something like the following
+in your Emacs configuration before starting any kernels.
+
+#+BEGIN_SRC elisp
+(server-mode 1)
+(setenv "EDITOR" "emacsclient")
+#+END_SRC
+
+Note this probably wont work properly when there are multiple competing clients
+sending requests to their underlying kernels that want to open files. Or if the
+underlying kernel takes longer than =jupyter-long-timeout= seconds to open a
+file.
+
+See =jupyter-server-mode-set-client= for more details.
+
 *** =jupyter-repl-persistent-mode=
 
 A global minor mode that will persist a kernel connection to a buffer about to
