@@ -232,20 +232,20 @@ parameter will be used."
 Do this only if the file exists in
 `org-babel-jupyter-resource-directory'."
   (when-let ((result-pos (org-babel-where-is-src-block-result))
-             (link-re (format "^[ \t]*%s[ \t]*$" org-bracket-link-regexp))
-             (bound (org-babel-result-end)))
+             (link-re (format "^[ \t]*%s[ \t]*$" org-bracket-link-regexp)))
     (save-excursion
       (goto-char result-pos)
       ;; This assumes that `jupyter-org-client' only emits bracketed links as
       ;; images
-      (while (re-search-forward link-re bound t)
-        (let* ((link-path (org-element-property :path (org-element-context)))
-               (link-dir (expand-file-name (file-name-directory link-path)))
-               (resource-dir
-                (expand-file-name org-babel-jupyter-resource-directory)))
-          (when (and (equal link-dir resource-dir)
-                     (file-exists-p link-path))
-            (delete-file link-path)))))))
+      (let ((bound (org-babel-result-end)))
+        (while (re-search-forward link-re bound t)
+          (let* ((link-path (org-element-property :path (org-element-context)))
+                 (link-dir (expand-file-name (file-name-directory link-path)))
+                 (resource-dir
+                  (expand-file-name org-babel-jupyter-resource-directory)))
+            (when (and (equal link-dir resource-dir)
+                       (file-exists-p link-path))
+              (delete-file link-path))))))))
 
 (defun org-babel-execute:jupyter (body params)
   "Execute BODY according to PARAMS.
