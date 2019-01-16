@@ -844,7 +844,14 @@ new \"scalar\" result with the result of calling
   (let ((result (cl-call-next-method)))
     (jupyter-org-scalar
      (cond
-      ((stringp result) (org-babel-script-escape result))
+      ((and (stringp result)
+            ;; Be a little more stringent than `org-babel-script-escape'. It
+            ;; gives bad results on the following
+            ;;
+            ;;     [1] Foo bar
+            (memq (aref result 0) '(?\[ ?\{ ?\())
+            (eq (aref result 0) (aref result (1- (length result)))))
+       (org-babel-script-escape result))
       (t result)))))
 
 (cl-defmethod jupyter-org-result ((_mime (eql :text/plain)) _params data
