@@ -29,6 +29,7 @@
 
 (require 'jupyter-repl)
 (require 'jupyter-org-client)
+(require 'python)
 
 (declare-function org-babel-python-table-or-string "ob-python")
 
@@ -77,6 +78,76 @@ buffer."
 
 (cl-defmethod jupyter-load-file-code (file &context (jupyter-lang python))
   (concat "%run " file))
+
+;;; Eldoc
+
+(defvar jupyter-python-eldoc-string-code
+  "\
+def __JUPY_eldoc(code, id):
+    import jedi
+    namespace = [globals()]
+    script = jedi.Interpreter(code, namespace)
+    try:
+        call = script.call_signatures()[0]
+        return IPython.display.JSON({
+            'name': call.name,
+            'params': [p.name for p in call.params],
+            'index': call.index if call.index is not None else -1
+        })
+    except:
+        try:
+            def = jedi.Interpreter(id, namespace).goto_definitions()[0]
+            return def.docstring()
+        except:
+            pass
+__JUPY_eldoc('''%s''', '''%s''')")
+
+(cl-defmethod jupyter-code-context ((_type (eql eldoc))
+                                    &context (jupyter-lang python))
+  (jupyter-region-context
+   (point-min)
+   ;; (save-excursion
+   ;;   ;; From `python-eldoc--get-symbol-at-point'
+   ;;   (let ((start (python-syntax-context 'paren)))
+   ;;     (when start
+   ;;       (goto-char start))
+   ;;     (when (or start
+   ;;               (eobp)
+   ;;               (memq (char-syntax (char-after)) '(?\ ?-)))
+   ;;       ;; Try to adjust to closest symbol if not in one.
+   ;;       (python-util-forward-comment -1)))
+   ;;   (or (with-syntax-table python-dotty-syntax-table
+   ;;         (car (bounds-of-thing-at-point 'symbol)))
+   ;;       (point)))
+   (point)))
+
+(defun jupyter-python--eldoc-string (call)
+  (cl-destructuring-bind (&key name params index) call
+    (when (>= index 0)
+      (setf (aref params index)
+            (propertize (aref params index)
+                        'face 'eldoc-highlight-function-argument)))
+    (concat (propertize name 'face 'font-lock-function-name-face)
+            ": (" (mapconcat #'identity params ", ") ")")))
+
+(cl-defmethod jupyter-eldoc-documentation (&context (jupyter-lang python))
+  (let ((jupyter-inhibit-handlers t))
+    (cl-destructuring-bind (code _)
+        (jupyter-code-context 'eldoc)
+      (jupyter-add-callback
+          (jupyter-send-execute-request jupyter-current-client
+            :code (format jupyter-python-eldoc-string-code
+                          (replace-regexp-in-string "'" "\\\\'" code)
+                          (or (python-eldoc--get-symbol-at-point) ""))
+            :store-history nil)
+        :execute-result
+        (jupyter-message-lambda ((doc text/plain)
+                                 (call application/json))
+          (eldoc-message
+           (if call (jupyter-python--eldoc-string call)
+             ;; Remove ' characters
+             (substring doc 1 -1)))))
+      eldoc-last-message)))
 
 ;;; `jupyter-org'
 

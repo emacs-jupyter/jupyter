@@ -1311,6 +1311,8 @@ CODE. Depending on the current context such as the current
 originating from `jupyter-completion-at-point' and
 `:inspect-request's from `jupyter-inspect-at-point'.
 
+TYPE can also be `eldoc', see `jupyter-eldoc-documentation'.
+
 The default methods return the `jupyter-line-or-region-context'.")
 
 (defun jupyter-line-context ()
@@ -1341,6 +1343,11 @@ If the region is active, return it. Otherwise return the line."
 
 (cl-defmethod jupyter-code-context ((_type (eql completion)))
   (jupyter-region-context (line-beginning-position) (point)))
+
+(cl-defmethod jupyter-code-context ((_type (eql eldoc)))
+  ;; The completion context is used so that we get eldoc documentation for the
+  ;; function arguments.
+  (jupyter-code-context 'completion))
 
 ;;;;; Helpers for completion interface
 
