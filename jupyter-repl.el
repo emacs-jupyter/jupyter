@@ -45,7 +45,7 @@
 ;;
 ;;     C-c C-c `jupyter-eval-line-or-region'
 ;;     C-c C-l `jupyter-eval-file'
-;;     C-c C-f `jupyter-inspect-at-point'
+;;     M-i `jupyter-inspect-at-point'
 ;;     C-c C-r `jupyter-repl-restart-kernel'
 ;;     C-c C-i `jupyter-repl-interrupt-kernel'
 ;;     C-c C-z `jupyter-repl-pop-to-buffer'
