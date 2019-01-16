@@ -363,6 +363,8 @@ returned."
 
 (defmacro jupyter-org-with-src-block-client (&rest body)
   "Evaluate BODY with `jupyter-current-client' set to the session's client.
+A client is initialized if necessary.
+
 If `point' is not at a Jupyter source block, BODY is not
 evaluated and nil is returned. Return the result of BODY when it
 is evaluated.
