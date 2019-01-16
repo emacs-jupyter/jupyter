@@ -125,27 +125,35 @@ with `font-lock-face'."
       (put-text-property beg next 'font-lock-face (or val 'default) object)
       (setq beg next))))
 
-(defun jupyter-add-font-lock-properties (start end &optional object)
+(defun jupyter-add-font-lock-properties (start end &optional object use-face)
   "Add font lock text properties between START and END in the `current-buffer'.
 START, END, and OBJECT have the same meaning as in
 `add-text-properties'. The properties added are the ones that
 mark the text between START and END as fontified according to
 font lock. Any text between START and END that does not have a
-`font-lock-face' property will have the `default' face filled in
-for the property."
-  (jupyter-fixup-font-lock-properties start end object)
+font-lock-face property will have the default face filled in for
+the property and the face text property is swapped for
+font-lock-face.
+
+If USE-FACE is non-nil, do not replace the face text property
+with font-lock-face."
+  (unless use-face
+    (jupyter-fixup-font-lock-properties start end object))
   (add-text-properties start end '(fontified t font-lock-fontified t) object))
 
-(defun jupyter-fontify-according-to-mode (mode str)
+(defun jupyter-fontify-according-to-mode (mode str &optional use-face)
   "Fontify a string according to MODE.
 Return the fontified string. In addition to fontifying STR, if
 MODE has a non-default `fill-forward-paragraph-function', STR
-will be filled using `fill-region'."
+will be filled using `fill-region'.
+
+If USE-FACE is non-nil, do not replace the face text property
+with font-lock-face in the returned string."
   (with-current-buffer (jupyter-fontify-buffer mode)
     (erase-buffer)
     (insert str)
     (font-lock-ensure)
-    (jupyter-add-font-lock-properties (point-min) (point-max))
+    (jupyter-add-font-lock-properties (point-min) (point-max) nil use-face)
     (when (not (memq fill-forward-paragraph-function
                      '(forward-paragraph)))
       (fill-region (point-min) (point-max) t 'nosqueeze))
