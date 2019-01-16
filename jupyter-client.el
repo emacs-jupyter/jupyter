@@ -931,7 +931,7 @@ Methods that extend this generic function should
           (lambda ()
             (setq jupyter-current-client client)
             ;; TODO: Enable the kernel languages mode using
-            ;; `jupyter-repl-language-mode', but there are
+            ;; `jupyter-kernel-language-mode', but there are
             ;; issues with enabling a major mode.
             (add-hook 'completion-at-point-functions
                       'jupyter-completion-at-point nil t)
@@ -1794,7 +1794,12 @@ snippet text property, if any, and if `yasnippet' is available."
 
 ;;;; Kernel info
 
-(cl-defmethod jupyter-kernel-info ((client jupyter-kernel-client))
+(defvar jupyter-kernel-language-mode-properties nil
+  "An association list mapping language names to major mode properties.
+The lists contain the cached information returned by the
+`jupyter-kernel-language-mode-properties' function.")
+
+(defun jupyter-kernel-info (client)
   "Return the kernel info plist of CLIENT.
 Return CLIENT's kernel-info slot if non-nil. Otherwise send a
 `:kernel-info-request' to CLIENT's kernel, set CLIENT's
@@ -1803,6 +1808,7 @@ return it.
 
 If the kernel CLIENT is connected to does not respond to a
 `:kernel-info-request', raise an error."
+  (cl-check-type client jupyter-kernel-client)
   (or (oref client kernel-info)
       (let* ((jupyter-inhibit-handlers t)
              (req (jupyter-send-kernel-info-request client))
@@ -1812,14 +1818,45 @@ If the kernel CLIENT is connected to does not respond to a
           (error "Kernel did not respond to kernel-info request"))
         (oset client kernel-info (jupyter-message-content msg)))))
 
-(cl-defmethod jupyter-kernel-language ((client jupyter-kernel-client))
+(defun jupyter-kernel-language-mode-properties (client)
+  "Get the `major-mode' info of CLIENT's kernel language.
+Return a list
+
+     (MODE SYNTAX-TABLE)
+
+Where MODE is the `major-mode' to use for syntax highlighting
+purposes and SYNTAX-TABLE is the syntax table of MODE."
+  (cl-check-type client jupyter-kernel-client)
+  (cl-destructuring-bind (&key name file_extension &allow-other-keys)
+      (plist-get (jupyter-kernel-info client) :language_info)
+    (cdr (or (assoc name jupyter-kernel-language-mode-properties)
+             (with-temp-buffer
+               (let ((buffer-file-name
+                      (concat "jupyter-repl-lang" file_extension)))
+                 (delay-mode-hooks (set-auto-mode)))
+               (let ((item (cons name (list major-mode (syntax-table)))))
+                 (prog1 item
+                   (push item jupyter-kernel-language-mode-properties))))))))
+
+(defun jupyter-kernel-language (client)
   "Return the language of the kernel CLIENT is connected to."
+  (cl-check-type client jupyter-kernel-client)
   (plist-get (plist-get (jupyter-kernel-info client) :language_info) :name))
+
+(defun jupyter-kernel-language-mode (client)
+  "Return the `major-mode' used for CLIENT's kernel language."
+  (cl-check-type client jupyter-kernel-client)
+  (nth 0 (jupyter-kernel-language-mode-properties client)))
+
+(defun jupyter-kernel-language-syntax-table (client)
+  "Return the `syntax-table' used for CLIENT's kernel language."
+  (cl-check-type client jupyter-kernel-client)
+  (nth 1 (jupyter-kernel-language-mode-properties client)))
 
 (defun jupyter-load-language-support (client)
   "Load language support definitions for CLIENT.
 CLIENT is a kernel client."
-  (cl-assert (object-of-class-p client 'jupyter-kernel-client))
+  (cl-check-type client jupyter-kernel-client)
   (let* ((lang (jupyter-kernel-language client))
          (support (intern (concat "jupyter-" lang))))
     (require support nil t)))

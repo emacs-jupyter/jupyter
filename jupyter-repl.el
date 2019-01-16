@@ -222,13 +222,6 @@ The cell is narrowed to the region between and including
                          (jupyter-repl-cell-code-end-position))
        ,@body)))
 
-;;; Convenience functions
-
-(defun jupyter-repl-language-mode (client)
-  "Return the `major-mode' of CLIENT's kernel language."
-  (jupyter-with-repl-buffer client
-    jupyter-repl-lang-mode))
-
 ;;; Text insertion
 
 (defun jupyter-repl-insert (&rest args)
@@ -1371,7 +1364,7 @@ in the appropriate direction, to the saved element."
                             9 nil nil "…"))))
         (unless (get-buffer name)
           (with-current-buffer (get-buffer-create name)
-            (funcall (jupyter-repl-language-mode client))
+            (funcall (jupyter-kernel-language-mode client))
             (jupyter-repl-associate-buffer client)
             (insert
              (substitute-command-keys
@@ -1410,11 +1403,10 @@ in the appropriate direction, to the saved element."
   ;; language. This will be used for indentation and to capture font lock
   ;; properties.
   (let* ((info (jupyter-kernel-info jupyter-current-client))
-         (language-info (plist-get info :language_info))
-         (language (plist-get language-info :name)))
+         (language (plist-get (plist-get info :language_info) :name)))
     (jupyter-load-language-support jupyter-current-client)
     (cl-destructuring-bind (mode syntax)
-        (jupyter-repl-kernel-language-mode-properties language-info)
+        (jupyter-kernel-language-mode-properties jupyter-current-client)
       (setq jupyter-repl-lang-mode mode)
       (setq jupyter-repl-lang-buffer
             (get-buffer-create
@@ -1604,8 +1596,9 @@ If CLIENT is a buffer or the name of a buffer, use the
                      (with-current-buffer client
                        jupyter-current-client)
                    client))
-    (cl-check-type client jupyter-repl-client)
-    (unless (eq (jupyter-repl-language-mode client) major-mode)
+    (unless (object-of-class-p client 'jupyter-repl-client)
+      (error "Not a REPL client (%s)" client))
+    (unless (eq (jupyter-kernel-language-mode client) major-mode)
       (error "Cannot associate buffer to REPL. Wrong `major-mode'"))
     (setq-local jupyter-current-client client)
     (unless jupyter-repl-interaction-mode
@@ -1660,7 +1653,7 @@ NOTE: Only intended to be added as advice to `switch-to-buffer',
       (with-current-buffer buffer
         (let ((client jupyter-current-client)
               (mode (if (eq major-mode 'jupyter-repl-mode)
-                        (jupyter-repl-language-mode jupyter-current-client)
+                        (jupyter-kernel-language-mode jupyter-current-client)
                       major-mode)))
           (with-current-buffer other-buffer
             (when (and (eq mode major-mode)
@@ -1670,7 +1663,8 @@ NOTE: Only intended to be added as advice to `switch-to-buffer',
 (defun jupyter-repl-interaction-mode-reenable ()
   (when (and (not jupyter-repl-interaction-mode)
              (jupyter-repl-client-p jupyter-current-client)
-             (eq (jupyter-repl-language-mode jupyter-current-client) major-mode))
+             (eq major-mode
+                 (jupyter-kernel-language-mode jupyter-current-client)))
     (jupyter-repl-interaction-mode)))
 
 (defun jupyter-repl-interaction-mode-line ()
@@ -1737,25 +1731,6 @@ other buffers switched to that have the same `major-mode' as the
     (remove-hook 'after-change-major-mode-hook 'jupyter-repl-interaction-mode-reenable))))
 
 ;;; Starting a REPL
-
-(defun jupyter-repl-kernel-language-mode-properties (language-info)
-  "Get the `major-mode' info of a kernel's language.
-LANGUAGE-INFO should be the plist of the `:language_info' key in
-a kernel's kernel-info. The `major-mode' is found by consulting
-`auto-mode-alist' using the language's file extension found in
-LANGUAGE-INFO. Return a list
-
-     (MODE SYNTAX-TABLE)
-
-Where MODE is the `major-mode' to use for syntax highlighting
-purposes and SYNTAX-TABLE is the syntax table of MODE."
-  (cl-destructuring-bind (&key file_extension &allow-other-keys)
-      language-info
-    (with-temp-buffer
-      (let ((buffer-file-name
-             (concat "jupyter-repl-lang" file_extension)))
-        (delay-mode-hooks (set-auto-mode)))
-      (list major-mode (syntax-table)))))
 
 (defun jupyter-repl--new-repl (client &optional repl-name)
   "Initialize a new REPL buffer based on CLIENT.
@@ -1833,7 +1808,7 @@ Otherwise, in a non-interactive call, return the
     ;; mode using `auto-mode-alist'. See
     ;; `jupyter-repl-kernel-language-mode-properties'.
     (when (and associate-buffer
-               (eq major-mode (jupyter-repl-language-mode client)))
+               (eq major-mode (jupyter-kernel-language-mode client)))
       (jupyter-repl-associate-buffer client))
     (when display
       (pop-to-buffer (oref client buffer)))
@@ -1866,7 +1841,7 @@ called interactively, DISPLAY the new REPL buffer as well."
     (jupyter-start-channels client)
     (jupyter-repl--new-repl client repl-name)
     (when (and associate-buffer
-               (eq major-mode (jupyter-repl-language-mode client)))
+               (eq major-mode (jupyter-kernel-language-mode client)))
       (jupyter-repl-associate-buffer client))
     (when display
       (pop-to-buffer (oref client buffer)))
