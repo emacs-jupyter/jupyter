@@ -1205,7 +1205,9 @@ DETAIL is the detail level to use for the request and defaults to
   (let ((client jupyter-current-client)
         (msg (jupyter-wait-until-received :inspect-reply
                (jupyter-send-inspect-request jupyter-current-client
-                 :code code :pos pos :detail detail))))
+                 :code code :pos pos :detail detail)
+               ;; Longer timeout for the Julia kernel
+               jupyter-long-timeout)))
     (if msg
         (jupyter-with-message-content msg
             (status found)
