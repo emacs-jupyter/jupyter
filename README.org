@@ -7,20 +7,26 @@ An interface to communicate with Jupyter kernels in Emacs.
 This package provides an API for communicating with a Jupyter kernel via =zmq=
 sockets (http://github.com/dzop/emacs-zmq). It utilizes Emacs' object
 implementation, =eieio=, to define Jupyter client and kernel manager classes
-that can be sub-classed to provide support for any kind of Jupyter frontend
-which communicates directly with a kernel in Emacs. Currently, there is a
-built-in REPL frontend and =org-mode= source block frontend.
+that can be sub-classed to provide support for any kind of Jupyter frontend in
+Emacs. Currently, there is a built-in REPL frontend and =org-mode= source block
+frontend.
 
-The base Jupyter client class tries to provide good default implementations for
-handling common message replies from a kernel that integrate well with Emacs'
-built-in features. For example sending an inspect request will display the
-inspect reply in the =*Help*= buffer and previous inspect requests can be
-revisited by calling =help-go-back= or =help-go-forward= while in the =*Help*=
-buffer. Making completion requests to a kernel is done through the
-=completion-at-point= interface. If the kernel asks for input from the user, a
-prompt is displayed in the minibuffer. These are just a few of the ways that
-this package integrates with Emacs' built-in features.
+The base Jupyter client provides default implementations for handling common
+message replies from a kernel that integrate well with Emacs' built-in
+features. Below is a partial list of how kernel messages are integrated with
+Emacs:
 
+- Sending an inspect request will display the inspect reply in the =*Help*=
+  buffer and previous inspect requests can be revisited by calling
+  =help-go-back= or =help-go-forward= while in the =*Help*= buffer.
+
+- Making completion requests to a kernel is done through the
+  =completion-at-point= interface.
+
+- If the kernel asks for input from the user, a prompt is displayed in the
+  minibuffer.
+
+- Search through REPL history using =isearch=.
 ** Support differences between kernel languages
 
 To take into account differences between kernel languages, there are many
@@ -43,9 +49,9 @@ languages are integrated into the =emacs-jupyter= framework.
 * How do I install this package?
 
 At the moment, the easiest way to install this package is by using =cask=
-(https://github.com/cask/cask) to build a local package file to install in your
-Emacs. To do this, clone the repository, enter its directory, and run the
-following at the command line:
+(https://github.com/cask/cask) to build a local Emacs package file. To do this,
+clone the repository, enter its directory, and run the following at the command
+line:
 
 #+BEGIN_SRC shell
 cask package
@@ -98,6 +104,9 @@ There are two popular packages that implement similar functionality to this one
 
 - ob-ipython :: https://github.com/gregsexton/ob-ipython
   - Interacts with a Jupyter kernel via =org-mode= source blocks.
+- ob-ipython (scimax) :: https://github.com/jkitchin/scimax
+  - Scimax is an Emacs starterkit for scientists and engineers that extends
+    =ob-ipython=.
 - emacs-ipython-notebook (ein) :: https://github.com/millejoh/emacs-ipython-notebook
   - A Jupyter notebook interface in Emacs.
 
@@ -112,6 +121,12 @@ difference in how messages are passed between Emacs and a kernel is notable
 when making completion requests. =ob-ipython= will incur the overhead of
 starting up a new process /and/ new sockets on every completion request which
 can potentially be every keystroke if you type slow enough.
+
+The =scimax= version of =ob-ipython= offers some useful extensions to the
+default =ob-ipython= experience such as custom keybindings when inside an
+=org-mode= source block, selective display of mimetypes, and jumping to source
+block error locations. Many of these features have also been implemented in
+=emacs-jupyter=.
 
 =ein= is more of a full featured solution for a Jupyter notebook interface in
 Emacs. The goals of =emacs-jupyter= and =ein= are different. =ein= aims to be a
@@ -137,8 +152,7 @@ The REPL supports most of the rich output that a kernel may send to a client.
 If the kernel requests a widget to be displayed, a browser is opened that
 displays the widget. If the kernel sends image data, the image will be
 displayed in the REPL buffer. If LaTeX is sent, it will be compiled (using
-=org-mode=) and displayed. The currently available mimetypes and their
-dependencies are:
+=org-mode=) and displayed.
 
 ** Rich kernel output
 
@@ -206,11 +220,14 @@ keybindings for interacting with the REPL:
 | =C-c M-:=   | =jupyter-eval-string=              |
 ** =jupyter-repl-persistent-mode=
 
-A global minor mode that will persist the current Jupyter kernel connection if
-the current buffer is in =jupyter-repl-interaction-mode= and a buffer with the
-same =major-mode= as the current buffer is displayed or switched to. This mode
-is automatically enabled whenever =jupyter-run-repl= or =jupyter-connect-repl=
-is called.
+A global minor mode that will persist a kernel connection to a buffer about to
+be displayed if the current buffer is in =jupyter-repl-interaction-mode= and
+the buffer being switched to has the same =major-mode=. This mode is
+automatically enabled whenever =jupyter-run-repl= or =jupyter-connect-repl= is
+called.
+** =jupyter-repl-maximum-size=
+
+Set the maximum number of lines before the REPL buffer is truncated.
 ** Widget support
 
 There is also support for Jupyter widgets integrated into the REPL. If any of
@@ -325,6 +342,17 @@ image is written to file in =org-babel-jupyter-resource-directory=. This is
 great for quickly generating throw-away plots while you are working on your
 code. Once you are happy with your results you can specify the =:file=
 parameter to fix the file name.
+*** =org-babel-jupyter-resource-directory=
+
+This variable is similar to =org-preview-latex-image-directory= but solely for
+any files created when Jupyter code blocks are run, e.g. automatically
+generated image file names.
+
+**** Deletion of generated image files
+
+Whenever you run a code block multiple times and replace its results, before
+the results are replaced, any generated files will be deleted to reduce the
+clutter in =org-babel-jupyter-resource-directory=.
 ** Editing the contents of a code block
 
 When editing a Jupyter code block's contents, i.e. by pressing =C-c '= when at
@@ -412,12 +440,15 @@ available when =jupyter-org-interaction-mode= is enabled
 * API
 ** Naming conventions
 
-Methods that send messages to a kernel are named =jupyter-send-<msg-type>= where
-=<msg-type>= is an appropriate message type. The message types are identical to
+Methods that send messages to a kernel are named =jupyter-send-<msg-type>=
+where =<msg-type>= is any message type. The message types are identical to
 those defined in the [[http://jupyter-client.readthedocs.io/en/stable/messaging.html][Jupyter spec]] with ~_~ characters replaced by ~-~
 characters. So to send an =execute-request= you would call
-=jupyter-send-execute-request=. Similarly, methods that are responsible for
-handling messages received from a kernel are named =jupyter-handle-<msg-type>=.
+=jupyter-send-execute-request=.
+
+Similarly, methods that are responsible for handling messages received from a
+kernel are named =jupyter-handle-<msg-type>=.
+
 Methods that require a message type as an argument such as
 =jupyter-add-callback= should do so by passing a message type keyword such as
 =:execute-request=.
