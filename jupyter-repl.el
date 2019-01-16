@@ -1604,7 +1604,7 @@ If CLIENT is a buffer or the name of a buffer, use the
     (unless jupyter-repl-interaction-mode
       (jupyter-repl-interaction-mode))))
 
-(defvar jupyter-repl-interaction-map
+(defvar jupyter-repl-interaction-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "C-x C-e") #'jupyter-eval-line-or-region)
     (define-key map (kbd "C-c C-c") #'jupyter-eval-line-or-region)
@@ -1691,11 +1691,10 @@ In addition any new buffers opened with the same `major-mode' as
 the `current-buffer' will automatically have
 `jupyter-repl-interaction-mode' enabled for them.
 
-\\{jupyter-repl-interaction-map}"
+\\{jupyter-repl-interaction-mode-map}"
   :group 'jupyter-repl
   :lighter '(:eval (jupyter-repl-interaction-mode-line))
   :init-value nil
-  :keymap jupyter-repl-interaction-map
   (cond
    (jupyter-repl-interaction-mode
     (add-hook 'completion-at-point-functions 'jupyter-completion-at-point nil t)
