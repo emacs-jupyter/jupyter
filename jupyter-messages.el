@@ -488,7 +488,7 @@ set it to the result of calling `jupyter--decode' on the second
 element. If the third element is non-nil, return it. Otherwise
 return the value of KEY in MSG."
   `(let ((part (plist-get ,msg ,key)))
-     (if (and (listp part) (eq (car part) 'message-part))
+     (if (and (consp part) (eq (car part) 'message-part))
          (or (nth 2 part) (jupyter--decode part))
        part)))
 
