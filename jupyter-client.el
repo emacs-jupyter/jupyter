@@ -1029,11 +1029,17 @@ to the above explanation."
       :stream
       (lambda (msg)
         (jupyter-with-message-content msg (name text)
-          (when (equal name "stdout")
-            (jupyter-with-display-buffer "output" req
-              (jupyter-insert-ansi-coded-text text)
-              (display-buffer (current-buffer)
-                              '(display-buffer-below-selected)))))))
+          (pcase name
+            ("stdout"
+             (jupyter-with-display-buffer "output" req
+               (jupyter-insert-ansi-coded-text text)
+               (display-buffer (current-buffer)
+                               '(display-buffer-below-selected))))
+            ("stderr"
+             (jupyter-with-display-buffer "error" req
+               (jupyter-insert-ansi-coded-text text)
+               (display-buffer (current-buffer)
+                               '(display-buffer-below-selected))))))))
     req))
 
 (defun jupyter-eval-region (beg end &optional cb)
