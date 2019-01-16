@@ -1278,6 +1278,28 @@ DETAIL is the detail level to use for the request and defaults to
 
 ;;;; Completion
 
+;;;;; Eldoc
+
+;; TODO: Make this asynchronous. The default implementation should provide the
+;; scaffolding to send a request to the kernel and add in callbacks to handle
+;; the call to `eldoc-message'.
+
+(cl-defgeneric jupyter-eldoc-documentation ()
+  "Return a string suitable for Eldoc.
+Kernel languages can extend this method using the jupyter-lang
+method specializer to add their own functionality.
+
+See `eldoc-documentation-function' for how to have Eldoc use this
+method in a `major-mode'."
+  nil)
+
+(cl-defmethod jupyter-eldoc-documentation :around ()
+  "Only return non-nil if not inside a comment or string."
+  (when jupyter-current-client
+    (unless (or (nth 4 (syntax-ppss))
+                (jupyter-kernel-busy-p jupyter-current-client))
+      (cl-call-next-method))))
+
 ;;;;; Code context
 
 (cl-defgeneric jupyter-code-context (type)

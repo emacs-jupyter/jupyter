@@ -38,6 +38,7 @@
 (declare-function org-in-src-block-p "org" (&optional inside))
 (declare-function org-babel-python-table-or-string "ob-python" (results))
 (declare-function org-babel-jupyter-initiate-session "ob-jupyter" (&optional session params))
+(declare-function org-babel-jupyter-src-block-client "ob-jupyter")
 
 (defcustom jupyter-org-resource-directory "./.ob-jupyter/"
   "Directory used to store automatically generated image files.
@@ -490,6 +491,20 @@ and they only take effect when the variable
 (jupyter-org-define-key (kbd "C-c C-r") #'jupyter-repl-restart-kernel)
 (jupyter-org-define-key (kbd "C-c C-i") #'jupyter-repl-interrupt-kernel)
 
+;;; Eldoc
+
+(defun jupyter-org-eldoc-documentation ()
+  "Evaluate `jupyter-eldoc-documentation' with the current src-block's client.
+Does nothing if there is no client associated with the current
+source block yet."
+  (when (org-babel-jupyter-src-block-client)
+    (jupyter-org-with-src-block-client
+     (save-restriction
+       (narrow-to-region
+        (jupyter-org--src-block-beg)
+        (jupyter-org--src-block-end))
+       (jupyter-eldoc-documentation)))))
+
 ;;; `jupyter-org-interaction-mode'
 
 (define-minor-mode jupyter-org-interaction-mode
@@ -516,10 +531,14 @@ C-x C-e         `jupyter-eval-line-or-region'"
   (cond
    (jupyter-org-interaction-mode
     (add-hook 'completion-at-point-functions 'jupyter-org-completion-at-point nil t)
-    (add-hook 'after-revert-hook 'jupyter-org-interaction-mode nil t))
+    (add-hook 'after-revert-hook 'jupyter-org-interaction-mode nil t)
+    (add-function :before-until (local 'eldoc-documentation-function)
+                  #'jupyter-org-eldoc-documentation))
    (t
     (remove-hook 'completion-at-point-functions 'jupyter-org-completion-at-point t)
-    (remove-hook 'after-revert-hook 'jupyter-org-interaction-mode t))))
+    (remove-hook 'after-revert-hook 'jupyter-org-interaction-mode t)
+    (remove-function (local 'eldoc-documentation-function)
+                     #'jupyter-org-eldoc-documentation))))
 
 (add-hook 'org-mode-hook 'jupyter-org-interaction-mode)
 

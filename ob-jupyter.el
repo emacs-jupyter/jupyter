@@ -162,6 +162,12 @@ variables in PARAMS."
         (insert (org-babel-expand-body:jupyter (org-babel-chomp body) params))
         (current-buffer)))))
 
+(defun org-babel-jupyter-session-key (session kernel)
+  "Return the key used to associate a session with a Jupyter client.
+The key is based off the name of the SESSION and the underlying
+KERNEL."
+  (concat session "-" kernel))
+
 (defun org-babel-jupyter-initiate-session-by-key (session params)
   "Return the Jupyter REPL buffer for SESSION.
 If SESSION does not have a client already, one is created based
@@ -175,7 +181,7 @@ of one. The first kernel that is returned by
 `jupyter-find-kernelspecs' when passed the value of the `:kernel'
 parameter will be used."
   (let* ((kernel (alist-get :kernel params))
-         (key (concat session "-" kernel))
+         (key (org-babel-jupyter-session-key session kernel))
          (client
           (or (gethash key org-babel-jupyter-session-clients)
               (let ((client
@@ -201,6 +207,16 @@ parameter will be used."
   "Initialize a Jupyter SESSION according to PARAMS."
   (if (equal session "none") (error "Need a session to run")
     (org-babel-jupyter-initiate-session-by-key session params)))
+
+(defun org-babel-jupyter-src-block-client ()
+  "Return the Jupyter kernel client for the src-block at point.
+If there currently is no client, return nil."
+  (jupyter-org-when-in-src-block
+   (let* ((params (car jupyter-org--src-block-cache))
+          (session (alist-get :session params)))
+     (gethash
+      (org-babel-jupyter-session-key session (alist-get :kernel params))
+      org-babel-jupyter-session-clients))))
 
 (defun org-babel-jupyter-scratch-buffer ()
   "Display a scratch buffer connected to the current block's session."
@@ -331,6 +347,9 @@ Optional argument REFRESH has the same meaning as in
    for lang = (plist-get spec :language)
    unless (member lang languages) collect lang into languages and
    do (org-babel-jupyter-make-language-alias kernel lang)
+   (when (boundp 'org-eldoc-local-functions-cache)
+     (puthash (concat "jupyter-" lang)  #'jupyter-org-eldoc-documentation
+              org-eldoc-local-functions-cache))
    (when (assoc lang org-babel-tangle-lang-exts)
      (add-to-list 'org-babel-tangle-lang-exts
                   (cons (concat "jupyter-" lang)
@@ -340,6 +359,15 @@ Optional argument REFRESH has the same meaning as in
                       (intern (or (cdr (assoc lang org-src-lang-modes))
                                   (replace-regexp-in-string
                                    "[0-9]*" "" lang)))))))
+
+;; This is needed so that we don't have to require org-eldoc and so that it
+;; doesn't matter in which order org-eldoc and ob-jupyter are loaded.
+(defun org-babel-jupyter--update-eldoc-cache (_ newval op __)
+  (when (and (eq op 'set) (hash-table-p newval))
+    (cl-loop
+     for (_kernel . (_dir . spec)) in (jupyter-available-kernelspecs)
+     for lang = (concat "jupyter-" (plist-get spec :language))
+     do (puthash lang  #'jupyter-org-eldoc-documentation newval))))
 
 (defvar org-latex-minted-langs)
 
@@ -355,6 +383,8 @@ mapped to their appropriate minted language in
 
 (org-babel-jupyter-aliases-from-kernelspecs)
 (add-hook 'org-export-before-processing-hook #'org-babel-jupyter-setup-export)
+(add-variable-watcher 'org-eldoc-local-functions-cache
+                      #'org-babel-jupyter--update-eldoc-cache)
 
 (provide 'ob-jupyter)
 

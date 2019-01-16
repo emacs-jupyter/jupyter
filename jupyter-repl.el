@@ -1626,10 +1626,14 @@ the `current-buffer' will automatically have
   (cond
    (jupyter-repl-interaction-mode
     (add-hook 'completion-at-point-functions 'jupyter-completion-at-point nil t)
-    (add-hook 'after-revert-hook 'jupyter-repl-interaction-mode nil t))
+    (add-hook 'after-revert-hook 'jupyter-repl-interaction-mode nil t)
+    (add-function :before-until (local 'eldoc-documentation-function)
+                  #'jupyter-eldoc-documentation))
    (t
     (remove-hook 'completion-at-point-functions 'jupyter-completion-at-point t)
     (remove-hook 'after-revert-hook 'jupyter-repl-interaction-mode t)
+    (remove-function (local 'eldoc-documentation-function)
+                     #'jupyter-eldoc-documentation)
     (unless (eq major-mode 'jupyter-repl-mode)
       (kill-local-variable 'jupyter-current-client)))))
 
