@@ -1191,6 +1191,77 @@ DETAIL is the detail level to use for the request and defaults to
 
 ;;;; Completion
 
+;;;;; XREF
+
+(require 'xref)
+
+(defclass jupyter-xref-file-location (xref-file-location)
+  ((session
+    :initarg :session
+    :type string
+    :documentation "The session ID of the associated Jupyter
+client. This is most useful to recover the kernel client using
+`jupyter-find-client-for-session'.")))
+
+(defvar jupyter--xref-disable nil
+  "Exclude Jupyter as an XREF backend.
+Dynamically bound if the default XREF functions are called to
+re-dispatch XREF without considering Jupyter.")
+
+(defun jupyter--xref-backend ()
+  (and jupyter-current-client
+       (not jupyter--xref-disable)
+       ;; FIXME: Kernels don't respond to many different kinds of requests when
+       ;; busy
+       (not (jupyter-kernel-busy-p jupyter-current-client))
+       (or (and (functionp 'ggtags--xref-backend)
+                ;; FIXME: Workaround. What would be a better way to defer to
+                ;; other backends when it seems reasonable?
+                (ggtags--xref-backend))
+           'jupyter)))
+
+(defvar xref-buffer-name)
+
+(declare-function jupyter-repl-associate-buffer "jupyter-repl")
+
+(defun jupyter--xref-associate-buffer ()
+  (unless (bound-and-true-p jupyter-repl-interaction-mode)
+    (when-let* ((item xref--current-item)
+                (loc (xref-item-location item))
+                (client (and (jupyter-xref-file-location-p loc)
+                             (jupyter-find-client-for-session
+                              (oref loc session)))))
+      (when (object-of-class-p client 'jupyter-repl-client)
+        (ignore-errors (jupyter-repl-associate-buffer client))))))
+
+(add-hook 'xref-after-jump-hook #'jupyter--xref-associate-buffer)
+
+(defun jupyter-xref-enable-backend ()
+  "Enable the XREF backend for Jupyter in the current buffer.
+This adds support for Jupyter to `xref-backend-functions' for the
+current buffer. By default, if a kernel language does not provide
+any XREF functionality, the Jupyter backend defers to other
+backends.
+
+A kernel language can extend the `xref-backend-*' methods using
+the jupyter-lang method specializer to add their own
+functionality."
+  (add-hook 'xref-backend-functions #'jupyter--xref-backend nil t))
+
+;; Default to dispatching without considering Jupyter if there is no language
+;; specific XREF functions
+(cl-defmethod xref-backend-definitions ((_backend (eql jupyter)) identifier)
+  (let ((jupyter--xref-disable t))
+    (xref-find-definitions identifier)))
+
+(cl-defmethod xref-backend-references ((_backend (eql jupyter)) identifier)
+  (let ((jupyter--xref-disable t))
+    (xref-find-references identifier)))
+
+(cl-defmethod xref-backend-apropos ((_backend (eql jupyter)) pattern)
+  (let ((jupyter--xref-disable t))
+    (xref-find-apropos pattern)))
+
 ;;;;; Code context
 
 (cl-defgeneric jupyter-code-context (type)

@@ -576,6 +576,56 @@ property."
                         (point-max)))
           (jupyter-org--ansi-color-apply-on-region beg end)))))))
 
+;;; XREF
+
+(defvar jupyter-org--redispatched nil)
+
+(defmacro jupyter-org--next-method-or-redispatch (method &rest args)
+  "Evaluate METHOD with ARGS when inside a Jupyter src-block.
+When the current `major-mode' is not derived from `org-mode'
+evaluate `cl-call-next-method'. Otherwise, evaluate METHOD with
+ARGS when inside a Jupyter src-block. Taking into account the
+possibility of recursion into the same code path expanded by this
+macro. In the case that there is recursion, do not evaluate
+METHOD and just call `cl-call-next-method'. This has the effect
+of only calling METHOD once.
+
+Before METHOD is called, it is wrapped using
+`jupyter-org-with-src-block-client' so that the jupyter-lang
+method specializers are able to use the Jupyter client of the
+current src-block. In addition the buffer is narrowed to the
+contents of the code block."
+  `(if (and (derived-mode-p 'org-mode)
+            (not jupyter-org--redispatched))
+       (let ((jupyter-org--redispatched t))
+         (jupyter-org-with-src-block-client
+          (save-restriction
+            (narrow-to-region
+             (nth 1 jupyter-org--src-block-cache)
+             (nth 2 jupyter-org--src-block-cache))
+            (,method ,@args))))
+     (cl-call-next-method)))
+
+(defun jupyter-org--xref-backend ()
+  (jupyter-org-with-src-block-client
+   (jupyter--xref-backend)))
+
+(cl-defmethod xref-backend-identifier-at-point :around ((_backend (eql jupyter)))
+  (jupyter-org--next-method-or-redispatch
+   xref-backend-identifier-at-point 'jupyter))
+
+(cl-defmethod xref-backend-definitions :around ((_backend (eql jupyter)) identifier)
+  (jupyter-org--next-method-or-redispatch
+   xref-backend-definitions 'jupyter identifier))
+
+(cl-defmethod xref-backend-references :around ((_backend (eql jupyter)) identifier)
+  (jupyter-org--next-method-or-redispatch
+   xref-backend-references 'jupyter identifier))
+
+(cl-defmethod xref-backend-apropos :around ((_backend (eql jupyter)) pattern)
+  (jupyter-org--next-method-or-redispatch
+   xref-backend-apropos 'jupyter pattern))
+
 ;;; `jupyter-org-interaction-mode'
 
 (defvar org-font-lock-keywords)
@@ -608,6 +658,7 @@ C-x C-e         `jupyter-eval-line-or-region'"
    (jupyter-org-interaction-mode
     (add-hook 'completion-at-point-functions 'jupyter-org-completion-at-point nil t)
     (add-hook 'after-revert-hook 'jupyter-org-interaction-mode nil t)
+    (add-hook 'xref-backend-functions 'jupyter-org--xref-backend nil t)
     (setq-local char-property-alias-alist
                 (copy-tree char-property-alias-alist))
     (cl-callf append (alist-get 'invisible char-property-alias-alist)
@@ -620,6 +671,7 @@ C-x C-e         `jupyter-eval-line-or-region'"
    (t
     (remove-hook 'completion-at-point-functions 'jupyter-org-completion-at-point t)
     (remove-hook 'after-revert-hook 'jupyter-org-interaction-mode t)
+    (remove-hook 'xref-backend-functions 'jupyter-org--xref-backend t)
     (cl-callf2 delq 'jupyter-invisible
                (alist-get 'invisible char-property-alias-alist))
     (setq org-font-lock-keywords
