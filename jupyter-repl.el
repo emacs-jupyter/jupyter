@@ -1632,33 +1632,23 @@ language mode, set `jupyter-current-client' in the checked buffer
 to the same value as the `jupyter-current-client' of the
 `current-buffer'.
 
-If the `current-buffer' is not in
-`jupyter-repl-interaction-mode', use the first buffer returned by
-`jupyter-repl-available-repl-buffers' for the checked buffer's
-`major-mode' as the buffer from which to propagate its value of
-`jupyter-current-client'.
-
 NOTE: Only intended to be added as advice to `switch-to-buffer',
 `display-buffer', or `set-window-buffer'."
-  (let* ((other-buffer (if (or (null win-or-buffer)
-                               (windowp win-or-buffer))
-                           (car args)
-                         win-or-buffer))
-         (buffer (or (and jupyter-repl-interaction-mode (current-buffer))
-                     (and (buffer-live-p other-buffer)
-                          (jupyter-repl-available-repl-buffers
-                           (with-current-buffer other-buffer major-mode)
-                           'first)))))
-    (when (buffer-live-p buffer)
-      (with-current-buffer buffer
-        (let ((client jupyter-current-client)
-              (mode (if (eq major-mode 'jupyter-repl-mode)
-                        (jupyter-kernel-language-mode jupyter-current-client)
-                      major-mode)))
-          (with-current-buffer other-buffer
-            (when (and (eq mode major-mode)
-                       (not jupyter-repl-interaction-mode))
-              (jupyter-repl-associate-buffer client))))))))
+  (let* ((other-buffer (get-buffer
+                        (if (or (null win-or-buffer)
+                                (windowp win-or-buffer))
+                            (car args)
+                          win-or-buffer)))
+         (client
+          (and jupyter-current-client
+               (object-of-class-p jupyter-current-client 'jupyter-repl-client)
+               (eq (buffer-local-value 'major-mode other-buffer)
+                   (jupyter-kernel-language-mode jupyter-current-client))
+               jupyter-current-client)))
+    (when client
+      (with-current-buffer other-buffer
+        (unless jupyter-repl-interaction-mode
+          (jupyter-repl-associate-buffer client))))))
 
 (defun jupyter-repl-interaction-mode-reenable ()
   (when (and (not jupyter-repl-interaction-mode)
