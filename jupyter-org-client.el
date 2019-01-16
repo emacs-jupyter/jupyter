@@ -106,7 +106,8 @@ source code block. Set by `org-babel-execute:jupyter'.")))
 
 (cl-defmethod jupyter-drop-request ((_client jupyter-org-client)
                                     (req jupyter-org-request))
-  (set-marker (jupyter-org-request-marker req) nil))
+  (when (markerp (jupyter-org-request-marker req))
+    (set-marker (jupyter-org-request-marker req) nil)))
 
 ;;;; Stream
 
