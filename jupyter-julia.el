@@ -39,6 +39,116 @@
 (cl-defmethod jupyter-load-file-code (file &context (jupyter-lang julia))
   (format "include(\"%s\");" file))
 
+;;; Support functions
+
+;;;; Parsing identifiers
+
+(defun jupyter-julia-id-start-char-p (c)
+  "Return non-nil if C can start an identfier."
+  (and c (or
+          ;; Let @ start an identifier, this differs from Julia's parser, but
+          ;; is useful for practical purposes
+          (eq c ?@)
+          (<= ?a c ?z) (<= ?A c ?Z) (eq c ?_)
+          (and (not (or (< c #xa1) (> c #x10ffff)))
+               (jupyter-julia-id-cat-start-char-p
+                c (get-char-code-property c 'general-category))))))
+
+(defun jupyter-julia-id-char-p (c)
+  "Return non-nil if C can be a character in an identifier."
+  (and c (or
+          (eq c ?@)
+          (<= ?a c ?z) (<= ?A c ?Z) (eq c ?_)
+          (<= ?0 c ?9)
+          (eq c ?!)
+          (and (not (or (< c #xa1) (> c #x10ffff)))
+               (or (<= #x2032 c #x2037)
+                   (= c #x2057)
+                   (let ((cat (get-char-code-property c 'general-category)))
+                     (or (memq cat '(Mn Mc Nd Pc Sk Me No))
+                         (jupyter-julia-id-cat-start-char-p c cat))))))))
+
+(defun jupyter-julia-id-cat-start-char-p (c cat)
+  "Return non-nil if C is a valid unicode identifier start character.
+CAT is the unicode category of C."
+  (when c
+    (or (memq cat '(Lu Ll Lt Lm Lo Nl Sc))
+        (and (eq cat 'So) (not (<= #x2190 c #x21ff)))
+        (and (<= #x2140 c #x2a1c)
+             (or (<= #x2140 c #x2144)
+                 (memq c '(#x223f #x22be #x22bf #x22a4 #x22a5))
+                 (and (<= #x2202 c #x2233)
+                      (or (memq c '(#x2202 #x2205 #x2205
+                                           #x2207 #x220e #x220f
+                                           #x2210 #x2211
+                                           #x221e #x221f))
+                          (>= c #x222b)))
+                 (<= #x22c0 c #x22c3)
+                 (<= #x25f8 c #x25ff)
+                 (and (>= c #x266f)
+                      (or (memq c '(#x266f #x27d8 #x27d9))
+                          (<= #x27c0 c #x2c71)
+                          (<= #x29b0 c #x29b4)
+                          (<= #x2a00 c #x2a06)
+                          (<= #x2a09 c #x2a16)
+                          (= c #x2a1b) (= c #x2a1c)))))
+        (and (>= c #x1d6c1)
+             (or (memq c '(#x1d6c1 #x1d6db
+                                   #x1d6fb #x1d715
+                                   #x1d735 #x1d74f
+                                   #x1d76f #x1d789
+                                   #x1d7a9 #x1d7c3))))
+        (<= #x207a c #x207e)
+        (<= #x208a c #x208e)
+        (<= #x2220 c #x2222)
+        (<= #x299b c #x29af)
+        (= c #x2118) (= c #x212e)
+        (<= #x309b c #x309c))))
+
+(defun jupyter-julia-identifier-at-point ()
+  (when (jupyter-julia-id-char-p (char-after))
+    (buffer-substring-no-properties
+     (save-excursion (jupyter-julia-beginning-of-identifier))
+     (save-excursion (jupyter-julia-end-of-identifier)))))
+
+(defun jupyter-julia-beginning-of-identifier ()
+  (when (jupyter-julia-id-char-p (char-after))
+    (while (jupyter-julia-id-char-p (char-before))
+      (backward-char))
+    (while (not (jupyter-julia-id-start-char-p (char-after)))
+      (forward-char))))
+
+(defun jupyter-julia-end-of-identifier ()
+  (when (jupyter-julia-id-char-p (char-after))
+    (while (jupyter-julia-id-char-p (char-after))
+      (forward-char))))
+
+(defun jupyter-julia-identifier-with-dots-at-point ()
+  (when (or (jupyter-julia-id-char-p (char-after))
+            (eq (char-after) ?.))
+    (when (eq (char-after) ?.)
+      (unless (bobp)
+        (backward-char)))
+    (let ((beg (point))
+          (end (point)))
+      (save-excursion
+        (jupyter-julia-end-of-identifier)
+        (while (and (eq (char-after (point)) ?.)
+                    (jupyter-julia-id-start-char-p
+                     (char-after (1+ (point)))))
+          (forward-char)
+          (jupyter-julia-end-of-identifier))
+        (setq end (point))
+        (goto-char beg)
+        (jupyter-julia-beginning-of-identifier)
+        (while (and (eq (char-before (point)) ?.)
+                    (jupyter-julia-id-char-p
+                     (char-before (1- (point)))))
+          (backward-char 2)
+          (jupyter-julia-beginning-of-identifier))
+        (setq beg (point)))
+      (buffer-substring-no-properties beg end))))
+
 ;;; Completion
 
 (cl-defmethod jupyter-completion-prefix (&context (jupyter-lang julia))
@@ -78,6 +188,92 @@
         ;; problems with that.
         (insert (string-trim (get-text-property 0 'annot candidate))))
     (cl-call-next-method)))
+
+;;; XREF
+
+(defvar jupyter-julia--bindir nil)
+
+;; TODO: This may be unnecessary when using @functionloc since it looks like it
+;; resolves paths on its own instead of relying on the LineNumber nodes.
+(defun jupyter-julia--recover-local-path (path)
+  (if (file-name-absolute-p path)
+      (let ((begin (string-match-p (jupyter-join-path "share" "julia") path)))
+        (if (or (file-exists-p path)
+                (not (and begin jupyter-julia--bindir)))
+            path
+          (expand-file-name
+           (substring path begin)
+           jupyter-julia--bindir)))
+    ;; Assume PATH is a file relative to base
+    (expand-file-name
+     path (expand-file-name
+           (jupyter-join-path "share" "julia" "base")
+           jupyter-julia--bindir))))
+
+(defun jupyter-julia--xref-definitions (identifier)
+  (when (oref jupyter-current-client manager)
+    ;; When the client is connected to a local kernel, ensure that we know
+    ;; where the base Julia library files are at.
+    ;;
+    ;; TODO: Generalize to remote directories using TRAMP file names (/ssh:) to
+    ;; access the remote host?
+    (unless jupyter-julia--bindir
+      (setq jupyter-julia--bindir
+            (file-name-directory
+             (substring (jupyter-eval "Sys.BINDIR") 1 -1)))))
+  (when-let* ((jupyter-inhibit-handlers t)
+              (code (format "%s(" identifier))
+              (msg (jupyter-wait-until-received :complete-reply
+                     (jupyter-send-complete-request
+                         jupyter-current-client
+                       :code code :pos (length code))))
+              (session-id (jupyter-session-id
+                           (oref jupyter-current-client session)))
+              (make-xref
+               (lambda (x)
+                 (let ((summary (get-text-property 0 'docsig x))
+                       (loc-info (get-text-property 0 'location x)))
+                   (and summary loc-info
+                        (xref-make
+                         (substring
+                          (jupyter-fontify-according-to-mode
+                           (jupyter-kernel-language-mode jupyter-current-client)
+                           (concat "function " summary)
+                           t)
+                          9)
+                         (jupyter-xref-file-location
+                          :file (jupyter-julia--recover-local-path
+                                 (car loc-info))
+                          :line (1- (cdr loc-info))
+                          :column (or (string-match-p identifier summary) 0)
+                          :session session-id)))))))
+    (jupyter-with-message-content msg
+        (status matches metadata)
+      (when (equal status "ok")
+        (delq nil
+              (sort (mapcar make-xref (jupyter-completion-construct-candidates
+                                  matches metadata))
+                    (lambda (a b)
+                      (< (oref (oref a location) line)
+                         (oref (oref b location) line)))))))))
+
+(defun jupyter-julia--xref-apropos (pattern)
+  (when-let* ((msg (jupyter-eval
+                    (format "Base.Docs.apropos(\"%s\")" pattern)))))
+
+  )
+
+(cl-defmethod xref-backend-identifier-at-point ((_backend (eql jupyter))
+                                                &context (jupyter-lang julia))
+  (jupyter-julia-identifier-with-dots-at-point))
+
+(cl-defmethod xref-backend-definitions ((_backend (eql jupyter)) identifier
+                                        &context (jupyter-lang julia))
+  (jupyter-julia--xref-definitions identifier))
+
+(cl-defmethod xref-backend-apropos ((_backend (eql jupyter)) pattern
+                                    &context (jupyter-lang julia))
+  (jupyter-julia--xref-apropos pattern))
 
 ;;; `markdown-mode'
 

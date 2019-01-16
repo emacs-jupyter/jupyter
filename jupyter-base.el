@@ -710,6 +710,11 @@ otherwise return the underlying object."
     (signal 'wrong-type-argument
             (list '(subclass jupyter-kernel-client) class))))
 
+(defun jupyter-join-path (&rest components)
+  "Return a file path composed of COMPONENTS."
+  (let ((sep (substring (file-name-as-directory "x") -1)))
+    (mapconcat #'identity components sep)))
+
 (provide 'jupyter-base)
 
 ;;; jupyter-base.el ends here
