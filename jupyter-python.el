@@ -98,13 +98,13 @@ buffer."
   (when (plist-get changelist :dir)
     (setq code
           (format "\
-import os as _ejupy_os
-__ejupy_old_dir = _ejupy_os.getcwd()
-_ejupy_os.chdir(\"%s\")
+import os
+__JUPY_saved_dir = os.getcwd()
+os.chdir(\"%s\")
 try:
     get_ipython().run_cell(\"\"\"%s\"\"\")
 finally:
-    _ejupy_os.chdir(__ejupy_old_dir)"
+    os.chdir(__JUPY_saved_dir)"
                   (plist-get changelist :dir) code)))
   code)
 

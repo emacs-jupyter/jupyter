@@ -1493,6 +1493,25 @@ zz
 #+END_EXAMPLE"
            :async "yes"))))))
 
+(ert-deftest org-babel-jupyter-:dir-header-arg ()
+  :tags '(org)
+  (ert-info ("Python")
+    (jupyter-org-test-src-block
+     "\
+import os
+os.path.abspath(os.getcwd())"
+     (concat ": " (expand-file-name "~"))
+     :dir "~")
+    (ert-info ("Directory restored")
+      (jupyter-org-test-src-block
+       "\
+import os
+os.path.abspath(os.getcwd())"
+       (concat ": " (expand-file-name
+                     ;; Remove the path separator at the end of
+                     ;; `default-directory'
+                     (substring default-directory nil -1)))))))
+
 ;; Local Variables:
 ;; byte-compile-warnings: (not free-vars)
 ;; End:

@@ -122,8 +122,8 @@ path."
                        (funcall expander body params var-lines)
                      (org-babel-expand-body:generic body params var-lines)))
          (changelist nil))
-    (when (alist-get :dir params)
-      (plist-put changelist :dir (expand-file-name (alist-get :dir params))))
+    (when-let* ((dir (alist-get :dir params)))
+      (setq changelist (plist-put changelist :dir (expand-file-name dir))))
     (if changelist (org-babel-jupyter-transform-code expanded changelist)
       expanded)))
 
