@@ -142,11 +142,6 @@ line in the previous source block. See
 `jupyter-org-error-location'."
   (interactive)
   (let ((loc (get-text-property (point) 'jupyter-error-loc)))
-    ;; TODO: Ensure we are at the right source block by storing the hash of the
-    ;; code as a text property using `org-babel-sha1-hash'. Then don't jump to
-    ;; the error if the hash doesn't match. Better yet, we could hash the line
-    ;; corresponding to the error and then scan the lines of the source block
-    ;; to find the right one if the original location doesn't match.
     (when loc
       (org-babel-previous-src-block)
       (forward-line loc))))

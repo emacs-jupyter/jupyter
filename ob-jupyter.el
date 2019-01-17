@@ -23,17 +23,7 @@
 
 ;;; Commentary:
 
-;; TODO: Properly replace the source block results when multiple results are
-;; appended. Currently what happens is that only the first result is removed
-;; when re-execution the src block due to the behavior of
-;; `org-babel-result-end'. The solution is to keep calling
-;; `org-babel-result-end' moving point to the end of the results until
-;; `org-babel-result-end' returns the same position twice. We may need to
-;; advise this function to implement this behavior for jupyter blocks.
-;;
-;; An alternative is to collect all results in both async and sync cases before
-;; insertion. Then if there are multiple types of data, for example images and
-;; text, we can insert them all into a single RESULTS drawer.
+;; Interact with a Jupyter kernel via `org-mode' src-block's.
 
 ;;; Code:
 

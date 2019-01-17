@@ -32,7 +32,7 @@
 (require 'cl-lib)
 (require 'eieio)
 (require 'eieio-base)
-(require 'subr-x) ; `string-trim'
+(require 'subr-x)
 (require 'json)
 (require 'zmq)
 (require 'hmac-def)

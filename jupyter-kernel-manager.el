@@ -210,8 +210,6 @@ kernel. Starting a kernel involves the following steps:
           (oset manager kernel proc)
           (oset manager conn-file conn-file)
           (prog1 manager
-            ;; TODO: This is not reliable.
-            ;;
             ;; Block until the kernel reads the connection file
             (jupyter-with-timeout
                 ((format "Starting %s kernel process..." kernel-name)
