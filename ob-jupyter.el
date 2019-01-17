@@ -68,8 +68,12 @@
                                                 (:async . "no"))
   "Default header arguments for Jupyter src-blocks.")
 
-(defvar org-babel-jupyter-language-regex "^[ \t]*#\\+begin_src[ \t]+jupy-\\([^ \f\t\n\r\v]+\\)[ \t]*"
-  "Regular expression used to extract a source block's language name.")
+(defun org-babel-jupyter--src-block-kernel-language ()
+  (when (org-in-src-block-p)
+    (let ((info (org-babel-get-src-block-info)))
+      (save-match-data
+        (string-match "^jupy-\\(.+\\)$" (car info))
+        (match-string 1 (car info))))))
 
 (defun org-babel-variable-assignments:jupyter (params &optional lang)
   "Assign variables in PARAMS according to the Jupyter kernel language.
@@ -80,16 +84,9 @@ The variables are assigned by looking for the function
 `org-babel-variable-assignments:LANG'. If this function does not
 exist or if LANG cannot be determined, assign variables using
 `org-babel-variable-assignments:python'."
-  (let* ((lang (or lang
-                   (save-excursion
-                     ;; TODO: This is not the most general case since we have
-                     ;; to consider inline calls.
-                     (when (and (org-in-src-block-p)
-                                (re-search-backward
-                                 org-babel-jupyter-language-regex nil t))
-                       (match-string 1)))))
-         (fun (when lang
-                (intern (concat "org-babel-variable-assignments:" lang)))))
+  (or lang (setq lang (org-babel-jupyter--src-block-kernel-language)))
+  (let ((fun (when lang
+               (intern (concat "org-babel-variable-assignments:" lang)))))
     (if (functionp fun) (funcall fun params)
       (org-babel-variable-assignments:python params))))
 
@@ -128,12 +125,8 @@ If PARAMS has a :dir parameter, the expanded code is passed to
 `org-babel-jupyter-transform-code' with a changelist that
 includes the :dir parameter with the directory being an absolute
 path."
-  (let* ((lang (or lang
-                   (save-excursion
-                     (when (re-search-backward
-                            org-babel-jupyter-language-regex nil t)
-                       (match-string 1)))))
-         (expander (when lang
+  (or lang (setq lang (org-babel-jupyter--src-block-kernel-language)))
+  (let* ((expander (when lang
                      (intern (concat "org-babel-expand-body:" lang))))
          (expanded (if (functionp expander)
                        (funcall expander body params var-lines)
