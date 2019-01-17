@@ -1242,7 +1242,9 @@ Image(filename='%s', width=300)" file)
                    '(export-block (:type "html" :value "foo\n"))))
     ;; Calls `org-babel-script-escape' for scalar data
     (should (equal (jupyter-org-result req (list :text/plain "[1, 2, 3]"))
-                   "| 1 | 2 | 3 |\n"))))
+                   "| 1 | 2 | 3 |\n"))
+    (should (equal (jupyter-org-result req (list :text/plain "[1, 2, 3] Foo"))
+                   '(fixed-width (:value "[1, 2, 3] Foo"))))))
 
 (ert-deftest jupyter-org-result-python ()
   :tags '(org)

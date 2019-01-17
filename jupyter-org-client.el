@@ -850,8 +850,12 @@ new \"scalar\" result with the result of calling
             ;; gives bad results on the following
             ;;
             ;;     [1] Foo bar
-            (memq (aref result 0) '(?\[ ?\{ ?\())
-            (eq (aref result 0) (aref result (1- (length result)))))
+            (when-let* ((beg (car (memq (aref result 0) '(?\[ ?\{ ?\())))
+                        (end (and beg (pcase beg
+                                        (?\[ ?\])
+                                        (?\{ ?\})
+                                        (?\( ?\))))))
+              (eq end (aref result (1- (length result))))))
        (org-babel-script-escape result))
       (t result)))))
 
