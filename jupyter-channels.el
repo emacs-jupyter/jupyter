@@ -188,23 +188,23 @@ response after `jupyter-hb-consider-dead-periods' of
     (run-with-timer
      (oref channel time-to-dead) nil
      (lambda ()
-       (when (jupyter-hb--pingable-p channel)
-         (let ((sock (oref channel socket)))
-           (oset channel beating
-                 (condition-case nil
-                     (and (zmq-recv sock zmq-DONTWAIT) t)
-                   ((zmq-EINTR zmq-EAGAIN) nil)))
-           (if (oref channel beating)
-               (jupyter-hb--send-ping channel)
-             ;; Reset the socket
-             (jupyter-stop-channel channel)
-             (jupyter-start-channel channel)
-             (or counter (setq counter 0))
-             (if (< counter jupyter-hb-consider-dead-periods)
-                 (jupyter-hb--send-ping channel (1+ counter))
-               (oset channel paused t)
-               (when (functionp (oref channel kernel-died-cb))
-                 (funcall (oref channel kernel-died-cb)))))))))))
+       (when-let* ((sock (and (jupyter-hb--pingable-p channel)
+                              (oref channel socket))))
+         (oset channel beating
+               (condition-case nil
+                   (and (zmq-recv sock zmq-DONTWAIT) t)
+                 ((zmq-EINTR zmq-EAGAIN) nil)))
+         (if (oref channel beating)
+             (jupyter-hb--send-ping channel)
+           ;; Reset the socket
+           (jupyter-stop-channel channel)
+           (jupyter-start-channel channel)
+           (or counter (setq counter 0))
+           (if (< counter jupyter-hb-consider-dead-periods)
+               (jupyter-hb--send-ping channel (1+ counter))
+             (oset channel paused t)
+             (when (functionp (oref channel kernel-died-cb))
+               (funcall (oref channel kernel-died-cb))))))))))
 
 (provide 'jupyter-channels)
 

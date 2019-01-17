@@ -214,8 +214,8 @@ parameter will be used."
   "Delete the files of image links for the current source block result.
 Do this only if the file exists in
 `org-babel-jupyter-resource-directory'."
-  (when-let ((result-pos (org-babel-where-is-src-block-result))
-             (link-re (format "^[ \t]*%s[ \t]*$" org-bracket-link-regexp)))
+  (when-let* ((result-pos (org-babel-where-is-src-block-result))
+              (link-re (format "^[ \t]*%s[ \t]*$" org-bracket-link-regexp)))
     (save-excursion
       (goto-char result-pos)
       (forward-line)
