@@ -105,10 +105,14 @@ Make the character after `point' invisible."
       (goto-char beg)
       (cl-case (char-after)
         (?\]
-         ;; TODO: Get rid of the "No matching paren" message caused by
-         ;; `blink-paren-function' which is called in `post-self-insert-hook'.
-         ;; Maybe remap `self-insert-command' to handle this case?
-         (let ((pkg-prompt (jupyter-eval "import Pkg; Pkg.REPLMode.promptf()")))
+         (when (bound-and-true-p blink-paren-function)
+           ;; Spoof `last-command-event' so that a "No matching paren" message
+           ;; doesn't happen.
+           (setq last-command-event ?\[))
+         (let ((pkg-prompt
+                ;; FIXME: This modifies the ans variable in IJulia. Maybe
+                ;; evaluate this in the user-expressions of an execute-request?
+                (jupyter-eval "import Pkg; Pkg.REPLMode.promptf()")))
            (when pkg-prompt
              (put-text-property (point) (1+ (point)) 'syntax-table '(3 . ?_))
              (jupyter-julia-update-prompt
