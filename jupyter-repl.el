@@ -1206,6 +1206,9 @@ synchronize the execution state, and insert a new input prompt."
          (jupyter-repl-insert-banner
           (plist-get (jupyter-kernel-info client) :banner))
          (jupyter-repl-sync-execution-state)
+         ;; toggle the heartbeat channel
+         (jupyter-hb-pause jupyter-current-client)
+         (jupyter-hb-unpause jupyter-current-client)
          (jupyter-repl-insert-prompt 'in))))))
 
 (defun jupyter-repl-interrupt-kernel ()

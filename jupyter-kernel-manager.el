@@ -225,8 +225,7 @@ kernel. Starting a kernel involves the following steps:
             (unless (process-live-p proc)
               (error "Kernel process exited:\n%s"
                      (with-current-buffer (process-buffer proc)
-                       (ansi-color-apply (buffer-string)))))
-            (jupyter-start-channels manager)))))))
+                       (ansi-color-apply (buffer-string)))))))))))
 
 (cl-defmethod jupyter-start-channels ((manager jupyter-kernel-manager))
   "Start a control channel on MANAGER."
@@ -262,6 +261,8 @@ kernel. If the kernel has not shutdown within TIMEOUT, forcibly
 kill the kernel subprocess. After shutdown the MANAGER's control
 channel is stopped unless RESTART is non-nil."
   (when (jupyter-kernel-alive-p manager)
+    ;; FIXME: For some reason the control-channel is nil sometimes
+    (jupyter-start-channels manager)
     (let ((session (oref manager session))
           (sock (oref (oref manager control-channel) socket))
           (msg (jupyter-message-shutdown-request :restart restart)))
@@ -290,6 +291,8 @@ interrupt mode, send an interrupt signal to the kernel
 subprocess."
   (pcase (plist-get (oref manager spec) :interrupt_mode)
     ("message"
+     ;; FIXME: For some reason the control-channel is nil sometimes
+     (jupyter-start-channels manager)
      (let ((session (oref manager session))
            (sock (oref (oref manager control-channel) socket))
            (msg (jupyter-message-interrupt-request)))
@@ -362,6 +365,7 @@ instance, see `jupyter-make-client'."
         (jupyter-add-hook client 'jupyter-iopub-message-hook cb)
         (jupyter-start-channels client)
         (jupyter-start-kernel manager)
+        (jupyter-start-channels manager)
         (jupyter-with-timeout
             ("Kernel starting up..." jupyter-long-timeout
              (message "Kernel did not send startup message"))
