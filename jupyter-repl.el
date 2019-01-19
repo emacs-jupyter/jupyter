@@ -1184,7 +1184,8 @@ value."
                                                  (eql t)))
   (jupyter-with-repl-buffer jupyter-current-client
     (jupyter-set jupyter-current-client 'jupyter-eval-expression-history
-                 (ring-elements jupyter-repl-history))
+                 (delq 'jupyter-repl-history
+                       (ring-elements jupyter-repl-history)))
     (cl-call-next-method)))
 
 ;;; Kernel management
