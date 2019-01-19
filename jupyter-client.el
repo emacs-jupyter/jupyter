@@ -1585,8 +1585,7 @@ Run FUN when the completions are available."
            ;; when the kernel is busy, at least the Julia kernel doesn't.
            ;;
            ;; FIXME: Maybe this is kernel dependent
-           (not (equal "busy"
-                       (jupyter-execution-state jupyter-current-client))))
+           (not (jupyter-kernel-busy-p jupyter-current-client)))
       (when (consp prefix)
         (setq prefix (car prefix))
         (when (and (bound-and-true-p company-mode)
@@ -1987,6 +1986,11 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
   "Return the execution state of CLIENT's kernel."
   (cl-check-type client jupyter-kernel-client)
   (oref client execution-state))
+
+(defun jupyter-kernel-busy-p (client)
+  "Return non-nil if the kernel CLIENT is connected to is busy."
+  (cl-check-type client jupyter-kernel-client)
+  (equal (jupyter-execution-state client) "busy"))
 
 (cl-defgeneric jupyter-handle-status ((_client jupyter-kernel-client)
                                       _req
