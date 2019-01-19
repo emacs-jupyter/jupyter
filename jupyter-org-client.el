@@ -322,7 +322,7 @@ most recent completion request.")
                (params (nth 2 info))
                (beg (save-excursion
                       (goto-char
-                       (org-element-property :begin el))
+                       (org-element-property :post-affiliated el))
                       (line-beginning-position 2)))
                (end (save-excursion
                       (goto-char
