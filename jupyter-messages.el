@@ -468,7 +468,7 @@ you would do
 
     (jupyter-with-message-data msg ((res text/plain))
       BODY)"
-  (declare (indent 2))
+  (declare (indent 2) (debug (form (&rest (symbolp symbolp)) body)))
   (let* ((m (make-symbol "msg"))
          (vars
           (mapcar (lambda (el)
