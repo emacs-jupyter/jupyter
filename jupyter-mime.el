@@ -94,6 +94,9 @@ After BODY is evaluated, call `jupyter-handle-control-codes'
 on the region inserted by BODY."
   `(jupyter-with-insertion-bounds
        beg end (progn ,@body)
+     ;; Handle continuation from previous messages
+     (when (eq (char-before beg) ?\r)
+       (move-marker beg (1- beg)))
      (jupyter-handle-control-codes beg end)))
 
 ;;; Fontificiation routines
