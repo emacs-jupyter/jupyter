@@ -42,13 +42,24 @@
 ;;; Completion
 
 (cl-defmethod jupyter-completion-prefix (&context (jupyter-lang julia))
-  (let ((prefix (cl-call-next-method "\\\\\\|\\.\\|::" 2)))
-    (prog1 prefix
-      (when (and (consp prefix)
-                 (eq (char-before (- (point) (length (car prefix)))) ?\\))
-        ;; Include the \ in the prefix so it gets replaced if a canidate is
-        ;; selected.
-        (setcar prefix (concat "\\" (car prefix)))))))
+  (cond
+   ;; Completing argument lists
+   ((and (char-before)
+         (eq (char-syntax (char-before)) ?\()
+         (or (not (char-after))
+             (looking-at-p "\\_>")
+             (not (memq (char-syntax (char-after)) '(?w ?_)))))
+    (buffer-substring-no-properties
+     (jupyter-completion-symbol-beginning (1- (point)))
+     (point)))
+   (t
+    (let ((prefix (cl-call-next-method "\\\\\\|\\.\\|::" 2)))
+      (prog1 prefix
+        (when (and (consp prefix)
+                   (eq (char-before (- (point) (length (car prefix)))) ?\\))
+          ;; Include the \ in the prefix so it gets replaced if a canidate is
+          ;; selected.
+          (setcar prefix (concat "\\" (car prefix)))))))))
 
 (cl-defmethod jupyter-completion-post-completion (candidate
                                                   &context (jupyter-lang julia))

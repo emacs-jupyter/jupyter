@@ -1449,15 +1449,6 @@ kernel, but the prefix used by `jupyter-completion-at-point'. See
 `jupyter-code-context' for what is actually sent to the kernel."
   (or re (setq re "\\."))
   (cond
-   ;; Completing argument lists
-   ((and (char-before)
-         (eq (char-syntax (char-before)) ?\()
-         (or (not (char-after))
-             (looking-at-p "\\_>")
-             (not (memq (char-syntax (char-after)) '(?w ?_)))))
-    (buffer-substring-no-properties
-     (jupyter-completion-symbol-beginning (1- (point)))
-     (point)))
    ;; FIXME: Needed for cases where all completions are retrieved
    ;; from Base.| and the prefix turns empty again after
    ;; Base.REPLCompletions)|
