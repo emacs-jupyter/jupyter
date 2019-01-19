@@ -78,6 +78,69 @@ buffer."
 (cl-defmethod jupyter-load-file-code (file &context (jupyter-lang python))
   (concat "%run " file))
 
+;;; XREF
+
+(defvar jupyter-python-xref-setup-code
+  "\
+def __JUPY_find_definitions(references, lcode, line, col):
+    import jedi
+    script = jedi.Interpreter(lcode, [globals()], line=line, column=col)
+    res = '('
+    for d in (script.usages() if references else script.goto_definitions()):
+        code = d.get_line_code().rstrip()
+        path = d.module_path
+        line = d.line
+        col = d.column
+        if code and path and line != 1:
+            res += '(\"{}\" \"{}\" {} {}) '.format(code, path, line, col)
+    return res + ')'")
+
+(defvar jupyter-python-xref-definitions-code
+  "__JUPY_find_definitions(%s, '''%s''', %s, %s)")
+
+(defun jupyter-python--xref-definitions (code &optional references-p)
+  (when-let* ((session-id (jupyter-session-id
+                           (oref jupyter-current-client session)))
+              ;; For some reason Jedi uses 0 based line numbers? It says that
+              ;; it uses 1 based.
+              (line (1- (line-number-at-pos)))
+              (col (current-column))
+              (res (jupyter-eval
+                    (concat jupyter-python-xref-setup-code "\n"
+                            (format jupyter-python-xref-definitions-code
+                                    (if references-p "True" "False")
+                                    code line col)))))
+    (cl-loop
+     for (summary path line column) in
+     (read (substring res 1 -1))
+     collect
+     (xref-make
+      (jupyter-fontify-according-to-mode
+       (jupyter-kernel-language-mode jupyter-current-client)
+       summary
+       t)
+      (jupyter-xref-file-location
+       :file path
+       :line line
+       :column column
+       :session session-id)))))
+
+(cl-defmethod xref-backend-identifier-at-point ((_backend (eql jupyter))
+                                                &context (jupyter-lang python))
+  (python-info-current-symbol))
+
+;; TODO: Send the code and then the identifier?
+(cl-defmethod xref-backend-definitions ((_backend (eql jupyter)) _identifier
+                                        &context (jupyter-lang python))
+  (jupyter-python--xref-definitions
+   (buffer-substring-no-properties (point-min) (point-max))))
+
+(cl-defmethod xref-backend-references ((_backend (eql jupyter)) _identifier
+                                       &context (jupyter-lang python))
+  (jupyter-python--xref-definitions
+   (buffer-substring-no-properties (point-min) (point-max))
+   'references))
+
 ;;; `jupyter-org'
 
 (cl-defmethod jupyter-org-result ((_mime (eql :text/plain))
