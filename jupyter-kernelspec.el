@@ -152,11 +152,13 @@ with `-mode' to see if `major-mode' is equivalent. This is
 sufficient for `python' and `julia' kernels using their standard
 major modes, but most likely will fail for other cases."
   (cl-loop
-   for x in (jupyter-available-kernelspecs refresh)
-   for (_k . (_d . spec)) = x
+   for kernelspec in (jupyter-available-kernelspecs refresh)
+   for (_kernel . (_dir . spec)) = kernelspec
    for language = (plist-get spec :language)
    ;; attempt to match the major mode to a spec
-   if (eq (intern (concat language "-mode")) (or mode major-mode)) collect x))
+   if (eq (intern (concat language "-mode"))
+          (or mode major-mode))
+   collect kernelspec))
 
 (provide 'jupyter-kernelspec)
 
