@@ -400,17 +400,24 @@ the `syntax-table' will be set to that of the REPL buffers."
 (defvar jupyter-org-interaction-mode-map (make-sparse-keymap))
 
 (defun jupyter-org--key-def (key vect)
+  "Get KEY's definition, using VECT to lookup the keymap to search.
+`jupyter-org-interaction-mode-map' contains keymaps bound to
+single element vectors like [jupyter] or [python] which hold the
+keybindings available for a particular language, [python], or for
+any Jupyter code block, [jupyter]."
   (let* ((map (lookup-key jupyter-org-interaction-mode-map vect))
          (cmd (and (keymapp map) (lookup-key map key))))
     (and (functionp cmd) cmd)))
 
 (defun jupyter-org--define-key-filter (key &rest _)
+  "Return the definition for KEY when inside a Jupyter src-block or nil."
   (jupyter-org-with-src-block-client
    (let ((lang (intern (jupyter-kernel-language jupyter-current-client))))
      (or (jupyter-org--key-def key `[,lang])
          (jupyter-org--key-def key [jupyter])))))
 
 (defun jupyter-org--call-with-src-block-client (def)
+  "Call DEF interactively with the current src-block's client."
   (jupyter-org-with-src-block-client
    (call-interactively def)))
 
