@@ -1842,7 +1842,4 @@ called interactively, DISPLAY the new REPL buffer as well."
 
 (provide 'jupyter-repl)
 
-;; Local Variables:
-;; byte-compile-warnings: (not free-vars)
-;; End:
 ;;; jupyter-repl.el ends here

@@ -23,7 +23,9 @@
 
 ;;; Commentary:
 
+;; Functions to work with kernelspecs found by the shell command
 ;;
+;;     jupyter kernelspec list
 
 ;;; Code:
 

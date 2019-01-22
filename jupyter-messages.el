@@ -614,7 +614,3 @@ return nil."
 (provide 'jupyter-messages)
 
 ;;; jupyter-messages.el ends here
-
-;; Local Variables:
-;; byte-compile-warnings: (not free-vars)
-;; End:
