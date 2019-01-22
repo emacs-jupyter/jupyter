@@ -1533,16 +1533,16 @@ it."
          (req (let ((jupyter-inhibit-handlers t))
                 (jupyter-send-execute-request client :code "" :silent t))))
     (jupyter-add-callback req
-      :execute-reply (lambda (msg)
-                       (oset client execution-count
-                             (1+ (jupyter-message-get msg :execution_count)))
-                       (unless (equal (jupyter-execution-state client) "busy")
-                         ;; Set the cell count and update the prompt
-                         (jupyter-with-repl-buffer client
-                           (save-excursion
-                             (goto-char (point-max))
-                             (jupyter-repl-update-cell-count
-                              (oref client execution-count)))))))
+      :execute-reply
+      (jupyter-message-lambda (execution_count)
+        (oset client execution-count (1+ execution_count))
+        (unless (equal (jupyter-execution-state client) "busy")
+          ;; Set the cell count and update the prompt
+          (jupyter-with-repl-buffer client
+            (save-excursion
+              (goto-char (point-max))
+              (jupyter-repl-update-cell-count
+               (oref client execution-count)))))))
     ;; Waiting longer here to account for initial startup of the Jupyter
     ;; kernel. Sometimes the idle message won't be received if another long
     ;; running execute request is sent right after.

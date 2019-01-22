@@ -978,10 +978,9 @@ text/plain representation."
                  (prog1 req
                    (jupyter-add-callback req
                      :execute-reply
-                     (lambda (msg)
-                       (jupyter-with-message-content msg (status evalue)
-                         (unless (equal status "ok")
-                           (error "%s" (ansi-color-apply evalue)))))))))))
+                     (jupyter-message-lambda (status evalue)
+                       (unless (equal status "ok")
+                         (error "%s" (ansi-color-apply evalue))))))))))
     (when msg
       (jupyter-message-data msg (or mime :text/plain)))))
 
@@ -1006,40 +1005,40 @@ to the above explanation."
          (had-result nil))
     (jupyter-add-callback req
       :execute-reply
-      (lambda (msg)
-        (jupyter-with-message-content msg (status ename evalue)
-          (if (equal status "ok")
-              (unless had-result
-                (message "jupyter: eval done"))
-            (message "%s: %s"
-                     (ansi-color-apply ename)
-                     (ansi-color-apply evalue)))))
+      (jupyter-message-lambda (status ename evalue)
+        (if (equal status "ok")
+            (unless had-result
+              (message "jupyter: eval done"))
+          (setq ename (ansi-color-apply ename))
+          (setq evalue (ansi-color-apply evalue))
+          (if (string-prefix-p ename evalue)
+              ;; Happens in IJulia
+              (message evalue)
+            (message "%s: %s" ename evalue))))
       :execute-result
       (or (and (functionp cb) cb)
           (lambda (msg)
             (setq had-result t)
             (jupyter--display-eval-result msg)))
       :error
-      (lambda (msg)
-        (jupyter-with-message-content msg (traceback)
-          ;; FIXME: Assumes the error in the
-          ;; execute-reply is good enough
-          (when (> (apply '+ (mapcar 'length traceback)) 250)
-            (jupyter-display-traceback traceback))))
+      (jupyter-message-lambda (traceback)
+        ;; FIXME: Assumes the error in the
+        ;; execute-reply is good enough
+        (when (> (apply '+ (mapcar 'length traceback)) 250)
+          (jupyter-display-traceback traceback)))
       :stream
-      (lambda (msg)
-        (jupyter-with-message-content msg (name text)
-          (pcase name
-            ("stdout"
-             (jupyter-with-display-buffer "output" req
-               (jupyter-insert-ansi-coded-text text)
-               (display-buffer (current-buffer)
-                               '(display-buffer-below-selected))))
-            ("stderr"
-             (jupyter-with-display-buffer "error" req
-               (jupyter-insert-ansi-coded-text text)
-               (display-buffer (current-buffer)
-                               '(display-buffer-below-selected))))))))
+      (jupyter-message-lambda (name text)
+        (pcase name
+          ("stdout"
+           (jupyter-with-display-buffer "output" req
+             (jupyter-insert-ansi-coded-text text)
+             (display-buffer (current-buffer)
+                             '(display-buffer-below-selected))))
+          ("stderr"
+           (jupyter-with-display-buffer "error" req
+             (jupyter-insert-ansi-coded-text text)
+             (display-buffer (current-buffer)
+                             '(display-buffer-below-selected)))))))
     req))
 
 (defun jupyter-eval-region (beg end &optional cb)
@@ -1050,24 +1049,6 @@ ignored when called interactively."
   (interactive "r")
   (jupyter-eval-string (buffer-substring-no-properties beg end) cb))
 
-(defun jupyter-eval--insert-result (pos region msg)
-  (jupyter-with-message-data msg ((res text/plain))
-    (when res
-      (setq res (ansi-color-apply res))
-      (with-current-buffer (marker-buffer pos)
-        (save-excursion
-          (cond
-           (region
-            (goto-char (car region))
-            (delete-region (car region) (cdr region)))
-           (t
-            (goto-char pos)
-            (end-of-line)
-            (insert "\n")))
-          (set-marker pos nil)
-          (insert res)
-          (when region (push-mark)))))))
-
 (defun jupyter-eval-line-or-region (insert)
   "Evaluate the current line or region with the `jupyter-current-client'.
 If the current region is active send it using
@@ -1076,14 +1057,29 @@ If the current region is active send it using
 With a prefix argument, evaluate and INSERT the text/plain
 representation of the results in the current buffer."
   (interactive "P")
-  (let ((cb (when insert
-              (apply-partially
-               #'jupyter-eval--insert-result
-               (point-marker) (when (use-region-p)
-                                (car (region-bounds)))))))
-    (if (use-region-p)
-        (jupyter-eval-region (region-beginning) (region-end) cb)
-      (jupyter-eval-region (line-beginning-position) (line-end-position) cb))))
+  (let ((region (when (use-region-p)
+                  (car (region-bounds)))))
+    (funcall #'jupyter-eval-region
+             (or (car region) (line-beginning-position))
+             (or (cdr region) (line-end-position))
+             (when insert
+               (let ((pos (point-marker)))
+                 (jupyter-message-lambda ((res text/plain))
+                   (when res
+                     (setq res (ansi-color-apply res))
+                     (with-current-buffer (marker-buffer pos)
+                       (save-excursion
+                         (cond
+                          (region
+                           (goto-char (car region))
+                           (delete-region (car region) (cdr region)))
+                          (t
+                           (goto-char pos)
+                           (end-of-line)
+                           (insert "\n")))
+                         (set-marker pos nil)
+                         (insert res)
+                         (when region (push-mark)))))))))))
 
 (defun jupyter-load-file (file)
   "Send the contents of FILE using `jupyter-current-client'."

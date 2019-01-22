@@ -406,6 +406,24 @@
         (should (json-plist-p res))
         (should (eq (jupyter-message-type res) :shutdown-reply))))))
 
+(ert-deftest jupyter-message-lambda ()
+  :tags '(messages)
+  (let ((msg (jupyter-test-message
+              (jupyter-request) :execute-reply
+              (list :status "idle" :data (list :text/plain "foo")))))
+    (should (equal (funcall (jupyter-message-lambda (status)
+                              status)
+                            msg)
+                   "idle"))
+    (should (equal (funcall (jupyter-message-lambda ((res text/plain))
+                              res)
+                            msg)
+                   "foo"))
+    (should (equal (funcall (jupyter-message-lambda (status (res text/plain))
+                              (cons status res))
+                            msg)
+                   (cons "idle" "foo")))))
+
 ;;; Channels
 
 (ert-deftest jupyter-sync-channel ()

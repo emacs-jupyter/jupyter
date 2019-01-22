@@ -453,9 +453,11 @@ So to bind the :status key of MSG you would do
     (jupyter-with-message-content msg (status)
       BODY)"
   (declare (indent 2) (debug (form listp body)))
-  `(cl-destructuring-bind (&key ,@keys &allow-other-keys)
-       (jupyter-message-content ,msg)
-     ,@body))
+  (if keys
+      `(cl-destructuring-bind (&key ,@keys &allow-other-keys)
+           (jupyter-message-content ,msg)
+         ,@body)
+    `(progn ,@body)))
 
 (defmacro jupyter-with-message-data (msg varlist &rest body)
   "For MSG, bind the mimetypes in VARLIST and evaluate BODY.
@@ -477,8 +479,42 @@ you would do
                        ,m ',(if (keywordp (cadr el)) (cadr el)
                               (intern (concat  ":" (symbol-name (cadr el))))))))
              varlist)))
-    `(let* ((,m ,msg) ,@vars)
-       ,@body)))
+    (if vars `(let* ((,m ,msg) ,@vars)
+                ,@body)
+      `(progn ,@body))))
+
+(defmacro jupyter-message-lambda (keys &rest body)
+  "Return a function binding KEYS to fields of a message then evaluating BODY.
+The returned function takes a single argument which is expected
+to be a Jupyter message property list.
+
+The elements of KEYS can either be a symbol, KEY, or a two
+element list (VAL MIMETYPE). In the former case, KEY will be
+bound to the corresponding value of KEY in the
+`jupyter-message-content' of the message argument. In the latter
+case, VAL will be bound to the value of the MIMETYPE found in the
+`jupyter-message-data' of the message."
+  (declare (indent defun) (debug ((&rest [&or symbolp (symbolp symbolp)]) body)))
+  (let ((msg (cl-gensym "msg"))
+        content-keys
+        data-keys)
+    (while (car keys)
+      (let ((key (pop keys)))
+        (push key (if (listp key) data-keys content-keys))))
+    `(lambda (,msg)
+       ,(cond
+         ((and data-keys content-keys)
+          `(jupyter-with-message-content ,msg ,content-keys
+             (jupyter-with-message-data ,msg ,data-keys
+               ,@body)))
+         (data-keys
+          `(jupyter-with-message-data ,msg ,data-keys
+             ,@body))
+         (content-keys
+          `(jupyter-with-message-content ,msg ,content-keys
+             ,@body))
+         (t
+          `(progn ,@body))))))
 
 (defmacro jupyter--decode-message-part (key msg)
   "Return a form to decode the value of KEY in MSG.
