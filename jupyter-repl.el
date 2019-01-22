@@ -1487,7 +1487,7 @@ VERBOSE has the same meaning as in
 
 (defun jupyter-repl-initialize-fontification ()
   "Initialize fontification for the current REPL buffer."
-  (let (fld sff spf comment)
+  (let (fld frf sff spf comment)
     (jupyter-with-repl-lang-buffer
       ;; TODO: Take into account minor modes that may add to
       ;; `font-lock-keywords', e.g. `rainbow-delimiters-mode'.
@@ -1508,8 +1508,8 @@ VERBOSE has the same meaning as in
                           (cons 'parse-sexp-lookup-properties t)
                           (cons 'syntax-propertize-function spf)
                           (cons 'font-lock-fontify-region-function
-                                (apply-partially 'jupyter-repl-font-lock-fontify-region
-                                                 'font-lock-default-fontify-region))
+                                (apply-partially
+                                 'jupyter-repl-font-lock-fontify-region frf))
                           (cons 'font-lock-syntactic-face-function sff))))
       (setq-local comment-start comment)
       (setq font-lock-defaults
