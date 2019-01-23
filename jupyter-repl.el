@@ -1550,6 +1550,72 @@ it."
 
 ;;; `jupyter-repl-interaction-mode'
 
+(defvar jupyter-repl-interaction-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "C-x C-e") #'jupyter-eval-line-or-region)
+    (define-key map (kbd "C-c C-c") #'jupyter-eval-line-or-region)
+    (define-key map (kbd "C-M-x") #'jupyter-eval-defun)
+    (define-key map (kbd "C-c C-s") #'jupyter-repl-scratch-buffer)
+    (define-key map (kbd "C-c C-b") #'jupyter-eval-buffer)
+    (define-key map (kbd "C-c C-l") #'jupyter-load-file)
+    (define-key map (kbd "C-c M-:") #'jupyter-eval-string)
+    (define-key map (kbd "M-i") #'jupyter-inspect-at-point)
+    (define-key map (kbd "C-c C-r") #'jupyter-repl-restart-kernel)
+    (define-key map (kbd "C-c C-i") #'jupyter-repl-interrupt-kernel)
+    (define-key map (kbd "C-c C-z") #'jupyter-repl-pop-to-buffer)
+    map))
+
+(define-minor-mode jupyter-repl-interaction-mode
+  "Minor mode for interacting with a Jupyter REPL.
+When this minor mode is enabled you may evaluate code from the
+current buffer using the associated REPL (see
+`jupyter-repl-associate-buffer' to associate a REPL).
+
+In addition any new buffers opened with the same `major-mode' as
+the `current-buffer' will automatically have
+`jupyter-repl-interaction-mode' enabled for them.
+
+\\{jupyter-repl-interaction-mode-map}"
+  :group 'jupyter-repl
+  :lighter '(:eval (jupyter-repl-interaction-mode-line))
+  :init-value nil
+  (cond
+   (jupyter-repl-interaction-mode
+    (add-hook 'completion-at-point-functions 'jupyter-completion-at-point nil t)
+    (add-hook 'after-revert-hook 'jupyter-repl-interaction-mode nil t)
+    (add-hook 'xref-backend-functions #'jupyter--xref-backend nil t)
+    (add-function :before-until (local 'eldoc-documentation-function)
+                  #'jupyter-eldoc-documentation))
+   (t
+    (remove-hook 'completion-at-point-functions 'jupyter-completion-at-point t)
+    (remove-hook 'after-revert-hook 'jupyter-repl-interaction-mode t)
+    (remove-hook 'xref-backend-functions #'jupyter--xref-backend t)
+    (remove-function (local 'eldoc-documentation-function)
+                     #'jupyter-eldoc-documentation)
+    (unless (eq major-mode 'jupyter-repl-mode)
+      (kill-local-variable 'jupyter-current-client)))))
+
+(defun jupyter-repl-interaction-mode-reenable ()
+  (when (and (not jupyter-repl-interaction-mode)
+             (jupyter-repl-client-p jupyter-current-client)
+             (eq major-mode
+                 (jupyter-kernel-language-mode jupyter-current-client)))
+    (jupyter-repl-interaction-mode)))
+
+(defun jupyter-repl-interaction-mode-line ()
+  "Return a mode line string with the status of the kernel.
+'*' means the kernel is busy, '-' means the kernel is idle and
+the REPL is connected, 'x' means the REPL is disconnected
+from the kernel."
+  (and (jupyter-repl-client-p jupyter-current-client)
+       (concat " JuPy["
+               (if (equal (jupyter-execution-state jupyter-current-client) "busy")
+                   "*"
+                 (if (jupyter-hb-beating-p jupyter-current-client)
+                     "-"
+                   "x"))
+               "]")))
+
 (defun jupyter-repl-pop-to-buffer ()
   "Switch to the REPL buffer of the `jupyter-current-client'."
   (interactive)
@@ -1608,21 +1674,6 @@ If CLIENT is a buffer or the name of a buffer, use the
     (unless jupyter-repl-interaction-mode
       (jupyter-repl-interaction-mode))))
 
-(defvar jupyter-repl-interaction-mode-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "C-x C-e") #'jupyter-eval-line-or-region)
-    (define-key map (kbd "C-c C-c") #'jupyter-eval-line-or-region)
-    (define-key map (kbd "C-M-x") #'jupyter-eval-defun)
-    (define-key map (kbd "C-c C-s") #'jupyter-repl-scratch-buffer)
-    (define-key map (kbd "C-c C-b") #'jupyter-eval-buffer)
-    (define-key map (kbd "C-c C-l") #'jupyter-load-file)
-    (define-key map (kbd "C-c M-:") #'jupyter-eval-string)
-    (define-key map (kbd "M-i") #'jupyter-inspect-at-point)
-    (define-key map (kbd "C-c C-r") #'jupyter-repl-restart-kernel)
-    (define-key map (kbd "C-c C-i") #'jupyter-repl-interrupt-kernel)
-    (define-key map (kbd "C-c C-z") #'jupyter-repl-pop-to-buffer)
-    map))
-
 (defun jupyter-repl-propagate-client (win-or-buffer &rest args)
   "Propagate the `jupyter-current-client' to other buffers.
 WIN-OR-BUFFER is either a window that will display the buffer
@@ -1653,51 +1704,6 @@ NOTE: Only intended to be added as advice to `switch-to-buffer',
       (with-current-buffer other-buffer
         (unless jupyter-repl-interaction-mode
           (jupyter-repl-associate-buffer client))))))
-
-(defun jupyter-repl-interaction-mode-reenable ()
-  (when (and (not jupyter-repl-interaction-mode)
-             (jupyter-repl-client-p jupyter-current-client)
-             (eq major-mode
-                 (jupyter-kernel-language-mode jupyter-current-client)))
-    (jupyter-repl-interaction-mode)))
-
-(defun jupyter-repl-interaction-mode-line ()
-  "Return a mode line string with the status of the kernel.
-'*' means the kernel is busy, '-' means the kernel is idle and
-the REPL is connected, 'x' means the REPL is disconnected
-from the kernel."
-  (and (jupyter-repl-client-p jupyter-current-client)
-       (concat " JuPy["
-               (if (equal (jupyter-execution-state jupyter-current-client) "busy")
-                   "*"
-                 (if (jupyter-hb-beating-p jupyter-current-client)
-                     "-"
-                   "x"))
-               "]")))
-
-(define-minor-mode jupyter-repl-interaction-mode
-  "Minor mode for interacting with a Jupyter REPL.
-When this minor mode is enabled you may evaluate code from the
-current buffer using the associated REPL (see
-`jupyter-repl-associate-buffer' to associate a REPL).
-
-In addition any new buffers opened with the same `major-mode' as
-the `current-buffer' will automatically have
-`jupyter-repl-interaction-mode' enabled for them.
-
-\\{jupyter-repl-interaction-mode-map}"
-  :group 'jupyter-repl
-  :lighter '(:eval (jupyter-repl-interaction-mode-line))
-  :init-value nil
-  (cond
-   (jupyter-repl-interaction-mode
-    (add-hook 'completion-at-point-functions 'jupyter-completion-at-point nil t)
-    (add-hook 'after-revert-hook 'jupyter-repl-interaction-mode nil t))
-   (t
-    (remove-hook 'completion-at-point-functions 'jupyter-completion-at-point t)
-    (remove-hook 'after-revert-hook 'jupyter-repl-interaction-mode t)
-    (unless (eq major-mode 'jupyter-repl-mode)
-      (kill-local-variable 'jupyter-current-client)))))
 
 ;;; `jupyter-repl-persistent-mode'
 
