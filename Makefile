@@ -1,5 +1,6 @@
 EMACS ?= emacs
 SHELL = bash
+
 CASK ?= $(shell command -v cask)
 ifeq ($(CASK),)
     $(error "Install cask (https://github.com/cask/cask)")
@@ -41,11 +42,11 @@ test: zmq compile
 .PHONY: clean
 clean:
 	make -C js clean
-	rm $(ELCFILES)
+	@rm $(ELCFILES) 2>/dev/null || true
 
 .PHONY: clean-cask
 clean-cask:
-	rm -rf .cask/
+	@rm -rf .cask/ 2>/dev/null || true
 
 .PHONY: widgets
 widgets:
