@@ -1020,6 +1020,18 @@ last element being the newest element added to the history."
 
         ))))
 
+(ert-deftest jupyter-repl-yank ()
+  :tags '(repl yank)
+  (jupyter-test-with-python-repl client
+    (jupyter-ert-info ("Ensure field property exists after yanking")
+      (kill-new "import foo")
+      (yank)
+      (should (equal (jupyter-repl-cell-code) "import foo"))
+      (should-not (text-property-not-all
+                   (jupyter-repl-cell-code-beginning-position)
+                   (jupyter-repl-cell-code-end-position)
+                   'field 'cell-code)))))
+
 ;;; `org-mode'
 
 (defvar org-babel-load-languages)

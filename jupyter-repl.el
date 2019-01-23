@@ -1060,6 +1060,18 @@ Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
 
 ;;; Buffer change functions
 
+(defun jupyter-repl-yank-handle-field-property (val beg end)
+  "If VAL is not cell-code, remove the field property between BEG and END.
+Yanking text into a REPL cell normally removes the field
+property, see `yank-excluded-properties', but this property is
+added in `jupyter-repl-after-change' which is run after insertion
+of text and *before* `insert-for-yank' removes excluded
+properties."
+  ;; Assume that text with a field value of cell-code is due to
+  ;; `jupyter-repl-mark-as-cell-code'.
+  (unless (eq val 'cell-code)
+    (remove-text-properties beg end '(field))))
+
 (defun jupyter-repl-insert-continuation-prompts (bound)
   "Insert continuation prompts if needed, stopping at BOUND.
 Return the new BOUND since inserting continuation prompts may add
@@ -1403,6 +1415,10 @@ in the appropriate direction, to the saved element."
   (setq-local truncate-lines t)
   (setq-local indent-line-function #'jupyter-repl-indent-line)
   (setq-local left-margin-width jupyter-repl-prompt-margin-width)
+  (setq-local yank-handled-properties
+              (append '((field . jupyter-repl-yank-handle-field-property))
+                      yank-handled-properties))
+  (setq-local yank-excluded-properties (remq 'field yank-excluded-properties))
   ;; Initialize a buffer using the major-mode correponding to the kernel's
   ;; language. This will be used for indentation and to capture font lock
   ;; properties.
