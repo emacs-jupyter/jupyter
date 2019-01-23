@@ -38,7 +38,7 @@
 (defvar jupyter-test-with-new-client nil
   "Whether the global client for a kernel should be used for tests.
 Let bind to a non-nil value around a call to
-`jupyter-with-kernel-client' or `jupyter-with-kernel-repl' to
+`jupyter-test-with-kernel-client' or `jupyter-test-with-kernel-repl' to
 start a new kernel REPL instead of re-using one.")
 
 ;;; `jupyter-echo-client'
@@ -130,7 +130,7 @@ If the `current-buffer' is not a REPL, this is identical to
 
 (defvar jupyter-test-global-repls nil)
 
-(defmacro jupyter-with-kernel-client (kernel client &rest body)
+(defmacro jupyter-test-with-kernel-client (kernel client &rest body)
   "Start a new KERNEL client, bind it to CLIENT, evaluate BODY.
 This only starts a single global client unless the variable
 `jupyter-test-with-new-client' is non-nil."
@@ -153,13 +153,13 @@ This only starts a single global client unless the variable
                            manager-client)))))
            ,@body)))))
 
-(defmacro jupyter-with-python-client (client &rest body)
+(defmacro jupyter-test-with-python-client (client &rest body)
   "Start a new Python kernel, bind it to CLIENT, evaluate BODY."
   (declare (indent 1) (debug (symbolp &rest form)))
-  `(jupyter-with-kernel-client "python" ,client
+  `(jupyter-test-with-kernel-client "python" ,client
      ,@body))
 
-(defmacro jupyter-with-kernel-repl (kernel client &rest body)
+(defmacro jupyter-test-with-kernel-repl (kernel client &rest body)
   "Start a new KERNEL REPL, bind the client to CLIENT, evaluate BODY.
 Delete the REPL buffer after running BODY."
   (declare (indent 2) (debug (stringp symbolp &rest form)))
@@ -189,12 +189,12 @@ Delete the REPL buffer after running BODY."
              (when ,cleanup-after
                (kill-buffer (oref ,client buffer)))))))))
 
-(defmacro jupyter-with-python-repl (client &rest body)
+(defmacro jupyter-test-with-python-repl (client &rest body)
   "Start a new Python REPL and run BODY.
 CLIENT is bound to the Python REPL. Delete the REPL buffer after
 running BODY."
   (declare (indent 1) (debug (symbolp &rest form)))
-  `(jupyter-with-kernel-repl "python" ,client
+  `(jupyter-test-with-kernel-repl "python" ,client
      ,@body))
 
 ;;; Functions

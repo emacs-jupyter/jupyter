@@ -340,7 +340,7 @@
 
 (ert-deftest jupyter-message-types ()
   :tags '(client messages)
-  (jupyter-with-python-client client
+  (jupyter-test-with-python-client client
     (ert-info ("Kernel info")
       (let ((res (jupyter-wait-until-received :kernel-info-reply
                    (jupyter-send-kernel-info-request client))))
@@ -478,7 +478,7 @@
 ;;   ;; it to reliably clean up the objects. Under normal operating conditions,
 ;;   ;; this works as intended.
 ;;   (let ((ref (make-hash-table :size 1 :weakness 'value)))
-;;     (jupyter-with-python-client client
+;;     (jupyter-test-with-python-client client
 ;;       (puthash t client ref))
 ;;     (garbage-collect))
 ;;   (garbage-collect)
@@ -545,7 +545,7 @@
 
 (ert-deftest jupyter-inhibited-handlers ()
   :tags '(client handlers)
-  (jupyter-with-python-client client
+  (jupyter-test-with-python-client client
     (let* ((jupyter-inhibit-handlers '(:stream))
            (req (jupyter-send-kernel-info-request client)))
       (should (equal (jupyter-request-inhibited-handlers req)
@@ -759,13 +759,13 @@
   :tags '(repl)
   (should-not (jupyter-repl-client-has-manager-p))
   (should-not (jupyter-repl-connected-p))
-  (jupyter-with-python-repl client
+  (jupyter-test-with-python-repl client
     (should (jupyter-repl-client-has-manager-p))
     (should (jupyter-repl-connected-p))))
 
 (ert-deftest jupyter-repl-cell-predicates ()
   :tags '(repl cell)
-  (jupyter-with-python-repl client
+  (jupyter-test-with-python-repl client
     (jupyter-ert-info ("`jupyter-repl-cell-line-p'")
       (should (jupyter-repl-cell-line-p))
       (jupyter-repl-replace-cell-code "1 + 1")
@@ -801,7 +801,7 @@
 
 (ert-deftest jupyter-repl-cell-positions ()
   :tags '(repl)
-  (jupyter-with-python-repl client
+  (jupyter-test-with-python-repl client
     (jupyter-ert-info ("Cell code position info")
       (jupyter-repl-replace-cell-code "1 + 2")
       (should (= (point) (point-max)))
@@ -825,7 +825,7 @@
 
 (ert-deftest jupyter-repl-ret ()
   :tags '(repl)
-  (jupyter-with-python-repl client
+  (jupyter-test-with-python-repl client
     (jupyter-ert-info ("`point' before last cell in buffer")
       (jupyter-test-repl-ret-sync)
       (let ((tick (buffer-modified-tick)))
@@ -842,7 +842,7 @@
 
 (ert-deftest jupyter-repl-cell-code-replacement ()
   :tags '(repl)
-  (jupyter-with-python-repl client
+  (jupyter-test-with-python-repl client
     (jupyter-ert-info ("Replacing cell code")
       (should (equal (jupyter-repl-cell-code) ""))
       (jupyter-repl-replace-cell-code "1 + 1")
@@ -863,7 +863,7 @@ last element being the newest element added to the history."
 
 (ert-deftest jupyter-repl-history ()
   :tags '(repl)
-  (jupyter-with-python-repl client
+  (jupyter-test-with-python-repl client
     (jupyter-ert-info ("Rotating REPL history ring")
       (jupyter-test-set-dummy-repl-history)
       (should (null (jupyter-repl-history--next 1)))
@@ -894,7 +894,7 @@ last element being the newest element added to the history."
 
 (ert-deftest jupyter-repl-cell-motions ()
   :tags '(repl motion)
-  (jupyter-with-python-repl client
+  (jupyter-test-with-python-repl client
     (jupyter-ert-info ("`jupyter-repl-goto-cell'")
       (let (cell-pos req)
         (setq cell-pos (jupyter-repl-cell-beginning-position))
@@ -958,7 +958,7 @@ last element being the newest element added to the history."
 
 (ert-deftest jupyter-repl-cell-positions ()
   :tags '(repl motion)
-  (jupyter-with-python-repl client
+  (jupyter-test-with-python-repl client
     (jupyter-ert-info ("Beginning of a cell")
       (should (= (point) (jupyter-repl-cell-code-beginning-position)))
       (should (get-text-property (- (point) 2) 'jupyter-cell))
@@ -991,7 +991,7 @@ last element being the newest element added to the history."
 (ert-deftest jupyter-repl-prompts ()
   :tags '(repl prompt)
   (let ((jupyter-test-with-new-client t))
-    (jupyter-with-python-repl client
+    (jupyter-test-with-python-repl client
       (ert-info ("Prompt properties")
         (let (prompt-overlay)
           (goto-char (jupyter-repl-cell-beginning-position))
