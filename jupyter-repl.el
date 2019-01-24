@@ -1036,22 +1036,23 @@ Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
 
 (defun jupyter-repl-indent-line ()
   "Indent the line according to the language of the REPL."
-  (let* ((pos (jupyter-repl-cell-code-position))
-         (code (jupyter-repl-cell-code))
-         (replacement
-          ;; TODO: Convert to using indirect buffers if
-          ;; they are faster. We can keep an indirect
-          ;; buffer around with the languages major mode.
-          ;; This way we avoid copying the buffer strings
-          ;; back and forth between buffers.
-          (jupyter-with-repl-lang-buffer
-            (insert code)
-            (goto-char pos)
-            (let ((tick (buffer-chars-modified-tick)))
-              (jupyter-indent-line)
-              (unless (eq tick (buffer-chars-modified-tick))
-                (setq pos (point))
-                (buffer-string))))))
+  (when-let* ((pos (and (jupyter-repl-cell-line-p)
+                        (jupyter-repl-cell-code-position)))
+              (code (jupyter-repl-cell-code))
+              (replacement
+               ;; TODO: Convert to using indirect buffers if
+               ;; they are faster. We can keep an indirect
+               ;; buffer around with the languages major mode.
+               ;; This way we avoid copying the buffer strings
+               ;; back and forth between buffers.
+               (jupyter-with-repl-lang-buffer
+                 (insert code)
+                 (goto-char pos)
+                 (let ((tick (buffer-chars-modified-tick)))
+                   (jupyter-indent-line)
+                   (unless (eq tick (buffer-chars-modified-tick))
+                     (setq pos (point))
+                     (buffer-string))))))
     ;; Don't modify the buffer when unnecessary, this allows
     ;; `company-indent-or-complete-common' to work.
     (when replacement
