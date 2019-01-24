@@ -1108,7 +1108,14 @@ meaning as in `after-change-functions'."
          ((= len 0)
           (jupyter-repl-after-change 'insert beg end))
          ((and (= beg end) (not (zerop len)))
-          (jupyter-repl-after-change 'delete beg len)))))))
+          (jupyter-repl-after-change 'delete beg len))
+         ;; Text property changes
+         ((= (- end beg) len)
+          ;; Revert changes made by `insert-for-yank'. See #14.
+          (when (and (= len 1)
+                     (get-text-property beg 'rear-nonsticky)
+                     (= end (jupyter-repl-cell-end-position)))
+            (remove-text-properties beg end '(rear-nonsticky)))))))))
 
 (cl-defgeneric jupyter-repl-after-change (_type _beg _end-or-len)
   "Called from the `after-change-functions' of a REPL buffer.

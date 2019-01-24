@@ -1030,7 +1030,13 @@ last element being the newest element added to the history."
       (should-not (text-property-not-all
                    (jupyter-repl-cell-code-beginning-position)
                    (jupyter-repl-cell-code-end-position)
-                   'field 'cell-code)))))
+                   'field 'cell-code)))
+    (jupyter-ert-info ("Undo rear-nonsticky property inserted by `insert-for-yank'")
+      (kill-new "import foo")
+      (yank)
+      (should (equal (jupyter-repl-cell-code) "import foo"))
+      (should-not (get-text-property (1- (jupyter-repl-cell-code-end-position))
+                                     'rear-nonsticky)))))
 
 ;;; `org-mode'
 
