@@ -223,10 +223,13 @@ Do this only if the file exists in
         ;; This assumes that `jupyter-org-client' only emits bracketed links as
         ;; images
         (while (re-search-forward link-re bound t)
-          (let* ((link-path (org-element-property :path (org-element-context)))
-                 (link-dir (expand-file-name (file-name-directory link-path)))
-                 (resource-dir
-                  (expand-file-name org-babel-jupyter-resource-directory)))
+          (when-let* ((link-path
+                       (org-element-property :path (org-element-context)))
+                      (link-dir
+                       (when (file-name-directory link-path)
+                         (expand-file-name (file-name-directory link-path))))
+                      (resource-dir
+                       (expand-file-name org-babel-jupyter-resource-directory)))
             (when (and (equal link-dir resource-dir)
                        (file-exists-p link-path))
               (delete-file link-path))))))))
