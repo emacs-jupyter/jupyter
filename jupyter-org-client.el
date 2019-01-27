@@ -1095,11 +1095,24 @@ in the drawer. Otherwise do nothing."
          ;; Append everything else
          (t
           (jupyter-org--goto-result-insertion-point context)
-          ;; Don't delete the current result if its a drawer or if there aren't
-          ;; any results yet, in this case the context is just the #+RESULTS:
-          ;; keyword.
-          (unless (memq (org-element-type context) '(keyword drawer))
-            (jupyter-org--delete-element context))
+          (cl-case (org-element-type context)
+            ;; Don't delete the current result if its a drawer or if there
+            ;; aren't any results yet, in this case the context is just the
+            ;; #+RESULTS: keyword.
+            ((keyword drawer))
+            ;; The `org-element-contents' of a table is nil which interferes
+            ;; with how `org-element-table-interpreter' works when calling
+            ;; `org-element-interpret-data' below.
+            (table
+             (org-element-set-contents
+              context
+              (delete-and-extract-region
+               (org-element-property :contents-begin context)
+               (jupyter-org-element-end-before-blanks context))))
+            ;; Any other element is the first result that is being appended to,
+            ;; so delete it from the buffer since it will be wrapped in a
+            ;; drawer along with the appended result.
+            (t (jupyter-org--delete-element context)))
           (let ((limit (point)))
             (insert (org-element-interpret-data
                      (jupyter-org--wrap-result-maybe
