@@ -234,6 +234,30 @@ Do this only if the file exists in
                        (file-exists-p link-path))
               (delete-file link-path))))))))
 
+;; TODO: A cleaner way to do this. Maybe just removing the file parameter from
+;; the arguments all together and adding a new file slot in
+;; `jupyter-org-request'. The real issue is that we have to deal with the fact
+;; the `org-babel' assumes how the results of a code block are formatted is
+;; controlled by the header arguments, but Jupyter controls the way that
+;; results are displayed through the contents of the messages passed to Emacs
+;; during the evaluation of a code block.
+(defun org-babel-jupyter-temporarily-clear-file-param (params)
+  "Destructively remove the file result parameter from PARAMS.
+Re-add the file parameters on the next call to
+`org-babel-after-execute-hook'."
+  (let* ((result-params (assq :result-params params))
+         (fresult (member "file" result-params))
+         (fparam (assq :file params)))
+    (setcar fresult "scalar")
+    (delq fparam params)
+    (cl-labels
+        ((reset
+          ()
+          (setcar fresult "file")
+          (when fparam (nconc params (list fparam)))
+          (remove-hook 'org-babel-after-execute-hook #'reset t)))
+      (add-hook 'org-babel-after-execute-hook #'reset nil t))))
+
 (defun org-babel-execute:jupyter (body params)
   "Execute BODY according to PARAMS.
 BODY is the code to execute for the current Jupyter `:session' in
@@ -254,6 +278,8 @@ the PARAMS alist."
                   :code code))))
     (when (member "replace" (assq :result-params params))
       (org-babel-jupyter-cleanup-file-links))
+    (when (member "file" (assq :result-params params))
+      (org-babel-jupyter-temporarily-clear-file-param params))
     (cond
      ((or (equal (alist-get :async params) "yes")
           (plist-member params :async))
