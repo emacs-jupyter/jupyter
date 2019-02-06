@@ -435,8 +435,8 @@ regardless of kernel language. Note, the same key can be bound
 for different kernel languages.
 
 All of the keys are bound in `jupyter-org-interaction-mode-map'
-and they only takes effect when `jupyter-org-interaction-mode' is
-enabled."
+and they only take effect when the variable
+`jupyter-org-interaction-mode' is non-nil."
   ;; From http://endlessparentheses.com/define-context-aware-keys-in-emacs.html
   ;;
   ;; But the dynamic keybindings in code blocks is inspired by John Kitchin's

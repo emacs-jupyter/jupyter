@@ -1146,8 +1146,10 @@ Note, the overriding method should call `cl-call-next-method'."
 If the REPL buffer is killed, stop the client. If the REPL client
 is connected to a kernel with a kernel manager, kill the kernel.
 
-In addition, exit `jupyter-repl-interaction-mode' in all buffers
-associated with the REPL. See `jupyter-repl-associate-buffer'."
+In addition, call the function `jupyter-repl-interaction-mode' in
+all buffers associated with the REPL in order to disable the
+corresponding mode in those buffers. See
+`jupyter-repl-associate-buffer'."
   (when (eq major-mode 'jupyter-repl-mode)
     (if (not (jupyter-channels-running-p jupyter-current-client)) t
       (when (y-or-n-p
@@ -1670,12 +1672,12 @@ If FIRST is non-nil, only return the first REPL buffer that matches."
 (defun jupyter-repl-associate-buffer (client)
   "Associate the `current-buffer' with a REPL CLIENT.
 If the `major-mode' of the `current-buffer' is the
-`jupyter-repl-lang-mode' of CLIENT, enable
-`jupyter-repl-interaction-mode'.
+`jupyter-repl-lang-mode' of CLIENT, call the function
+`jupyter-repl-interaction-mode' to enable the corresponding mode.
 
-CLIENT should be a `jupyter-repl-client' or a subclass thereof.
-If CLIENT is a buffer or the name of a buffer, use the
-`jupyter-current-client' local to the buffer."
+CLIENT should be the symbol `jupyter-repl-client' or the symbol
+of a subclass. If CLIENT is a buffer or the name of a buffer, use
+the `jupyter-current-client' local to the buffer."
   (interactive
    (list
     (let ((repls (mapcar 'buffer-name (jupyter-repl-available-repl-buffers major-mode))))
@@ -1705,11 +1707,11 @@ that should be checked or the buffer itself. In the case that
 WIN-OR-BUFFER is a window, the first element of ARGS is assumed
 to be the buffer to check.
 
-If the checked buffer is not in `jupyter-repl-interaction-mode'
-and has the same `major-mode' as the `jupyter-current-client's
-language mode, set `jupyter-current-client' in the checked buffer
-to the same value as the `jupyter-current-client' of the
-`current-buffer'.
+If the checked buffer's value of the variable
+`jupyter-repl-interaction-mode' is non-nil and the buffer has the
+same `major-mode' as the `jupyter-current-client's language mode,
+set `jupyter-current-client' in the checked buffer to the same
+value as the `jupyter-current-client' of the `current-buffer'.
 
 NOTE: Only intended to be added as advice to `switch-to-buffer',
 `display-buffer', or `set-window-buffer'."
@@ -1795,6 +1797,7 @@ first kernel found will be used to start the new kernel.
 With a prefix argument give a new REPL-NAME for the REPL.
 
 Optional argument ASSOCIATE-BUFFER, if non-nil, means to enable
+the REPL interaction mode by calling the function
 `jupyter-repl-interaction-mode' in the `current-buffer' and
 associate it with the REPL created. When called interactively,
 ASSOCIATE-BUFFER is set to t. If the `current-buffer's
@@ -1802,12 +1805,12 @@ ASSOCIATE-BUFFER is set to t. If the `current-buffer's
 started, ASSOCIATE-BUFFER has no effect.
 
 Optional argument CLIENT-CLASS is the class that will be passed
-to `jupyter-start-new-kernel' and should be a subclass of
-`jupyter-repl-client', which is the default.
+to `jupyter-start-new-kernel' and should be a class symbol like
+the symbol `jupyter-repl-client', which is the default.
 
 When called interactively, DISPLAY the new REPL buffer.
-Otherwise, in a non-interactive call, return the
-`jupyter-repl-client' connect to the kernel."
+Otherwise, in a non-interactive call, return the REPL client
+connected to the kernel."
   (interactive (list (car (jupyter-completing-read-kernelspec
                            nil current-prefix-arg))
                      (when current-prefix-arg
@@ -1847,11 +1850,11 @@ ASSOCIATE-BUFFER has the same meaning as in `jupyter-run-repl'.
 With a prefix argument give a new REPL-NAME for the REPL.
 
 Optional argument CLIENT-CLASS is the class of the client that
-will be used to initialize the REPL and should be a subclass of
-`jupyter-repl-client', which is the default.
+will be used to initialize the REPL and should be a class symbol
+like the symbol `jupyter-repl-client', which is the default.
 
-Return the `jupyter-repl-client' connected to the kernel. When
-called interactively, DISPLAY the new REPL buffer as well."
+Return the REPL client connected to the kernel. When called
+interactively, DISPLAY the new REPL buffer as well."
   (interactive (list (read-file-name "Connection file: ")
                      (when current-prefix-arg
                        (read-string "REPL Name: "))

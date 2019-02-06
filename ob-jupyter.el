@@ -48,7 +48,7 @@
   'jupyter-org-resource-directory)
 
 (defvar org-babel-jupyter-session-clients (make-hash-table :test #'equal)
-  "A hash table mapping session names to `jupyter-repl-client's.")
+  "A hash table mapping session names to Jupyter clients.")
 
 (defvar org-babel-header-args:jupyter '((kernel . :any)
                                         (async . ((yes no))))
@@ -162,7 +162,7 @@ variables in PARAMS."
         (current-buffer)))))
 
 (defun org-babel-jupyter-initiate-session-by-key (session params)
-  "Return the `jupyter-repl-client' buffer for SESSION.
+  "Return the Jupyter REPL buffer for SESSION.
 If SESSION does not have a client already, one is created based
 on SESSION and PARAMS. If SESSION ends with \".json\" then
 SESSION is interpreted as a kernel connection file and a new

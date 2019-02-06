@@ -323,16 +323,16 @@ the prefix of a valid kernel name, in which case the first kernel
 in `jupyter-available-kernelspecs' that has KERNEL-NAME as a
 prefix will be used. Optional argument CLIENT-CLASS is a subclass
 of `jupyer-kernel-client' and will be used to initialize a new
-client connected to the kernel. CLIENT-CLASS defaults to
-`jupyter-kernel-client'.
+client connected to the kernel. CLIENT-CLASS defaults to the
+symbol `jupyter-kernel-client'.
 
-Return a list (KM KC) where KM is the `jupyter-kernel-manager'
-that manages the lifetime of the kernel subprocess. KC is a new
-client connected to the kernel whose class is CLIENT-CLASS. The
-client is connected to the kernel with all channels listening for
-messages and the heartbeat channel unpaused. Note that the
-client's `manager' slot will also be set to the kernel manager
-instance, see `jupyter-make-client'."
+Return a list (KM KC) where KM is the kernel manager managing the
+lifetime of the kernel subprocess. KC is a new client connected
+to the kernel whose class is CLIENT-CLASS. The client is
+connected to the kernel with all channels listening for messages
+and the heartbeat channel unpaused. Note that the client's
+`manager' slot will also be set to the kernel manager instance,
+see `jupyter-make-client'."
   (or client-class (setq client-class 'jupyter-kernel-client))
   (unless (child-of-class-p client-class 'jupyter-kernel-client)
     (signal 'wrong-type-argument

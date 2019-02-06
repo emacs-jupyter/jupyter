@@ -52,7 +52,7 @@ back. If the kernel doesn't send a ping back after
     (* `time-to-dead' `jupyter-hb-consider-dead-periods')
 
 seconds, consider the kernel dead and call the callback in the
-`kernel-died-cb' slot of a `jupyter-hb-channel'. See
+`kernel-died-cb' slot of a heartbeat channel. See
 `jupyter-hb-on-kernel-dead'.")
 
 ;;; Basic channel types

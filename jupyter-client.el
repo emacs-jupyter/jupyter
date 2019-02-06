@@ -1783,7 +1783,7 @@ snippet text property, if any, and if `yasnippet' is available."
 (defvar jupyter-kernel-language-mode-properties nil
   "An association list mapping language names to major mode properties.
 The lists contain the cached information returned by the
-`jupyter-kernel-language-mode-properties' function.")
+function `jupyter-kernel-language-mode-properties'.")
 
 (defun jupyter-kernel-info (client)
   "Return the kernel info plist of CLIENT.
