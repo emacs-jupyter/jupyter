@@ -1028,17 +1028,13 @@ to the above explanation."
           (jupyter-display-traceback traceback)))
       :stream
       (jupyter-message-lambda (name text)
-        (pcase name
-          ("stdout"
-           (jupyter-with-display-buffer "output" req
-             (jupyter-insert-ansi-coded-text text)
-             (display-buffer (current-buffer)
-                             '(display-buffer-below-selected))))
-          ("stderr"
-           (jupyter-with-display-buffer "error" req
-             (jupyter-insert-ansi-coded-text text)
-             (display-buffer (current-buffer)
-                             '(display-buffer-below-selected)))))))
+        (jupyter-with-display-buffer (pcase name
+                                       ("stderr" "error")
+                                       (_ "output"))
+            req
+          (jupyter-insert-ansi-coded-text text)
+          (display-buffer (current-buffer)
+                          '(display-buffer-below-selected)))))
     req))
 
 (defun jupyter-eval-region (beg end &optional cb)
