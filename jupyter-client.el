@@ -37,6 +37,17 @@
 (require 'jupyter-mime)
 (require 'jupyter-messages)
 
+(defcustom jupyter-display-short-eval-result-function #'message
+  "Function used for displaying the result of evaluation which is
+less than 10 lines long. The variable defaults to `message' which
+outputs to the minibuffer.
+
+Any function can be used which takes a string as first argument.
+For example to display the result in a tooltip the variable can
+be set to `popup-tip' from `popup'"
+  :group 'jupyter-client
+  :type 'function)
+
 (declare-function company-begin-backend "ext:company" (backend &optional callback))
 (declare-function company-doc-buffer "ext:company" (&optional string))
 (declare-function company-idle-begin "ext:company")
@@ -959,7 +970,7 @@ Methods that extend this generic function should
             (insert res)
             (goto-char (point-min))
             (display-buffer (current-buffer)))
-        (message "%s" res)))))
+        (funcall jupyter-display-short-eval-result-function (format "%s" res))))))
 
 (defun jupyter-eval (code &optional mime)
   "Send an execute request for CODE, wait for the execute result.
@@ -991,7 +1002,8 @@ STR before evaluating.
 
 If the result of evaluation is more than 10 lines long, a buffer
 displaying the results is shown. For results less than 10 lines
-long, the result is displayed in the minibuffer.
+long, the result is displayed with
+`jupyter-display-short-eval-result-function'.
 
 CB is a function to call with the `:execute-result' message when
 the evalution is successful. When CB is nil, its behavior defaults
