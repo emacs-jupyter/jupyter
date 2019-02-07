@@ -38,15 +38,23 @@
 (require 'jupyter-messages)
 
 (defcustom jupyter-display-short-eval-result-function #'message
-  "Function used for displaying the result of evaluation which is
-less than 10 lines long. The variable defaults to `message' which
-outputs to the minibuffer.
+  "Function for displaying short evaluation results.
+Evaluation results are cosidered short in case they are less than
+`jupyter-display-short-eval-result-max-lines' lines long.
+The variable defaults to `message' which outputs to the minibuffer.
 
 Any function can be used which takes a string as first argument.
 For example to display the result in a tooltip the variable can
 be set to `popup-tip' from `popup'"
   :group 'jupyter-client
   :type 'function)
+
+(defcustom jupyter-display-short-eval-result-max-lines 10
+  "Maximum number of lines for evaluation results to still be considered short.
+Short evaluation results are displayed using `jupyter-display-short-eval-result-function'.
+Longer results are forwarded to a separate buffer."
+  :group 'jupyter-client
+  :type 'integer)
 
 (declare-function company-begin-backend "ext:company" (backend &optional callback))
 (declare-function company-doc-buffer "ext:company" (&optional string))
@@ -965,7 +973,7 @@ Methods that extend this generic function should
       (if (cl-loop
            with nlines = 0
            for c across res when (eq c ?\n) do (cl-incf nlines)
-           thereis (> nlines 10))
+           thereis (> nlines jupyter-display-short-eval-result-max-lines))
           (jupyter-with-display-buffer "result" 'reset
             (insert res)
             (goto-char (point-min))
@@ -1000,10 +1008,10 @@ text/plain representation."
 Replaces the contents of the last cell in the REPL buffer with
 STR before evaluating.
 
-If the result of evaluation is more than 10 lines long, a buffer
-displaying the results is shown. For results less than 10 lines
-long, the result is displayed with
-`jupyter-display-short-eval-result-function'.
+If the result of evaluation is more than
+`jupyter-display-short-eval-result-max-lines' lines long, a buffer
+displaying the results is shown. For less lines, the result is
+displayed with `jupyter-display-short-eval-result-function'.
 
 CB is a function to call with the `:execute-result' message when
 the evalution is successful. When CB is nil, its behavior defaults
