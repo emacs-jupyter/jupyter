@@ -23,7 +23,8 @@
 
 ;;; Commentary:
 
-;;
+;; A subclass of a Jupyter kernel client that integrates with `org-mode'
+;; src-blocks.
 
 ;;; Code:
 

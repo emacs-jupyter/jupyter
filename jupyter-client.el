@@ -23,7 +23,7 @@
 
 ;;; Commentary:
 
-;;
+;; The default implementation of a Jupyter kernel client.
 
 ;;; Code:
 

@@ -24,7 +24,7 @@
 
 ;;; Commentary:
 
-;;
+;; Support methods for integration with Javascript.
 
 ;;; Code:
 

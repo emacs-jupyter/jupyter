@@ -2,11 +2,9 @@
 
 ;; Copyright (C) 2018 Nathaniel Nicandro
 
-;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.edu>
+;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 08 Jan 2018
 ;; Version: 0.6.0
-;; Keywords:
-;; X-URL: https://github.com/nathan/jupyter-kernel-manager
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
@@ -25,7 +23,7 @@
 
 ;;; Commentary:
 
-;; Manage a local kernel process.
+;; Manage a local Jupyter kernel process.
 
 ;;; Code:
 

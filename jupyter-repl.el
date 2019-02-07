@@ -1733,6 +1733,7 @@ NOTE: Only intended to be added as advice to `switch-to-buffer',
 
 ;;; `jupyter-repl-persistent-mode'
 
+;;;###autoload
 (define-minor-mode jupyter-repl-persistent-mode
   "Global minor mode to persist Jupyter REPL connections.
 When this minor mode is enabled, the `jupyter-current-client' of
