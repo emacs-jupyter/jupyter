@@ -37,22 +37,23 @@
 (require 'jupyter-mime)
 (require 'jupyter-messages)
 
-(defcustom jupyter-display-short-eval-result-function #'message
+(defcustom jupyter-eval-short-result-display-function #'message
   "Function for displaying short evaluation results.
-Evaluation results are cosidered short in case they are less than
-`jupyter-display-short-eval-result-max-lines' lines long.
-The variable defaults to `message' which outputs to the minibuffer.
+Evaluation results are considered short when they are less than
+`jupyter-eval-short-result-max-lines' long. The variable
+defaults to `message' which outputs to the minibuffer.
 
-Any function can be used which takes a string as first argument.
-For example to display the result in a tooltip the variable can
-be set to `popup-tip' from `popup'"
+Any function can be used which takes a string as first argument. For
+example to display the result in a tooltip the variable can be set to
+`popup-tip' from the `popup' package."
   :group 'jupyter-client
   :type 'function)
 
-(defcustom jupyter-display-short-eval-result-max-lines 10
-  "Maximum number of lines for evaluation results to still be considered short.
-Short evaluation results are displayed using `jupyter-display-short-eval-result-function'.
-Longer results are forwarded to a separate buffer."
+(defcustom jupyter-eval-short-result-max-lines 10
+  "Maximum number of lines for evaluation results to still be
+considered short. Short evaluation results are displayed using
+`jupyter-eval-short-result-display-function'. Longer results are
+forwarded to a separate buffer."
   :group 'jupyter-client
   :type 'integer)
 
@@ -973,12 +974,12 @@ Methods that extend this generic function should
       (if (cl-loop
            with nlines = 0
            for c across res when (eq c ?\n) do (cl-incf nlines)
-           thereis (> nlines jupyter-display-short-eval-result-max-lines))
+           thereis (> nlines jupyter-eval-short-result-max-lines))
           (jupyter-with-display-buffer "result" 'reset
             (insert res)
             (goto-char (point-min))
             (display-buffer (current-buffer)))
-        (funcall jupyter-display-short-eval-result-function (format "%s" res))))))
+        (funcall jupyter-eval-short-result-display-function (format "%s" res))))))
 
 (defun jupyter-eval (code &optional mime)
   "Send an execute request for CODE, wait for the execute result.
@@ -1009,9 +1010,9 @@ Replaces the contents of the last cell in the REPL buffer with
 STR before evaluating.
 
 If the result of evaluation is more than
-`jupyter-display-short-eval-result-max-lines' lines long, a buffer
+`jupyter-eval-short-result-max-lines' long, a buffer
 displaying the results is shown. For less lines, the result is
-displayed with `jupyter-display-short-eval-result-function'.
+displayed with `jupyter-eval-short-result-display-function'.
 
 CB is a function to call with the `:execute-result' message when
 the evalution is successful. When CB is nil, its behavior defaults
