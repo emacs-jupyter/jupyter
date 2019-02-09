@@ -72,7 +72,7 @@ source code block. Set by `org-babel-execute:jupyter'.")))
   result-type
   block-params
   results
-  silent
+  silent-p
   id-cleared-p
   inline-block-p
   marker
@@ -101,8 +101,8 @@ source code block. Set by `org-babel-execute:jupyter'.")))
          :result-type (alist-get :result-type block-params)
          :block-params block-params
          :async (equal (alist-get :async block-params) "yes")
-         :silent (car (or (member "none" result-params)
-                          (member "silent" result-params)))))
+         :silent-p (car (or (member "none" result-params)
+                            (member "silent" result-params)))))
     (cl-call-next-method)))
 
 (cl-defmethod jupyter-drop-request ((_client jupyter-org-client)
@@ -196,8 +196,7 @@ to."
                    (mapconcat #'identity traceback "\n")))
   (cond
    ((or (jupyter-org-request-inline-block-p req)
-        ;; TODO: `jupyter-org-request-silent' -> `jupyter-org-request-silent-p'
-        (jupyter-org-request-silent req))
+        (jupyter-org-request-silent-p req))
     ;; Remove old inline results when an error happens since, if this was not
     ;; done, it would look like the code which caused the error produced the
     ;; old result.
@@ -207,7 +206,7 @@ to."
     (jupyter-with-display-buffer "traceback" 'reset
       (jupyter-insert-ansi-coded-text traceback)
       (goto-char (point-min))
-      (when (jupyter-org-request-silent req)
+      (when (jupyter-org-request-silent-p req)
         (insert (jupyter-org--goto-error-string req) "\n\n"))
       (pop-to-buffer (current-buffer))))
    (t
@@ -1152,8 +1151,8 @@ in the request's results slot or appended to the buffer if REQ is
 already complete. Otherwise, when the request is asynchronous,
 RESULT is inserted at the location of the code block for the
 request."
-  (if (jupyter-org-request-silent req)
-      (unless (equal (jupyter-org-request-silent req) "none")
+  (if (jupyter-org-request-silent-p req)
+      (unless (equal (jupyter-org-request-silent-p req) "none")
         (message "%s" (org-element-interpret-data result)))
     (if (not (jupyter-org-request-async req))
         (push result (jupyter-org-request-results req))
