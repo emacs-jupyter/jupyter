@@ -1003,10 +1003,9 @@ execute the current cell."
           ;; sending a request when the kernel is busy because of the
           ;; is-complete request. Some kernels don't respond to this request
           ;; when the kernel is busy.
-          (unless (member (jupyter-execution-state jupyter-current-client)
-                          '("starting" "idle"))
-            (jupyter-repl-sync-execution-state)
+          (when (jupyter-kernel-busy-p jupyter-current-client)
             (error "Kernel busy"))
+          (jupyter-repl-sync-execution-state)
           (if force (jupyter-send-execute-request jupyter-current-client)
             (if (not jupyter-repl-use-builtin-is-complete)
                 (let ((res (jupyter-wait-until-received :is-complete-reply
