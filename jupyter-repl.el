@@ -340,9 +340,6 @@ interpreted as `in'."
        ;;
        ;; front-sticky is to prevent `point' from being trapped between the
        ;; newline of the prompt overlay and this invisible character.
-       ;;
-       ;; field is so that text motions will not move past this invisible
-       ;; character.
        (jupyter-repl-insert
         :properties '(invisible t rear-nonsticky t front-sticky t) " ")
        ;; The insertion of a new prompt starts a new cell, don't consider the
