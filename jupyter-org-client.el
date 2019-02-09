@@ -561,15 +561,12 @@ link will be rendered like
 
 Otherwise return a `jupyter-org-file-link' for PATH."
   (if (or width height)
-      (let ((attrs (format
-                    "%s%s"
-                    (if width
-                        (concat ":width " (number-to-string width))
-                      "")
-                    (if height
-                        (concat (when width " ")
-                                ":height " (number-to-string height))
-                      ""))))
+      (let ((attrs (concat
+                    (when width
+                      (concat ":width " (number-to-string width)))
+                    (when height
+                      (concat (when width " ")
+                              ":height " (number-to-string height))))))
         (list 'paragraph (list :attr_org (list attrs))
               (jupyter-org-file-link path)
               "\n"))
