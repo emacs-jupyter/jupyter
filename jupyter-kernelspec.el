@@ -130,9 +130,12 @@ will be taken from `jupyter-available-kernelspecs'.
 Optional argument REFRESH has the same meaning as in
 `jupyter-available-kernelspecs'."
   (let* ((specs (or specs (jupyter-available-kernelspecs refresh)))
-         (display-names (mapcar (lambda (k) (plist-get (cddr k) :display_name))
-                           specs))
-         (name (completing-read "kernel: " display-names)))
+         (display-names (if (null specs) (error "No kernelspecs available")
+                          (mapcar (lambda (k) (plist-get (cddr k) :display_name))
+                             specs)))
+         (name (completing-read "kernel: " display-names nil t)))
+    (when (equal name "")
+      (error "No kernelspec selected"))
     (nth (- (length display-names)
             (length (member name display-names)))
          specs)))
