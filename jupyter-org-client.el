@@ -1059,21 +1059,6 @@ Assumes `point' is at the end of the last source block result."
         ;; `org-element-interpret-data' already normalizes the string.
         (org-element-put-property context :post-blank nil))))))
 
-(defun jupyter-org--display-latex (limit)
-  "Show inline latex fragments between LIMIT and `point'."
-  (save-excursion
-    (while (< limit (point))
-      (let ((delim-pos (org-inside-LaTeX-fragment-p)))
-        (when delim-pos
-          (cl-destructuring-bind (_delim . pos)
-              delim-pos
-            (goto-char pos)
-            (let ((ov (car (overlays-at pos))))
-              (unless (and ov (eq (overlay-get ov 'org-overlay-type)
-                                  'org-latex-overlay))
-                (org-toggle-latex-fragment)))))
-        (backward-word)))))
-
 ;;;; Actually appending the results
 
 (defun jupyter-org--goto-result-insertion-point (context)
@@ -1124,19 +1109,25 @@ in the drawer. Otherwise do nothing."
             ;; so delete it from the buffer since it will be wrapped in a
             ;; drawer along with the appended result.
             (t (jupyter-org--delete-element context)))
-          (let ((limit (point)))
-            (insert (org-element-interpret-data
-                     (jupyter-org--wrap-result-maybe
-                      context (if stream-result-p
-                                  (jupyter-org-scalar result)
-                                result))))
-            (when (/= (point) (line-beginning-position))
-              ;; Org objects such as file links do not have a newline added
-              ;; when converting to their string representation by
-              ;; `org-element-interpret-data' so insert one in these cases.
-              (insert "\n"))
-            (when jupyter-org-toggle-latex
-              (jupyter-org--display-latex limit)))))
+          (insert (org-element-interpret-data
+                   (jupyter-org--wrap-result-maybe
+                    context (if stream-result-p
+                                (jupyter-org-scalar result)
+                              result))))
+          (when (/= (point) (line-beginning-position))
+            ;; Org objects such as file links do not have a newline added
+            ;; when converting to their string representation by
+            ;; `org-element-interpret-data' so insert one in these cases.
+            (insert "\n"))
+          (forward-line -1)
+          (when jupyter-org-toggle-latex
+            (let ((el (org-element-at-point))
+                  (ov (car (overlays-at (point)))))
+              (when (and (memq (org-element-type el)
+                               '(latex-fragment latex-environment))
+                         (not (and ov (eq (overlay-get ov 'org-overlay-type)
+                                          'org-latex-overlay))))
+                (org-toggle-latex-fragment))))))
         (when stream-result-p
           (jupyter-org--mark-stream-result-newline result))))))
 
