@@ -1198,7 +1198,7 @@ BUFFER and DETAIL have the same meaning as in `jupyter-inspect'."
       (jupyter-code-context 'inspect)
     (jupyter-inspect code pos buffer detail)))
 
-(defun jupyter-inspect (code &optional pos buffer detail)
+(cl-defgeneric jupyter-inspect (code &optional pos buffer detail)
   "Inspect CODE.
 Send an `:inspect-request' with the `jupyter-current-client' and
 display the results in a BUFFER.
@@ -1642,7 +1642,7 @@ Run FUN when the completions are available."
   "Send an inspect request for ARG to the kernel.
 Use the `company-doc-buffer' to insert the results."
   (let ((buf (company-doc-buffer)))
-    (jupyter-inspect arg nil buf)
+    (jupyter-inspect arg 1 buf)
     (with-current-buffer buf
       (when (> (point-max) (point-min))
         (let ((inhibit-read-only t))

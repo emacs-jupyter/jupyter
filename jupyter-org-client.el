@@ -409,6 +409,13 @@ the `syntax-table' will be set to that of the REPL buffers."
   (jupyter-org-with-src-block-client
    (jupyter-completion-at-point)))
 
+;;; Inspection
+
+(cl-defmethod jupyter-inspect (&context (major-mode org-mode)
+                                        &rest _)
+  (jupyter-org-with-src-block-client
+   (cl-call-next-method)))
+
 ;;; Key bindings in code blocks
 
 (defvar jupyter-org-interaction-mode-map (make-sparse-keymap))
