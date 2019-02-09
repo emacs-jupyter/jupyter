@@ -184,14 +184,13 @@ kernel. Starting a kernel involves the following steps:
   (unless (jupyter-kernel-alive-p manager)
     (cl-destructuring-bind (kernel-name . (resource-dir . spec))
         (car (jupyter-find-kernelspecs (oref manager name)))
+      (make-directory jupyter-runtime-directory 'parents)
       (let* ((temporary-file-directory jupyter-runtime-directory)
              (session (oref manager session))
              (conn-info (jupyter-session-conn-info session))
              (conn-file (make-temp-file "emacs-kernel-" nil ".json")))
         ;; Write the connection info file
         (let ((json-encoding-pretty-print t))
-          (unless (file-directory-p jupyter-runtime-directory)
-            (make-directory jupyter-runtime-directory 'parents))
           (with-temp-file conn-file
             (insert (json-encode-plist conn-info))))
         ;; Start the process
