@@ -1,6 +1,6 @@
 An interface to communicate with Jupyter kernels in Emacs.
 
-[[https://travis-ci.com/dzop/emacs-jupyter][https://travis-ci.com/dzop/emacs-jupyter.svg?branch=master]]
+[[https://melpa.org/#/jupyter][https://melpa.org/packages/jupyter-badge.svg]] [[https://travis-ci.com/dzop/emacs-jupyter][https://travis-ci.com/dzop/emacs-jupyter.svg?branch=master]]
 
 * What does this package do?
 
@@ -29,11 +29,10 @@ Emacs:
 - Search through REPL history using =isearch=.
 ** Support differences between kernel languages
 
-To take into account differences between kernel languages, there are many
-methods that can be extended to take into account these differences. This is
-achieved by providing a method specializer, =jupyter-lang=, that can be added
-to the =&context= section of a method definition. See
-=cl-generic-generalizers=.
+There are many methods that can be extended to take into account differences
+between kernel languages. This is achieved by providing a method specializer,
+=jupyter-lang=, that can be added to the =&context= section of a method
+definition. See =cl-generic-generalizers=.
 
 For example, the Python kernel sends =text/plain= data in its inspect replies,
 but most of the time the documentation requested is written using
@@ -48,7 +47,26 @@ languages are integrated into the =emacs-jupyter= framework.
 
 * How do I install this package?
 
-At the moment, the easiest way to install this package is by using =cask=
+The recommended way to install this package is through the built-in package
+manager in Emacs.
+
+Ensure MELPA is in your =package-archives=
+
+#+BEGIN_SRC elisp
+(add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/"))
+#+END_SRC
+
+Ensure the latest versions of MELPA packages are available
+
+=M-x package-refresh-contents RET=
+
+Install Jupyter
+
+=M-x package-install RET jupyter RET=
+
+** Building a package archive using cask
+
+One way to install this package is to build a package archive using =cask=
 (https://github.com/cask/cask) to build a local Emacs package file. To do this,
 clone the repository, enter its directory, and run the following at the command
 line:
