@@ -142,10 +142,9 @@ If `point' has a non-nil jupyter-error-loc property, jump to that
 line in the previous source block. See
 `jupyter-org-error-location'."
   (interactive)
-  (let ((loc (get-text-property (point) 'jupyter-error-loc)))
-    (when loc
-      (org-babel-previous-src-block)
-      (forward-line loc))))
+  (when-let* ((loc (get-text-property (point) 'jupyter-error-loc)))
+    (pop-to-buffer (marker-buffer loc))
+    (goto-char loc)))
 
 ;;;;; `jupyter-org-error-location'
 ;; Inspiration from https://kitchingroup.cheme.cmu.edu/blog/2017/06/10/Adding-keymaps-to-src-blocks-via-org-font-lock-hook/
@@ -159,19 +158,19 @@ relative to the source block that caused the error or nil if a
 line number could not be found."
   (ignore))
 
-(defun jupyter-org-goto-error-string (traceback)
-  "Return a propertized string with a jupyter-error-loc property.
-The property is obtained by calling `jupyter-org-error-location'
-in a buffer whose contents contain TRACEBACK."
-  (let ((loc
-         (with-temp-buffer
-           (insert traceback)
-           (goto-char (point-min))
-           (jupyter-org-error-location))))
-    (when loc
-      (unless (memq 'jupyter-org-add-error-keymap org-font-lock-hook)
-        (add-hook 'org-font-lock-hook 'jupyter-org-add-error-keymap nil t))
-      (propertize "[goto error]" 'jupyter-error-loc loc))))
+(defun jupyter-org--goto-error-string (req)
+  (let* ((buffer (current-buffer))
+         (loc (org-with-point-at (jupyter-org-request-marker req)
+                (forward-line (or (with-current-buffer buffer
+                                    (save-excursion
+                                      (goto-char (point-min))
+                                      (jupyter-org-error-location)))
+                                  0))
+                (point-marker))))
+    (propertize "[goto error]"
+                'jupyter-error-loc loc
+                'face 'link
+                'keymap jupyter-org-goto-error-map)))
 
 (defun jupyter-org-add-error-keymap (limit)
   "Add keymaps to text that contain a jupyter-error-loc property.
@@ -193,22 +192,37 @@ to."
                                     _ename
                                     _evalue
                                     traceback)
-  (if (jupyter-org-request-inline-block-p req)
-      (jupyter-with-display-buffer "traceback" 'reset
-        ;; Remove any old inline result
-        (org-with-point-at (jupyter-org-request-marker req)
-          (org-babel-remove-inline-result))
-        (jupyter-insert-ansi-coded-text
-         (mapconcat #'identity traceback "\n"))
-        (goto-char (line-beginning-position))
-        (pop-to-buffer (current-buffer)))
-    (setq traceback (org-element-normalize-string
-                     (ansi-color-apply (mapconcat #'identity traceback "\n"))))
-    (let ((goto-error (jupyter-org-goto-error-string traceback)))
-      (when goto-error
-        (jupyter-org--add-result req (jupyter-org-comment goto-error))))
-    ;; (jupyter-org-scalar (format "%s: %s" ename (ansi-color-apply evalue)))
-    (jupyter-org--add-result req traceback)))
+  (setq traceback (org-element-normalize-string
+                   (mapconcat #'identity traceback "\n")))
+  (cond
+   ((or (jupyter-org-request-inline-block-p req)
+        ;; TODO: `jupyter-org-request-silent' -> `jupyter-org-request-silent-p'
+        (jupyter-org-request-silent req))
+    ;; Remove old inline results when an error happens since, if this was not
+    ;; done, it would look like the code which caused the error produced the
+    ;; old result.
+    (when (jupyter-org-request-inline-block-p req)
+      (org-with-point-at (jupyter-org-request-marker req)
+        (org-babel-remove-inline-result)))
+    (jupyter-with-display-buffer "traceback" 'reset
+      (jupyter-insert-ansi-coded-text traceback)
+      (goto-char (point-min))
+      (when (jupyter-org-request-silent req)
+        (insert (jupyter-org--goto-error-string req) "\n\n"))
+      (pop-to-buffer (current-buffer))))
+   (t
+    ;; The keymap property in the string returned by
+    ;; `jupyter-org--goto-error-string' gets removed by font-lock so ensure it
+    ;; is re-added.
+    (unless (memq 'jupyter-org-add-error-keymap org-font-lock-hook)
+      (add-hook 'org-font-lock-hook 'jupyter-org-add-error-keymap nil t))
+    (setq traceback (ansi-color-apply traceback))
+    (jupyter-org--add-result
+     req (jupyter-org-comment
+          (with-temp-buffer
+            (insert traceback)
+            (jupyter-org--goto-error-string req))))
+    (jupyter-org--add-result req traceback))))
 
 ;;;; Execute result
 
