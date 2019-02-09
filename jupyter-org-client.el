@@ -1126,15 +1126,16 @@ in the drawer. Otherwise do nothing."
             ;; when converting to their string representation by
             ;; `org-element-interpret-data' so insert one in these cases.
             (insert "\n"))
-          (forward-line -1)
           (when jupyter-org-toggle-latex
-            (let ((el (org-element-at-point))
-                  (ov (car (overlays-at (point)))))
-              (when (and (memq (org-element-type el)
-                               '(latex-fragment latex-environment))
-                         (not (and ov (eq (overlay-get ov 'org-overlay-type)
-                                          'org-latex-overlay))))
-                (org-toggle-latex-fragment))))))
+            (save-excursion
+              (forward-line -1)
+              (let ((el (org-element-at-point))
+                    (ov (car (overlays-at (point)))))
+                (when (and (memq (org-element-type el)
+                                 '(latex-fragment latex-environment))
+                           (not (and ov (eq (overlay-get ov 'org-overlay-type)
+                                            'org-latex-overlay))))
+                  (org-toggle-latex-fragment)))))))
         (when stream-result-p
           (jupyter-org--mark-stream-result-newline result))))))
 
