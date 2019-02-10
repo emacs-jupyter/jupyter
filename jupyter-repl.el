@@ -1649,7 +1649,7 @@ If MODE is non-nil, return all REPL buffers whose
 If FIRST is non-nil, only return the first REPL buffer that matches."
   (cl-loop
    for client in (jupyter-clients)
-   for match = (when (and (jupyter-repl-client-p client)
+   for match = (when (and (object-of-class-p client 'jupyter-repl-client)
                           (buffer-live-p (oref client buffer)))
                  (with-current-buffer (oref client buffer)
                    (and (or (null mode) (eq mode jupyter-repl-lang-mode))
