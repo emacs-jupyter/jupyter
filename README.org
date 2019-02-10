@@ -508,19 +508,20 @@ following steps are taken:
 1. Initialize the connection using =jupyter-initialize-connection=
 2. Start listening on the client's channels with =jupyter-start-channels=
 
-If starting a local kernel process both steps are handled by
-=jupyter-start-new-kernel=. For remote kernels, you will have to manually
-supply the connection JSON file to =jupyter-initialize-connection= and start
-the kernel channels.
+When starting a local kernel process, both steps are taken care of in
+=jupyter-start-new-kernel=.
+
+For remote kernels, you will have to manually supply the connection JSON file
+to =jupyter-initialize-connection= and start the kernel channels.
 **** Sending messages
 
 Once a connection is initialized, messages can be sent to the kernel using the
 =jupyter-send-<msg-type>= family of methods, where =<msg-type>= is any valid
-request message type, see =jupyter-message-types=. These methods asynchronously
-send a message to the kernel using a subprocess associated with each client,
-see help:jupyter-channel-ioloop, and they each return a =jupyter-request=
-object which encapsulates the information necessary for handling reply messages
-received from the kernel in response to the request.
+request message type (see =jupyter-message-types=). These methods
+asynchronously send a message to the kernel using a subprocess associated with
+each client, see help:jupyter-channel-ioloop, and they each return a
+=jupyter-request= object which encapsulates the information necessary for
+handling reply messages associated with the request in the future.
 **** Receiving messages
 
 There are two ways to handle the reply messages sent by the kernel: (1)
@@ -859,27 +860,31 @@ interact with an [[https://github.com/jupyter-widgets/ipyleaflet][ipyleaflet]] m
 :ID:       0E7CA280-8D14-4994-A3C7-C3B7204AC9D2
 :END:
 
-There are two main ways of evaluating code in response to a received message
-from the kernel. You can either subclass =jupyter-kernel-client= and override
-the handler methods or you can add message callbacks to the =jupyter-request=
-objects returned by the send methods. In both cases, when a message of a
-certain type is received for a request, the appropriate handler method or
-callback runs. If both methods are used in parallel, the message callbacks will
-run before the handler methods.
+There are mainly two ways of evaluating code when receiving a message from the
+kernel. Either sub-classing =jupyter-kernel-client= and overriding the handler
+methods or adding message callbacks to the =jupyter-request= objects returned
+by the send methods. If both methods are used in parallel, the message
+callbacks will run before the handler methods.
 
-You can also add a hook to one of the =jupyter-<channel>-message-hook= client
-local hooks. Where =<channel>= can be one of =iopub=, =shell=, or =stdin=.
+When working with a subclass of =jupyter-kernel-client=, to prevent a subset of
+handler methods from firing when a message is received for a request, see
+=jupyter-inhibit-handlers= below.
+
+Also provided are message hook variables which are local to each client object
+and look like =jupyter-<channel>-message-hook=, where =<channel>= can be one of
+=iopub=, =shell=, or =stdin=. These hooks also provide an alternative method of
+suppressing client handlers from running based on the received message.
 *** =jupyter-request= callbacks
 :PROPERTIES:
 :ID:       BFCFCD3B-138A-4471-BEED-0EA3258493E5
 :END:
 
-To add callbacks to a request, use =jupyter-add-callback=.
-=jupyter-add-callback= accepts a =jupyter-request= object as its first argument
-and alternating (message type, callback) pairs as the remaining arguments. The
-callbacks are registered with the request object to run whenever a message of
-the appropriate type is received. For example, to do something when a client
-receives a =:kernel-info-reply= you would do the following:
+To add callbacks to a request, use =jupyter-add-callback= which accepts a
+=jupyter-request= as its first argument and alternating (message type,
+callback) pairs as the remaining arguments. The callbacks are registered with
+the request object to run whenever a message of the appropriate type is
+received. For example, to do something when a client receives a
+=:kernel-info-reply= you would do the following:
 
 #+BEGIN_SRC elisp
 (jupyter-add-callback (jupyter-send-kernel-info-request client)
@@ -965,7 +970,8 @@ object. This slot can take the same values as =jupyter-inhibit-handlers=.
 All message passing between the kernel and Emacs happens asynchronously. So if
 a code path in Emacs Lisp is dependent on some message already having been
 received, e.g. an idle message, there needs to be primitives that will block so
-there can be can guarantee that certain messages have been received.
+that there is a guarantee that a particular message has been received before
+proceeding.
 
 The following functions all wait for different conditions to be met on the
 received messages of a request and return the message that caused the function
