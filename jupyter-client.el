@@ -40,18 +40,18 @@
 (defcustom jupyter-eval-short-result-display-function #'message
   "Function for displaying short evaluation results.
 Evaluation results are considered short when they are less than
-`jupyter-eval-short-result-max-lines' long. The variable
-defaults to `message' which outputs to the minibuffer.
+`jupyter-eval-short-result-max-lines' long.
 
-Any function can be used which takes a string as first argument. For
-example to display the result in a tooltip the variable can be set to
-`popup-tip' from the `popup' package."
+The default function is `message', but any function that takes a
+single string argument can be used. For example, to display the
+result in a tooltip, the variable can be set to `popup-tip' from
+the `popup' package."
   :group 'jupyter-client
   :type 'function)
 
 (defcustom jupyter-eval-short-result-max-lines 10
-  "Maximum number of lines for evaluation results to still be
-considered short. Short evaluation results are displayed using
+  "Maximum number of lines for short evaluation results.
+Short evaluation results are displayed using
 `jupyter-eval-short-result-display-function'. Longer results are
 forwarded to a separate buffer."
   :group 'jupyter-client
