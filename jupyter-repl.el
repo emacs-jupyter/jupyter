@@ -841,8 +841,7 @@ buffer to display TEXT."
       (let ((pos (point)))
         (jupyter-insert-ansi-coded-text text)
         (fill-region pos (point)))
-      (display-buffer (current-buffer) '(display-buffer-pop-up-window
-                                         (pop-up-windows . t))))))
+      (jupyter-display-current-buffer-reuse-window))))
 
 (cl-defmethod jupyter-handle-stream ((client jupyter-repl-client) req name text)
   (if (null req)
@@ -853,7 +852,7 @@ buffer to display TEXT."
           :comm-msg)
       (jupyter-with-display-buffer "output" req
         (jupyter-insert-ansi-coded-text text)
-        (display-buffer (current-buffer))))
+        (jupyter-display-current-buffer-reuse-window)))
      (t
       (jupyter-repl-append-output client req
         (jupyter-insert-ansi-coded-text text))))))

@@ -312,6 +312,23 @@ the output buffer."
            (jupyter-with-control-code-handling ,@body)
            (set-marker jupyter-display-buffer-marker (point)))))))
 
+(defun jupyter-display-current-buffer-reuse-window (&optional alist &rest actions)
+  "Convenience function to call `display-buffer' on the `current-buffer'.
+If a window showing the current buffer is already available,
+re-use it. Otherwise pop-up a new window. If ALIST is non-nil it
+is used as the ACTION alist of `display-buffer'. The rest of the
+arguments are display ACTIONS tried after attempting to re-use a
+window and before attempting to pop-up a new window."
+  (display-buffer
+   (current-buffer)
+   (cons
+    (append '(display-buffer-reuse-window)
+            actions
+            '(display-buffer-pop-up-window))
+    (cl-list*
+     '(pop-up-windows . t)
+     alist))))
+
 ;;; Signing functions/UUID
 
 (defun jupyter-sha256 (object)

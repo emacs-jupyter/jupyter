@@ -969,7 +969,7 @@ Methods that extend this generic function should
           (jupyter-with-message-content msg (data metadata)
             (jupyter-insert data metadata))
           (goto-char (point-min))
-          (display-buffer (current-buffer)))
+          (jupyter-display-current-buffer-reuse-window))
       (setq res (ansi-color-apply res))
       (if (cl-loop
            with nlines = 0
@@ -978,7 +978,7 @@ Methods that extend this generic function should
           (jupyter-with-display-buffer "result" 'reset
             (insert res)
             (goto-char (point-min))
-            (display-buffer (current-buffer)))
+            (jupyter-display-current-buffer-reuse-window))
         (funcall jupyter-eval-short-result-display-function (format "%s" res))))))
 
 (defun jupyter-eval (code &optional mime)
@@ -1054,8 +1054,8 @@ to the above explanation."
                                        (_ "output"))
             req
           (jupyter-insert-ansi-coded-text text)
-          (display-buffer (current-buffer)
-                          '(display-buffer-below-selected)))))
+          (jupyter-display-current-buffer-reuse-window
+           nil #'display-buffer-below-selected))))
     req))
 
 (defun jupyter-eval-region (beg end &optional cb)
@@ -1163,7 +1163,7 @@ SOURCE."
       (jupyter-insert-ansi-coded-text text)
       (goto-char (point-min))
       (forward-line line)
-      (display-buffer (current-buffer)))))
+      (jupyter-display-current-buffer-reuse-window))))
 
 (cl-defmethod jupyter-handle-payload ((_source (eql edit)) pl)
   (with-current-buffer (find-file-other-window
@@ -1984,7 +1984,8 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
   (jupyter-with-display-buffer "traceback" 'reset
     (jupyter-insert-ansi-coded-text traceback)
     (goto-char (point-min))
-    (display-buffer (current-buffer) '(display-buffer-below-selected))))
+    (jupyter-display-current-buffer-reuse-window
+     nil #'display-buffer-below-selected)))
 
 (cl-defgeneric jupyter-handle-error ((_client jupyter-kernel-client)
                                      _req
