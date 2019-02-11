@@ -1726,10 +1726,10 @@ NOTE: Only intended to be added as advice to `switch-to-buffer',
 ;;;###autoload
 (define-minor-mode jupyter-repl-persistent-mode
   "Global minor mode to persist Jupyter REPL connections.
-When this minor mode is enabled, the `jupyter-current-client' of
-a buffer in `jupyter-repl-interaction-mode' is propogated to any
-other buffers switched to that have the same `major-mode' as the
-`current-buffer'."
+When the `jupyter-current-client' of the current buffer is a REPL
+client, its value is propagated to all buffers switched to that
+have the same `major-mode' as the client's kernel language and
+`jupyter-repl-interaction-mode' is enabled in those buffers."
   :group 'jupyter-repl
   :global t
   :keymap nil
