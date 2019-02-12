@@ -960,11 +960,10 @@ elements."
 
 (cl-defmethod jupyter-handle-shutdown-reply ((client jupyter-repl-client) _req restart)
   (jupyter-with-repl-buffer client
-    (goto-char (point-max))
-    (add-text-properties (jupyter-repl-cell-beginning-position)
-                         (jupyter-repl-cell-end-position)
-                         '(read-only t))
     (jupyter-repl-without-continuation-prompts
+     (goto-char (point-max))
+     (unless (jupyter-repl-cell-finalized-p)
+       (jupyter-repl-finalize-cell nil))
      (jupyter-repl-newline)
      (jupyter-repl-newline)
      ;; TODO: Add a slot mentioning that the kernel is shutdown so that we can
@@ -1218,16 +1217,15 @@ synchronize the execution state, and insert a new input prompt."
         (jupyter-set jupyter-current-client 'jupyter-include-other-output nil)
         (jupyter-repl-without-continuation-prompts
          (goto-char (point-max))
-         (jupyter-repl-previous-cell)
-         (jupyter-repl-finalize-cell nil)
+         (unless (jupyter-repl-cell-finalized-p)
+           (jupyter-repl-finalize-cell nil))
          (jupyter-repl-newline)
          (jupyter-repl-insert-banner
           (plist-get (jupyter-kernel-info client) :banner))
-         (jupyter-repl-sync-execution-state)
-         ;; toggle the heartbeat channel
-         (jupyter-hb-pause jupyter-current-client)
-         (jupyter-hb-unpause jupyter-current-client)
-         (jupyter-repl-insert-prompt 'in))))))
+         (jupyter-repl-insert-prompt 'in)
+         ;; Call this after `jupyter-repl-insert-prompt' since that function
+         ;; will try to modify the prompt. See #28.
+         (jupyter-repl-sync-execution-state))))))
 
 (defun jupyter-repl-interrupt-kernel ()
   "Interrupt the kernel if possible.
@@ -1252,6 +1250,7 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
     ;; When restarting, the startup message is not associated with any request
     ;; so ensure that we are able to capture it.
     (jupyter-set jupyter-current-client 'jupyter-include-other-output t))
+  (jupyter-hb-pause jupyter-current-client)
   (if (jupyter-repl-client-has-manager-p)
       (let ((manager (oref jupyter-current-client manager)))
         (cond
@@ -1266,7 +1265,9 @@ With a prefix argument, SHUTDOWN the kernel completely instead."
               (jupyter-send-shutdown-request jupyter-current-client
                 :restart (not shutdown)))
       (jupyter-set jupyter-current-client 'jupyter-include-other-output nil)
-      (message "Kernel did not respond to shutdown request"))))
+      (message "Kernel did not respond to shutdown request")))
+  (unless shutdown
+    (jupyter-hb-unpause jupyter-current-client)))
 
 (defun jupyter-repl-display-kernel-buffer ()
   "Display the kernel processes stdout."
@@ -1549,7 +1550,9 @@ it."
                                           shadow fontified t font-lock-fontified t)))))
 
 (defun jupyter-repl-sync-execution-state ()
-  "Synchronize the `jupyter-current-client's kernel state."
+  "Synchronize the `jupyter-current-client's kernel state.
+Also update the cell count of the current REPL input prompt using
+the updated state."
   (let* ((client jupyter-current-client)
          (req (let ((jupyter-inhibit-handlers t))
                 (jupyter-send-execute-request client :code "" :silent t))))
