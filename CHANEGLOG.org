@@ -1,0 +1,74 @@
+* How to update this file
+
+Examine the output of
+
+#+HEADER: :var PREV_VERSION="v0.6.0" VERSION="v0.7.0"
+#+BEGIN_SRC shell :results output
+git log --pretty=format:"%s" ${PREV_VERSION}...${VERSION}
+#+END_SRC
+
+and filter down to the most notable changes, summarize each one. Be sure to
+update the =VERSION= variables first.
+
+* v0.7.0
+
+- Remove compatibility with =ob-ipython= by going back to using a =jupyter-=
+  prefix instead of a =jupy-= prefix for Jupyter src-block languages.
+
+- Re-use windows displaying =jupyter= specific buffers instead of popping up
+  new windows whenever possible, e.g. when displaying a traceback or output
+  caused by evaluating code. See =jupyter-display-current-buffer-reuse-window=.
+
+- Consider the underlying REPL client of =org-mode= Jupyter src-blocks as valid
+  clients to associate a source code buffer with using
+  =jupyter-repl-associate-buffer=.
+
+- Add the customizable variable =jupyter-org-toggle-latex= which automatically
+  converts latex fragment results of =org-mode= Jupyter src-blocks into images
+  if non-nil.
+
+- Add the customizable variables =jupyter-eval-short-result-max-lines= and
+  =jupyter-eval-short-result-display-function= which control how to display
+  evaluation results having a number of lines less than
+  =jupyter-eval-short-result-max-lines=. As an example, you can set
+  =jupyter-eval-short-result-display-function= to =popup-tip= from the =popup=
+  package to show short results inline after evaluation.
+
+- When =:results silent= is an argument for an =org-mode= src-block and an
+  error occurs, display a link to jump to the line of the src-block which
+  caused the error along with the error traceback. Note this requires that the
+  underlying kernel language extend the =jupyter-org-error-location= method.
+
+- Fix integration with =insert-for-yank= inside a REPL buffer. Previously,
+  yanking text from the kill ring into the REPL buffer would interfere with
+  font-lock and motion functions such as =beginning-of-line=. See [[https://github.com/dzop/emacs-jupyter/issues/14][#14]].
+
+- Add the minor mode =jupyter-org-interaction-mode= enabled in all =org-mode=
+  buffers by default. This mode enables completion in Jupyter src-blocks
+  directly from the =org-mode= buffer and custom keybindings for each kernel
+  language that are only enabled if =point= is inside a Jupyter src-block. You
+  bind keys to commands using =jupyter-org-define-key=. Inspired by =scimax=.
+
+- Support the =:dir= header argument of =org-mode= src-blocks. Since Jupyter
+  src-blocks have a backing REPL session, the =:dir= argument only ensures that
+  the REPL session is initialized in the specified directory. After the session
+  is initialized, the =:dir= argument has no effect when evaluating src-blocks
+  with the same underlying session. Now, the directory is changed inside the
+  REPL environment before evaluation of a src-block and reset to the previous
+  directory after evaluation whenever =:dir= is specified as a header argument.
+  Note, this requires that the backing kernel language handles =:dir= in the
+  changelist argument of =org-babel-jupyter-transform-code=. Also inspired by
+  =scimax=.
+
+- Add support for inline Jupyter src-blocks in =org-mode=.
+
+- For Jupyter src-blocks, delete files of unreachable links from
+  =org-babel-jupyter-resource-directory=. When replacing image link results of
+  a src-block, e.g. by re-evaluation of the src-block, delete the corresponding
+  image file if it exists in =org-babel-jupyter-resource-directory=. Once again
+  inspired by =scimax=.
+
+- Add the =jupyter-repl-traceback= face. This face is used to fontify the
+  background of a traceback in the REPL buffer to distinguish it from other
+  output. In addition to this face, there is also =jupyter-repl-input-prompt=
+  and =jupyter-repl-output-prompt=.
