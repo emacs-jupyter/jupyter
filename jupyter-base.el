@@ -319,15 +319,15 @@ re-use it. Otherwise pop-up a new window. If ALIST is non-nil it
 is used as the ACTION alist of `display-buffer'. The rest of the
 arguments are display ACTIONS tried after attempting to re-use a
 window and before attempting to pop-up a new window."
-  (display-buffer
-   (current-buffer)
-   (cons
-    (append '(display-buffer-reuse-window)
-            actions
-            '(display-buffer-pop-up-window))
-    (cl-list*
-     '(pop-up-windows . t)
-     alist))))
+  (let ((display-buffer-base-action
+         (cons
+          (append '(display-buffer-reuse-window)
+                  actions
+                  '(display-buffer-pop-up-window))
+          (cl-list*
+           '(pop-up-windows . t)
+           alist))))
+    (display-buffer (current-buffer))))
 
 ;;; Signing functions/UUID
 
