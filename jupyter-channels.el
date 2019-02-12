@@ -164,7 +164,10 @@ use `jupyter-hb-unpause'."))
 
 (cl-defmethod jupyter-hb-pause ((channel jupyter-hb-channel))
   "Pause checking for heartbeat events on CHANNEL."
-  (oset channel paused t))
+  (oset channel paused t)
+  ;; FIXME: Try to receive a pending message if there was one. There is a
+  ;; possibility this won't work.
+  (ignore-errors (zmq-recv (oref channel socket) zmq-DONTWAIT)))
 
 (cl-defmethod jupyter-hb-unpause ((channel jupyter-hb-channel))
   "Un-pause checking for heatbeat events on CHANNEL."
