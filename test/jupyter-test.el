@@ -1064,7 +1064,7 @@ last element being the newest element added to the history."
     (with-current-buffer jupyter-org-test-buffer
       (org-mode)
       (insert
-       "#+BEGIN_SRC jupy-python " ":session " jupyter-org-test-session "\n"
+       "#+BEGIN_SRC jupyter-python " ":session " jupyter-org-test-session "\n"
        "#+END_SRC")
       (setq jupyter-current-client
             (with-current-buffer (org-babel-initiate-session)
@@ -1086,7 +1086,7 @@ should match. ARGS is a plist of header arguments to be set for
 the source code block. For example if ARGS is (:results \"raw\")
 then the source code block will begin like
 
-    #+BEGIN_SRC jupy-python :results raw ...
+    #+BEGIN_SRC jupyter-python :results raw ...
 
 Note if ARGS contains a key, regexp, then if regexp is non-nil,
 EXPECTED-RESULT is a regular expression to match against the
@@ -1106,7 +1106,7 @@ results instead of an equality match."
                       (concat (symbol-name name) " " (format "%s" val))))
                   args " ")))
     (concat
-     "#+BEGIN_SRC jupy-python " arg-str " :session "
+     "#+BEGIN_SRC jupyter-python " arg-str " :session "
      jupyter-org-test-session "\n"
      code "\n"
      "#+END_SRC")))
@@ -1308,7 +1308,7 @@ Image(filename='%s', width=300)" file)
   (let (jupyter-org--src-block-cache)
     (jupyter-org-test
      (insert
-      "#+BEGIN_SRC jupy-python :session " jupyter-org-test-session "\n"
+      "#+BEGIN_SRC jupyter-python :session " jupyter-org-test-session "\n"
       "imp\n"
       "#+END_SRC\n\n\n#+RESULTS:")
      ;; Needed for the text properties
@@ -1344,7 +1344,7 @@ Image(filename='%s', width=300)" file)
   (ert-info ("In Jupyter blocks")
     (jupyter-org-test
      (insert
-      "#+BEGIN_SRC jupy-python :session " jupyter-org-test-session "\n"
+      "#+BEGIN_SRC jupyter-python :session " jupyter-org-test-session "\n"
       "1 + 1\n"
       "#+END_SRC\nfoo")
      ;; Needed for the text properties

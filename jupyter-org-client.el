@@ -331,7 +331,7 @@ most recent completion request.")
   (unless (jupyter-org--same-src-block-p)
     (let* ((el (org-element-at-point))
            (lang (org-element-property :language el)))
-      (when (string-prefix-p "jupy-" lang)
+      (when (string-prefix-p "jupyter-" lang)
         (let* ((info (org-babel-get-src-block-info el))
                (params (nth 2 info))
                (beg (save-excursion

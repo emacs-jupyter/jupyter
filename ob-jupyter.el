@@ -62,7 +62,7 @@
   (when (org-in-src-block-p)
     (let ((info (org-babel-get-src-block-info)))
       (save-match-data
-        (string-match "^jupy-\\(.+\\)$" (car info))
+        (string-match "^jupyter-\\(.+\\)$" (car info))
         (match-string 1 (car info))))))
 
 (defun org-babel-variable-assignments:jupyter (params &optional lang)
@@ -302,20 +302,17 @@ the PARAMS alist."
   "Similar to `org-babel-make-language-alias' but for Jupyter src-blocks.
 KERNEL should be the name of the default kernel to use for kernel
 LANG. All necessary org-babel functions for a language with the
-name jupy-LANG will be aliased to the Jupyter functions."
+name jupyter-LANG will be aliased to the Jupyter functions."
   (dolist (fn '("execute" "expand-body" "prep-session" "edit-prep"
                 "variable-assignments" "load-session"))
-    ;; Use :jupyter here for the base functions, for all the language aliases
-    ;; use :jupy-LANG, this is to avoid name clashes with the ob-ipython
-    ;; package.
     (let ((sym (intern-soft (concat "org-babel-" fn ":jupyter"))))
       (when (and sym (fboundp sym))
-        (defalias (intern (concat "org-babel-" fn ":jupy-" lang)) sym))))
-  (defalias (intern (concat "org-babel-jupy-" lang "-initiate-session"))
+        (defalias (intern (concat "org-babel-" fn ":jupyter-" lang)) sym))))
+  (defalias (intern (concat "org-babel-jupyter-" lang "-initiate-session"))
     'org-babel-jupyter-initiate-session)
-  (set (intern (concat "org-babel-header-args:jupy-" lang))
+  (set (intern (concat "org-babel-header-args:jupyter-" lang))
        org-babel-header-args:jupyter)
-  (set (intern (concat "org-babel-default-header-args:jupy-" lang))
+  (set (intern (concat "org-babel-default-header-args:jupyter-" lang))
        `((:kernel . ,kernel)
          (:async . "no"))))
 
@@ -335,10 +332,10 @@ Optional argument REFRESH has the same meaning as in
    do (org-babel-jupyter-make-language-alias kernel lang)
    (when (assoc lang org-babel-tangle-lang-exts)
      (add-to-list 'org-babel-tangle-lang-exts
-                  (cons (concat "jupy-" lang)
+                  (cons (concat "jupyter-" lang)
                         (cdr (assoc lang org-babel-tangle-lang-exts)))))
    (add-to-list 'org-src-lang-modes
-                (cons (concat "jupy-" lang)
+                (cons (concat "jupyter-" lang)
                       (intern (or (cdr (assoc lang org-src-lang-modes))
                                   (replace-regexp-in-string
                                    "[0-9]*" "" lang)))))))

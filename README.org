@@ -273,7 +273,7 @@ For users of =org-mode=, integration with =org-babel= is provided through the
 Note, =jupyter= should be added as the last element when loading languages
 since it depends on the values of variables such as =org-src-lang-modes= and
 =org-babel-tangle-lang-exts=. After =ob-jupyter= has been loaded, new source
-code blocks with names of the form =jupy-LANG= will be available. =LANG= can be
+code blocks with names of the form =jupyter-LANG= will be available. =LANG= can be
 any one of the kernel languages found on your system. See
 =jupyter-available-kernelspecs=.
 
@@ -282,7 +282,7 @@ specified since all interaction with a kernel is through a REPL. For example,
 to interact with a =python= kernel you would create a new source block like so
 
 #+BEGIN_SRC org
-,#+BEGIN_SRC jupy-python :session py
+,#+BEGIN_SRC jupyter-python :session py
 x = 'foo'
 y = 'bar'
 x + ' ' + y
@@ -293,7 +293,7 @@ By default, source blocks are executed synchronously. To execute a source block
 asynchronously set the =:async= parameter to =yes=:
 
 #+BEGIN_SRC org
-,#+BEGIN_SRC jupy-python :session py :async yes
+,#+BEGIN_SRC jupyter-python :session py :async yes
 x = 'foo'
 y = 'bar'
 x + ' ' + y
@@ -305,7 +305,7 @@ kernel used will be the first one found by =jupyter-available-kernelspecs= for
 the language. To change the kernel, set the =:kernel= parameter:
 
 #+BEGIN_SRC org
-,#+BEGIN_SRC jupy-python :session py :async yes :kernel python2
+,#+BEGIN_SRC jupyter-python :session py :async yes :kernel python2
 x = 'foo'
 y = 'bar'
 x + ' ' + y
@@ -316,14 +316,14 @@ Note, the same session name can be used for different values of =:kernel= since
 the underlying REPL buffer's name is based on both =:session= and =:kernel=.
 
 Any of the defaults for a language can be changed by setting
-=org-babel-default-header-args:jupy-LANG= to an appropriate value. For example
+=org-babel-default-header-args:jupyter-LANG= to an appropriate value. For example
 to change the defaults for the =julia= kernel, you can set
-=org-babel-default-header-args:jupy-julia= to something like
+=org-babel-default-header-args:jupyter-julia= to something like
 
 #+BEGIN_SRC elisp
-(setq org-babel-default-header-args:jupy-julia '((:async . "yes")
-                                                 (:session . "jl")
-                                                 (:kernel . "julia-1.0")))
+(setq org-babel-default-header-args:jupyter-julia '((:async . "yes")
+                                                    (:session . "jl")
+                                                    (:kernel . "julia-1.0")))
 #+END_SRC
 ** Rich kernel output
 
