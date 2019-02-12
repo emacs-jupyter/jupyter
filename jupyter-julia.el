@@ -4,7 +4,7 @@
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 23 Oct 2018
-;; Version: 0.6.0
+;; Version: 0.7.0
 ;; X-URL: https://github.com/nathan/jupyter-julia
 
 ;; This program is free software; you can redistribute it and/or

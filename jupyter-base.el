@@ -4,7 +4,7 @@
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 06 Jan 2018
-;; Version: 0.6.0
+;; Version: 0.7.0
 ;; Keywords: jupyter literate-programming
 
 ;; This program is free software; you can redistribute it and/or
