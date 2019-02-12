@@ -73,6 +73,59 @@
         (insert (string-trim (get-text-property 0 'annot candidate))))
     (cl-call-next-method)))
 
+;;; Eldoc
+
+(defvar julia-mode-syntax-table)
+
+;; Adapted from `python-dotty-syntax-table'
+(defvar jupyter-julia-dotty-syntax-table
+  (let ((table (make-syntax-table julia-mode-syntax-table)))
+    (modify-syntax-entry ?. "w" table)
+    table)
+  "Dotty syntax table for Julia files.
+It makes dots word constituent characters.")
+
+;; TODO: How can this be improved?
+(cl-defmethod jupyter-eldoc-documentation (&context (jupyter-lang julia))
+  (let ((state (syntax-ppss)))
+    ;; Go to the beginning of the nearest open paren
+    (save-excursion
+      (when (nth 1 state)
+        (goto-char (nth 1 state))
+        (unless (bobp)
+          (backward-char)))
+      (prog1 eldoc-last-message
+        (when-let* ((sym (with-syntax-table jupyter-julia-dotty-syntax-table
+                           (symbol-at-point)))
+                    (jupyter-inhibit-handlers t)
+                    (code (format "%s(" sym))
+                    (req (jupyter-send-complete-request
+                             jupyter-current-client
+                           :code code :pos (length code))))
+          (jupyter-add-callback req
+            :complete-reply
+            (jupyter-message-lambda (status matches metadata)
+              (when (equal status "ok")
+                ;; TODO: Split out the functionality of
+                ;; `jupyter-completion-construct-candidates' to handle this
+                ;; better.
+                (let ((signatures
+                       (delq nil (mapcar (lambda (x) (get-text-property 0 'docsig x))
+                                    (jupyter-completion-construct-candidates
+                                     matches metadata)))))
+                  (eldoc-message
+                   (mapconcat
+                    #'identity
+                    (mapcar (lambda (s)
+                         (substring
+                          (jupyter-fontify-according-to-mode
+                           (jupyter-kernel-language-mode jupyter-current-client)
+                           (concat "function " s)
+                           t)
+                          9))
+                       signatures)
+                    "\n")))))))))))
+
 ;;; `markdown-mode'
 
 (cl-defmethod jupyter-markdown-follow-link (link-text url _ref-label _title-text _bang
