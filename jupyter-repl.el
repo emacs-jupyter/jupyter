@@ -1239,35 +1239,55 @@ manager. See `jupyter-start-new-kernel'."
      (oref jupyter-current-client manager))))
 
 ;; TODO: Make timeouts configurable
-(defun jupyter-repl-restart-kernel (&optional shutdown)
-  "Restart the kernel.
-With a prefix argument, SHUTDOWN the kernel completely instead."
-  (interactive "P")
-  (unless shutdown
-    ;; This may have been set to t due to a non-responsive kernel so make sure
-    ;; that we try again when restarting.
-    (setq jupyter-repl-use-builtin-is-complete nil)
-    ;; When restarting, the startup message is not associated with any request
-    ;; so ensure that we are able to capture it.
-    (jupyter-set jupyter-current-client 'jupyter-include-other-output t))
-  (jupyter-hb-pause jupyter-current-client)
-  (if (jupyter-repl-client-has-manager-p)
-      (let ((manager (oref jupyter-current-client manager)))
-        (cond
-         ((jupyter-kernel-alive-p manager)
-          (message "%s kernel..." (if shutdown "Shutting down"
-                                    "Restarting"))
-          (jupyter-shutdown-kernel manager (not shutdown)))
-         (t
-          (message "Starting dead kernel...")
-          (jupyter-start-kernel manager))))
-    (unless (jupyter-wait-until-received :shutdown-reply
-              (jupyter-send-shutdown-request jupyter-current-client
-                :restart (not shutdown)))
-      (jupyter-set jupyter-current-client 'jupyter-include-other-output nil)
-      (message "Kernel did not respond to shutdown request")))
-  (unless shutdown
-    (jupyter-hb-unpause jupyter-current-client)))
+(defun jupyter-repl-restart-kernel (&optional shutdown client)
+  "Restart the kernel `jupyter-current-client' is connected to.
+With a prefix argument, SHUTDOWN the kernel completely instead.
+If CLIENT is non-nil, it should by a REPL client to use instead
+of `jupyter-current-client'.
+
+If CLIENT is nil, `jupyter-current-client' will be restarted
+instead. If `jupyter-current-client' is nil or is not a REPL
+client, prompt for a REPL client to restart. Otherwise restart
+the kernel `jupyter-current-client' is connected to."
+  (interactive (list current-prefix-arg nil))
+  (or client (setq client jupyter-current-client))
+  (when (or (null client)
+            (not (object-of-class-p client 'jupyter-repl-client)))
+    (let* ((buffers (or (jupyter-repl-available-repl-buffers)
+                        (error "No REPLs available")))
+           (buffer (completing-read
+                    "REPL buffer: " (mapcar #'buffer-name buffers) nil t)))
+      (when (equal buffer "")
+        (error "No REPL buffer selected"))
+      (setq client (buffer-local-value
+                    'jupyter-current-client (get-buffer buffer)))))
+  (let ((jupyter-current-client client))
+    (unless shutdown
+      ;; This may have been set to t due to a non-responsive kernel so make sure
+      ;; that we try again when restarting.
+      (jupyter-with-repl-buffer jupyter-current-client
+        (setq jupyter-repl-use-builtin-is-complete nil))
+      ;; When restarting, the startup message is not associated with any request
+      ;; so ensure that we are able to capture it.
+      (jupyter-set jupyter-current-client 'jupyter-include-other-output t))
+    (jupyter-hb-pause jupyter-current-client)
+    (if (jupyter-repl-client-has-manager-p)
+        (let ((manager (oref jupyter-current-client manager)))
+          (cond
+           ((jupyter-kernel-alive-p manager)
+            (message "%s kernel..." (if shutdown "Shutting down"
+                                      "Restarting"))
+            (jupyter-shutdown-kernel manager (not shutdown)))
+           (t
+            (message "Starting dead kernel...")
+            (jupyter-start-kernel manager))))
+      (unless (jupyter-wait-until-received :shutdown-reply
+                (jupyter-send-shutdown-request jupyter-current-client
+                  :restart (not shutdown)))
+        (jupyter-set jupyter-current-client 'jupyter-include-other-output nil)
+        (message "Kernel did not respond to shutdown request")))
+    (unless shutdown
+      (jupyter-hb-unpause jupyter-current-client))))
 
 (defun jupyter-repl-display-kernel-buffer ()
   "Display the kernel processes stdout."
