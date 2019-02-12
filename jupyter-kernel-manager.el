@@ -268,7 +268,8 @@ channel is stopped unless RESTART is non-nil."
           ((format "%s kernel shutting down..." (oref manager name))
            (or timeout jupyter-default-timeout)
            (message "%s kernel did not shutdown by request"
-                    (oref manager name)))
+                    (oref manager name))
+           (jupyter-kernel-manager--cleanup manager 'kill-kernel))
         (not (jupyter-kernel-alive-p manager)))
       (if restart
           (jupyter-start-kernel manager)
