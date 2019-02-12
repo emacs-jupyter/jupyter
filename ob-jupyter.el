@@ -43,6 +43,7 @@
 (declare-function org-element-context "org-element" (&optional element))
 (declare-function org-babel-variable-assignments:python "ob-python" (params))
 (declare-function org-babel-expand-body:generic "ob-core" (body params &optional var-lines))
+(declare-function org-export-derived-backend-p "ox" (backend &rest backends))
 
 (defvaralias 'org-babel-jupyter-resource-directory
   'jupyter-org-resource-directory)
@@ -340,7 +341,20 @@ Optional argument REFRESH has the same meaning as in
                                   (replace-regexp-in-string
                                    "[0-9]*" "" lang)))))))
 
+(defvar org-latex-minted-langs)
+
+(defun org-babel-jupyter-setup-export (backend)
+  "Ensure that Jupyter src-blocks are integrated with BACKEND.
+Currently this makes sure that Jupyter src-block languages are
+mapped to their appropriate minted language in
+`org-latex-minted-langs' if BACKEND is latex."
+  (cond
+   ((org-export-derived-backend-p backend 'latex)
+    (cl-pushnew '(jupyter-python "python") org-latex-minted-langs :test #'equal)
+    (cl-pushnew '(jupyter-julia "julia") org-latex-minted-langs :test #'equal))))
+
 (org-babel-jupyter-aliases-from-kernelspecs)
+(add-hook 'org-export-before-processing-hook #'org-babel-jupyter-setup-export)
 
 (provide 'ob-jupyter)
 
