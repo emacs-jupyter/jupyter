@@ -580,16 +580,17 @@ To start a client's channels, use =jupyter-start-channels=. To stop a client's
 channels, =jupyter-stop-channels=. To determine if at least one channel is
 alive, =jupyter-channels-running-p=.
 
-You may access each individual channel by accessing its corresponding slot in a
-=jupyter-kernel-client=. To access the shell channel of a client
+You can also start individual channels with
 
 #+BEGIN_SRC elisp
-(oref client shell-channel)
+(jupyter-start-channel client :shell)
 #+END_SRC
 
-this will give you the =jupyter-channel= object of the shell channel. By
-accessing the channel slots of the client, individual channels may be started or
-stopped.
+and stop a channel with
+
+#+BEGIN_SRC elisp
+(jupyter-stop-channel client :shell)
+#+END_SRC
 *** Making requests to a kernel
 :PROPERTIES:
 :ID:       9D893914-E769-4AEF-8928-826B67038C2A
