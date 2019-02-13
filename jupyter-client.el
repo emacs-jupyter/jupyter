@@ -935,6 +935,17 @@ the minibuffer.")
   (remove-hook 'completion-at-point-functions 'jupyter-completion-at-point t)
   (remove-hook 'minibuffer-exit-hook 'jupyter--teardown-minibuffer t))
 
+;; This is needed since `read-from-minibuffer' expects the history variable to
+;; be a symbol whose value is `set' when adding a new history element. Since
+;; `jupyter-eval-expression-history' is a buffer (client) local variable, it would be
+;; set in the minibuffer which we don't want.
+(defvar jupyter--read-expression-history nil
+  "A client's `jupyter-eval-expression-history' when reading an expression.
+This variable is used as the history symbol when reading an
+expression from the minibuffer. After an expression is read, the
+`jupyter-eval-expression-history' of the client is updated to the
+value of this variable.")
+
 (cl-defgeneric jupyter-read-expression ()
   "Read an expression using the `jupyter-current-client' for completion.
 The expression is read from the minibuffer and the expression
@@ -945,22 +956,22 @@ Methods that extend this generic function should
 `cl-call-next-method' as a last step."
   (cl-check-type jupyter-current-client jupyter-kernel-client
                  "Need a client to read an expression")
-  (let ((client jupyter-current-client))
-    (jupyter-with-client-buffer jupyter-current-client
-      (minibuffer-with-setup-hook
-          (lambda ()
-            (setq jupyter-current-client client)
-            ;; TODO: Enable the kernel languages mode using
-            ;; `jupyter-kernel-language-mode', but there are
-            ;; issues with enabling a major mode.
-            (add-hook 'completion-at-point-functions
-                      'jupyter-completion-at-point nil t)
-            (add-hook 'minibuffer-exit-hook
-                      'jupyter--teardown-minibuffer nil t))
-        (read-from-minibuffer
-         "Jupyter Ex: " nil
-         read-expression-map
-         nil 'jupyter-eval-expression-history)))))
+  (let* ((client jupyter-current-client)
+         (jupyter--read-expression-history
+          (jupyter-get client 'jupyter-eval-expression-history)))
+    (minibuffer-with-setup-hook
+        (lambda ()
+          (setq jupyter-current-client client)
+          (add-hook 'completion-at-point-functions
+                    'jupyter-completion-at-point nil t)
+          (add-hook 'minibuffer-exit-hook
+                    'jupyter--teardown-minibuffer nil t))
+      (prog1 (read-from-minibuffer
+              "Jupyter Ex: " nil
+              read-expression-map
+              nil 'jupyter--read-expression-history)
+        (jupyter-set client 'jupyter-eval-expression-history
+                     jupyter--read-expression-history)))))
 
 (defun jupyter--display-eval-result (msg)
   (jupyter-with-message-data msg ((res text/plain))

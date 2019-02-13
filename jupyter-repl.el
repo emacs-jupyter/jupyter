@@ -1202,7 +1202,9 @@ value."
     (jupyter-set jupyter-current-client 'jupyter-eval-expression-history
                  (delq 'jupyter-repl-history
                        (ring-elements jupyter-repl-history)))
-    (cl-call-next-method)))
+    (let ((ex (cl-call-next-method)))
+      (prog1 ex
+        (jupyter-repl-history-add-input ex)))))
 
 ;;; Kernel management
 
