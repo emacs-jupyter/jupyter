@@ -1,37 +1,39 @@
 EMACS ?= emacs
 SHELL = bash
-
 CASK ?= $(shell command -v cask)
-ifeq ($(CASK),)
-    $(error "Install cask (https://github.com/cask/cask)")
-endif
 
 FILES = $(wildcard *.el)
 ELCFILES = $(FILES:.el=.elc)
 
 ifneq ($(TAGS),)
-    override TAGS := -t $(TAGS)
+override TAGS := -t $(TAGS)
 endif
 
 ifneq ($(PATTERN),)
-    override PATTERN := -p $(PATTERN)
+override PATTERN := -p $(PATTERN)
 endif
 
 .PHONY: all
 all: compile
 
+.PHONY: cask
+cask:
+ifeq ($(CASK),)
+	$(error "Install cask (https://github.com/cask/cask)")
+endif
+
 # Build the zmq module.
 .PHONY: zmq
-zmq:
+zmq: cask
 	$(CASK) eval "(cl-letf (((symbol-function 'read-string) (lambda (&rest _) \"y\"))) (require 'zmq))"
 
 .PHONY: init
-init:
+init: cask
 	$(CASK) install
 	$(CASK) update
 
 .PHONY: dev
-dev:
+dev: cask
 	$(CASK) --dev install
 	$(CASK) --dev update
 
