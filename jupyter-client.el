@@ -1029,8 +1029,8 @@ CB is a function to call with the `:execute-result' message when
 the evalution is successful. When CB is nil, its behavior defaults
 to the above explanation."
   (interactive (list (jupyter-read-expression) nil))
-  (unless jupyter-current-client
-    (user-error "No `jupyter-current-client' set"))
+  (cl-check-type jupyter-current-client jupyter-kernel-client
+                 "Not a valid client")
   (let* ((jupyter-inhibit-handlers t)
          (req (jupyter-send-execute-request jupyter-current-client
                 :code str :store-history nil))
