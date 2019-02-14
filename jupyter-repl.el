@@ -1833,9 +1833,9 @@ connected to the kernel."
                      t nil t))
   (or client-class (setq client-class 'jupyter-repl-client))
   (unless (called-interactively-p 'interactive)
-    (setq kernel-name (caar (jupyter-find-kernelspecs kernel-name))))
-  (unless kernel-name
-    (error "No kernel found for prefix (%s)" kernel-name))
+    (or (when-let* ((name (caar (jupyter-find-kernelspecs kernel-name))))
+          (setq kernel-name name))
+        (error "No kernel found for prefix (%s)" kernel-name)))
   (unless (child-of-class-p client-class 'jupyter-repl-client)
     (error "Class should be a subclass of `jupyter-repl-client' (`%s')" client-class))
   (cl-destructuring-bind (_manager client)
