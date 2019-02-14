@@ -1880,6 +1880,7 @@ interactively, DISPLAY the new REPL buffer as well."
   (let ((client (make-instance client-class)))
     (jupyter-initialize-connection client file-or-plist)
     (jupyter-start-channels client)
+    (jupyter-hb-unpause client)
     (jupyter-repl--new-repl client repl-name)
     (when (and associate-buffer
                (eq major-mode (jupyter-kernel-language-mode client)))
