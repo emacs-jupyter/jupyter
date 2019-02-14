@@ -857,9 +857,9 @@ The history contains the elements \"1\", \"2\", and \"3\", the
 last element being the newest element added to the history."
   (setq-local jupyter-repl-history (make-ring 5))
   (ring-insert jupyter-repl-history 'jupyter-repl-history)
-  (jupyter-repl-history-add-input "1")
-  (jupyter-repl-history-add-input "2")
-  (jupyter-repl-history-add-input "3"))
+  (jupyter-repl-history-add "1")
+  (jupyter-repl-history-add "2")
+  (jupyter-repl-history-add "3"))
 
 (ert-deftest jupyter-repl-history ()
   :tags '(repl)

@@ -692,7 +692,7 @@ lines, truncate it to something less than
 
 ;;; Handlers
 
-(defun jupyter-repl-history-add-input (code)
+(defun jupyter-repl-history-add (code)
   "Add CODE as the newest element in the REPL history."
   ;; Ensure the newest element is actually the newest element and not the most
   ;; recently navigated history element.
@@ -724,7 +724,7 @@ lines, truncate it to something less than
           (setq silent t)
         ;; Needed by the prompt insertion below
         (oset client execution-count (1+ (oref client execution-count)))
-        (jupyter-repl-history-add-input code))
+        (jupyter-repl-history-add code))
       (let ((req (cl-call-next-method
                   client :code code :silent silent :store-history store-history
                   :user-expressions user-expressions :allow-stdin allow-stdin
@@ -1227,7 +1227,7 @@ value."
                        (ring-elements jupyter-repl-history)))
     (let ((ex (cl-call-next-method)))
       (prog1 ex
-        (jupyter-repl-history-add-input ex)))))
+        (jupyter-repl-history-add ex)))))
 
 ;;; Kernel management
 
