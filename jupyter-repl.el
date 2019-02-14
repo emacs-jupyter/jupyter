@@ -117,6 +117,20 @@ timeout, the built-in is-complete handler is used."
   :type 'integer
   :group 'jupyter-repl)
 
+(defcustom jupyter-repl-cell-pre-send-hook nil
+  "Hook run before sending the contents of an input cell to a kernel.
+This hook is run with `point' at the cell code beginning position
+and before the contents of the cell are extracted from the buffer
+for sending to the kernel."
+  :type 'hook
+  :group 'jupyter-repl)
+
+(defcustom jupyter-repl-cell-post-send-hook nil
+  "Hook run after sending the contents of an input cell to a kernel.
+This hook is run with `point' at the cell code beginning position."
+  :type 'hook
+  :group 'jupyter-repl)
+
 ;;; Implementation
 
 (defclass jupyter-repl-client (jupyter-widget-client jupyter-kernel-client)
@@ -701,6 +715,9 @@ lines, truncate it to something less than
   (if code (cl-call-next-method)
     (jupyter-with-repl-buffer client
       (jupyter-repl-truncate-buffer)
+      (save-excursion
+        (goto-char (jupyter-repl-cell-code-beginning-position))
+        (run-hooks 'jupyter-repl-cell-pre-send-hook))
       (setq code (string-trim (jupyter-repl-cell-code)))
       ;; Handle empty code cells as just an update of the prompt number
       (if (= (length code) 0)
@@ -716,6 +733,9 @@ lines, truncate it to something less than
          (jupyter-repl-cell-mark-busy)
          (jupyter-repl-finalize-cell req)
          (jupyter-repl-insert-prompt 'in))
+        (save-excursion
+          (jupyter-repl-backward-cell)
+          (run-hooks 'jupyter-repl-cell-post-send-hook))
         req))))
 
 (cl-defmethod jupyter-handle-payload ((_source (eql set_next_input)) pl
