@@ -416,7 +416,9 @@ should be a face that the prompt will use and defaults to
                   (jupyter-repl-cell-beginning-position)
                   'jupyter-cell))
           n)
-    (jupyter-repl-cell-reset-prompt)))
+    (when (string-match-p
+           "In \\[[0-9]+\\]" (string-trim (jupyter-repl-prompt-string)))
+      (jupyter-repl-cell-reset-prompt))))
 
 (defun jupyter-repl-cell-count ()
   "Return the cell count of the cell at `point'."
