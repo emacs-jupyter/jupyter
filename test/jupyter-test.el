@@ -956,6 +956,31 @@ last element being the newest element added to the history."
         (jupyter-repl-forward-cell)
         (should (= (point) cell-pos2))))))
 
+(ert-deftest jupyter-repl-finalize-cell ()
+  :tags '(repl)
+  (jupyter-test-with-python-repl client
+    (jupyter-ert-info ("Finalize the last cell only")
+      (should-not (jupyter-repl-cell-finalized-p))
+      (jupyter-test-repl-ret-sync)
+      (should-not (jupyter-repl-cell-finalized-p))
+      (jupyter-repl-backward-cell)
+      (should (jupyter-repl-cell-finalized-p))
+      (should-not (= (point) (point-max)))
+      (jupyter-repl-finalize-cell nil)
+      (should (= (point) (point-max)))
+      (should (jupyter-repl-cell-finalized-p)))
+    (jupyter-ert-info
+        ("Don't modify the jupyter-request property of a finalized cell")
+      (jupyter-test-repl-ret-sync)
+      (jupyter-repl-backward-cell)
+      (let* ((finalized-cell-beg (jupyter-repl-cell-beginning-position))
+             (finalized-cell-req
+              (get-text-property finalized-cell-beg 'jupyter-request)))
+        (should finalized-cell-req)
+        (jupyter-repl-finalize-cell nil)
+        (should (eq (get-text-property finalized-cell-beg 'jupyter-request)
+                    finalized-cell-req))))))
+
 (ert-deftest jupyter-repl-cell-positions ()
   :tags '(repl motion)
   (jupyter-test-with-python-repl client

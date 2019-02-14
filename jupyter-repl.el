@@ -640,11 +640,12 @@ POS defaults to `point'."
   (1+ (- (point) (jupyter-repl-cell-code-beginning-position))))
 
 (defun jupyter-repl-finalize-cell (req)
-  "Finalize the current cell.
-REQ is the `jupyter-request' to associate with the current cell."
+  "Finalize the current input cell.
+REQ is the `jupyter-request' to associate with the current cell.
+Place `point' at `point-max'."
+  (goto-char (point-max))
   (let ((beg (jupyter-repl-cell-beginning-position))
         (count (jupyter-repl-cell-count)))
-    (goto-char (point-max))
     (jupyter-repl-newline)
     (put-text-property (1- (point)) (point) 'jupyter-cell `(end ,count))
     (put-text-property beg (1+ beg) 'jupyter-request req)
