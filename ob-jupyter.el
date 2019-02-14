@@ -350,8 +350,11 @@ mapped to their appropriate minted language in
 `org-latex-minted-langs' if BACKEND is latex."
   (cond
    ((org-export-derived-backend-p backend 'latex)
-    (cl-pushnew '(jupyter-python "python") org-latex-minted-langs :test #'equal)
-    (cl-pushnew '(jupyter-julia "julia") org-latex-minted-langs :test #'equal))))
+    (cl-loop
+     for (_kernel . (_dir . spec)) in (jupyter-available-kernelspecs)
+     for lang = (plist-get spec :language)
+     do (cl-pushnew (list (intern (concat "jupyter-" lang)) lang)
+                    org-latex-minted-langs :test #'equal)))))
 
 (org-babel-jupyter-aliases-from-kernelspecs)
 (add-hook 'org-export-before-processing-hook #'org-babel-jupyter-setup-export)
