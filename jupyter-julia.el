@@ -120,12 +120,13 @@ Make the character after `point' invisible."
            ;; Spoof `last-command-event' so that a "No matching paren" message
            ;; doesn't happen.
            (setq last-command-event ?\[))
-         (let ((pkg-prompt
-                ;; FIXME: This modifies the ans variable in IJulia. Maybe
-                ;; evaluate this in the user-expressions of an execute-request?
-                (jupyter-eval "import Pkg; Pkg.REPLMode.promptf()")))
+         ;; Longer timeout to account for initial Pkg import and compilation.
+         (let* ((jupyter-default-timeout jupyter-long-timeout)
+                (pkg-prompt
+                 ;; FIXME: This modifies the ans variable in IJulia. Maybe
+                 ;; evaluate this in the user-expressions of an execute-request?
+                 (jupyter-eval "import Pkg; Pkg.REPLMode.promptf()")))
            (when pkg-prompt
-             (put-text-property (point) (1+ (point)) 'syntax-table '(3 . ?_))
              (jupyter-julia-update-prompt
               (substring pkg-prompt 1 (1- (length pkg-prompt)))
               (aref ansi-color-names-vector 5))))) ; magenta
