@@ -1329,7 +1329,18 @@ If the region is active, return it. Otherwise return the line."
   (jupyter-line-or-region-context))
 
 (cl-defmethod jupyter-code-context ((_type (eql completion)))
-  (jupyter-region-context (line-beginning-position) (point)))
+  (let ((ppss (syntax-ppss)))
+    (if (zerop (nth 0 ppss))
+        (jupyter-region-context (line-beginning-position) (point))
+      (jupyter-region-context
+       ;; Return a context including all nested parenthesis and the closest
+       ;; contiguous non-whitespace sequence of characters at the top level.
+       (save-excursion
+         (goto-char (car (nth 9 ppss)))
+         (skip-syntax-backward "->")
+         (skip-syntax-backward "^->")
+         (point))
+       (point)))))
 
 ;;;;; Helpers for completion interface
 
