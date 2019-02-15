@@ -383,11 +383,11 @@ the `syntax-table' will be set to that of the REPL buffers."
   (declare (debug (body)))
   `(jupyter-org-when-in-src-block
     (let* ((params (car jupyter-org--src-block-cache))
-           (buffer (org-babel-jupyter-initiate-session
-                    (alist-get :session params) params))
-           (syntax (with-current-buffer buffer (syntax-table)))
            (jupyter-current-client
-            (with-current-buffer buffer jupyter-current-client)))
+            (buffer-local-value 'jupyter-current-client
+                                (org-babel-jupyter-initiate-session
+                                 (alist-get :session params) params)))
+           (syntax (jupyter-kernel-language-syntax-table jupyter-current-client)))
       (with-syntax-table syntax
         ,@body))))
 
