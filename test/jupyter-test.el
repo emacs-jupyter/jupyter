@@ -1063,6 +1063,24 @@ last element being the newest element added to the history."
       (should-not (get-text-property (1- (jupyter-repl-cell-code-end-position))
                                      'rear-nonsticky)))))
 
+(ert-deftest jupyter-repl-syntax-propertize-function ()
+  :tags '(repl)
+  ;; TODO: Test field = `cell-code` path
+  (jupyter-test-with-python-repl client
+    (with-temp-buffer
+      (let ((jupyter-current-client client))
+        (insert "(foo) bar")
+        (jupyter-repl-syntax-propertize-function #'ignore (point-min) (point-max))
+        (jupyter-test-text-has-property 'syntax-table '(3 . ?_) '(1 5))
+        (erase-buffer)
+        (insert "(foo)")
+        (jupyter-repl-syntax-propertize-function #'ignore (point-min) (point-max))
+        (jupyter-test-text-has-property 'syntax-table '(3 . ?_) '(1 5))
+        (erase-buffer)
+        (insert "foo (bar)")
+        (jupyter-repl-syntax-propertize-function #'ignore (point-min) (point-max))
+        (jupyter-test-text-has-property 'syntax-table '(3 . ?_) '(5 9))))))
+
 ;;; `org-mode'
 
 (defvar org-babel-load-languages)

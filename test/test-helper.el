@@ -267,4 +267,15 @@ message contents."
       :iopub_port
       ,(plist-get ports :iopub))))
 
+(defun jupyter-test-text-has-property (prop val &optional positions)
+  "Ensure PROP has VAL for text at POSITIONS.
+It is an error if any text not at POSITIONS has PROP. A nil value
+of POSITIONS means that all text from `point-min' to `point-max'
+should have PROP with VAL."
+  (cl-loop
+   for i from (point-min) to (point-max)
+   if (or (null positions) (memq i positions))
+   do (should (equal (get-text-property i prop) val))
+   else do (should-not (get-text-property i prop))))
+
 ;;; test-helper.el ends here
