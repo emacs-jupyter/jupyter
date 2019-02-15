@@ -10,6 +10,29 @@ git log --pretty=format:"%s" ${PREV_VERSION}...${VERSION}
 and filter down to the most notable changes, summarize each one. Be sure to
 update the =VERSION= variables first.
 
+* Update Version header
+
+Update the =Version= in the header of all source files.
+
+#+BEGIN_SRC elisp :results silent :var version="0.7.1"
+(let ((re "^;; Version: \\(\\([0-9]+\\)\\.\\([0-9]+\\)\\.\\([0-9]+\\)\\)" ))
+  (dolist (file (directory-files default-directory nil ".el$"))
+    (let* ((buf (find-buffer-visiting file))
+           (kill (null buf)))
+      (unless buf
+        (setq buf (find-file-noselect file)))
+      (with-current-buffer buf
+        (save-excursion
+          (save-restriction
+            (widen)
+            (goto-char (point-min))
+            (when (re-search-forward re nil t)
+              (replace-match version nil nil nil 1))
+            (save-buffer)
+            (when kill
+              (kill-buffer))))))))
+#+END_SRC
+
 * v0.7.0
 
 - Remove compatibility with =ob-ipython= by going back to using a =jupyter-=
