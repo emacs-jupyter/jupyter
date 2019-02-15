@@ -53,13 +53,19 @@
      (jupyter-completion-symbol-beginning (1- (point)))
      (point)))
    (t
-    (let ((prefix (cl-call-next-method "\\\\\\|\\.\\|::" 2)))
+    (let ((prefix (cl-call-next-method "\\\\\\|\\.\\|::?" 2)))
       (prog1 prefix
-        (when (and (consp prefix)
-                   (eq (char-before (- (point) (length (car prefix)))) ?\\))
-          ;; Include the \ in the prefix so it gets replaced if a canidate is
-          ;; selected.
-          (setcar prefix (concat "\\" (car prefix)))))))))
+        (when (consp prefix)
+          (let ((beg (- (point) (length (car prefix)))))
+            (cond
+             ;; Include the \ in the prefix so it gets replaced if a canidate is
+             ;; selected.
+             ((eq (char-before beg) ?\\)
+              (setcar prefix (concat "\\" (car prefix))))
+             ;; Also include : to complete symbols when used as dictionary keys
+             ((and (eq (char-before beg) ?:)
+                   (not (eq (char-before (1- beg)) ?:)))
+              (setcar prefix (concat ":" (car prefix))))))))))))
 
 (cl-defmethod jupyter-completion-post-completion (candidate
                                                   &context (jupyter-lang julia))
