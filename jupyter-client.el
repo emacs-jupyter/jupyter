@@ -484,9 +484,10 @@ kernel via CLIENT's ioloop."
 
 (cl-defmethod jupyter-channel-alive-p ((client jupyter-kernel-client) channel)
   (cl-assert (memq channel '(:hb :stdin :shell :iopub)) t)
-  (with-slots (channels) client
+  (with-slots (ioloop channels) client
     (if (not (eq channel :hb))
-        (plist-get (plist-get channels channel) :alive-p)
+        (when (and ioloop (jupyter-ioloop-alive-p ioloop))
+          (plist-get (plist-get channels channel) :alive-p))
       (setq channel (plist-get channels :hb))
       ;; The hb channel is implemented locally in the current process whereas the
       ;; other channels are implemented in subprocesses and the current process
