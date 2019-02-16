@@ -284,15 +284,17 @@ If ARG is a `jupyter-request', reset the buffer if ARG's
     arg))
 
 (defmacro jupyter-with-display-buffer (name reset &rest body)
-  "With a display buffer corresponding to NAME current, run BODY.
-The buffer corresponding to NAME will be obtained by a call to
+  "In a buffer with a name derived from NAME current, evaluate BODY.
+The buffer's name is obtained by a call to
 `jupyter-get-buffer-create'. A display buffer is similar to a
-*Help* buffer but maintains its previous output. Before BODY is
-evaluated `point' is moved to the end of the most recent output.
+*Help* buffer, but maintains its previous output on subsequent
+invocations that use the same NAME. Before BODY is evaluated,
+`point' is moved to the end of the most recent output. Also note,
+BODY is wrapped using `jupyter-with-control-code-handling'.
 
-RESET should be a form or symbol to determine if the output
-buffer should be reset before evaluating BODY. If RESET is nil,
-no reset is ever performed. If RESET evaluates to a
+RESET is a form or symbol that determines if the buffer should be
+erased before evaluating BODY. If RESET is nil, no erasing of the
+buffer is ever performed. If RESET evaluates to a
 `jupyter-request' object, reset the buffer if the previous
 request that generated output in the buffer is not the same
 request. Otherwise if RESET evaluates to any non-nil value, reset
@@ -307,10 +309,10 @@ the output buffer."
              (erase-buffer)
              (if jupyter-display-buffer-marker
                  (set-marker jupyter-display-buffer-marker (point))
-               (setq jupyter-display-buffer-marker (point-marker))))
+               (setq jupyter-display-buffer-marker (point-marker))
+               (set-marker-insertion-type jupyter-display-buffer-marker t)))
            (goto-char jupyter-display-buffer-marker)
-           (jupyter-with-control-code-handling ,@body)
-           (set-marker jupyter-display-buffer-marker (point)))))))
+           (jupyter-with-control-code-handling ,@body))))))
 
 (defun jupyter-display-current-buffer-reuse-window (&optional alist &rest actions)
   "Convenience function to call `display-buffer' on the `current-buffer'.
