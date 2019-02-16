@@ -968,8 +968,8 @@ Methods that extend this generic function should
           (add-hook 'minibuffer-exit-hook
                     'jupyter--teardown-minibuffer nil t))
       (prog1 (read-from-minibuffer
-              "Jupyter Ex: " nil
-              read-expression-map
+              (concat "Eval (" (jupyter-kernel-language client) "): ")
+              nil read-expression-map
               nil 'jupyter--read-expression-history)
         (jupyter-set client 'jupyter-eval-expression-history
                      jupyter--read-expression-history)))))
