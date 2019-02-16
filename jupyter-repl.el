@@ -1160,23 +1160,23 @@ Note, the overriding method should call `cl-call-next-method'."
 
 (defun jupyter-repl-kill-buffer-query-function ()
   "Ask before killing a Jupyter REPL buffer.
-If the REPL buffer is killed, stop the client. If the REPL client
-is connected to a kernel with a kernel manager, kill the kernel.
+If the REPL buffer is killed, stop the client's channels. When
+the client is connected to a managed kernel, ask to also shutdown
+the kernel.
 
-In addition, call the function `jupyter-repl-interaction-mode' in
-all buffers associated with the REPL in order to disable the
-corresponding mode in those buffers. See
+In addition to the above, call the function
+`jupyter-repl-interaction-mode' in all buffers associated with
+the REPL to disable that mode in those buffers. See
 `jupyter-repl-associate-buffer'."
   (when (eq major-mode 'jupyter-repl-mode)
     (if (not (jupyter-channels-running-p jupyter-current-client)) t
-      (when (y-or-n-p
-             (format "Jupyter REPL (%s) still connected. Kill it? "
-                     (buffer-name (current-buffer))))
-        ;; TODO: Handle case when multiple clients are connected, i.e. do we
-        ;; want to also delete a kernel if this is the last client connected.
-        ;; See `eieio-instance-tracker'.
+      (when (y-or-n-p (format "Jupyter REPL (%s) still connected. Kill it? "
+                              (buffer-name (current-buffer))))
         (prog1 t
           (jupyter-stop-channels jupyter-current-client)
+          (when (and (jupyter-repl-client-has-manager-p)
+                     (yes-or-no-p (format "Shutdown the client's kernel? ")))
+            (jupyter-shutdown-kernel (oref jupyter-current-client manager)))
           (cl-loop
            with client = jupyter-current-client
            for buffer in (buffer-list)
