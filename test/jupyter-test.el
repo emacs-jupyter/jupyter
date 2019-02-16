@@ -260,6 +260,40 @@
           (jupyter-insert :text/html "<p>hello</p>")
           (should html-parser-called))))))
 
+(ert-deftest jupyter-with-display-buffer ()
+  :tags '(buffers)
+  (jupyter-with-display-buffer "foo" t)
+  (jupyter-with-display-buffer "foo" nil
+    (should (= jupyter-display-buffer-marker (point-min)))
+    (insert "12345")
+    (should (= jupyter-display-buffer-marker (point-max)))
+    (goto-char (point-min)))
+  (jupyter-with-display-buffer "foo" nil
+    (should (= (point) (point-max)))
+    (should (= jupyter-display-buffer-marker (point-max)))
+    (insert "foobar")
+    (should (= jupyter-display-buffer-marker (point-max)))
+    (should (equal (buffer-string) "12345foobar")))
+  (jupyter-with-display-buffer "foo" t
+    (should (equal (buffer-string) ""))
+    (should (= (point-min) (point-max)))
+    (should (= jupyter-display-buffer-marker (point-min)))))
+
+(ert-deftest jupyter-with-contol-code-handling ()
+  :tags '(buffers)
+  (jupyter-with-display-buffer "foo" t)
+  (jupyter-with-display-buffer "foo" nil
+    (insert "foo\r"))
+  (jupyter-with-display-buffer "foo" nil
+    (should (equal (buffer-string) "foo\r"))
+    (jupyter-test-text-has-property 'invisible t '(4))
+    (insert "foo\r"))
+  (jupyter-with-display-buffer "foo" nil
+    (should (equal (buffer-string) "foo\r"))
+    (insert "bar\r\nbaz\rfoo"))
+  (jupyter-with-display-buffer "foo" nil
+    (should (equal (buffer-string) "bar\nfoo"))))
+
 ;;; Messages
 
 (ert-deftest  jupyter-message-identities ()
