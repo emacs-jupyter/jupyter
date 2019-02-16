@@ -357,13 +357,18 @@ image."
            :matchers ,(plist-get org-format-latex-options :matchers))))
     (jupyter-with-insertion-bounds
         beg end (insert tex)
+      ;; FIXME: Best way to cleanup these files? Just delete them by reading
+      ;; the image data and using that for the image instead?
       (org-format-latex
-       org-preview-latex-image-directory
-       beg end org-babel-jupyter-resource-directory
-       'overlays "Creating LaTeX image...%s"
-       'forbuffer
+       "ltximg" beg end org-babel-jupyter-resource-directory
+       'overlays nil 'forbuffer
        ;; Use the default method for creating image files
        org-preview-latex-default-process)
+      (dolist (o (overlays-in beg end))
+        (when (eq (overlay-get o 'org-overlay-type)
+                  'org-latex-overlay)
+          (overlay-put o 'modification-hooks nil)))
+      (overlay-recenter end)
       (goto-char end))))
 
 ;;; Images
