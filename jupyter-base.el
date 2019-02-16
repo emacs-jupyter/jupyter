@@ -304,13 +304,13 @@ the output buffer."
     `(let ((,buffer (jupyter-get-buffer-create ,name)))
        (setq other-window-scroll-buffer ,buffer)
        (with-current-buffer ,buffer
+         (unless jupyter-display-buffer-marker
+           (setq jupyter-display-buffer-marker (point-max-marker))
+           (set-marker-insertion-type jupyter-display-buffer-marker t))
          (let ((inhibit-read-only t))
            (when (jupyter--reset-display-buffer-p ,reset)
              (erase-buffer)
-             (if jupyter-display-buffer-marker
-                 (set-marker jupyter-display-buffer-marker (point))
-               (setq jupyter-display-buffer-marker (point-marker))
-               (set-marker-insertion-type jupyter-display-buffer-marker t)))
+             (set-marker jupyter-display-buffer-marker (point)))
            (goto-char jupyter-display-buffer-marker)
            (jupyter-with-control-code-handling ,@body))))))
 
