@@ -42,7 +42,7 @@
 ;;; Code:
 
 (require 'jupyter-base)
-(eval-and-compile (require 'jupyter-ioloop))
+(require 'jupyter-ioloop)
 (require 'jupyter-channels)
 
 ;;; Variables used in the ioloop
