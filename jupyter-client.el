@@ -980,13 +980,19 @@ Methods that extend this generic function should
                      jupyter--read-expression-history)))))
 
 (defun jupyter--display-eval-result (msg)
-  (jupyter-with-message-data msg ((res text/plain))
-    (if (null res)
-        (jupyter-with-display-buffer "result" 'reset
-          (jupyter-with-message-content msg (data metadata)
-            (jupyter-insert data metadata))
-          (goto-char (point-min))
-          (jupyter-display-current-buffer-reuse-window))
+  (jupyter-with-message-data msg
+      ((res text/plain)
+       ;; Prefer to display the markdown representation if available. The
+       ;; IJulia kernel will return both plain text and markdown.
+       (md text/markdown))
+    (cond
+     ((or md (null res))
+      (jupyter-with-display-buffer "result" 'reset
+        (jupyter-with-message-content msg (data metadata)
+          (jupyter-insert data metadata))
+        (goto-char (point-min))
+        (jupyter-display-current-buffer-reuse-window)))
+     (res
       (setq res (ansi-color-apply res))
       (if (cl-loop
            with nlines = 0
@@ -996,7 +1002,7 @@ Methods that extend this generic function should
             (insert res)
             (goto-char (point-min))
             (jupyter-display-current-buffer-reuse-window))
-        (funcall jupyter-eval-short-result-display-function (format "%s" res))))))
+        (funcall jupyter-eval-short-result-display-function (format "%s" res)))))))
 
 (defun jupyter-eval (code &optional mime)
   "Send an execute request for CODE, wait for the execute result.
