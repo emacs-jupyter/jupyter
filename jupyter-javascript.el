@@ -5,7 +5,6 @@
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 23 Oct 2018
 ;; Version: 0.7.1
-;; X-URL: https://github.com/nathan/jupyter-javascript
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
