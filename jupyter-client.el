@@ -384,7 +384,11 @@ If it does not contain a valid value, raise an error."
                                     message
                                     &optional _msg-id)
   (when jupyter--debug
-    (message "SENDING: %s %s" type message)))
+    ;; The logging of messages is deferred until the next command loop for
+    ;; security reasons. When sending :input-reply messages that read
+    ;; passwords, clearing the password string using `clear-string' happens
+    ;; *after* the call to `jupyter-send'.
+    (run-at-time 0 nil (lambda () (message "SENDING: %s %s" type message)))))
 
 (cl-defmethod jupyter-send ((client jupyter-kernel-client)
                             channel
@@ -879,17 +883,18 @@ will be transformed to
                                              password)
   "Handle an input request from CLIENT's kernel.
 PROMPT is the prompt the kernel would like to show the user. If
-PASSWORD is non-nil, then `read-passwd' is used to get input from
-the user. Otherwise `read-from-minibuffer' is used."
+PASSWORD is t, then `read-passwd' is used to get input from the
+user. Otherwise `read-from-minibuffer' is used."
   (declare (indent 1))
-  (let* ((value nil)
-         (msg (jupyter-message-input-reply
-               :value (condition-case nil
-                          (if (eq password t) (read-passwd prompt)
-                            (setq value (read-from-minibuffer prompt)))
-                        (quit "")))))
+  (let* ((value (condition-case nil
+                    (if (eq password t) (read-passwd prompt)
+                      (read-from-minibuffer prompt))
+                  (quit "")))
+         (msg (jupyter-message-input-reply :value value)))
     (jupyter-send client :stdin :input-reply msg)
-    (or value "")))
+    (if (eq password t)
+        (progn (clear-string value) "")
+      value)))
 
 (defalias 'jupyter-handle-input-reply 'jupyter-handle-input-request)
 
