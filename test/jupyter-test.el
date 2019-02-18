@@ -1105,15 +1105,15 @@ last element being the newest element added to the history."
       (let ((jupyter-current-client client))
         (insert "(foo) bar")
         (jupyter-repl-syntax-propertize-function #'ignore (point-min) (point-max))
-        (jupyter-test-text-has-property 'syntax-table '(3 . ?_) '(1 5))
+        (jupyter-test-text-has-property 'syntax-table '(1 . ?.) '(1 5))
         (erase-buffer)
         (insert "(foo)")
         (jupyter-repl-syntax-propertize-function #'ignore (point-min) (point-max))
-        (jupyter-test-text-has-property 'syntax-table '(3 . ?_) '(1 5))
+        (jupyter-test-text-has-property 'syntax-table '(1 . ?.) '(1 5))
         (erase-buffer)
         (insert "foo (bar)")
         (jupyter-repl-syntax-propertize-function #'ignore (point-min) (point-max))
-        (jupyter-test-text-has-property 'syntax-table '(3 . ?_) '(5 9))))))
+        (jupyter-test-text-has-property 'syntax-table '(1 . ?.) '(5 9))))))
 
 ;;; `org-mode'
 
