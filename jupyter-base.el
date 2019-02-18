@@ -482,10 +482,10 @@ Note that `zmq-make-tunnel' is used to create the tunnels."
   (let ((conn-info (jupyter-read-plist conn-file))
         (sock (zmq-socket (zmq-current-context) zmq-REP)))
     (when (tramp-tramp-file-p conn-file)
-      (let* ((vec (tramp-dissect-file-name conn-file))
-             (user (tramp-file-name-user vec)))
-        (setq server (if user (concat user "@" (tramp-file-name-host vec))
-                       (tramp-file-name-host vec)))))
+      (pcase-let (((cl-struct tramp-file-name user host)
+                   (tramp-dissect-file-name conn-file)))
+        (setq server (if user (concat user "@" host)
+                       host))))
     (unwind-protect
         (cl-loop
          with remoteip = (plist-get conn-info :ip)
