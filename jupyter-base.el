@@ -474,7 +474,7 @@ host that the kernel connection in CONN-FILE is located. Return a
 copy of the connection plist in CONN-FILE, but with the ports
 replaced by the local ports used for the forwarding.
 
-If CONN-FILE is a `tramp' file name, the SERVER arguments will be
+If CONN-FILE is a `tramp' file name, the SERVER argument will be
 ignored and the host will be extracted from the information
 contained in the file name.
 

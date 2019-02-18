@@ -438,7 +438,7 @@ kernel via CLIENT's ioloop."
 ;;; HB channel methods
 
 (cl-defmethod jupyter-hb-pause ((client jupyter-kernel-client))
-  "Pause CLIENT's heartbeeat channel."
+  "Pause CLIENT's heartbeat channel."
   (jupyter-hb-pause (plist-get (oref client channels) :hb)))
 
 (cl-defmethod jupyter-hb-unpause ((client jupyter-kernel-client))
