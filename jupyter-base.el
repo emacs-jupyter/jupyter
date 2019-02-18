@@ -39,7 +39,6 @@
 (require 'jupyter-kernelspec)
 
 (declare-function tramp-dissect-file-name "tramp" (name &optional nodefault))
-(declare-function tramp-tramp-file-p "tramp" (name))
 (declare-function tramp-file-name-user "tramp")
 (declare-function tramp-file-name-host "tramp")
 (declare-function jupyter-message-content "jupyter-messages" (msg))
@@ -467,6 +466,8 @@ following fields:
 
 ;;; Connecting to a kernel's channels
 
+(eval-when-compile (require 'tramp))
+
 (defun jupyter-tunnel-connection (conn-file &optional server)
   "Forward local ports to the remote ports in CONN-FILE.
 CONN-FILE is the path to a Jupyter connection file, SERVER is the
@@ -481,7 +482,8 @@ contained in the file name.
 Note that `zmq-make-tunnel' is used to create the tunnels."
   (let ((conn-info (jupyter-read-plist conn-file))
         (sock (zmq-socket (zmq-current-context) zmq-REP)))
-    (when (tramp-tramp-file-p conn-file)
+    (when (and (file-remote-p conn-file)
+               (functionp 'tramp-dissect-file-name))
       (pcase-let (((cl-struct tramp-file-name user host)
                    (tramp-dissect-file-name conn-file)))
         (setq server (if user (concat user "@" host)
