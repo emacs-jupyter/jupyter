@@ -1536,62 +1536,56 @@ When the kernel restarts, insert a new prompt."
 VERBOSE has the same meaning as in
 `font-lock-fontify-region-function'."
   (let ((start beg) next)
-    (cl-destructuring-bind (_ table)
-        (jupyter-kernel-language-mode-properties jupyter-current-client)
-      (with-syntax-table table
-        (while (/= start end)
-          (cond
-           ((eq (get-text-property start 'field) 'cell-code)
-            (setq next (min end (field-end start)))
-            ;; It is OK that we do not update BEG and END using the return
-            ;; value of this function as long as the default value of
-            ;; `font-lock-extend-region-functions' is used since an input cell
-            ;; always starts at the beginning of a line and ends at the end of
-            ;; a line and does not use the font-lock-multiline property
-            ;; (2018-12-20).
-            (funcall fontify-fun start next verbose))
-           (t
-            (setq next (or (text-property-any start end 'field 'cell-code) end))
-            ;; Unfontify the region mainly to remove the font-lock-multiline
-            ;; property in the output, e.g. added by markdown. These regions
-            ;; will get highlighted syntactically in some scenarios.
-            (font-lock-unfontify-region start next)))
-          (setq start next)))))
+    (while (/= start end)
+      (cond
+       ((eq (get-text-property start 'field) 'cell-code)
+        (setq next (min end (field-end start)))
+        ;; It is OK that we do not update BEG and END using the return
+        ;; value of this function as long as the default value of
+        ;; `font-lock-extend-region-functions' is used since an input cell
+        ;; always starts at the beginning of a line and ends at the end of
+        ;; a line and does not use the font-lock-multiline property
+        ;; (2018-12-20).
+        (funcall fontify-fun start next verbose))
+       (t
+        (setq next (or (text-property-any start end 'field 'cell-code) end))
+        ;; Unfontify the region mainly to remove the font-lock-multiline
+        ;; property in the output, e.g. added by markdown. These regions
+        ;; will get highlighted syntactically in some scenarios.
+        (font-lock-unfontify-region start next)))
+      (setq start next)))
   `(jit-lock-bounds ,beg . ,end))
 
 (defun jupyter-repl-syntax-propertize-function (propertize-fun beg end)
   "Use PROPERTIZE-FUN to syntax propertize text between BEG and END."
   (let ((start beg) next)
-    (cl-destructuring-bind (_ table)
-        (jupyter-kernel-language-mode-properties jupyter-current-client)
-      (with-syntax-table table
-        (while (/= start end)
-          (cond
-           ((eq (get-text-property start 'field) 'cell-code)
-            (setq next (min end (field-end start)))
-            (funcall propertize-fun beg end)
-            ;; Handle Julia package prompt so `syntax-ppss' works properly.
-            ;; FIXME: Move this to Julia specific setup by specifying a new
-            ;; method that can be extended using the jupyter-lang specializer?
-            (when (and (= start (jupyter-repl-cell-code-beginning-position))
-                       (eq ?\] (char-after start)))
-              (put-text-property start (1+ start) 'syntax-table '(1 . ?.))))
-           (t
-            (setq next (or (text-property-any start end 'field 'cell-code) end))
-            ;; Treat parenthesis and string characters as punctuation when
-            ;; parsing the syntax of the output. Although we don't fontify
-            ;; output regions, `syntax-ppss' still looks at the whole contents
-            ;; of the buffer. If there are unmatched parenthesis or string
-            ;; delimiters in the output, it will interfere with `syntax-ppss'.
-            ;; Note, this requires `parse-sexp-lookup-properties' to be non-nil
-            ;; so that `syntax-ppss' will look at the `syntax-table' property.
-            (goto-char start)
-            (skip-syntax-forward "^()\"" next)
-            (while (/= (point) next)
-              (put-text-property (point) (1+ (point)) 'syntax-table '(1 . ?.))
-              (forward-char)
-              (skip-syntax-forward "^()\"" next))))
-          (setq start next))))))
+    (while (/= start end)
+      (cond
+       ((eq (get-text-property start 'field) 'cell-code)
+        (setq next (min end (field-end start)))
+        (funcall propertize-fun beg end)
+        ;; Handle Julia package prompt so `syntax-ppss' works properly.
+        ;; FIXME: Move this to Julia specific setup by specifying a new
+        ;; method that can be extended using the jupyter-lang specializer?
+        (when (and (= start (jupyter-repl-cell-code-beginning-position))
+                   (eq ?\] (char-after start)))
+          (put-text-property start (1+ start) 'syntax-table '(1 . ?.))))
+       (t
+        (setq next (or (text-property-any start end 'field 'cell-code) end))
+        ;; Treat parenthesis and string characters as punctuation when
+        ;; parsing the syntax of the output. Although we don't fontify
+        ;; output regions, `syntax-ppss' still looks at the whole contents
+        ;; of the buffer. If there are unmatched parenthesis or string
+        ;; delimiters in the output, it will interfere with `syntax-ppss'.
+        ;; Note, this requires `parse-sexp-lookup-properties' to be non-nil
+        ;; so that `syntax-ppss' will look at the `syntax-table' property.
+        (goto-char start)
+        (skip-syntax-forward "^()\"" next)
+        (while (/= (point) next)
+          (put-text-property (point) (1+ (point)) 'syntax-table '(1 . ?.))
+          (forward-char)
+          (skip-syntax-forward "^()\"" next))))
+      (setq start next))))
 
 (defun jupyter-repl-initialize-fontification ()
   "Initialize fontification for the current REPL buffer."
