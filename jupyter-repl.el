@@ -1024,26 +1024,29 @@ execute the current cell."
           (when (jupyter-kernel-busy-p jupyter-current-client)
             (error "Kernel busy"))
           (jupyter-repl-sync-execution-state)
-          (if force (jupyter-send-execute-request jupyter-current-client)
-            (if (not jupyter-repl-use-builtin-is-complete)
-                (let ((res (jupyter-wait-until-received :is-complete-reply
-                             (let ((jupyter-inhibit-handlers '(:status)))
-                               (jupyter-send-is-complete-request
-                                   jupyter-current-client
-                                 :code (jupyter-repl-cell-code)))
-                             jupyter-repl-maximum-is-complete-timeout)))
-                  (unless res
-                    (message "Kernel did not respond to is-complete-request, using built-in is-complete.
+          (cond
+           (force (jupyter-send-execute-request jupyter-current-client))
+           (jupyter-repl-use-builtin-is-complete
+            (goto-char (point-max))
+            (let ((complete-p (equal (buffer-substring-no-properties
+                                      (line-beginning-position) (point))
+                                     "")))
+              (jupyter-handle-is-complete-reply
+                  jupyter-current-client
+                nil (if complete-p "complete" "incomplete") "")))
+           (t
+            (let ((res (jupyter-wait-until-received :is-complete-reply
+                         (let ((jupyter-inhibit-handlers '(:status)))
+                           (jupyter-send-is-complete-request
+                               jupyter-current-client
+                             :code (jupyter-repl-cell-code)))
+                         jupyter-repl-maximum-is-complete-timeout)))
+              (unless res
+                (message "\
+Kernel did not respond to is-complete-request, using built-in is-complete.
 Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
-                    (setq jupyter-repl-use-builtin-is-complete t)
-                    (jupyter-repl-ret force)))
-              (goto-char (point-max))
-              (let ((complete-p (equal (buffer-substring-no-properties
-                                        (line-beginning-position) (point))
-                                       "")))
-                (jupyter-handle-is-complete-reply
-                    jupyter-current-client
-                  nil (if complete-p "complete" "incomplete") ""))))))
+                (setq jupyter-repl-use-builtin-is-complete t)
+                (jupyter-repl-ret force)))))))
     (beginning-of-buffer
      ;; No cells in the current buffer, just insert one
      (jupyter-repl-insert-prompt 'in))))
