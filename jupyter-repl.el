@@ -1572,22 +1572,22 @@ VERBOSE has the same meaning as in
             ;; method that can be extended using the jupyter-lang specializer?
             (when (and (= start (jupyter-repl-cell-code-beginning-position))
                        (eq ?\] (char-after start)))
-              (put-text-property start (1+ start) 'syntax-table '(3 . ?_))))
+              (put-text-property start (1+ start) 'syntax-table '(1 . ?.))))
            (t
             (setq next (or (text-property-any start end 'field 'cell-code) end))
-            ;; Treat parenthesis as symbols when parsing the syntax of the
-            ;; output. Although we don't fontify output regions, `syntax-ppss'
-            ;; still looks at the whole contents of the buffer. If there are
-            ;; unmatched parenthesis in the output, it will interfere with
-            ;; `syntax-ppss'. Note, this requires
-            ;; `parse-sexp-lookup-properties' to be non-nil so that
-            ;; `syntax-ppss' will look at the `syntax-table' property.
+            ;; Treat parenthesis and string characters as punctuation when
+            ;; parsing the syntax of the output. Although we don't fontify
+            ;; output regions, `syntax-ppss' still looks at the whole contents
+            ;; of the buffer. If there are unmatched parenthesis or string
+            ;; delimiters in the output, it will interfere with `syntax-ppss'.
+            ;; Note, this requires `parse-sexp-lookup-properties' to be non-nil
+            ;; so that `syntax-ppss' will look at the `syntax-table' property.
             (goto-char start)
-            (skip-syntax-forward "^()" next)
+            (skip-syntax-forward "^()\"" next)
             (while (/= (point) next)
-              (put-text-property (point) (1+ (point)) 'syntax-table '(3 . ?_))
+              (put-text-property (point) (1+ (point)) 'syntax-table '(1 . ?.))
               (forward-char)
-              (skip-syntax-forward "^()" next))))
+              (skip-syntax-forward "^()\"" next))))
           (setq start next))))))
 
 (defun jupyter-repl-initialize-fontification ()
