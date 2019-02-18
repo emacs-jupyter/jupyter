@@ -1045,27 +1045,28 @@ insertion into the buffer."
 
 ;;;;; Append stream result
 
-(defun jupyter-org--append-stream-result (result keep-newline)
-  (if (eq (char-after (line-beginning-position)) ?:)
-      (jupyter-org--append-to-fixed-width result keep-newline)
-    ;; Append at the end of the current example-block. In this case
-    ;; POS is the end of the last line of contents.
-    ;;
-    ;;     ...
-    ;;     foo|
-    ;;     #+END_EXAMPLE
-    ;;
-    ;; Delete the newline that will be re-inserted by the call to
-    ;; `org-element-normalize-string'.
-    (delete-char 1)
-    (insert (concat (when keep-newline "\n")
-                    (org-element-normalize-string result)))))
+(defun jupyter-org--append-stream-result (result)
+  (let ((keep-newline (get-text-property (point) 'jupyter-stream-newline)))
+    (if (eq (char-after (line-beginning-position)) ?:)
+        (jupyter-org--append-to-fixed-width result keep-newline)
+      ;; Append at the end of the current example-block. In this case
+      ;; POS is the end of the last line of contents.
+      ;;
+      ;;     ...
+      ;;     foo|
+      ;;     #+END_EXAMPLE
+      ;;
+      ;; Delete the newline that will be re-inserted by the call to
+      ;; `org-element-normalize-string'.
+      (delete-char 1)
+      (insert (concat (when keep-newline "\n")
+                      (org-element-normalize-string result))))))
 
 ;;;; Value results
 
 ;;;;; Append value result
 
-(defun jupyter-org--append-value-result (context result)
+(defun jupyter-org--insert-result (context result)
   (insert (org-element-interpret-data
            (jupyter-org--wrap-result-maybe
             context (if (jupyter-org--stream-result-p result)
@@ -1079,15 +1080,11 @@ insertion into the buffer."
 
 ;;;; Add/append results
 
-(defun jupyter-org--delete-element-maybe (element)
+(defun jupyter-org--delete-unwrapped-result (element)
   "Delete ELEMENT from the buffer.
 If ELEMENT represents a previous result it, along with the result
 about to be inserted, will be wrapped in a drawer."
   (cl-case (org-element-type element)
-    ;; Don't delete the current result if its a drawer or if there
-    ;; aren't any results yet, in this case the context is just the
-    ;; #+RESULTS: keyword.
-    ((keyword drawer))
     ;; The `org-element-contents' of a table is nil which interferes with how
     ;; `org-element-table-interpreter' works when calling
     ;; `org-element-interpret-data' so set the contents and delete ELEMENT from the
@@ -1117,14 +1114,21 @@ about to be inserted, will be wrapped in a drawer."
         (cond
          (stream-append-pos
           (goto-char stream-append-pos)
-          (let ((keep-newline (get-text-property
-                               (point) 'jupyter-stream-newline)))
-            (jupyter-org--append-stream-result result keep-newline)))
+          (jupyter-org--append-stream-result result))
          (t
-          (if (eq (org-element-type context) 'drawer)
-              (goto-char (jupyter-org-element-contents-end context))
-            (jupyter-org--delete-element-maybe context))
-          (jupyter-org--append-value-result context result)
+          (cl-case (org-element-type context)
+            ;; Go to the end of the drawer to insert the new result.
+            (drawer
+             (goto-char (jupyter-org-element-contents-end context)))
+            ;; Insert the first result. In this case `point' is at the first
+            ;; line after the #+RESULTS keyword.
+            (keyword nil)
+            ;; Any other context is a previous result. Remove it from the
+            ;; buffer since it, along with the new result will be wrapped in a
+            ;; drawer and re-inserted into the buffer.
+            (t
+             (jupyter-org--delete-unwrapped-result context)))
+          (jupyter-org--insert-result context result)
           (when jupyter-org-toggle-latex
             (when (memq (org-element-type result)
                         '(latex-fragment latex-environment))
