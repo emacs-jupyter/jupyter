@@ -144,9 +144,7 @@ of ARGS are the arguments of the command."
            ;; The first entry takes precedence when duplicated variables
            ;; are found in `process-environment'
            (cl-loop
-            for e on env by #'cddr
-            for k = (car e)
-            for v = (cadr e)
+            for (k v) on env by #'cddr
             collect (format "%s=%s" (cl-subseq (symbol-name k) 1) v))
            process-environment))
          (proc (apply #'start-process
