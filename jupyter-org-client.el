@@ -32,9 +32,7 @@
 (require 'ob)
 (require 'org-element)
 
-(declare-function org-at-drawer-p "org")
 (declare-function org-element-context "org-element" (&optional element))
-(declare-function org-in-regexp "org" (regexp &optional nlines visually))
 (declare-function org-in-src-block-p "org" (&optional inside))
 (declare-function org-babel-python-table-or-string "ob-python" (results))
 (declare-function org-babel-jupyter-initiate-session "ob-jupyter" (&optional session params))
