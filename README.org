@@ -352,6 +352,21 @@ Since it is possible to determine how a result should be represented in
 Currently this is only the =:file= argument for image results and =:results
 raw= for inserting raw latex fragments sent by the kernel.
 
+*** Changing the mime-type priority with :display
+
+The priority of mimetypes used to display results can be overwritten using the
+=:display= option. If instead of displaying HTML results we'd wish to display
+plain text, the argument =:display text/plain text/html= would prioritize plain
+text results over html ones. The following example displays plain text instead
+of HTML:
+#+BEGIN_SRC org
+,#+BEGIN_SRC jupyter-python :session py :display plain
+import pandas as pd
+data = [[1, 2], [3, 4]]
+pd.DataFrame(data, columns=["Foo", "Bar"])
+,#+END_SRC
+#+END_SRC
+
 *** Image output without the =:file= header argument
 
 For images sent by the kernel, if no =:file= parameter is provided to the code
