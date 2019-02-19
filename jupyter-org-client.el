@@ -1217,17 +1217,16 @@ example-block elements."
   "Return the result string in org syntax for the results of REQ.
 Meant to be used as the return value of
 `org-babel-execute:jupyter'."
-  (let ((results (jupyter-org--coalesce-stream-results
-                  (nreverse (jupyter-org-request-results req)))))
-    (when results
-      (let* ((params (jupyter-org-request-block-params req))
-             (result-params (alist-get :result-params params)))
-        (org-element-interpret-data
-         (if (or (and (= (length results) 1)
-                      (jupyter-org-babel-result-p (car results)))
-                 (member "raw" result-params))
-             (car results)
-           (apply #'jupyter-org-results-drawer results)))))))
+  (when-let* ((results (jupyter-org--coalesce-stream-results
+                        (nreverse (jupyter-org-request-results req))))
+              (params (jupyter-org-request-block-params req))
+              (result-params (alist-get :result-params params)))
+    (org-element-interpret-data
+     (if (or (and (= (length results) 1)
+                  (jupyter-org-babel-result-p (car results)))
+             (member "raw" result-params))
+         (car results)
+       (apply #'jupyter-org-results-drawer results)))))
 
 (provide 'jupyter-org-client)
 
