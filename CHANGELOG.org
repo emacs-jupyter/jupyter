@@ -16,7 +16,8 @@ Update the =Version= in the header of all source files.
 
 #+BEGIN_SRC elisp :results silent :var version="0.7.1"
 (let ((re "^;; Version: \\(\\([0-9]+\\)\\.\\([0-9]+\\)\\.\\([0-9]+\\)\\)" ))
-  (dolist (file (directory-files default-directory nil ".el$"))
+  (dolist (file (append (directory-files default-directory nil ".el$")
+                        (directory-files (expand-file-name "test" default-directory) t ".el$")))
     (let* ((buf (find-buffer-visiting file))
            (kill (null buf)))
       (unless buf
