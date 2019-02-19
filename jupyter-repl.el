@@ -1563,7 +1563,7 @@ VERBOSE has the same meaning as in
       (cond
        ((eq (get-text-property start 'field) 'cell-code)
         (setq next (min end (field-end start)))
-        (funcall propertize-fun beg end)
+        (funcall propertize-fun start next)
         ;; Handle Julia package prompt so `syntax-ppss' works properly.
         ;; FIXME: Move this to Julia specific setup by specifying a new
         ;; method that can be extended using the jupyter-lang specializer?
