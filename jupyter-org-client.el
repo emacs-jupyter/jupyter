@@ -69,6 +69,7 @@ source code block. Set by `org-babel-execute:jupyter'.")))
                (:constructor jupyter-org-request))
   result-type
   block-params
+  file
   results
   silent-p
   id-cleared-p
@@ -97,6 +98,7 @@ source code block. Set by `org-babel-execute:jupyter'.")))
                                       '(inline-babel-call inline-src-block))
                                 t))
          :result-type (alist-get :result-type block-params)
+         :file (alist-get :file block-params)
          :block-params block-params
          :async (equal (alist-get :async block-params) "yes")
          :silent-p (car (or (member "none" result-params)
@@ -781,6 +783,8 @@ which the above call returns a non-nil value. PARAMS is the REQ's
 data and metadata of the current MIME type."
   (cl-assert plist json-plist)
   (let ((params (jupyter-org-request-block-params req)))
+    (when (jupyter-org-request-file req)
+      (push (cons :file (jupyter-org-request-file req)) params))
     (cl-destructuring-bind (data metadata)
         (jupyter-normalize-data plist metadata)
       (or (jupyter-loop-over-mime
