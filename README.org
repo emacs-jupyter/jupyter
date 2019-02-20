@@ -352,7 +352,7 @@ Since it is possible to determine how a result should be represented in
 Currently this is only the =:file= argument for image results and =:results
 raw= for inserting raw latex fragments sent by the kernel.
 
-*** Changing the mime-type priority with :display
+*** Changing the mime-type priority with the =:display= argument
 
 The priority of mimetypes used to display results can be overwritten using the
 =:display= option. If instead of displaying HTML results we'd wish to display
