@@ -354,9 +354,7 @@ results instead of an equality match."
 (defun jupyter-org-test-src-block-1 (code test-result &optional regexp args)
   (insert (jupyter-org-test-make-block code args))
   (let* ((info (org-babel-get-src-block-info))
-         (end (point-marker))
-         ;; Don't indent example-block results
-         (org-edit-src-content-indentation 0))
+         (end (point-marker)))
     (set-marker-insertion-type end t)
     (save-window-excursion
       (org-babel-execute-src-block nil info))

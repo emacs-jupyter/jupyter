@@ -1393,120 +1393,139 @@ file:foo
 
 (ert-deftest jupyter-org-coalesce-stream-results ()
   :tags '(org)
-  (ert-info ("Synchronous")
-    (jupyter-org-test-src-block
-     "\
+  (let ((org-edit-src-content-indentation 0))
+    (ert-info ("Synchronous")
+      (jupyter-org-test-src-block
+       "\
 print(\"foo\")
 print(\"foo\", flush=True)
 print(\"foo\")"
-     "\
+       "\
 : foo
 : foo
 : foo"))
-  (ert-info ("Asynchronous")
-    (ert-info ("Newline after first stream message")
-      (jupyter-org-test-src-block
-       "\
-print(\"foo\")
-print(\"foo\", flush=True)
-print(\"foo\")"
-       "\
-: foo
-: foo
-: foo"
-       :async "yes")
-      (jupyter-org-test-src-block
-       "\
-print(\"foo\", flush=True)
-print(\"foo\", end=\"\", flush=True)
-print(\"foo\")"
-       "\
-: foo
-: foofoo")
-      :async "yes")
-    (ert-info ("No newline after first stream message")
-      (jupyter-org-test-src-block
-       "\
-print(\"foo\")
-print(\"foo\", end=\"\", flush=True)
-print(\"bar\")"
-       "\
-: foo
-: foobar"
-       :async "yes"))
-    (ert-info ("Multiple newlines in appended stream message")
+    (ert-info ("Asynchronous")
       (ert-info ("Newline after first stream message")
         (jupyter-org-test-src-block
          "\
 print(\"foo\")
 print(\"foo\", flush=True)
-print(\"bar\\nqux\")"
+print(\"foo\")"
          "\
 : foo
 : foo
-: bar
-: qux"
-         :async "yes"))
+: foo"
+         :async "yes")
+        (jupyter-org-test-src-block
+         "\
+print(\"foo\", flush=True)
+print(\"foo\", end=\"\", flush=True)
+print(\"foo\")"
+         "\
+: foo
+: foofoo")
+        :async "yes")
       (ert-info ("No newline after first stream message")
         (jupyter-org-test-src-block
          "\
 print(\"foo\")
 print(\"foo\", end=\"\", flush=True)
-print(\"bar\\nqux\")"
+print(\"bar\")"
          "\
+: foo
+: foobar"
+         :async "yes"))
+      (ert-info ("Multiple newlines in appended stream message")
+        (ert-info ("Newline after first stream message")
+          (jupyter-org-test-src-block
+           "\
+print(\"foo\")
+print(\"foo\", flush=True)
+print(\"bar\\nqux\")"
+           "\
+: foo
+: foo
+: bar
+: qux"
+           :async "yes"))
+        (ert-info ("No newline after first stream message")
+          (jupyter-org-test-src-block
+           "\
+print(\"foo\")
+print(\"foo\", end=\"\", flush=True)
+print(\"bar\\nqux\")"
+           "\
 : foo
 : foobar
 : qux"
-         :async "yes")))
-    (ert-info ("fixed-width to example-block promotion")
-      (let ((org-babel-min-lines-for-block-output 2))
-        (jupyter-org-test-src-block "print(\"z\")" ": z")
-        (jupyter-org-test-src-block
-         "\
-print(\"z\", flush=True)
-print(\"z\")"
-         "\
-#+BEGIN_EXAMPLE
-z
-z
-#+END_EXAMPLE"
-         :async "yes")
-        (ert-info ("Appending after block promotion")
+           :async "yes")))
+      (ert-info ("fixed-width to example-block promotion")
+        (let ((org-babel-min-lines-for-block-output 2))
+          (jupyter-org-test-src-block "print(\"z\")" ": z")
           (jupyter-org-test-src-block
            "\
-print(\"z\", flush=True)
 print(\"z\", flush=True)
 print(\"z\")"
            "\
 #+BEGIN_EXAMPLE
 z
 z
+#+END_EXAMPLE"
+           :async "yes")
+          (ert-info ("Appending after block promotion")
+            (jupyter-org-test-src-block
+             "\
+print(\"z\", flush=True)
+print(\"z\", flush=True)
+print(\"z\")"
+             "\
+#+BEGIN_EXAMPLE
+z
+z
 z
 #+END_EXAMPLE"
-           :async "yes"))
-        (ert-info ("Append to block with newline after first stream message")
-          (jupyter-org-test-src-block
-           "\
+             :async "yes"))
+          (ert-info ("Append to block with newline after first stream message")
+            (jupyter-org-test-src-block
+             "\
 print(\"z\\nz\", flush=True)
 print(\"z\")"
-           "\
+             "\
 #+BEGIN_EXAMPLE
 z
 z
 z
 #+END_EXAMPLE"
-           :async "yes"))
-        (ert-info ("Append to block without newline after first stream message")
-          (jupyter-org-test-src-block
-           "\
+             :async "yes"))
+          (ert-info ("Append to block without newline after first stream message")
+            (jupyter-org-test-src-block
+             "\
 print(\"z\\nz\", end=\"\", flush=True)
 print(\"z\")"
-           "\
+             "\
 #+BEGIN_EXAMPLE
 z
 zz
 #+END_EXAMPLE"
-           :async "yes"))))))
+             :async "yes")))))))
+
+
+(ert-deftest jupyter-org-example-block-indentation ()
+  :tags '(org)
+  (skip-unless (version<= "9.2" (org-version)))
+  (let ((org-babel-min-lines-for-block-output 2)
+        (org-edit-src-content-indentation 2))
+    (ert-info ("Appending obeys `org-edit-src-content-indentation'")
+      (jupyter-org-test-src-block
+       "\
+print(\"z\", flush=True)
+print(\"z\")"
+       "\
+#+BEGIN_EXAMPLE
+  z
+  z
+#+END_EXAMPLE"
+       :async "yes"))))
 
 (ert-deftest org-babel-jupyter-:dir-header-arg ()
   :tags '(org)
