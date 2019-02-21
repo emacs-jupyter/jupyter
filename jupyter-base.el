@@ -98,6 +98,28 @@ directory is where kernel connection files are written to."
   :group 'jupyter
   :type 'string)
 
+(defcustom jupyter-pop-up-frame nil
+  "Whether or not buffers should be displayed in a new frame by default.
+Note, this variable is only considered when evaluating code
+interactively with functions like `jupyter-eval-line-or-region'.
+
+If equal to nil, frames will never be popped up. When equal to t,
+pop-up frames instead of windows.
+
+`jupyter-pop-up-frame' can also be a list of message type
+keywords for messages which will cause frames to be used. For any
+message type not in the list, windows will be used instead.
+Currently only `:execute-result', `:error', and `:stream'
+messages consider this variable."
+  :group 'jupyter
+  :type '(choice (const :tag "Pop up frames" t)
+                 (const :tag "Pop up windows" nil)
+                 ;; TODO: These are the only ones where `jupyter-pop-up-frame'
+                 ;; is checked at the moment.
+                 (set (const :execute-result)
+                      (const :error)
+                      (const :stream))))
+
 (defconst jupyter-root (file-name-directory load-file-name)
   "Root directory containing emacs-jupyter.")
 
@@ -313,22 +335,35 @@ the output buffer."
            (goto-char jupyter-display-buffer-marker)
            (jupyter-with-control-code-handling ,@body))))))
 
-(defun jupyter-display-current-buffer-reuse-window (&optional alist &rest actions)
+(defun jupyter-display-current-buffer-reuse-window (&optional msg-type alist &rest actions)
   "Convenience function to call `display-buffer' on the `current-buffer'.
 If a window showing the current buffer is already available,
-re-use it. Otherwise pop-up a new window. If ALIST is non-nil it
-is used as the ACTION alist of `display-buffer'. The rest of the
-arguments are display ACTIONS tried after attempting to re-use a
-window and before attempting to pop-up a new window."
-  (let ((display-buffer-base-action
-         (cons
-          (append '(display-buffer-reuse-window)
-                  actions
-                  '(display-buffer-pop-up-window))
-          (cl-list*
-           '(pop-up-windows . t)
-           alist))))
+re-use it.
+
+If ALIST is non-nil it is used as the ACTION alist of
+`display-buffer'.
+
+If MSG-TYPE is specified, it should be one of the keywords in
+`jupyter-message-types' and is used in setting `pop-up-frames'
+and `pop-up-windows'. See `jupyter-pop-up-frame'.
+
+The rest of the arguments are display ACTIONS tried after
+attempting to re-use a window and before attempting to pop-up a
+new window or frame."
+  (let* ((jupyter-pop-up-frame (jupyter-pop-up-frame-p msg-type))
+         (pop-up-frames (and jupyter-pop-up-frame 'graphic-only))
+         (pop-up-windows (not jupyter-pop-up-frame))
+         (display-buffer-base-action
+          (cons
+           (append '(display-buffer-reuse-window)
+                   (delq nil actions))
+           alist)))
     (display-buffer (current-buffer))))
+
+(defun jupyter-pop-up-frame-p (msg-type)
+  "Return non-nil if a frame should be popped up for MSG-TYPE."
+  (or (eq jupyter-pop-up-frame t)
+      (memq msg-type jupyter-pop-up-frame)))
 
 ;;; Signing functions/UUID
 

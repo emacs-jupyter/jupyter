@@ -985,24 +985,26 @@ Methods that extend this generic function should
        ;; Prefer to display the markdown representation if available. The
        ;; IJulia kernel will return both plain text and markdown.
        (md text/markdown))
-    (cond
-     ((or md (null res))
-      (jupyter-with-display-buffer "result" 'reset
-        (jupyter-with-message-content msg (data metadata)
-          (jupyter-insert data metadata))
-        (goto-char (point-min))
-        (jupyter-display-current-buffer-reuse-window)))
-     (res
-      (setq res (ansi-color-apply res))
-      (if (cl-loop
-           with nlines = 0
-           for c across res when (eq c ?\n) do (cl-incf nlines)
-           thereis (> nlines jupyter-eval-short-result-max-lines))
-          (jupyter-with-display-buffer "result" 'reset
-            (insert res)
-            (goto-char (point-min))
-            (jupyter-display-current-buffer-reuse-window))
-        (funcall jupyter-eval-short-result-display-function (format "%s" res)))))))
+    (let ((jupyter-pop-up-frame
+           (jupyter-pop-up-frame-p :execute-result)))
+      (cond
+       ((or md (null res))
+        (jupyter-with-display-buffer "result" 'reset
+          (jupyter-with-message-content msg (data metadata)
+            (jupyter-insert data metadata))
+          (goto-char (point-min))
+          (jupyter-display-current-buffer-reuse-window)))
+       (res
+        (setq res (ansi-color-apply res))
+        (if (cl-loop
+             with nlines = 0
+             for c across res when (eq c ?\n) do (cl-incf nlines)
+             thereis (> nlines jupyter-eval-short-result-max-lines))
+            (jupyter-with-display-buffer "result" 'reset
+              (insert res)
+              (goto-char (point-min))
+              (jupyter-display-current-buffer-reuse-window))
+          (funcall jupyter-eval-short-result-display-function (format "%s" res))))))))
 
 (defun jupyter-eval (code &optional mime)
   "Send an execute request for CODE, wait for the execute result.
@@ -1078,7 +1080,8 @@ to the above explanation."
             req
           (jupyter-insert-ansi-coded-text text)
           (jupyter-display-current-buffer-reuse-window
-           nil #'display-buffer-below-selected))))
+           :stream nil (unless (jupyter-pop-up-frame-p :stream)
+                         #'display-buffer-below-selected)))))
     req))
 
 (defun jupyter-eval-region (beg end &optional cb)
@@ -2019,7 +2022,8 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
     (jupyter-insert-ansi-coded-text traceback)
     (goto-char (point-min))
     (jupyter-display-current-buffer-reuse-window
-     nil #'display-buffer-below-selected)))
+     :error nil (unless (jupyter-pop-up-frame-p :error)
+                  #'display-buffer-below-selected))))
 
 (cl-defgeneric jupyter-handle-error ((_client jupyter-kernel-client)
                                      _req
