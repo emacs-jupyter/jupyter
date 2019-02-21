@@ -925,6 +925,13 @@ appear after the element."
   "Return STRING with its last newline removed."
   (replace-regexp-in-string "\n\\'" "" string))
 
+(defun jupyter-org-insert-element (element)
+  "Insert ELEMENT."
+  ;; `org-element-interpret-data' will add the newline back.
+  (when (eq (char-after) ?\n)
+    (delete-char 1))
+  (insert (org-element-interpret-data element)))
+
 (defun jupyter-org-babel-result-p (result)
   "Return non-nil if RESULT can be removed by `org-babel-remove-result'."
   (or (and (stringp result)
@@ -1009,32 +1016,27 @@ is a stream result. Otherwise return nil."
 Append RESULT to the contents of the block. If KEEP-NEWLINE is
 non-nil, ensure that the appended RESULT begins on a newline."
   (jupyter-org-delete-element element)
-  (insert (org-element-interpret-data
-           (jupyter-org-example-block
-            (concat
-             ;; TODO: optimize this
-             (let ((old-result
-                    (org-element-normalize-string
-                     (org-element-property :value element))))
-               (if keep-newline old-result
-                 (substring old-result 0 -1)))
-             result)))))
+  (jupyter-org-insert-element
+   (jupyter-org-example-block
+    (concat
+     ;; TODO: optimize this
+     (let ((old-result
+            (org-element-normalize-string
+             (org-element-property :value element))))
+       (if keep-newline old-result
+         (substring old-result 0 -1)))
+     result))))
 
 (defsubst jupyter-org--fixed-width-append (result keep-newline)
   (if (not (or keep-newline (string-match "\n" result)))
       (insert result)
-    ;; Delete the following newline that is re-inserted due to
-    ;; `org-element-interpret-data'
-    (delete-char 1)
-    (if keep-newline
-        (insert "\n" (org-element-interpret-data
-                      (jupyter-org-scalar
-                       (jupyter-org-strip-last-newline result))))
-      (insert (substring result 0 (match-end 0))
-              (org-element-interpret-data
-               (jupyter-org-scalar
-                (jupyter-org-strip-last-newline
-                 (substring result (match-end 0)))))))))
+    (if keep-newline (insert "\n")
+      (insert (substring result 0 (match-end 0))))
+    (jupyter-org-insert-element
+     (jupyter-org-scalar
+      (jupyter-org-strip-last-newline
+       (if keep-newline result
+         (substring result (match-end 0))))))))
 
 (defun jupyter-org--append-to-fixed-width (result keep-newline)
   "Append RESULT to the fixed-width element at point.
