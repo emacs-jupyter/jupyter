@@ -1,5 +1,6 @@
 (source gnu)
 (source melpa)
+(source org)
 
 (package-file "jupyter.el")
 
@@ -9,4 +10,5 @@
 
 (development
  (depends-on "ert-runner")
+ (depends-on "org-plus-contrib")
  (depends-on "julia-mode"))

@@ -352,33 +352,47 @@ results instead of an equality match."
      "#+END_SRC")))
 
 (defun jupyter-org-test-src-block-1 (code test-result &optional regexp args)
-  (insert (jupyter-org-test-make-block code args))
-  (let* ((info (org-babel-get-src-block-info))
-         (end (point-marker)))
-    (set-marker-insertion-type end t)
-    (save-window-excursion
-      (org-babel-execute-src-block nil info))
-    (org-with-point-at (org-babel-where-is-src-block-result nil info)
-      (when (equal (alist-get :async args) "yes")
-        (jupyter-wait-until-idle
-         (ring-ref (oref jupyter-current-client pending-requests) 0)))
-      (let ((drawer (org-element-at-point)))
-        ;; Handle empty results with just a RESULTS keyword
-        ;;
-        ;; #+RESULTS:
-        (if (eq (org-element-type drawer) 'keyword) ""
-          (let ((result (string-trim
-                         (if (eq (org-element-type drawer) 'drawer)
+  (let ((src-block (jupyter-org-test-make-block code args)))
+    (insert src-block)
+    (let* ((info (org-babel-get-src-block-info))
+           (end (point-marker)))
+      (set-marker-insertion-type end t)
+      (save-window-excursion
+        (org-babel-execute-src-block nil info))
+      (org-with-point-at (org-babel-where-is-src-block-result nil info)
+        (when (equal (alist-get :async args) "yes")
+          (jupyter-wait-until-idle
+           (ring-ref (oref jupyter-current-client pending-requests) 0)))
+        (let ((drawer (org-element-at-point)))
+          ;; Handle empty results with just a RESULTS keyword
+          ;;
+          ;; #+RESULTS:
+          (if (eq (org-element-type drawer) 'keyword) ""
+            (let ((result (string-trim
+                           (if (eq (org-element-type drawer) 'drawer)
+                               (buffer-substring-no-properties
+                                (org-element-property :contents-begin drawer)
+                                (org-element-property :contents-end drawer))
                              (buffer-substring-no-properties
-                              (org-element-property :contents-begin drawer)
-                              (org-element-property :contents-end drawer))
-                           (buffer-substring-no-properties
-                            (org-element-property :post-affiliated drawer)
-                            (org-element-property :end drawer))))))
-            (if regexp (should (string-match-p test-result result))
-              (should (eq (compare-strings
-                           result nil nil test-result nil nil
-                           'ignore-case)
-                          t)))))))))
+                              (org-element-property :post-affiliated drawer)
+                              (org-element-property :end drawer))))))
+              (if regexp (should (string-match-p test-result result))
+                (message "\
+
+Testing src-block:
+%s
+
+Expected result:
+%s
+
+Result:
+%s
+
+"
+                         src-block result test-result)
+                (should (eq (compare-strings
+                             result nil nil test-result nil nil
+                             'ignore-case)
+                            t))))))))))
 
 ;;; test-helper.el ends here
