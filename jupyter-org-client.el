@@ -983,7 +983,7 @@ Return the insertion point to append new stream output if CONTEXT
 is a stream result. Otherwise return nil."
   (save-excursion
     (goto-char (if (eq (org-element-type context) 'drawer)
-                   (org-element-property :contents-end context)
+                   (jupyter-org-element-contents-end context)
                  (jupyter-org-element-end-before-blanks context)))
     (beginning-of-line 0)
     (when (looking-at-p "\\(?::[\t ]\\|#\\+END_EXAMPLE\\)")
