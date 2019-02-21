@@ -1146,12 +1146,12 @@ about to be inserted, will be wrapped in a drawer."
 
 (defun jupyter-org--add-result (req result)
   "For REQ, add RESULT.
-REQ is a `jupyter-org-request' and if the request is a
-synchronous request, RESULT will be pushed to the list of results
-in the request's results slot or appended to the buffer if REQ is
-already complete. Otherwise, when the request is asynchronous,
-RESULT is inserted at the location of the code block for the
-request."
+For a synchronous request, RESULT is added to REQ's results slot
+and all results are processed once the src-block has finished
+running.
+
+For an asynchronous request, RESULT is appended directly to the
+buffer."
   (if (jupyter-org-request-silent-p req)
       (unless (equal (jupyter-org-request-silent-p req) "none")
         (message "%s" (org-element-interpret-data result)))
