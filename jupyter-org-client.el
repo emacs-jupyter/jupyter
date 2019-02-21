@@ -897,6 +897,11 @@ new \"scalar\" result with the result of calling
                      (1+ (line-end-position)))
       (setf (jupyter-org-request-id-cleared-p req) t))))
 
+(defun jupyter-org-element-begin-after-affiliated (element)
+  "Return the beginning position of ELEMENT after any affiliated keywords."
+  (or (org-element-property :post-affiliated element)
+      (org-element-property :begin element)))
+
 (defun jupyter-org-element-end-before-blanks (element)
   "Return the end position of ELEMENT, before any :post-blank lines."
   (- (org-element-property :end element)
@@ -913,9 +918,12 @@ new \"scalar\" result with the result of calling
   "Delete an `org' ELEMENT from the buffer.
 Leave its affiliated keywords and preserve any blank lines that
 appear after the element."
-  (delete-region (or (org-element-property :post-affiliated element)
-                     (org-element-property :begin element))
+  (delete-region (jupyter-org-element-begin-after-affiliated element)
                  (jupyter-org-element-end-before-blanks element)))
+
+(defun jupyter-org-strip-last-newline (string)
+  "Return STRING with its last newline removed."
+  (replace-regexp-in-string "\n\\'" "" string))
 
 (defun jupyter-org-babel-result-p (result)
   "Return non-nil if RESULT can be removed by `org-babel-remove-result'."
@@ -985,7 +993,12 @@ is a stream result. Otherwise return nil."
     (goto-char (if (eq (org-element-type context) 'drawer)
                    (jupyter-org-element-contents-end context)
                  (jupyter-org-element-end-before-blanks context)))
-    (beginning-of-line 0)
+    (beginning-of-line
+     ;; When `point' is not at the beginning of a line, then it is on the last
+     ;; line of the element contents/container so just go to the beginning of
+     ;; the line.
+     (when (= (line-beginning-position) (point))
+       0))
     (when (looking-at-p "\\(?::[\t ]\\|#\\+END_EXAMPLE\\)")
       (line-end-position (unless (eq (char-after) ?:) 0)))))
 
@@ -999,22 +1012,29 @@ non-nil, ensure that the appended RESULT begins on a newline."
   (insert (org-element-interpret-data
            (jupyter-org-example-block
             (concat
-             (if keep-newline
-                 (org-element-property :value element)
-               (substring (org-element-property :value element) 0 -1))
+             ;; TODO: optimize this
+             (let ((old-result
+                    (org-element-normalize-string
+                     (org-element-property :value element))))
+               (if keep-newline old-result
+                 (substring old-result 0 -1)))
              result)))))
 
 (defsubst jupyter-org--fixed-width-append (result keep-newline)
-  ;; Delete the following newline that is re-inserted due to
-  ;; `org-element-interpret-data'
-  (delete-char 1)
-  (if keep-newline
-      (insert "\n" (org-element-interpret-data
-                    (jupyter-org-scalar result)))
-    (insert (substring result 0 (match-end 0))
-            (org-element-interpret-data
-             (jupyter-org-scalar
-              (substring result (match-end 0)))))))
+  (if (not (or keep-newline (string-match "\n" result)))
+      (insert result)
+    ;; Delete the following newline that is re-inserted due to
+    ;; `org-element-interpret-data'
+    (delete-char 1)
+    (if keep-newline
+        (insert "\n" (org-element-interpret-data
+                      (jupyter-org-scalar
+                       (jupyter-org-strip-last-newline result))))
+      (insert (substring result 0 (match-end 0))
+              (org-element-interpret-data
+               (jupyter-org-scalar
+                (jupyter-org-strip-last-newline
+                 (substring result (match-end 0)))))))))
 
 (defun jupyter-org--append-to-fixed-width (result keep-newline)
   "Append RESULT to the fixed-width element at point.
@@ -1031,8 +1051,9 @@ jupyter-stream-newline property on the ending newline after
 insertion into the buffer."
   (let* ((context (org-element-at-point))
          (promote-to-block-p
-          (>= (+ (count-lines (org-element-property :begin context)
-                              (org-element-property :end context))
+          (>= (+ (count-lines
+                  (jupyter-org-element-begin-after-affiliated context)
+                  (jupyter-org-element-end-before-blanks context))
                  (cl-loop
                   with i = 0
                   for c across result when (eq c ?\n) do (cl-incf i)
@@ -1040,10 +1061,7 @@ insertion into the buffer."
               org-babel-min-lines-for-block-output)))
     (if promote-to-block-p
         (jupyter-org--fixed-width-to-example-block context result keep-newline)
-      (if (and (not (string-match "\n" result))
-               (not keep-newline))
-          (insert result)
-        (jupyter-org--fixed-width-append result keep-newline)))))
+      (jupyter-org--fixed-width-append result keep-newline))))
 
 ;;;;; Append stream result
 
@@ -1072,7 +1090,8 @@ insertion into the buffer."
   (insert (org-element-interpret-data
            (jupyter-org--wrap-result-maybe
             context (if (jupyter-org--stream-result-p result)
-                        (jupyter-org-scalar result)
+                        (jupyter-org-scalar
+                         (jupyter-org-strip-last-newline result))
                       result))))
   (when (/= (point) (line-beginning-position))
     ;; Org objects such as file links do not have a newline added when
@@ -1195,12 +1214,14 @@ Meant to be used as the return value of
   "Return RESULTS with all contiguous stream results concatenated.
 All stream results are then turned into fixed-width or
 example-block elements."
-  (let ((head-to-scalar (lambda (a)
-                          ;; Convert the head element of A to a scalar if its a
-                          ;; stream result, return A.
-                          (when (jupyter-org--stream-result-p (car a))
-                            (setcar a (jupyter-org-scalar (car a))))
-                          a)))
+  (let ((head-to-scalar
+         (lambda (a)
+           ;; Convert the head element of A to a scalar if its a
+           ;; stream result, return A.
+           (when (jupyter-org--stream-result-p (car a))
+             (setcar a (jupyter-org-scalar
+                        (jupyter-org-strip-last-newline (car a)))))
+           a)))
     (nreverse
      (funcall
       head-to-scalar

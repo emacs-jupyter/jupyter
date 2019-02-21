@@ -354,7 +354,9 @@ results instead of an equality match."
 (defun jupyter-org-test-src-block-1 (code test-result &optional regexp args)
   (insert (jupyter-org-test-make-block code args))
   (let* ((info (org-babel-get-src-block-info))
-         (end (point-marker)))
+         (end (point-marker))
+         ;; Don't indent example-block results
+         (org-edit-src-content-indentation 0))
     (set-marker-insertion-type end t)
     (save-window-excursion
       (org-babel-execute-src-block nil info))
@@ -376,6 +378,9 @@ results instead of an equality match."
                             (org-element-property :post-affiliated drawer)
                             (org-element-property :end drawer))))))
             (if regexp (should (string-match-p test-result result))
-              (should (equal result test-result)))))))))
+              (should (eq (compare-strings
+                           result nil nil test-result nil nil
+                           'ignore-case)
+                          t)))))))))
 
 ;;; test-helper.el ends here
