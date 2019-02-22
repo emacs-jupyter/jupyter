@@ -759,6 +759,32 @@ As an example, if DATA only contains the mimetype
     (jupyter-org-export-block \"markdown\" data)"
   (ignore))
 
+(defun jupyter-org--find-mime-types (req-types)
+  "Return the keywords in `jupyter-org-mime-types' that match REQ-TYPES.
+
+If a match is not found, return nil. Try to be intelligent and
+return what the user might intend to use.
+
+REQ-TYPES can be a string such as `plain', `plain html', or
+`text/plain'. The string `text' is translated to `:text/plain'
+and `image' to `:image/png'."
+  (when req-types
+    ;; Iterate the user-specified mimetypes looking for symbols that match a
+    ;; symbol in `jupyter-org-mime-types'. Invalid mimetypes are ignored.
+    (delete nil
+            (mapcar (lambda (req-type)
+                 (cond
+                  ((string= req-type "text") :text/plain)
+                  ((string= req-type "image") :image/png)
+                  ((stringp req-type)
+                   (let ((regexp (if (string-match "/" req-type)
+                                     req-type
+                                   (concat "/" req-type "$"))))
+                     (cl-loop for ii in jupyter-org-mime-types
+                              if (string-match regexp (symbol-name ii))
+                              return ii)))))
+               (split-string req-types)))))
+
 (cl-defmethod jupyter-org-result ((req jupyter-org-request) plist
                                   &optional metadata &rest _)
   "For REQ, return the rendered DATA.
@@ -983,6 +1009,25 @@ appear after the element."
         ;; `org-element-interpret-data' already normalizes the string.
         (org-element-put-property context :post-blank nil))))))
 
+(defun jupyter-org--delete-unwrapped-result (element)
+  "Delete ELEMENT from the buffer.
+If ELEMENT represents a previous result it, along with the result
+about to be inserted, will be wrapped in a drawer."
+  (cl-case (org-element-type element)
+    ;; The `org-element-contents' of a table is nil which interferes with how
+    ;; `org-element-table-interpreter' works when calling
+    ;; `org-element-interpret-data' so set the contents and delete ELEMENT from the
+    ;; buffer.
+    (table
+     (org-element-set-contents
+      element (delete-and-extract-region
+               (org-element-property :contents-begin element)
+               (jupyter-org-element-end-before-blanks element))))
+    ;; Any other element is the first result that is being appended to,
+    ;; so delete it from the buffer since it will be wrapped in a
+    ;; drawer along with the appended result.
+    (t (jupyter-org-delete-element element))))
+
 ;;;; Stream results
 
 ;;;;; Helper functions
@@ -1023,31 +1068,6 @@ is a stream result. Otherwise return nil."
        0))
     (when (looking-at-p "\\(?::[\t ]\\|#\\+END_EXAMPLE\\)")
       (line-end-position (unless (eq (char-after) ?:) 0)))))
-
-(defun jupyter-org--find-mime-types (req-types)
-  "Return the keywords in `jupyter-org-mime-types' that match REQ-TYPES.
-
-If a match is not found, return nil. Try to be intelligent and
-return what the user might intend to use.
-
-REQ-TYPES can be a string such as `plain', `plain html', or
-`text/plain'. The string `text' is translated to `:text/plain'
-and `image' to `:image/png'."
-  (when req-types
-    ;; Iterate the user-specified mimetypes looking for symbols that match a
-    ;; symbol in `jupyter-org-mime-types'. Invalid mimetypes are ignored.
-    (delete nil
-            (mapcar (lambda (req-type)
-                      (cond
-                       ((string= req-type "text") :text/plain)
-                       ((string= req-type "image") :image/png)
-                       ((stringp req-type) (let ((regexp (if (string-match "/" req-type)
-                                                             req-type
-                                                           (concat "/" req-type "$"))))
-                                             (cl-loop for ii in jupyter-org-mime-types
-                                                      if (string-match regexp (symbol-name ii))
-                                                      return ii)))))
-                    (split-string req-types)))))
 
 ;;;;; Fixed width -> example block promotion
 
@@ -1133,9 +1153,7 @@ insertion into the buffer."
                         (org-remove-indentation result)))))
       (insert (concat (when keep-newline "\n") result)))))
 
-;;;; Value results
-
-;;;;; Append value result
+;;;; Insert result
 
 (defun jupyter-org--insert-result (context result)
   (insert (org-element-interpret-data
@@ -1151,25 +1169,6 @@ insertion into the buffer."
     (insert "\n")))
 
 ;;;; Add/append results
-
-(defun jupyter-org--delete-unwrapped-result (element)
-  "Delete ELEMENT from the buffer.
-If ELEMENT represents a previous result it, along with the result
-about to be inserted, will be wrapped in a drawer."
-  (cl-case (org-element-type element)
-    ;; The `org-element-contents' of a table is nil which interferes with how
-    ;; `org-element-table-interpreter' works when calling
-    ;; `org-element-interpret-data' so set the contents and delete ELEMENT from the
-    ;; buffer.
-    (table
-     (org-element-set-contents
-      element (delete-and-extract-region
-               (org-element-property :contents-begin element)
-               (jupyter-org-element-end-before-blanks element))))
-    ;; Any other element is the first result that is being appended to,
-    ;; so delete it from the buffer since it will be wrapped in a
-    ;; drawer along with the appended result.
-    (t (jupyter-org-delete-element element))))
 
 (defun jupyter-org--append-result (req result)
   (org-with-point-at (jupyter-org-request-marker req)
@@ -1236,6 +1235,7 @@ buffer."
 
 ;;; org-babel functions
 ;; These are meant to be called by `org-babel-execute:jupyter'
+;; FIXME: This is ugly!
 
 (defun jupyter-org--restore-message-function ()
   (advice-remove 'message #'ignore)
