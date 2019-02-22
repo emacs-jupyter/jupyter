@@ -1580,12 +1580,27 @@ os.path.abspath(os.getcwd())"
 (ert-deftest jupyter-org--find-mime-types ()
   :tags '(org mime)
   (ert-info ("Mimetype priority overwrite")
-    (should (equal (jupyter-org--find-mime-types "text") '(:text/plain)))
-    (should (equal (jupyter-org--find-mime-types "image") '(:image/png)))
-    (should (equal (jupyter-org--find-mime-types "plain html") '(:text/plain :text/html)))
-    (should (equal (jupyter-org--find-mime-types "org jpeg") '(:text/org :image/jpeg)))
-    (should (equal (jupyter-org--find-mime-types "plain foo html bar") '(:text/plain :text/html)))
-    (should (equal (jupyter-org--find-mime-types "foo bar") '()))))
+    (should (equal (jupyter-org--find-mime-types "text")
+                   '(:text/plain)))
+    (should (equal (jupyter-org--find-mime-types "image")
+                   '(:image/png)))
+    (should (equal (jupyter-org--find-mime-types "plain html")
+                   '(:text/plain :text/html)))
+    (should (equal (jupyter-org--find-mime-types "org jpeg")
+                   '(:text/org :image/jpeg)))
+    (should (equal (jupyter-org--find-mime-types "plain foo html bar")
+                   '(:text/plain :text/html)))
+    (should (equal (jupyter-org--find-mime-types "foo bar")
+                   '()))))
+
+(ert-deftest org-babel-jupyter-:display-header-arg ()
+  :tags '(org)
+  (jupyter-org-test-src-block
+   "\
+from IPython.display import publish_display_data
+publish_display_data({'text/plain': \"foo\", 'text/latex': \"$\\alpha$\"});"
+   ": foo"
+   :display "plain"))
 
 ;; Local Variables:
 ;; byte-compile-warnings: (not free-vars)
