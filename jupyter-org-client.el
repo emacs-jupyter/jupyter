@@ -780,7 +780,14 @@ the MIME types in `jupyter-org-mime-types' calling
 for each MIME type. Return the result of the first iteration in
 which the above call returns a non-nil value. PARAMS is the REQ's
 `jupyter-org-request-block-params', DATA and METADATA are the
-data and metadata of the current MIME type."
+data and metadata of the current MIME type.
+
+If PARAMS has a space separated string associated with its
+:display key like \"image/png html plain\", i.e. MIME subtypes or
+full MIME types, then loop over the corresponding subset of MIME
+types in `jupyter-org-mime-types' in the same order given. This
+adds support for the :display header argument that can be
+passed to Jupyter org-mode source blocks."
   (cl-assert plist json-plist)
   (let* ((params (jupyter-org-request-block-params req))
          (display-mime-types (jupyter-org--find-mime-types
