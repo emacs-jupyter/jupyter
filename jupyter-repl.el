@@ -359,7 +359,8 @@ interpreted as `in'."
        ;; The insertion of a new prompt starts a new cell, don't consider the
        ;; buffer modified anymore. This is also an indicator for when undo's
        ;; can be made in the buffer.
-       (set-buffer-modified-p nil))
+       (set-buffer-modified-p nil)
+       (setq buffer-undo-list '((t . 0))))
       ((eq type 'out)
        ;; Output is normally inserted by first going to the end of the output
        ;; for the request. The end of the ouput for a request is at the
@@ -1099,10 +1100,15 @@ Return the new BOUND since inserting continuation prompts may add
 more characters than were initially in the buffer."
   (setq bound (set-marker (make-marker) bound))
   (set-marker-insertion-type bound t)
-  (while (and (< (point) bound)
-              (search-forward "\n" bound 'noerror))
-    (delete-char -1)
-    (jupyter-repl-insert-prompt 'continuation))
+  ;; Don't record these changes as it adds unnecessary undo information which
+  ;; interferes with undo.
+  (let ((buffer-undo-list t))
+    (while (and (< (point) bound)
+                (search-forward "\n" bound 'noerror))
+      ;; Delete the newline that is re-added by prompt insertion
+      ;; FIXME: Why not just overlay the newline?
+      (delete-char -1)
+      (jupyter-repl-insert-prompt 'continuation)))
   (prog1 (marker-position bound)
     (set-marker bound nil)))
 

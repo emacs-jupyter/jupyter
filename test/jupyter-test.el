@@ -1115,6 +1115,20 @@ last element being the newest element added to the history."
         (jupyter-repl-syntax-propertize-function #'ignore (point-min) (point-max))
         (jupyter-test-text-has-property 'syntax-table '(1 . ?.) '(5 9))))))
 
+(ert-deftest jupyter-repl-undo ()
+  :tags '(repl yank undo)
+  (jupyter-test-with-python-repl client
+    (jupyter-ert-info ("Undo after yank undoes all the yanked text")
+      (kill-new  "import IPython\ndef foo(x)\n\treturn x")
+      (undo-boundary)
+      (yank)
+      (should (equal (jupyter-repl-cell-code) "import IPython\ndef foo(x)\n\treturn x"))
+      (let ((beg (jupyter-repl-cell-beginning-position)))
+        (undo)
+        (should (get-text-property beg 'jupyter-cell))
+        (goto-char (point-max))
+        (should (equal (jupyter-repl-cell-code) ""))))))
+
 ;;; `org-mode'
 
 (defvar org-babel-jupyter-resource-directory nil)
