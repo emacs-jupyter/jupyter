@@ -82,10 +82,11 @@ buffer."
 
 (cl-defmethod jupyter-org-result ((_mime (eql :text/plain))
                                   &context (jupyter-lang python)
-                                  &rest _)
+                                  &optional params &rest _)
   (let ((result (cl-call-next-method)))
     (cond
-     ((stringp result)
+     ((and (stringp result)
+           (not (member "scalar" (alist-get :result-params params))))
       (org-babel-python-table-or-string result))
      (t result))))
 

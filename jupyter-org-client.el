@@ -864,7 +864,8 @@ parsed, wrap DATA in a minipage environment and return it."
 ;;
 ;; Using an :around method to attempt to guarantee that this is called as the
 ;; outer most method. Kernel languages should extend the primary method.
-(cl-defmethod jupyter-org-result :around ((_mime (eql :text/plain)) &rest _)
+(cl-defmethod jupyter-org-result :around ((_mime (eql :text/plain)) params _data
+                                  &optional _metadata)
   "Do some final transformations of the result.
 Call the next method, if it returns \"scalar\" results, return a
 new \"scalar\" result with the result of calling
@@ -873,6 +874,10 @@ new \"scalar\" result with the result of calling
     (jupyter-org-scalar
      (cond
       ((and (stringp result)
+            ;; Don't attempt to create a table when we just want scalar results
+            ;; FIXME: `jupyter-org-scalar' also considers a table a scalar, but
+            ;; `org-mode' doesn't.
+            (not (member "scalar" (alist-get :result-params params)))
             ;; Be a little more stringent than `org-babel-script-escape'. It
             ;; gives bad results on the following
             ;;

@@ -249,7 +249,7 @@ These parameters are handled internally."
   (let* ((result-params (assq :result-params params))
          (fresult (member "file" result-params))
          (fparam (assq :file params)))
-    (setcar fresult "scalar")
+    (setcar fresult "")
     (delq fparam params)))
 
 (defun org-babel-execute:jupyter (body params)

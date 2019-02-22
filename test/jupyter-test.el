@@ -1541,6 +1541,23 @@ print(\"z\")"
 #+END_EXAMPLE"
        :async "yes"))))
 
+(ert-deftest org-babel-jupyter-:results-header-arg ()
+  :tags '(org)
+  (ert-info ("scalar suppresses table output")
+    (jupyter-org-test-src-block
+     "[1, 2, 3]"
+     (concat "| 1 | 2 | 3 |")
+     ;; Ensure that no interference happens from removing the file header
+     ;; argument.
+     :file "foo"
+     ;; FIXME: How to handle header arguments consistently in the async vs sync
+     ;; case.
+     :async "yes")
+    (jupyter-org-test-src-block
+     "[1, 2, 3]"
+     (concat ": [1, 2, 3]")
+     :results "scalar")))
+
 (ert-deftest org-babel-jupyter-:dir-header-arg ()
   :tags '(org)
   (ert-info ("Python")
