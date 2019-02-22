@@ -389,7 +389,7 @@ Result:
 %s
 
 "
-                         src-block result test-result)
+                         src-block test-result result)
                 (should (eq (compare-strings
                              result nil nil test-result nil nil
                              'ignore-case)
