@@ -349,8 +349,28 @@ Below are the supported mimetypes ordered by priority
 
 Since it is possible to determine how a result should be represented in
 =org-mode= via its MIME type, only a few header arguments are supported.
-Currently this is only the =:file= argument for image results and =:results
-raw= for inserting raw latex fragments sent by the kernel.
+
+*** A note on using the =:results= header argument
+
+Results are inserted in the =org-mode= buffer in such a way that most header
+arguments that control how results should be inserted don't need to specified.
+There are some cases where this behavior is not wanted and which can be
+controlled by setting the =:results= header argument.
+
+- Insert unwrapped LaTeX :: Normally LaTeX results are wrapped in a
+     =BEGIN_EXPORT= block, in order to insert LaTeX unwrapped, specify
+     =:results raw=.
+- Suppress table creation :: Whenever a result can be converted into an
+     =org-mode= table, e.g. when it look like =[1, 2 , 3]=, it is automatically
+     converted into a table. To suppress this behavior you can specify
+     =:results scalar=.
+
+*** Fixing the file name of images with the =:file= argument
+
+Whenever an image result is returned, a random image file name is generated and
+the image is written into =org-babel-jupyter-resourse-directory=. In order to
+specify your own file name for the image, you can give an appropriate value to
+the =:file= header argument.
 
 *** Changing the mime-type priority with the =:display= argument
 
