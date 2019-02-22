@@ -782,13 +782,16 @@ which the above call returns a non-nil value. PARAMS is the REQ's
 `jupyter-org-request-block-params', DATA and METADATA are the
 data and metadata of the current MIME type."
   (cl-assert plist json-plist)
-  (let ((params (jupyter-org-request-block-params req)))
+  (let* ((params (jupyter-org-request-block-params req))
+         (display-mime-types (jupyter-org--find-mime-types
+                              (alist-get :display params))))
     (when (jupyter-org-request-file req)
       (push (cons :file (jupyter-org-request-file req)) params))
     (cl-destructuring-bind (data metadata)
         (jupyter-normalize-data plist metadata)
       (or (jupyter-loop-over-mime
-              jupyter-org-mime-types mime data metadata
+              (or display-mime-types jupyter-org-mime-types)
+              mime data metadata
             (jupyter-org-result mime params data metadata))
           (prog1 nil
             (warn "No valid mimetype found %s"
@@ -1008,6 +1011,31 @@ is a stream result. Otherwise return nil."
        0))
     (when (looking-at-p "\\(?::[\t ]\\|#\\+END_EXAMPLE\\)")
       (line-end-position (unless (eq (char-after) ?:) 0)))))
+
+(defun jupyter-org--find-mime-types (req-types)
+  "Return the keywords in `jupyter-org-mime-types' that match REQ-TYPES.
+
+If a match is not found, return nil. Try to be intelligent and
+return what the user might intend to use.
+
+REQ-TYPES can be a string such as `plain', `plain html', or
+`text/plain'. The string `text' is translated to `:text/plain'
+and `image' to `:image/png'."
+  (when req-types
+    ;; Iterate the user-specified mimetypes looking for symbols that match a
+    ;; symbol in `jupyter-org-mime-types'. Invalid mimetypes are ignored.
+    (delete nil
+            (mapcar (lambda (req-type)
+                      (cond
+                       ((string= req-type "text") :text/plain)
+                       ((string= req-type "image") :image/png)
+                       ((stringp req-type) (let ((regexp (if (string-match "/" req-type)
+                                                             req-type
+                                                           (concat "/" req-type "$"))))
+                                             (cl-loop for ii in jupyter-org-mime-types
+                                                      if (string-match regexp (symbol-name ii))
+                                                      return ii)))))
+                    (split-string req-types)))))
 
 ;;;;; Fixed width -> example block promotion
 
