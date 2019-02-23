@@ -104,14 +104,16 @@ manual for <section>. Otherwise follow the link normally."
 
 (defvar ansi-color-names-vector)
 
-(defun jupyter-julia-update-prompt (prompt color)
-  "Display PROMPT as the cell prompt using COLOR as the foreground.
+(defun jupyter-julia-add-prompt (prompt color)
+  "Display PROMPT at the beginning of the cell using COLOR as the foreground.
 Make the character after `point' invisible."
   (add-text-properties (point) (1+ (point)) '(invisible t rear-nonsticky t))
-  ;; TODO: Handle `jupyter-repl-prompt-margin-width', specifically if a prompt
-  ;; is longer than that width, widen the margin and right align all strings.
-  (jupyter-repl-cell-update-prompt
-   prompt `((:foreground ,color) jupyter-repl-input-prompt)))
+  (let ((ov (make-overlay (point) (1+ (point)) nil t))
+        (md (propertize prompt
+             'fontified t
+             'font-lock-face `((:foreground ,color)))))
+    (overlay-put ov 'after-string (propertize " " 'display md))
+    (overlay-put ov 'evaporate t)))
 
 (cl-defmethod jupyter-repl-after-change ((_type (eql insert)) beg _end
                                          &context (jupyter-lang julia))
@@ -132,14 +134,14 @@ Make the character after `point' invisible."
                  ;; evaluate this in the user-expressions of an execute-request?
                  (jupyter-eval "import Pkg; Pkg.REPLMode.promptf()")))
            (when pkg-prompt
-             (jupyter-julia-update-prompt
+             (jupyter-julia-add-prompt
               (substring pkg-prompt 1 (1- (length pkg-prompt)))
               (aref ansi-color-names-vector 5))))) ; magenta
         (?\;
-         (jupyter-julia-update-prompt
+         (jupyter-julia-add-prompt
           "shell> " (aref ansi-color-names-vector 1))) ; red
         (?\?
-         (jupyter-julia-update-prompt
+         (jupyter-julia-add-prompt
           "help?> " (aref ansi-color-names-vector 3)))))) ; yellow
   (cl-call-next-method))
 
