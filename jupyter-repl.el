@@ -305,27 +305,53 @@ Do this only when the `major-mode' is `jupyter-repl-mode'."
 
 ;;; Prompt
 
+(defsubst jupyter-repl--prompt-string (ov)
+  (nth 0 (overlay-get ov 'jupyter-prompt)))
+
+(defsubst jupyter-repl--prompt-face (ov)
+  (nth 1 (overlay-get ov 'jupyter-prompt)))
+
+(defun jupyter-repl--prompt-margin-alignment (str)
+  (- jupyter-repl-prompt-margin-width (length str)))
+
 (defun jupyter-repl--prompt-display-value (str face)
   "Return the margin display value for a prompt STR.
 FACE is the `font-lock-face' to use for STR."
   (list '(margin left-margin)
         (propertize
-         (concat (make-string
-                  (- jupyter-repl-prompt-margin-width
-                     (length str))
-                  ? )
-                 str)
+         (concat
+          (make-string (jupyter-repl--prompt-margin-alignment str) ?\s) str)
          'fontified t
          'font-lock-face face)))
 
+(defun jupyter-repl--reset-prompt-display (ov)
+  (when-let* ((prompt (jupyter-repl--prompt-string ov))
+              (face (or (jupyter-repl--prompt-face ov)
+                        'jupyter-repl-input-prompt))
+              (md (jupyter-repl--prompt-display-value prompt face)))
+    (overlay-put ov 'after-string (propertize " " 'display md))))
+
+(defun jupyter-repl--reset-prompts ()
+  "Re-calculate all prompt strings in the buffer.
+Also set the local value of `left-margin-width' to
+`jupyter-repl-prompt-margin-width'."
+  (setq-local left-margin-width jupyter-repl-prompt-margin-width)
+  (dolist (ov (overlays-in (point-min) (point-max)))
+    (jupyter-repl--reset-prompt-display ov)))
+
 (defun jupyter-repl--make-prompt (str face props)
-  "Make a prompt overlay for the character at `point'.
+  "Make a prompt overlay for the character before POS.
 STR is used as the prompt string and FACE is its
 `font-lock-face'. Add PROPS as text properties to the character."
-  (let ((ov (make-overlay (1- (point)) (point) nil t))
-        (md (jupyter-repl--prompt-display-value str face)))
-    (overlay-put ov 'after-string (propertize " " 'display md))
+  (when (< (jupyter-repl--prompt-margin-alignment str) 0)
+    (setq-local jupyter-repl-prompt-margin-width
+                (+ jupyter-repl-prompt-margin-width
+                   (abs (jupyter-repl--prompt-margin-alignment str))))
+    (jupyter-repl--reset-prompts))
+  (let ((ov (make-overlay (1- (point)) (point) nil t)))
+    (overlay-put ov 'jupyter-prompt (list str face))
     (overlay-put ov 'evaporate t)
+    (jupyter-repl--reset-prompt-display ov)
     (add-text-properties (overlay-start ov) (overlay-end ov) props)
     (overlay-recenter (point))))
 
@@ -383,9 +409,8 @@ interpreted as `in'."
 
 (defun jupyter-repl-prompt-string ()
   "Return the prompt string of the current input cell."
-  (let ((ov (car (overlays-at (jupyter-repl-cell-beginning-position)))))
-    (when ov
-      (cadr (get-text-property 0 'display (overlay-get ov 'after-string))))))
+  (jupyter-repl--prompt-string
+   (car (overlays-at (jupyter-repl-cell-beginning-position)))))
 
 (defun jupyter-repl-cell-reset-prompt ()
   "Reset the current prompt back to its default."
@@ -397,31 +422,21 @@ interpreted as `in'."
 STR is the replacement prompt string. If FACE is non-nil, it
 should be a face that the prompt will use and defaults to
 `jupyter-repl-input-prompt'."
-  (let ((ov (car (overlays-at (jupyter-repl-cell-beginning-position)))))
-    (when ov
-      (overlay-put
-       ov 'after-string
-       (propertize
-        " " 'display (jupyter-repl--prompt-display-value
-                      str (or face 'jupyter-repl-input-prompt)))))))
+  (when-let* ((ov (car (overlays-at (jupyter-repl-cell-beginning-position)))))
+    (overlay-put ov 'jupyter-prompt (list str face))
+    (jupyter-repl--reset-prompt-display ov)))
 
 (defun jupyter-repl-cell-mark-busy ()
   "Mark the current cell as busy."
-  ;; FIXME: Have a way of determining if the input prompt should be marked
-  ;; busy. Languages like Julia have REPL modes which can change the prompt
-  ;; string, and we emulate that here. In those cases, the prompt should be
-  ;; kept how it was without marking it busy.
-  (let ((str (jupyter-repl-prompt-string)))
-    (when (equal (string-trim str)
-                 (format "In [%d]" (jupyter-repl-cell-count)))
-      (jupyter-repl-cell-update-prompt "In [*] "))))
+  (when (equal (jupyter-repl-prompt-string)
+               (format "In [%d] " (jupyter-repl-cell-count)))
+    (jupyter-repl-cell-update-prompt "In [*] ")))
 
 (defun jupyter-repl-cell-unmark-busy ()
   "Un-mark the current cell as busy."
-  (let ((str (jupyter-repl-prompt-string)))
-    (when (equal (string-trim str) "In [*]")
-      (jupyter-repl-cell-update-prompt
-       (format "In [%d] " (jupyter-repl-cell-count))))))
+  (when (equal "In [*] " (jupyter-repl-prompt-string))
+    (jupyter-repl-cell-update-prompt
+     (format "In [%d] " (jupyter-repl-cell-count)))))
 
 (defun jupyter-repl-update-cell-count (n)
   "Set the current cell count to N."
@@ -431,8 +446,7 @@ should be a face that the prompt will use and defaults to
                   (jupyter-repl-cell-beginning-position)
                   'jupyter-cell))
           n)
-    (when (string-match-p
-           "In \\[[0-9]+\\]" (string-trim (jupyter-repl-prompt-string)))
+    (when (string-match-p "In \\[[0-9]+\\]" (jupyter-repl-prompt-string))
       (jupyter-repl-cell-reset-prompt))))
 
 (defun jupyter-repl-cell-count ()

@@ -1079,6 +1079,21 @@ last element being the newest element added to the history."
 
         ))))
 
+(ert-deftest jupyter-repl-prompt-margin ()
+  :tags '(repl prompt)
+  (jupyter-test-with-python-repl client
+    (let ((inhibit-read-only t))
+      (erase-buffer))
+    (let ((jupyter-repl-prompt-margin-width 2))
+      (jupyter-repl--reset-prompts)
+      (should (= jupyter-repl-prompt-margin-width 2))
+      (should (= left-margin-width 2))
+      (jupyter-repl-insert-prompt)
+      (should (> left-margin-width 2))
+      (should (= left-margin-width jupyter-repl-prompt-margin-width))
+      (should (= jupyter-repl-prompt-margin-width
+                 (length (jupyter-repl-prompt-string)))))))
+
 (ert-deftest jupyter-repl-yank ()
   :tags '(repl yank)
   (jupyter-test-with-python-repl client
