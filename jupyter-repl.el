@@ -305,6 +305,10 @@ Do this only when the `major-mode' is `jupyter-repl-mode'."
 
 ;;; Prompt
 
+(defconst jupyter-repl-input-prompt-format "In [%d] ")
+(defconst jupyter-repl-output-prompt-format "Out [%d] ")
+(defconst jupyter-repl-busy-prompt "In [*] ")
+
 (defsubst jupyter-repl--prompt-string (ov)
   (nth 0 (overlay-get ov 'jupyter-prompt)))
 
@@ -370,7 +374,8 @@ interpreted as `in'."
       ((eq type 'in)
        (let ((count (oref jupyter-current-client execution-count)))
          (jupyter-repl--make-prompt
-          (format "In [%d] " count) 'jupyter-repl-input-prompt
+          (format jupyter-repl-input-prompt-format count)
+          'jupyter-repl-input-prompt
           `(jupyter-cell (beginning ,count))))
        ;; Prevent prompt overlay from inheriting text properties of code at the
        ;; beginning of a cell.
@@ -394,7 +399,8 @@ interpreted as `in'."
        ;; cell count of the previous cell
        (let ((count (jupyter-repl-previous-cell-count)))
          (jupyter-repl--make-prompt
-          (format "Out [%d] " count) 'jupyter-repl-output-prompt
+          (format jupyter-repl-output-prompt-format count)
+          'jupyter-repl-output-prompt
           `(jupyter-cell (out ,count))))
        ;; See the note above about the invisible character for input prompts
        (jupyter-repl-insert
@@ -415,7 +421,7 @@ interpreted as `in'."
 (defun jupyter-repl-cell-reset-prompt ()
   "Reset the current prompt back to its default."
   (jupyter-repl-cell-update-prompt
-   (format "In [%d] " (jupyter-repl-cell-count))))
+   (format jupyter-repl-input-prompt-format (jupyter-repl-cell-count))))
 
 (defun jupyter-repl-cell-update-prompt (str &optional face)
   "Update the current cell's input prompt.
@@ -429,14 +435,16 @@ should be a face that the prompt will use and defaults to
 (defun jupyter-repl-cell-mark-busy ()
   "Mark the current cell as busy."
   (when (equal (jupyter-repl-prompt-string)
-               (format "In [%d] " (jupyter-repl-cell-count)))
-    (jupyter-repl-cell-update-prompt "In [*] ")))
+               (format jupyter-repl-input-prompt-format
+                       (jupyter-repl-cell-count)))
+    (jupyter-repl-cell-update-prompt jupyter-repl-busy-prompt)))
 
 (defun jupyter-repl-cell-unmark-busy ()
   "Un-mark the current cell as busy."
-  (when (equal "In [*] " (jupyter-repl-prompt-string))
+  (when (equal (jupyter-repl-prompt-string) jupyter-repl-busy-prompt)
     (jupyter-repl-cell-update-prompt
-     (format "In [%d] " (jupyter-repl-cell-count)))))
+     (format jupyter-repl-input-prompt-format
+             (jupyter-repl-cell-count)))))
 
 (defun jupyter-repl-update-cell-count (n)
   "Set the current cell count to N."
