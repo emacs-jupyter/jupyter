@@ -1582,13 +1582,18 @@ VERBOSE has the same meaning as in
       (cond
        ((eq (get-text-property start 'field) 'cell-code)
         (setq next (min end (field-end start)))
-        ;; It is OK that we do not update BEG and END using the return
-        ;; value of this function as long as the default value of
-        ;; `font-lock-extend-region-functions' is used since an input cell
-        ;; always starts at the beginning of a line and ends at the end of
-        ;; a line and does not use the font-lock-multiline property
-        ;; (2018-12-20).
-        (funcall fontify-fun start next verbose))
+        ;; Narrow down to the actual cell code before calling the REPL
+        ;; language's `major-mode' specific fontification functions since those
+        ;; functions don't know anything about input cells or output cells and
+        ;; may traverse cell boundaries.
+        (jupyter-with-repl-cell
+          ;; It is OK that we do not update BEG and END using the return
+          ;; value of this function as long as the default value of
+          ;; `font-lock-extend-region-functions' is used since an input cell
+          ;; always starts at the beginning of a line and ends at the end of
+          ;; a line and does not use the font-lock-multiline property
+          ;; (2018-12-20).
+          (funcall fontify-fun start next verbose)))
        (t
         (setq next (or (text-property-any start end 'field 'cell-code) end))
         ;; Unfontify the region mainly to remove the font-lock-multiline
@@ -1605,7 +1610,10 @@ VERBOSE has the same meaning as in
       (cond
        ((eq (get-text-property start 'field) 'cell-code)
         (setq next (min end (field-end start)))
-        (funcall propertize-fun start next)
+        ;; See note in `jupyter-repl-font-lock-fontify-region' on why this is
+        ;; here.
+        (jupyter-with-repl-cell
+          (funcall propertize-fun start next))
         ;; Handle Julia package prompt so `syntax-ppss' works properly.
         ;; FIXME: Move this to Julia specific setup by specifying a new
         ;; method that can be extended using the jupyter-lang specializer?
@@ -1629,6 +1637,11 @@ VERBOSE has the same meaning as in
           (skip-syntax-forward "^()\"" next))))
       (setq start next))))
 
+(defun jupyter-repl-font-lock-syntactic-face-function (face-fun state)
+  "Narrow to the input cell, use FACE-FUN to obtain the face given STATE."
+  (jupyter-with-repl-cell
+    (funcall face-fun state)))
+
 (defun jupyter-repl-initialize-fontification ()
   "Initialize fontification for the current REPL buffer."
   (let (fld frf sff spf comment)
@@ -1643,17 +1656,20 @@ VERBOSE has the same meaning as in
     (cl-destructuring-bind (kws &optional kws-only case-fold syntax-alist
                                 &rest vars)
         fld
-      (setq vars (append vars
-                         (list
-                          ;; See `jupyter-repl-font-lock-fontify-region'
-                          (cons 'parse-sexp-lookup-properties t)
-                          (cons 'syntax-propertize-function
-                                (apply-partially
-                                 #'jupyter-repl-syntax-propertize-function spf))
-                          (cons 'font-lock-fontify-region-function
-                                (apply-partially
-                                 #'jupyter-repl-font-lock-fontify-region frf))
-                          (cons 'font-lock-syntactic-face-function sff))))
+      (setq vars
+            (append vars
+                    (list
+                     ;; See `jupyter-repl-font-lock-fontify-region'
+                     (cons 'parse-sexp-lookup-properties t)
+                     (cons 'syntax-propertize-function
+                           (apply-partially
+                            #'jupyter-repl-syntax-propertize-function spf))
+                     (cons 'font-lock-fontify-region-function
+                           (apply-partially
+                            #'jupyter-repl-font-lock-fontify-region frf))
+                     (cons 'font-lock-syntactic-face-function
+                           (apply-partially
+                            #'jupyter-repl-font-lock-syntactic-face-function sff)))))
       (setq-local comment-start comment)
       (setq font-lock-defaults
             (apply #'list kws kws-only case-fold syntax-alist vars)))
