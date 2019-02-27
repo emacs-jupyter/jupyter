@@ -1137,10 +1137,11 @@ more characters than were initially in the buffer."
 (defun jupyter-repl-mark-as-cell-code (beg end)
   "Add the field property to text between (BEG . END) if within a code cell."
   ;; Handle field boundary at the front of the cell code
-  (when (= beg (jupyter-repl-cell-code-beginning-position))
-    (put-text-property beg (1+ beg) 'front-sticky t))
-  (when (text-property-not-all beg end 'field 'cell-code)
-    (font-lock-fillin-text-property beg end 'field 'cell-code)))
+  (when (< beg end)
+    (when (= beg (jupyter-repl-cell-code-beginning-position))
+      (put-text-property beg (1+ beg) 'front-sticky t))
+    (when (text-property-not-all beg end 'field 'cell-code)
+      (font-lock-fillin-text-property beg end 'field 'cell-code))))
 
 (defun jupyter-repl-do-after-change (beg end len)
   "Call `jupyter-repl-after-change' when the current cell code is changed.
@@ -1202,6 +1203,11 @@ this method is called."
     (setq end (jupyter-repl-insert-continuation-prompts end)))
   (jupyter-repl-mark-as-cell-code beg end)
   (goto-char end))
+
+(cl-defmethod jupyter-repl-after-change ((_type (eql delete)) beg _len)
+  ;; Ensure that the `front-sticky' property at the beginning of cell code is
+  ;; added after deleting text at the beginning of a cell.
+  (jupyter-repl-mark-as-cell-code beg (min (point-max) (+ beg 1))))
 
 (defun jupyter-repl-kill-buffer-query-function ()
   "Ask before killing a Jupyter REPL buffer.

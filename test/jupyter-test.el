@@ -1144,6 +1144,17 @@ last element being the newest element added to the history."
         (goto-char (point-max))
         (should (equal (jupyter-repl-cell-code) ""))))))
 
+(ert-deftest jupyter-repl-after-change ()
+  :tags '(repl)
+  (jupyter-test-with-python-repl client
+    ;; See #38
+    (jupyter-ert-info ("Maintain field membership after deleting text at beginning of cell")
+      (insert "foo(")
+      (should (eql (field-at-pos (jupyter-repl-cell-code-beginning-position)) 'cell-code))
+      (backward-char)
+      (backward-kill-word 1)
+      (should (eql (field-at-pos (jupyter-repl-cell-code-beginning-position)) 'cell-code)))))
+
 ;;; `org-mode'
 
 (defvar org-babel-jupyter-resource-directory nil)
