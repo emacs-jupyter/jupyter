@@ -25,13 +25,13 @@
 
 ;; Functions which define new events to be added to an IOLoop for working with
 ;; Jupyter channels. Adds the functions
-;; `jupyter-ioloop-add-start-channel-event',
-;; `jupyter-ioloop-add-stop-channel-event', and `jupyter-ioloop-add-send-event'
-;; to add the start-channel, stop-channel, and send events to a
-;; `jupyter-ioloop'. In addition defines the new type `jupyter-channel-ioloop'
-;; which takes care of setting up a `jupyter-ioloop' for communicating with
-;; channels so that one only needs to do the following to start a
-;; pre-configured subprocess:
+;; `jupyter-channel-ioloop-add-start-channel-event',
+;; `jupyter-channel-ioloop-add-stop-channel-event', and
+;; `jupyter-channel-ioloop-add-send-event' to add the start-channel,
+;; stop-channel, and send events to a `jupyter-ioloop'. In addition defines the
+;; new type `jupyter-channel-ioloop' which takes care of setting up a
+;; `jupyter-ioloop' for communicating with channels so that one only needs to
+;; do the following to start a pre-configured subprocess:
 ;;
 ;; (let ((ioloop (jupyter-channel-ioloop)))
 ;;    (jupyter-start-ioloop ioloop ...)
