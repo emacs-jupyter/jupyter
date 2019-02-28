@@ -586,7 +586,7 @@ meaning as a src-block `org-element'."
   (declare (indent 2))
   (list 'src-block (list :language language
                          :parameters parameters
-                         :switched switches
+                         :switches switches
                          :value value)))
 
 (defun jupyter-org-example-block (value)
