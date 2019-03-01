@@ -292,13 +292,55 @@ the PARAMS alist."
           ;; `jupyter-org-client'
           (nconc (alist-get :result-params params) (list "raw"))))))))
 
+(defvar org-babel-jupyter--babel-ops
+  '("execute" "expand-body" "prep-session" "edit-prep"
+    "variable-assignments" "load-session"))
+
+(defun org-babel-jupyter--override-restore-src-block (lang restore)
+  (let ((fun (if restore
+                 (lambda (sym _ function &rest __)
+                   (advice-remove sym function))
+               #'advice-add)))
+    (dolist (fn (cl-set-difference
+                 org-babel-jupyter--babel-ops
+                 '("variable-assignments" "expand-body")
+                 :test #'equal))
+      (let ((sym (intern (concat "org-babel-" fn ":" lang))))
+        ;; If a language doesn't have a function assigned, set one so it can be
+        ;; overridden
+        (unless (fboundp sym)
+          (fset sym #'ignore))
+        (funcall fun sym
+                 :override (intern (concat "org-babel-" fn ":jupyter-" lang)))))
+    (funcall fun (intern (concat "org-babel-" lang "-initiate-session"))
+             :override #'org-babel-jupyter-initiate-session)
+    (dolist (prefix '("org-babel-header-args:"
+                      "org-babel-default-header-args:"))
+      (when-let* ((var (intern-soft (concat prefix lang))))
+        (if restore
+            (set var (get var 'jupyter-restore-value))
+          (let ((jupyter-var (intern (concat prefix "jupyter-" lang))))
+            (put var 'jupyter-restore-value (symbol-value var))
+            (set var (symbol-value jupyter-var))))))))
+
+(defun org-babel-jupyter-override-src-block (lang)
+  "Override the built-in `org-babel' functions for LANG.
+This overrides functions like `org-babel-execute:LANG' and
+`org-babel-LANG-initiate-session' to use the machinery of
+jupyter-LANG source blocks."
+  (org-babel-jupyter--override-restore-src-block lang nil))
+
+(defun org-babel-jupyter-restore-src-block (lang)
+  "Restore the overridden `org-babel' functions for LANG.
+See `org-babel-jupyter-override-src-block'."
+  (org-babel-jupyter--override-restore-src-block lang t))
+
 (defun org-babel-jupyter-make-language-alias (kernel lang)
   "Similar to `org-babel-make-language-alias' but for Jupyter src-blocks.
 KERNEL should be the name of the default kernel to use for kernel
 LANG. All necessary org-babel functions for a language with the
 name jupyter-LANG will be aliased to the Jupyter functions."
-  (dolist (fn '("execute" "expand-body" "prep-session" "edit-prep"
-                "variable-assignments" "load-session"))
+  (dolist (fn org-babel-jupyter--babel-ops)
     (let ((sym (intern-soft (concat "org-babel-" fn ":jupyter"))))
       (when (and sym (fboundp sym))
         (defalias (intern (concat "org-babel-" fn ":jupyter-" lang)) sym))))

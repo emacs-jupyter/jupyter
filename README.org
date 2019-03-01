@@ -267,7 +267,7 @@ For users of =org-mode=, integration with =org-babel= is provided through the
  '((emacs-lisp . t)
    (julia . t)
    (python . t)
-   (jupyter . t))
+   (jupyter . t)))
 #+END_SRC
 
 Note, =jupyter= should be added as the last element when loading languages
@@ -325,6 +325,39 @@ to change the defaults for the =julia= kernel, you can set
                                                     (:session . "jl")
                                                     (:kernel . "julia-1.0")))
 #+END_SRC
+** Overriding built-in src-block languages
+
+You may find having to specify the names of Jupyter source blocks using
+=jupyter-LANG= a bit verbose and want to have the built-in support for =LANG=
+source blocks overridden to use the machinery of =jupyter-LANG= source blocks.
+This can be done by calling the function
+=org-babel-jupyter-override-src-block=.
+
+For example, to override the behavior of =python= source blocks so that they
+act like =jupyter-python= source blocks, you can add the following in your
+initialization (after calling =org-babel-do-load-languages=):
+
+#+BEGIN_SRC elisp
+(org-babel-jupyter-override-src-block "python")
+#+END_SRC
+
+After calling the above function, all =python= source blocks are effectively
+aliases of =jupyter-python= source blocks and the variable
+=org-babel-default-header-args:python= will be set to the value of
+=org-babel-default-header-args:jupyter-python=. Note,
+=org-babel-default-header-args:python= will *not* be an alias of
+=org-babel-default-header-args:jupyter-python=, the value of the former is
+merely set to the value of the latter after calling
+=org-babel-jupyter-override-src-block=.
+
+If you decide you want to go back to the original behavior or =python= source
+blocks, you can restore the overridden functions by calling
+=org-babel-jupyter-restore-src-block=.
+
+#+BEGIN_SRC elisp
+(org-babel-jupyter-restore-src-block "python")
+#+END_SRC
+
 ** Rich kernel output
 
 In =org-mode= a code block returns scalar data (plain text, numbers, lists,
