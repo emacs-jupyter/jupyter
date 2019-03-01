@@ -29,6 +29,7 @@
 ;;; Code:
 
 (require 'org)
+(require 'jupyter-org-client)
 
 (declare-function org-babel-jupyter-initiate-session "ob-jupyter" (&optional session params))
 
@@ -346,8 +347,15 @@ If BELOW is non-nil, move the block down, otherwise move it up."
    (jupyter-repl-restart-kernel))
   (org-babel-execute-src-block-maybe))
 
-(with-eval-after-load 'hydra
-  (defhydra jupyter-org-hydra (:color blue :hint nil)
+
+(defun jupyter-org-hydra/body ()
+  "Hack to bind a hydra only if the hydra package exists."
+  (interactive)
+  (unless (require 'hydra nil t)
+    (error "Package `hydra' not installed"))
+  ;; unbinding this function and define the hydra
+  (fmakunbound 'jupyter-org-hydra/body)
+  (eval `(defhydra jupyter-org-hydra (:color blue :hint nil)
     "
         Execute                   Navigate       Edit             Misc
 ----------------------------------------------------------------------
@@ -388,10 +396,9 @@ _M-s-<return>_: Restart/to point  ^ ^            _c_: clone
     ("h" jupyter-org-edit-header)
 
     ("/" jupyter-inspect-at-point)))
+  (call-interactively #'jupyter-org-hydra/body))
 
-;; FIXME: find a better map? We want the hydra to be available outside of jupyter blocks
-(with-eval-after-load 'hydra
-  (define-key jupyter-org-interaction-mode-map (kbd "C-c h") #'jupyter-org-hydra/body))
+(define-key jupyter-org-interaction-mode-map (kbd "C-c h") #'jupyter-org-hydra/body)
 
 (provide 'jupyter-org-extensions)
 ;;; jupyter-org-extensions.el ends here
