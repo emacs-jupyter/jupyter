@@ -704,11 +704,14 @@ EXT is used as the extension."
                (concat "." ext))))
     (concat (file-name-as-directory dir) (sha1 data) ext)))
 
-(defun jupyter-org--image-result (mime params data &optional metadata)
+(defun jupyter-org--image-result (mime params b64-encoded data &optional metadata)
   "Return an org-element suitable for inserting an image.
 MIME is the image mimetype, PARAMS is the
 `jupyter-org-request-block-params' that caused this result to be
-returned and DATA is the image DATA.
+returned and DATA is the image data.
+
+If B64-ENCODED is non-nil, DATA assumed to be a base64 encoded
+string and will be decoded before writing to file.
 
 If PARAMS contains a :file key, it is used as the FILENAME.
 Otherwise a file name is created, see
@@ -721,7 +724,6 @@ If METADATA contains a :width or :height key, then the returned
 org-element will have an ATTR_ORG affiliated keyword containing
 the width or height of the image."
   (let* ((overwrite (not (null (alist-get :file params))))
-         (base64-encoded (memq mime '(:image/png :image/jpeg)))
          (file (or (alist-get :file params)
                    (jupyter-org-image-file-name
                     data (cl-case mime
@@ -730,12 +732,12 @@ the width or height of the image."
                            (:image/svg+xml "svg"))))))
     (when (or overwrite (not (file-exists-p file)))
       (let ((buffer-file-coding-system
-             (if base64-encoded 'binary
+             (if b64-encoded 'binary
                buffer-file-coding-system))
             (require-final-newline nil))
         (with-temp-file file
           (insert data)
-          (when base64-encoded
+          (when b64-encoded
             (base64-decode-region (point-min) (point-max))))))
     (cl-destructuring-bind (&key width height &allow-other-keys)
         metadata
@@ -841,15 +843,15 @@ passed to Jupyter org-mode source blocks."
 
 (cl-defmethod jupyter-org-result ((mime (eql :image/png)) params data
                                   &optional metadata)
-  (jupyter-org--image-result mime params data metadata))
+  (jupyter-org--image-result mime params 'b64-encoded data metadata))
 
 (cl-defmethod jupyter-org-result ((mime (eql :image/jpeg)) params data
                                   &optional metadata)
-  (jupyter-org--image-result mime params data metadata))
+  (jupyter-org--image-result mime params 'b64-encoded data metadata))
 
 (cl-defmethod jupyter-org-result ((mime (eql :image/svg+xml)) params data
                                   &optional metadata)
-  (jupyter-org--image-result mime params data metadata))
+  (jupyter-org--image-result mime params nil data metadata))
 
 (cl-defmethod jupyter-org-result ((_mime (eql :text/markdown)) _params data
                                   &optional _metadata)
