@@ -50,28 +50,42 @@ If point is in a block, copy the header to the new block"
         (if below
             (progn
               (goto-char start)
-              (setq location (org-babel-where-is-src-block-result nil nil))
-              (if (not  location)
+              (setq location (org-babel-where-is-src-block-result))
+              (if (not location)
                   (goto-char end)
                 (goto-char location)
                 (goto-char (org-element-property :end (org-element-context))))
-              (insert (format "#+BEGIN_SRC %s\n\n#+END_SRC\n\n"
-                              (concat lang (and lang " ")
-                                      switches (and switches " ")
-                                      parameters (and parameters " "))))
+              (insert
+               (org-element-interpret-data
+                (org-element-put-property
+                 (jupyter-org-src-block lang parameters "\n" switches)
+                 :post-blank 1)))
               (forward-line -3))
           ;; after current block
-          (goto-char (org-element-property :begin (org-element-context)))
-          (insert (format "#+BEGIN_SRC %s\n\n#+END_SRC\n\n"
-                          (concat lang (and lang " ")
-                                  switches (and switches " ")
-                                  parameters (and parameters " "))))
+          (goto-char (org-element-property :begin src))
+          (insert
+           (org-element-interpret-data
+            (org-element-put-property
+             (jupyter-org-src-block lang parameters "\n" switches)
+             :post-blank 1)))
           (forward-line -3)))
 
-    ;; Not in a src block, just insert a block
+    ;; not in a src block, insert a new block, query for jupyter kernel
     (beginning-of-line)
-    (insert (format "#+BEGIN_SRC %s\n\n#+END_SRC\n" (completing-read "Language: " (mapcar 'car org-babel-load-languages))))
-    (forward-line -1)))
+    (let ((kernel
+           (completing-read "Kernel: "
+                            (mapcar #'car (jupyter-available-kernelspecs)))))
+      (insert
+       (org-element-interpret-data
+        (org-element-put-property
+         (jupyter-org-src-block
+             (format "jupyter-%s"
+                     (plist-get (cdr (alist-get kernel
+                                                (jupyter-available-kernelspecs)
+                                                nil nil 'equal))
+                                :language)) "" "\n")
+         :post-blank 0))))
+    (forward-line -2)))
 
 ;;;###autoload
 (defun jupyter-org-split-src-block (&optional below)
@@ -79,21 +93,18 @@ If point is in a block, copy the header to the new block"
 
 With a prefix BELOW move point to lower block."
   (interactive "P")
-  (let* ((src-block (org-element-context)))
+  (let ((src-block (org-element-context)))
     (unless (eq (org-element-type src-block) 'src-block)
       (error "Not in a source block"))
-    (let ((lang (org-element-property :language src-block))
-          (switches (org-element-property :switches src-block))
-          (parameters (org-element-property :parameters src-block)))
-      (beginning-of-line)
-      (insert (format "#+END_SRC\n\n#+BEGIN_SRC %s\n"
-                      (concat lang (and lang " ")
-                              switches (and switches " ")
-                              parameters (and parameters " "))))
-      (unless below
-        (beginning-of-line)
-        (forward-line -3)
-        (forward-char -1)))))
+    (beginning-of-line)
+    (org-babel-demarcate-block)
+    (if below
+        (progn
+          (org-babel-next-src-block)
+          (forward-line)
+          (open-line 1))
+      (forward-line -2)
+      (end-of-line))))
 
 ;;;###autoload
 (defun jupyter-org-execute-and-next-block (&optional new)
@@ -102,19 +113,14 @@ With a prefix BELOW move point to lower block."
 If a new block is created, use the same language, switches and parameters.
 With prefix arg NEW, always insert new cell."
   (interactive "P")
+  (unless (eq (org-element-type (org-element-context)) 'src-block)
+      (error "Not in a source block"))
   (org-babel-execute-src-block)
-  ;; we ignore-errors here because when there is no next block it is a
-  ;; ... user-error, not nil.
-  (let* ((lang (car (org-babel-get-src-block-info t)))
-         (next-block (ignore-errors
-                       (save-excursion
-                         (catch 'block
-                           (while (setq next-block (org-babel-next-src-block))
-                             (when (string= lang (org-element-property :language (org-element-context)))
-                               (throw 'block next-block))))))))
-    (if (or new (not next-block))
-        (jupyter-org-insert-src-block t)
-      (goto-char (match-beginning 0)))))
+  ;; add a new src block if there is no next one to jump to
+  (unless (or new (condition-case nil
+                       (org-babel-next-src-block)
+                     (error nil)))
+    (jupyter-org-insert-src-block t)))
 
 ;;;###autoload
 (defun jupyter-org-execute-to-point ()
@@ -234,12 +240,12 @@ If BELOW is non-nil, add the cloned block below."
          (code (org-element-property :value src)))
     (unless (eq (org-element-type src) 'src-block)
       (error "Not in a source block"))
-    (jupyter-org-insert-src-block (not below))
+    (jupyter-org-insert-src-block below)
     (delete-char 1)
     (insert code)
-    ;; jump back to start of new block
-    (org-babel-previous-src-block)
-    (org-babel-next-src-block)))
+    ;; move to the end of the last line of the cloned block
+    (forward-line -1)
+    (end-of-line)))
 
 ;;;###autoload
 (defun jupyter-org-merge-blocks ()
@@ -265,8 +271,13 @@ If BELOW is non-nil, add the cloned block below."
                     ""))
             (list next-src-block current-src-block))
       ;; Now create the merged block, point is where the current block was
-      (insert (format "#+BEGIN_SRC %s %s %s\n%s#+END_SRC\n\n"
-                      lang switches parameters merged-code))
+      (insert
+       (org-element-interpret-data
+        (org-element-put-property
+         (jupyter-org-src-block lang parameters merged-code switches)
+         :post-blank 1)))
+      ;; (insert (format "#+BEGIN_SRC %s %s %s\n%s#+END_SRC\n\n"
+      ;;                 lang switches parameters merged-code))
       (forward-line -3)
       (end-of-line))))
 
@@ -329,15 +340,10 @@ If BELOW is non-nil, move the block down, otherwise move it up."
 
 ;;;###autoload
 (defun jupyter-org-restart-kernel-execute-block ()
-  "Restart kernel and execute block."
+  "Restart the kernel of the source block where point is and execute it."
   (interactive)
-  (let* ((params (car jupyter-org--src-block-cache))
-         (jupyter-current-client
-          (buffer-local-value 'jupyter-current-client
-                              (org-babel-jupyter-initiate-session
-                               (alist-get :session params) params))))
-    ;; FIXME: retarting the kernel does not work
-    (jupyter-repl-restart-kernel))
+  (jupyter-org-with-src-block-client
+   (jupyter-repl-restart-kernel))
   (org-babel-execute-src-block-maybe))
 
 (with-eval-after-load 'hydra
@@ -372,7 +378,7 @@ _M-s-<return>_: Restart/to point  ^ ^            _c_: clone
     ("s" (jupyter-org-move-src-block t) :color red)
     ("x" jupyter-org-kill-block-and-results)
     ("n" jupyter-org-copy-block-and-results)
-    ("c" jupyter-org-clone-block)
+    ("c" (jupyter-org-clone-block t))
     ("m" jupyter-org-merge-blocks)
     ("-" jupyter-org-split-src-block)
     ("+" jupyter-org-insert-src-block)
