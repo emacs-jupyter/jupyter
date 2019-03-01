@@ -32,6 +32,7 @@
   :group 'org-babel)
 
 (require 'jupyter-org-client)
+(require 'jupyter-org-extensions)
 ;; For `jupyter-with-repl-buffer'
 (eval-when-compile (require 'jupyter-repl))
 
