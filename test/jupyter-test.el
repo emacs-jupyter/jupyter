@@ -1047,6 +1047,36 @@ last element being the newest element added to the history."
       (should-error (jupyter-repl-cell-beginning-position))
       (should-error (jupyter-repl-cell-end-position)))))
 
+(ert-deftest jupyter-repl-restart-kernel ()
+  :tags '(repl restart)
+  (let ((jupyter-test-with-new-client t))
+    (jupyter-test-with-python-repl client
+      (jupyter-ert-info ("Restart without errors")
+        (should (equal (oref client execution-state) "idle"))
+        ;; Increment the cell count just to make sure it gets reset to 1 after
+        ;; a restart
+        (jupyter-repl-update-cell-count 2)
+        (let* ((pos (jupyter-repl-cell-beginning-position))
+               (restart-p nil)
+               (jupyter-include-other-output t)
+               (jupyter-iopub-message-hook
+                (lambda (_ msg)
+                  (when (jupyter-message-status-starting-p msg)
+                    (setq restart-p t)))))
+          (should-not (jupyter-repl-cell-finalized-p))
+          (jupyter-repl-restart-kernel)
+          (jupyter-with-timeout (nil (* 2 jupyter-long-timeout))
+            restart-p)
+          (should restart-p)
+          (should (equal (jupyter-repl-cell-code-beginning-position) (point)))
+          (should-not (jupyter-repl-cell-finalized-p))
+          (goto-char pos)
+          (should (jupyter-repl-cell-finalized-p))
+          (goto-char (point-max))
+          (should (= (jupyter-repl-cell-count) 1))
+          (jupyter-repl-sync-execution-state)
+          (should (equal (jupyter-execution-state client) "idle")))))))
+
 (ert-deftest jupyter-repl-prompts ()
   :tags '(repl prompt)
   (let ((jupyter-test-with-new-client t))

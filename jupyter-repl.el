@@ -638,6 +638,8 @@ POS defaults to `point'."
   (or (not (jupyter-repl-cell-line-p))
       (/= (jupyter-repl-cell-end-position) (point-max))))
 
+;; TODO: Allow a client argument, would be used in
+;; `jupyter-repl-restart-kernel' and probably other places.
 (defun jupyter-repl-client-has-manager-p ()
   "Return non-nil if the `jupyter-current-client' has a kernel manager."
   (and jupyter-current-client
@@ -1004,20 +1006,37 @@ elements."
        (jupyter-send-execute-request client))
       ("unknown"))))
 
+(defun jupyter-repl--insert-banner-and-prompt (client)
+  (goto-char (point-max))
+  (unless (jupyter-repl-cell-finalized-p)
+    (jupyter-repl-finalize-cell nil))
+  (jupyter-repl-newline)
+  (jupyter-repl-insert-banner
+   (plist-get (jupyter-kernel-info client) :banner))
+  (jupyter-repl-insert-prompt 'in)
+  (jupyter-repl-update-cell-count 1))
+
 (cl-defmethod jupyter-handle-shutdown-reply ((client jupyter-repl-client) _req restart)
   (jupyter-with-repl-buffer client
     (jupyter-repl-without-continuation-prompts
      (goto-char (point-max))
-     (unless (jupyter-repl-cell-finalized-p)
-       (jupyter-repl-finalize-cell nil))
-     (jupyter-repl-newline)
-     (jupyter-repl-newline)
-     ;; TODO: Add a slot mentioning that the kernel is shutdown so that we can
-     ;; block sending requests or delay until it has restarted.
-     (jupyter-repl-insert
-      (propertize (concat "kernel " (if restart "restart" "shutdown"))
-                  'font-lock-face 'warning))
-     (jupyter-repl-newline))))
+     (let ((shutdown-handled-p (jupyter-repl-cell-finalized-p)))
+       (unless (jupyter-repl-cell-finalized-p)
+         (jupyter-repl-finalize-cell nil))
+       ;; Only run the following once. The Python kernel sends a shutdown-reply
+       ;; on both the shell and iopub which is mainly the reason why this is
+       ;; needed.
+       (unless shutdown-handled-p
+         (jupyter-repl-newline)
+         (jupyter-repl-newline)
+         ;; TODO: Add a slot mentioning that the kernel is shutdown so that we can
+         ;; block sending requests or delay until it has restarted.
+         (jupyter-repl-insert
+          (propertize (concat "kernel " (if restart "restart" "shutdown"))
+                      'font-lock-face 'warning))
+         (jupyter-repl-newline)
+         (when restart
+           (jupyter-repl--insert-banner-and-prompt client)))))))
 
 (defun jupyter-repl-ret (&optional force)
   "Send the current cell code to the kernel.
@@ -1282,27 +1301,6 @@ value."
 
 ;;; Kernel management
 
-(defun jupyter-repl-on-kernel-restart (client msg)
-  "Update the REPL buffer after CLIENT restarts.
-If MSG is a startup message, insert the banner of the kernel,
-synchronize the execution state, and insert a new input prompt."
-  (prog1 nil
-    (when (jupyter-message-status-starting-p msg)
-      (jupyter-with-repl-buffer client
-        ;; FIXME: Don't assume `jupyter-include-other-output' was previously nil
-        (jupyter-set jupyter-current-client 'jupyter-include-other-output nil)
-        (jupyter-repl-without-continuation-prompts
-         (goto-char (point-max))
-         (unless (jupyter-repl-cell-finalized-p)
-           (jupyter-repl-finalize-cell nil))
-         (jupyter-repl-newline)
-         (jupyter-repl-insert-banner
-          (plist-get (jupyter-kernel-info client) :banner))
-         (jupyter-repl-insert-prompt 'in)
-         ;; Call this after `jupyter-repl-insert-prompt' since that function
-         ;; will try to modify the prompt. See #28.
-         (jupyter-repl-sync-execution-state))))))
-
 (defun jupyter-repl-interrupt-kernel ()
   "Interrupt the kernel if possible.
 A kernel can be interrupted if it was started using a kernel
@@ -1341,29 +1339,42 @@ the kernel `jupyter-current-client' is connected to."
     (unless shutdown
       ;; This may have been set to t due to a non-responsive kernel so make sure
       ;; that we try again when restarting.
-      (jupyter-with-repl-buffer jupyter-current-client
-        (setq jupyter-repl-use-builtin-is-complete nil))
-      ;; When restarting, the startup message is not associated with any request
-      ;; so ensure that we are able to capture it.
-      (jupyter-set jupyter-current-client 'jupyter-include-other-output t))
-    (jupyter-hb-pause jupyter-current-client)
-    (if (jupyter-repl-client-has-manager-p)
-        (let ((manager (oref jupyter-current-client manager)))
-          (cond
-           ((jupyter-kernel-alive-p manager)
-            (message "%s kernel..." (if shutdown "Shutting down"
-                                      "Restarting"))
-            (jupyter-shutdown-kernel manager (not shutdown)))
-           (t
-            (message "Starting dead kernel...")
-            (jupyter-start-kernel manager))))
-      (unless (jupyter-wait-until-received :shutdown-reply
-                (jupyter-send-shutdown-request jupyter-current-client
-                  :restart (not shutdown)))
-        (jupyter-set jupyter-current-client 'jupyter-include-other-output nil)
-        (message "Kernel did not respond to shutdown request")))
+      (jupyter-with-repl-buffer client
+        (setq jupyter-repl-use-builtin-is-complete nil)))
+    (jupyter-hb-pause client)
+    (cond
+     ((and (not shutdown)
+           (jupyter-repl-client-has-manager-p)
+           (not (jupyter-kernel-alive-p (oref client manager))))
+      (message "Starting dead kernel...")
+      (jupyter-repl--insert-banner-and-prompt client))
+     (t
+      (message "%s kernel..." (if shutdown "Shutting down"
+                                "Restarting"))
+      (when (and (null (jupyter-wait-until-received :shutdown-reply
+                         (jupyter-send-shutdown-request client
+                           :restart (not shutdown))))
+                 (not shutdown))
+        ;; Handle the case of a restart that does not send a shutdown-reply
+        ;;
+        ;; TODO: Clean up the logic of when to insert a new prompt. We insert
+        ;; a new prompt before we know if the kernel is ready, but this should
+        ;; be done after we know if the kernel is ready or not, e.g. on the
+        ;; next status: starting message. Generalize the stuff in
+        ;; `jupyter-start-new-kernel' that handles the status: starting message
+        ;; so its easier to hook into that message.
+        (message "Kernel did not send shutdown-reply")
+        (jupyter-repl--insert-banner-and-prompt client))))
     (unless shutdown
-      (jupyter-hb-unpause jupyter-current-client))))
+      (when (jupyter-repl-client-has-manager-p)
+        (with-slots (manager) client
+          (jupyter-with-timeout
+              (nil jupyter-default-timeout
+                   ;; TODO: Force shutdown more cleanly
+                   (jupyter-shutdown-kernel manager nil 0))
+            (not (jupyter-kernel-alive-p manager)))
+          (jupyter-start-kernel manager)))
+      (jupyter-hb-unpause client))))
 
 (defun jupyter-repl-display-kernel-buffer ()
   "Display the kernel processes stdout."
@@ -1553,7 +1564,6 @@ in the appropriate direction, to the saved element."
     (add-hook 'after-change-functions 'jupyter-repl-do-after-change nil t)
     (add-hook 'pre-redisplay-functions 'jupyter-repl-preserve-window-margins nil t)
     ;; Initialize the REPL
-    (jupyter-repl-initialize-hooks)
     (jupyter-repl-initialize-fontification)
     (jupyter-repl-isearch-setup)
     (jupyter-repl-sync-execution-state)
@@ -1570,14 +1580,6 @@ would look like
   nil)
 
 (add-hook 'jupyter-repl-mode-hook 'jupyter-repl-after-init)
-
-(defun jupyter-repl-initialize-hooks ()
-  "Initialize startup hooks.
-When the kernel restarts, insert a new prompt."
-  ;; NOTE: This hook will only run if `jupyter-include-other-output' is non-nil
-  ;; during the restart.
-  (jupyter-add-hook jupyter-current-client 'jupyter-iopub-message-hook
-    #'jupyter-repl-on-kernel-restart))
 
 (defun jupyter-repl-font-lock-fontify-region (fontify-fun beg end &optional verbose)
   "Use FONTIFY-FUN to fontify input cells between BEG and END.
