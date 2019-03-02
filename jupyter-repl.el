@@ -1772,11 +1772,11 @@ the REPL is connected, 'x' means the REPL is disconnected
 from the kernel."
   (and (jupyter-repl-client-p jupyter-current-client)
        (concat " JuPy["
-               (if (equal (jupyter-execution-state jupyter-current-client) "busy")
-                   "*"
-                 (if (jupyter-hb-beating-p jupyter-current-client)
-                     "-"
-                   "x"))
+               (cond
+                ((not (jupyter-hb-beating-p jupyter-current-client)) "x")
+                ((equal (jupyter-execution-state jupyter-current-client) "busy")
+                 "*")
+                (t "-"))
                "]")))
 
 (defun jupyter-repl-pop-to-buffer ()
