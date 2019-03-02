@@ -796,13 +796,13 @@ are taken:
            (pmsg-id (jupyter-message-parent-id msg))
            (requests (oref client requests))
            (req (gethash pmsg-id requests)))
+      (when (eq (jupyter-message-type msg) :status)
+        (oset client execution-state
+              (jupyter-message-get msg :execution_state)))
       (if (not req)
           (when (jupyter-get client 'jupyter-include-other-output)
             (jupyter--run-handler-maybe client channel req msg))
         (setf (jupyter-request-last-message req) msg)
-        (when (eq (jupyter-message-type msg) :status)
-          (oset client execution-state
-                (jupyter-message-get msg :execution_state)))
         (unwind-protect
             (jupyter--run-callbacks req msg)
           (unwind-protect
