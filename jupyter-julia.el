@@ -151,6 +151,27 @@ Make the character after `point' invisible."
   (when (= beg (jupyter-repl-cell-code-beginning-position))
     (jupyter-repl-cell-reset-prompt)))
 
+;;; REPL font lock
+
+(defun jupyter-julia--propertize-repl-mode-char (beg end)
+  (jupyter-repl-cell-cond
+      beg end
+      ;; Handle Julia package prompt so `syntax-ppss' works properly.
+      (when (and (eq (char-syntax (char-after (point-min))) ?\))
+                 (= (point-min)
+                    (save-restriction
+                      (widen)
+                      ;; Looks at the position before the narrowed cell-code
+                      ;; which is why the widen is needed here.
+                      (jupyter-repl-cell-code-beginning-position))))
+        (put-text-property
+         (point-min) (1+ (point-min)) 'syntax-table '(1 . ?.)))))
+
+(cl-defmethod jupyter-repl-after-init (&context (jupyter-lang julia))
+  (add-function
+   :after (local 'syntax-propertize-function)
+   #'jupyter-julia--propertize-repl-mode-char))
+
 ;;; `jupyter-org'
 
 (cl-defmethod jupyter-org-error-location (&context (jupyter-lang julia))

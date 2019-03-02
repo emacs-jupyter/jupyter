@@ -1644,16 +1644,9 @@ VERBOSE has the same meaning as in
   "Use PROPERTIZE-FUN to syntax propertize text between BEG and END."
   (jupyter-repl-cell-cond
       beg end
-      (progn
-        ;; See note in `jupyter-repl-font-lock-fontify-region' on why the buffer
-        ;; should be narrowed to the input cell before calling this function.
-        (funcall propertize-fun (point-min) (point-max))
-        ;; Handle Julia package prompt so `syntax-ppss' works properly.
-        ;; FIXME: Move this to Julia specific setup by specifying a new
-        ;; method that can be extended using the jupyter-lang specializer?
-        (when (and (= (point-min) (jupyter-repl-cell-code-beginning-position))
-                   (eq ?\] (char-after (point-min))))
-          (put-text-property (point-min) (1+ (point-min)) 'syntax-table '(1 . ?.))))
+      ;; See note in `jupyter-repl-font-lock-fontify-region' on why the buffer
+      ;; should be narrowed to the input cell before calling this function.
+      (funcall propertize-fun (point-min) (point-max))
     ;; Treat parenthesis and string characters as punctuation when parsing the
     ;; syntax of the output. Although we don't fontify output regions,
     ;; `syntax-ppss' still looks at the whole contents of the buffer. If there
