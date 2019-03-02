@@ -121,12 +121,13 @@ Make the character after `point' invisible."
   (when (= beg (jupyter-repl-cell-code-beginning-position))
     (save-excursion
       (goto-char beg)
+      (when (and (bound-and-true-p blink-paren-function)
+                 (eq (char-syntax (char-after)) ?\)))
+        ;; Spoof `last-command-event' so that a "No matching paren" message
+        ;; doesn't happen.
+        (setq last-command-event ?\[))
       (cl-case (char-after)
         (?\]
-         (when (bound-and-true-p blink-paren-function)
-           ;; Spoof `last-command-event' so that a "No matching paren" message
-           ;; doesn't happen.
-           (setq last-command-event ?\[))
          ;; Longer timeout to account for initial Pkg import and compilation.
          (let* ((jupyter-default-timeout jupyter-long-timeout)
                 (pkg-prompt
