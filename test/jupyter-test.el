@@ -1047,6 +1047,20 @@ last element being the newest element added to the history."
       (should-error (jupyter-repl-cell-beginning-position))
       (should-error (jupyter-repl-cell-end-position)))))
 
+(ert-deftest jupyter-repl-cell-cond ()
+  :tags '(repl)
+  (with-temp-buffer
+    (insert "foo")
+    (insert (propertize "bar" 'field 'cell-code))
+    (insert "baz")
+    (jupyter-repl-cell-cond
+        (point-min) (point-max)
+        (should (equal (buffer-string) "bar"))
+      (should (member (buffer-string) '("foo" "baz"))))
+    (jupyter-repl-cell-cond
+        (point-min) (point-max)
+        (should (equal (buffer-string) "bar")))))
+
 (ert-deftest jupyter-repl-restart-kernel ()
   :tags '(repl restart)
   (let ((jupyter-test-with-new-client t))
