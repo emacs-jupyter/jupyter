@@ -194,7 +194,7 @@ from the kernel.")
   "When non-nil, some parts of Jupyter will emit debug statements.")
 
 
-(defvar jupyter-default-timeout 1
+(defvar jupyter-default-timeout 2.5
   "The default timeout in seconds for `jupyter-wait-until'.")
 
 (defvar jupyter-long-timeout 10
