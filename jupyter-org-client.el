@@ -957,18 +957,21 @@ new \"scalar\" result with the result of calling
         (goto-char (jupyter-org-element-end-before-blanks element))
         (line-beginning-position 0))))
 
-(defun jupyter-org-delete-element (element)
+(defun jupyter-org--delete-element (element)
   "Delete an `org' ELEMENT from the buffer.
 Leave its affiliated keywords and preserve any blank lines that
 appear after the element."
   (delete-region (jupyter-org-element-begin-after-affiliated element)
-                 (jupyter-org-element-end-before-blanks element)))
+                 (jupyter-org-element-end-before-blanks element))
+  ;; Delete a blank line after the element
+  (when (eq (char-after) ?\n)
+    (delete-char 1)))
 
 (defun jupyter-org-strip-last-newline (string)
   "Return STRING with its last newline removed."
   (replace-regexp-in-string "\n\\'" "" string))
 
-(defun jupyter-org-insert-element (element)
+(defun jupyter-org--insert-element (element)
   "Insert ELEMENT."
   ;; `org-element-interpret-data' will add the newline back.
   (when (eq (char-after) ?\n)
@@ -1077,8 +1080,8 @@ is a stream result. Otherwise return nil."
   "Replace the fixed-width ELEMENT with an example-block.
 Append RESULT to the contents of the block. If KEEP-NEWLINE is
 non-nil, ensure that the appended RESULT begins on a newline."
-  (jupyter-org-delete-element element)
-  (jupyter-org-insert-element
+  (jupyter-org--delete-element element)
+  (jupyter-org--insert-element
    (jupyter-org-example-block
     (concat
      ;; TODO: optimize this
@@ -1094,7 +1097,7 @@ non-nil, ensure that the appended RESULT begins on a newline."
       (insert result)
     (if keep-newline (insert "\n")
       (insert (substring result 0 (match-end 0))))
-    (jupyter-org-insert-element
+    (jupyter-org--insert-element
      (jupyter-org-scalar
       (jupyter-org-strip-last-newline
        (if keep-newline result

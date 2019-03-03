@@ -1633,6 +1633,31 @@ print(\"z\")"
 "
        :async "yes"))))
 
+(ert-deftest jupyter-org-wrapping-with-drawer ()
+  :tags '(org)
+  (ert-info ("Preserve whitespace after wrapping a result")
+    (jupyter-org-test-src-block
+     "\
+print(\"foo\", flush=True)
+1 + 1"
+     "\
+:RESULTS:
+: foo
+: 2
+:END:
+"
+     :async "yes")
+    (jupyter-org-test-src-block
+     "\
+print(\"foo\", flush=True)
+1 + 1"
+     "\
+:RESULTS:
+: foo
+: 2
+:END:
+")))
+
 (ert-deftest org-babel-jupyter-:results-header-arg ()
   :tags '(org)
   (ert-info ("scalar suppresses table output")
