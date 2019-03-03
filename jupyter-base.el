@@ -198,7 +198,7 @@ from the kernel.")
   "The default timeout in seconds for `jupyter-wait-until'.")
 
 (defvar jupyter-long-timeout 10
-  "A longer timeout that `jupyter-default-timeout' used for some operations.
+  "A longer timeout than `jupyter-default-timeout' used for some operations.
 A longer timeout is needed, for example, when retrieving the
 `jupyter-kernel-info' to allow for the kernel to startup.")
 
