@@ -354,28 +354,21 @@ results instead of an equality match."
 (defun jupyter-org-test-src-block-1 (code test-result &optional regexp args)
   (let ((src-block (jupyter-org-test-make-block code args)))
     (insert src-block)
-    (let* ((info (org-babel-get-src-block-info))
-           (end (point-marker)))
-      (set-marker-insertion-type end t)
+    (let* ((info (org-babel-get-src-block-info)))
       (save-window-excursion
         (org-babel-execute-src-block nil info))
       (org-with-point-at (org-babel-where-is-src-block-result nil info)
         (when (equal (alist-get :async args) "yes")
           (jupyter-wait-until-idle
            (ring-ref (oref jupyter-current-client pending-requests) 0)))
-        (let ((drawer (org-element-at-point)))
+        (let ((element (org-element-context)))
           ;; Handle empty results with just a RESULTS keyword
           ;;
           ;; #+RESULTS:
-          (if (eq (org-element-type drawer) 'keyword) ""
-            (let ((result (string-trim
-                           (if (eq (org-element-type drawer) 'drawer)
-                               (buffer-substring-no-properties
-                                (org-element-property :contents-begin drawer)
-                                (org-element-property :contents-end drawer))
-                             (buffer-substring-no-properties
-                              (org-element-property :post-affiliated drawer)
-                              (org-element-property :end drawer))))))
+          (if (eq (org-element-type element) 'keyword) ""
+            (let ((result (buffer-substring-no-properties
+                           (jupyter-org-element-begin-after-affiliated element)
+                           (org-element-property :end element))))
               (if regexp (should (string-match-p test-result result))
                 (message "\
 
@@ -383,10 +376,10 @@ Testing src-block:
 %s
 
 Expected result:
-%s
+\"%s\"
 
 Result:
-%s
+\"%s\"
 
 "
                          src-block test-result result)

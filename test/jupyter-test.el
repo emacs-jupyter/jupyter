@@ -1210,13 +1210,14 @@ last element being the newest element added to the history."
 
 (ert-deftest ob-jupyter-scalar-results ()
   :tags '(org)
-  (jupyter-org-test-src-block "1 + 1" ": 2")
+  (jupyter-org-test-src-block "1 + 1" ": 2\n")
   (ert-info ("Tables")
     (jupyter-org-test-src-block
      "[[1, 2, 3], [4, 5, 6]]"
      "\
 | 1 | 2 | 3 |
-| 4 | 5 | 6 |")))
+| 4 | 5 | 6 |
+")))
 
 (ert-deftest ob-jupyter-html-results ()
   :tags '(org)
@@ -1227,7 +1228,8 @@ HTML('<a href=\"http://foo.com\">link</a>')"
    "\
 #+BEGIN_EXPORT html
 <a href=\"http://foo.com\">link</a>
-#+END_EXPORT"))
+#+END_EXPORT
+"))
 
 (ert-deftest ob-jupyter-markdown-results ()
   :tags '(org)
@@ -1238,7 +1240,8 @@ Markdown('*b*')"
    "\
 #+BEGIN_EXPORT markdown
 *b*
-#+END_EXPORT"))
+#+END_EXPORT
+"))
 
 (ert-deftest ob-jupyter-latex-results ()
   :tags '(org)
@@ -1249,13 +1252,14 @@ Latex(r'$\\alpha$')"
    "\
 #+BEGIN_EXPORT latex
 $\\alpha$
-#+END_EXPORT")
+#+END_EXPORT
+")
   (ert-info ("Raw results")
     (jupyter-org-test-src-block
      "\
 from IPython.core.display import Latex
 Latex(r'$\\alpha$')"
-     "$\\alpha$"
+     "$\\alpha$\n"
      :results "raw")))
 
 (ert-deftest ob-jupyter-error-results ()
@@ -1297,7 +1301,7 @@ Latex(r'$\\alpha$')"
            (format "\
 from IPython.display import Image
 Image(filename='%s')" file)
-           (format "[[file:%s]]" image-file-name))
+           (format "[[file:%s]]\n" image-file-name))
           (ert-info ("Create a drawer containing file links")
             (jupyter-org-test-src-block
              (format "\
@@ -1306,8 +1310,10 @@ from IPython.display import display
 display(Image(filename='%s'))
 Image(filename='%s')" file file)
              (concat
+              ":RESULTS:\n"
               (format "[[file:%s]]" image-file-name) "\n"
-              (format "[[file:%s]]" image-file-name))
+              (format "[[file:%s]]" image-file-name) "\n"
+              ":END:\n")
              :async "yes"))
           (ert-info ("Append a file link to a drawer")
             (jupyter-org-test-src-block
@@ -1318,9 +1324,11 @@ display(Image(filename='%s'))
 display(Image(filename='%s'))
 Image(filename='%s')" file file file)
              (concat
+              ":RESULTS:\n"
               (format "[[file:%s]]" image-file-name) "\n"
               (format "[[file:%s]]" image-file-name) "\n"
-              (format "[[file:%s]]" image-file-name))
+              (format "[[file:%s]]" image-file-name) "\n"
+              ":END:\n")
              :async "yes"))
           (ert-info ("Image with width and height metadata")
             (jupyter-org-test-src-block
@@ -1328,8 +1336,10 @@ Image(filename='%s')" file file file)
 from IPython.display import Image
 Image(filename='%s', width=300)" file)
              (concat
+              ":RESULTS:\n"
               "#+ATTR_ORG: :width 300\n"
-              (format "[[file:%s]]" image-file-name)))))
+              (format "[[file:%s]]" image-file-name) "\n"
+              ":END:\n"))))
       (when (file-exists-p image-file-name)
         (delete-file image-file-name)))))
 
@@ -1488,7 +1498,8 @@ print(\"foo\")"
        "\
 : foo
 : foo
-: foo"))
+: foo
+"))
     (ert-info ("Asynchronous")
       (ert-info ("Newline after first stream message")
         (jupyter-org-test-src-block
@@ -1499,7 +1510,8 @@ print(\"foo\")"
          "\
 : foo
 : foo
-: foo"
+: foo
+"
          :async "yes")
         (jupyter-org-test-src-block
          "\
@@ -1508,7 +1520,8 @@ print(\"foo\", end=\"\", flush=True)
 print(\"foo\")"
          "\
 : foo
-: foofoo")
+: foofoo
+")
         :async "yes")
       (ert-info ("No newline after first stream message")
         (jupyter-org-test-src-block
@@ -1518,7 +1531,8 @@ print(\"foo\", end=\"\", flush=True)
 print(\"bar\")"
          "\
 : foo
-: foobar"
+: foobar
+"
          :async "yes"))
       (ert-info ("Multiple newlines in appended stream message")
         (ert-info ("Newline after first stream message")
@@ -1531,7 +1545,8 @@ print(\"bar\\nqux\")"
 : foo
 : foo
 : bar
-: qux"
+: qux
+"
            :async "yes"))
         (ert-info ("No newline after first stream message")
           (jupyter-org-test-src-block
@@ -1542,11 +1557,12 @@ print(\"bar\\nqux\")"
            "\
 : foo
 : foobar
-: qux"
+: qux
+"
            :async "yes")))
       (ert-info ("fixed-width to example-block promotion")
         (let ((org-babel-min-lines-for-block-output 2))
-          (jupyter-org-test-src-block "print(\"z\")" ": z")
+          (jupyter-org-test-src-block "print(\"z\")" ": z\n")
           (jupyter-org-test-src-block
            "\
 print(\"z\", flush=True)
@@ -1555,7 +1571,8 @@ print(\"z\")"
 #+BEGIN_EXAMPLE
 z
 z
-#+END_EXAMPLE"
+#+END_EXAMPLE
+"
            :async "yes")
           (ert-info ("Appending after block promotion")
             (jupyter-org-test-src-block
@@ -1568,7 +1585,8 @@ print(\"z\")"
 z
 z
 z
-#+END_EXAMPLE"
+#+END_EXAMPLE
+"
              :async "yes"))
           (ert-info ("Append to block with newline after first stream message")
             (jupyter-org-test-src-block
@@ -1580,7 +1598,8 @@ print(\"z\")"
 z
 z
 z
-#+END_EXAMPLE"
+#+END_EXAMPLE
+"
              :async "yes"))
           (ert-info ("Append to block without newline after first stream message")
             (jupyter-org-test-src-block
@@ -1591,7 +1610,8 @@ print(\"z\")"
 #+BEGIN_EXAMPLE
 z
 zz
-#+END_EXAMPLE"
+#+END_EXAMPLE
+"
              :async "yes")))))))
 
 
@@ -1609,7 +1629,8 @@ print(\"z\")"
 #+BEGIN_EXAMPLE
   z
   z
-#+END_EXAMPLE"
+#+END_EXAMPLE
+"
        :async "yes"))))
 
 (ert-deftest org-babel-jupyter-:results-header-arg ()
@@ -1617,7 +1638,7 @@ print(\"z\")"
   (ert-info ("scalar suppresses table output")
     (jupyter-org-test-src-block
      "[1, 2, 3]"
-     (concat "| 1 | 2 | 3 |")
+     "| 1 | 2 | 3 |\n"
      ;; Ensure that no interference happens from removing the file header
      ;; argument.
      :file "foo"
@@ -1626,7 +1647,7 @@ print(\"z\")"
      :async "yes")
     (jupyter-org-test-src-block
      "[1, 2, 3]"
-     (concat ": [1, 2, 3]")
+     ": [1, 2, 3]\n"
      :results "scalar")))
 
 (ert-deftest org-babel-jupyter-:dir-header-arg ()
@@ -1636,7 +1657,7 @@ print(\"z\")"
      "\
 import os
 os.path.abspath(os.getcwd())"
-     (concat ": " (expand-file-name "~"))
+     (concat ": " (expand-file-name "~") "\n")
      :dir "~")
     (ert-info ("Directory restored")
       (jupyter-org-test-src-block
@@ -1646,7 +1667,7 @@ os.path.abspath(os.getcwd())"
        (concat ": " (expand-file-name
                      ;; Remove the path separator at the end of
                      ;; `default-directory'
-                     (substring default-directory nil -1)))))))
+                     (substring default-directory nil -1)) "\n")))))
 
 (ert-deftest jupyter-org--find-mime-types ()
   :tags '(org mime)
@@ -1670,7 +1691,7 @@ os.path.abspath(os.getcwd())"
    "\
 from IPython.display import publish_display_data
 publish_display_data({'text/plain': \"foo\", 'text/latex': \"$\\alpha$\"});"
-   ": foo"
+   ": foo\n"
    :display "plain"))
 
 ;; Local Variables:
