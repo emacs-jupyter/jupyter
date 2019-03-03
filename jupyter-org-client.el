@@ -990,48 +990,45 @@ appear after the element."
               export-block fixed-width item
               link plain-list src-block table))))
 
+(defun jupyter-org--wrappable-element-p (element)
+  "Return non-nil if ELEMENT can be removed and wrapped in a drawer."
+  (or (jupyter-org-babel-result-p element)
+      (memq (org-element-type) '(latex-fragment latex-environment))))
+
 ;;;; Wrapping results
 
 (defun jupyter-org--wrap-result-maybe (context result)
   "Depending on CONTEXT, wrap RESULT in a drawer."
-  (if (eq (org-element-type context) 'drawer)
-      ;; No need to wrap a result if a drawer already exists.
-      result
-    (cond
-     ;; If a keyword is the context, this is the first result.
-     ((eq (org-element-type context) 'keyword)
+  ;; If a keyword is the context, this is the first result.
+  (if (eq (org-element-type context) 'keyword)
       ;; Only wrap the result if it can't be removed by `org-babel'.
       (if (jupyter-org-babel-result-p result) result
-        (jupyter-org-results-drawer result)))
-     ;; A result already exists and is not already wrapped in a drawer, wrap
-     ;; the result already present along with the new result.
-     (t
-      (prog1 (jupyter-org-results-drawer context result)
-        ;; Ensure that a #+RESULTS: line is not prepended to context
-        ;; when calling `org-element-interpret-data'.
-        (org-element-put-property context :results nil)
-        ;; Ensure there is no post-blank since
-        ;; `org-element-interpret-data' already normalizes the string.
-        (org-element-put-property context :post-blank nil))))))
+        (jupyter-org-results-drawer result))
+    (if (jupyter-org--wrappable-element-p context)
+        (prog1 (jupyter-org-results-drawer context result)
+          ;; Ensure that a #+RESULTS: line is not prepended to context
+          ;; when calling `org-element-interpret-data'.
+          (org-element-put-property context :results nil)
+          ;; Ensure there is no post-blank since
+          ;; `org-element-interpret-data' already normalizes the string.
+          (org-element-put-property context :post-blank nil))
+      result)))
 
 (defun jupyter-org--delete-unwrapped-result (element)
   "Delete ELEMENT from the buffer.
 If ELEMENT represents a previous result it, along with the result
 about to be inserted, will be wrapped in a drawer."
-  (cl-case (org-element-type element)
-    ;; The `org-element-contents' of a table is nil which interferes with how
-    ;; `org-element-table-interpreter' works when calling
-    ;; `org-element-interpret-data' so set the contents and delete ELEMENT from the
-    ;; buffer.
-    (table
-     (org-element-set-contents
-      element (delete-and-extract-region
-               (org-element-property :contents-begin element)
-               (jupyter-org-element-end-before-blanks element))))
-    ;; Any other element is the first result that is being appended to,
-    ;; so delete it from the buffer since it will be wrapped in a
-    ;; drawer along with the appended result.
-    (t (jupyter-org-delete-element element))))
+  (if (eq (org-element-type element) 'table)
+      ;; The `org-element-contents' of a table is nil which interferes with how
+      ;; `org-element-table-interpreter' works when calling
+      ;; `org-element-interpret-data' so set the contents and delete ELEMENT from the
+      ;; buffer.
+      (org-element-set-contents
+       element (delete-and-extract-region
+                (org-element-property :contents-begin element)
+                (jupyter-org-element-end-before-blanks element)))
+    (when (jupyter-org--wrappable-element-p element)
+      (jupyter-org--delete-element element))))
 
 ;;;; Stream results
 
