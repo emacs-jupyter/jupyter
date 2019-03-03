@@ -1079,9 +1079,10 @@ last element being the newest element added to the history."
                     (setq restart-p t)))))
           (should-not (jupyter-repl-cell-finalized-p))
           (jupyter-repl-restart-kernel)
-          (jupyter-with-timeout (nil (* 2 jupyter-long-timeout))
+          ;; Attempt to catch the status: starting message
+          (jupyter-with-timeout (nil jupyter-long-timeout)
             restart-p)
-          (should restart-p)
+          (should (jupyter-kernel-info client))
           (should (equal (jupyter-repl-cell-code-beginning-position) (point)))
           (should-not (jupyter-repl-cell-finalized-p))
           (goto-char pos)
