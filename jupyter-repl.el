@@ -1387,8 +1387,9 @@ the kernel `jupyter-current-client' is connected to."
       (message "%s kernel..." (if shutdown "Shutting down"
                                 "Restarting"))
       (when (and (null (jupyter-wait-until-received :shutdown-reply
-                         (jupyter-send-shutdown-request client
-                           :restart (not shutdown))))
+                         (let ((jupyter-inhibit-handlers '(not :shutdown-reply)))
+                           (jupyter-send-shutdown-request client
+                             :restart (not shutdown)))))
                  (not shutdown))
         ;; Handle the case of a restart that does not send a shutdown-reply
         ;;
