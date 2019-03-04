@@ -73,18 +73,12 @@ If point is in a block, copy the header to the new block"
 
     ;; not in a src block, insert a new block, query for jupyter kernel
     (beginning-of-line)
-    (let ((kernel
-           (completing-read "Kernel: "
-                            (mapcar #'car (jupyter-available-kernelspecs)))))
+    (let ((kernelspec (jupyter-completing-read-kernelspec)))
       (insert
        (org-element-interpret-data
         (org-element-put-property
          (jupyter-org-src-block
-             (format "jupyter-%s"
-                     (plist-get (cdr (alist-get kernel
-                                                (jupyter-available-kernelspecs)
-                                                nil nil 'equal))
-                                :language)) "" "\n")
+             (format "jupyter-%s" (plist-get (cddr kernelspec) :language)) "" "\n")
          :post-blank 0))))
     (forward-line -2)))
 
@@ -94,18 +88,17 @@ If point is in a block, copy the header to the new block"
 
 With a prefix BELOW move point to lower block."
   (interactive "P")
-  (let ((src-block (org-element-context)))
-    (unless (eq (org-element-type src-block) 'src-block)
-      (error "Not in a source block"))
-    (beginning-of-line)
-    (org-babel-demarcate-block)
-    (if below
-        (progn
-          (org-babel-next-src-block)
-          (forward-line)
-          (open-line 1))
-      (forward-line -2)
-      (end-of-line))))
+  (unless (org-in-src-block-p)
+    (error "Not in a source block"))
+  (beginning-of-line)
+  (org-babel-demarcate-block)
+  (if below
+      (progn
+        (org-babel-next-src-block)
+        (forward-line)
+        (open-line 1))
+    (forward-line -2)
+    (end-of-line)))
 
 ;;;###autoload
 (defun jupyter-org-execute-and-next-block (&optional new)
@@ -114,7 +107,7 @@ With a prefix BELOW move point to lower block."
 If a new block is created, use the same language, switches and parameters.
 With prefix arg NEW, always insert new cell."
   (interactive "P")
-  (unless (eq (org-element-type (org-element-context)) 'src-block)
+  (unless (org-in-src-block-p)
       (error "Not in a source block"))
   (org-babel-execute-src-block)
   ;; add a new src block if there is no next one to jump to
@@ -182,7 +175,7 @@ Defaults to 3."
   "Jump to a visible src block with avy."
   (interactive)
   (avy-with jupyter-org-jump-to-block
-            (avy-jump "#\\+BEGIN_SRC" :beg (point-min) :end (point-max))))
+            (avy-jump "#\\+begin_src" :beg (point-min) :end (point-max))))
 
 ;;;###autoload
 (defun jupyter-org-edit-header ()
@@ -198,38 +191,39 @@ Defaults to 3."
             (read-string "Header: "
                          (buffer-substring header-start header-end))))))
 
+(defun jupyter-org-select-block-and-results ()
+  "Return the region that covers a source block and its results (if any).
+
+Return the region as (REGION_START . REGION_END)"
+  (unless (org-in-src-block-p)
+    (error "Not in a source block"))
+  (let* ((src (org-element-context))
+         (results-start (org-babel-where-is-src-block-result))
+         (results-end
+          (when results-start
+            (save-excursion
+              (goto-char results-start)
+              (goto-char (org-babel-result-end))
+              (point)))))
+    ;; return the region as (REGION_START . REGION_END)
+    `(,(org-element-property :begin src) .
+      ,(or results-end
+           (- (org-element-property :end src)
+              (org-element-property :post-blank src))))))
+
 ;;;###autoload
 (defun jupyter-org-kill-block-and-results ()
   "Kill the block and its results."
   (interactive)
-  (let ((src (org-element-context))
-        (result-start (org-babel-where-is-src-block-result))
-        end)
-    (if result-start
-        (save-excursion
-          (goto-char result-start)
-          (setq end (org-element-property :end src)))
-      (setq end (org-element-property :end src)))
-    (kill-region
-     (org-element-property :begin src)
-     end)))
+  (let ((region (jupyter-org-select-block-and-results)))
+    (kill-region (car region) (cdr region))))
 
 ;;;###autoload
 (defun jupyter-org-copy-block-and-results ()
   "Copy the src block at the current point and its results."
   (interactive)
-  (let ((src (org-element-context))
-        (result-start (org-babel-where-is-src-block-result))
-        end)
-    (if result-start
-        (save-excursion
-          (goto-char result-start)
-          (setq end (org-babel-result-end)))
-      (setq end (org-element-property :end src)))
-    (kill-new
-     (buffer-substring
-      (org-element-property :begin src)
-      end))))
+  (let ((region (jupyter-org-select-block-and-results)))
+    (kill-new (buffer-substring (car region) (cdr region)))))
 
 ;;;###autoload
 (defun jupyter-org-clone-block (&optional below)
@@ -239,7 +233,7 @@ If BELOW is non-nil, add the cloned block below."
   (interactive "P")
   (let* ((src (org-element-context))
          (code (org-element-property :value src)))
-    (unless (eq (org-element-type src) 'src-block)
+    (unless (org-in-src-block-p)
       (error "Not in a source block"))
     (jupyter-org-insert-src-block below)
     (delete-char 1)
@@ -252,12 +246,12 @@ If BELOW is non-nil, add the cloned block below."
 (defun jupyter-org-merge-blocks ()
   "Merge the current block with the next block."
   (interactive)
+  (unless (org-in-src-block-p)
+    (error "Not in a source block"))
   (let ((current-src-block (org-element-context))
         (next-src-block (save-excursion
                           (org-babel-next-src-block)
                           (org-element-context))))
-    (unless (eq (org-element-type current-src-block) 'src-block)
-      (error "Not in a source block"))
     (let ((merged-code (concat (org-element-property :value current-src-block)
                                (org-element-property :value next-src-block)))
           (lang (org-element-property :language current-src-block))
@@ -288,47 +282,41 @@ If BELOW is non-nil, add the cloned block below."
 
 If BELOW is non-nil, move the block down, otherwise move it up."
   (interactive)
-  ;;skip all this if there are no previous or next source block
+  (unless (org-in-src-block-p)
+    (error "Not in a source block"))
+  ;; throw error if there's no previous or next source block
   (when (condition-case nil
             (save-excursion
               (if below
                   (org-babel-next-src-block)
                 (org-babel-previous-src-block)))
           (error nil))
-    (let* ((src (org-element-context))
-           (results-start (org-babel-where-is-src-block-result))
-           (results-end
-            (when results-start
-              (save-excursion
-                (goto-char results-start)
-                (goto-char (org-babel-result-end))
-                ;; if line is empty, take that empty line by moving down
-                (when (looking-at-p "[[:space:]]*$")
-                  (forward-line 1))
-                (point)))))
-      ;; kill from the start of the source block to the end of the results
-      ;; ... if there are no results, to the end of the source block
-      (kill-region
-       (org-element-property :begin src)
-       (or results-end (org-element-property :end src))))
-    (if below
-        ;; if below, move past the next source block or its result
-        (let ((next-src-block-head (org-babel-where-is-src-block-head)))
-          (if next-src-block-head
-              (goto-char next-src-block-head)
-            (org-babel-next-src-block))
-          (let ((next-src-block (org-element-context))
-                (next-results-start (org-babel-where-is-src-block-result)))
-            (if next-results-start
-                (progn
-                  (goto-char next-results-start)
-                  (goto-char (org-babel-result-end))
-                  (when (looking-at-p "[[:space:]]*$")
-                    (forward-line 1)))
-              (goto-char (org-element-property :end next-src-block)))))
-      ;; else, move to the begining of the previous block
-      (org-babel-previous-src-block))
-    (save-excursion (org-yank)))) ; keep cursor where the yank takes place
+    (let* ((region (jupyter-org-select-block-and-results))
+           (block (delete-and-extract-region (car region) (cdr region))))
+      ;; if there is an empty line remaining, take that line as part of the
+      ;; ... block
+      (when (looking-at-p "[[:space:]]*$")
+        (delete-region (point-at-bol) (+ (point-at-eol) 1))
+        (setq block (concat block "\n")))
+      (if below
+          ;; if below, move past the next source block or its result
+          (let ((next-src-block-head (org-babel-where-is-src-block-head)))
+            (if next-src-block-head
+                (goto-char next-src-block-head)
+              (org-babel-next-src-block))
+            (let ((next-src-block (org-element-context))
+                  (next-results-start (org-babel-where-is-src-block-result)))
+              (if next-results-start
+                  (progn
+                    (goto-char next-results-start)
+                    (goto-char (org-babel-result-end))
+                    (when (looking-at-p "[[:space:]]*$")
+                      (forward-line 1)))
+                (goto-char (org-element-property :end next-src-block)))))
+        ;; else, move to the begining of the previous block
+        (org-babel-previous-src-block))
+      ;; keep cursor where the insertion takes place
+      (save-excursion (insert block)))))
 
 ;;;###autoload
 (defun jupyter-org-clear-all-results ()
@@ -382,7 +370,7 @@ _M-s-<return>_: Restart/to point  ^ ^            _c_: clone
     ("g" jupyter-org-jump-to-visible-block)
     ("G" jupyter-org-jump-to-block)
 
-    ("w" jupyter-org-ob-move-src-block :color red)
+    ("w" jupyter-org-move-src-block :color red)
     ("s" (jupyter-org-move-src-block t) :color red)
     ("x" jupyter-org-kill-block-and-results)
     ("n" jupyter-org-copy-block-and-results)
