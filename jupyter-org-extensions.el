@@ -354,18 +354,18 @@ If BELOW is non-nil, move the block down, otherwise move it up."
   (fmakunbound 'jupyter-org-hydra/body)
   (eval `(defhydra jupyter-org-hydra (:color blue :hint nil)
     "
-        Execute                   Navigate       Edit             Misc
-----------------------------------------------------------------------
-    _<return>_: current           _i_: previous  _w_: move up     _/_: inspect
-  _C-<return>_: current to next   _k_: next      _s_: move down   _l_: clear result
-  _M-<return>_: to point          _g_: visible   _x_: kill        _L_: clear all
-  _S-<return>_: Restart/block     _G_: any       _n_: copy
-_S-C-<return>_: Restart/to point  ^ ^            _c_: clone
-_S-M-<return>_: Restart/buffer    ^ ^            _m_: merge
-           _r_: Goto repl         ^ ^            _-_: split
-           ^ ^                    ^ ^            _+_: insert above
-           ^ ^                    ^ ^            _=_: insert below
-           ^ ^                    ^ ^            _h_: header"
+          Execute                 Navigate       Edit             Misc
+------------------------------------------------------------------------------
+    _<return>_: current           _p_: previous  _C-p_: move up     _/_: inspect
+  _C-<return>_: current to next   _n_: next      _C-n_: move down   _l_: clear result
+  _M-<return>_: to point          _g_: visible     _x_: kill        _L_: clear all
+  _S-<return>_: Restart/block     _G_: any         _c_: copy
+_S-C-<return>_: Restart/to point  ^ ^              _o_: clone
+_S-M-<return>_: Restart/buffer    ^ ^              _m_: merge
+           _r_: Goto repl         ^ ^              _s_: split
+           ^ ^                    ^ ^              _+_: insert above
+           ^ ^                    ^ ^              _=_: insert below
+           ^ ^                    ^ ^              _h_: header"
     ("<return>" org-ctrl-c-ctrl-c :color red)
     ("C-<return>" jupyter-org-execute-and-next-block :color red)
     ("M-<return>" jupyter-org-execute-to-point)
@@ -374,18 +374,18 @@ _S-M-<return>_: Restart/buffer    ^ ^            _m_: merge
     ("S-M-<return>" jupyter-org-restart-kernel-execute-buffer)
     ("r" org-babel-switch-to-session)
 
-    ("i" org-babel-previous-src-block :color red)
-    ("k" org-babel-next-src-block :color red)
+    ("p" org-babel-previous-src-block :color red)
+    ("n" org-babel-next-src-block :color red)
     ("g" jupyter-org-jump-to-visible-block)
     ("G" jupyter-org-jump-to-block)
 
-    ("w" jupyter-org-move-src-block :color red)
-    ("s" (jupyter-org-move-src-block t) :color red)
+    ("C-p" jupyter-org-move-src-block :color red)
+    ("C-n" (jupyter-org-move-src-block t) :color red)
     ("x" jupyter-org-kill-block-and-results)
-    ("n" jupyter-org-copy-block-and-results)
-    ("c" (jupyter-org-clone-block t))
+    ("c" jupyter-org-copy-block-and-results)
+    ("o" (jupyter-org-clone-block t))
     ("m" jupyter-org-merge-blocks)
-    ("-" jupyter-org-split-src-block)
+    ("s" jupyter-org-split-src-block)
     ("+" jupyter-org-insert-src-block)
     ("=" (jupyter-org-insert-src-block t))
     ("l" org-babel-remove-result)
