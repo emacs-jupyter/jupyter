@@ -32,6 +32,9 @@
 (require 'jupyter-org-client)
 
 (declare-function org-babel-jupyter-initiate-session "ob-jupyter" (&optional session params))
+(declare-function avy-with nil)
+(declare-function avy-jump nil)
+(declare-function ivy-read nil)
 
 ;;;###autoload
 (defun jupyter-org-insert-src-block (&optional below)
@@ -102,7 +105,7 @@ With a prefix BELOW move point to lower block."
 
 ;;;###autoload
 (defun jupyter-org-execute-and-next-block (&optional new)
-  "Execute this block and jump or add a new one.
+  "Execute his block and jump or add a new one.
 
 If a new block is created, use the same language, switches and parameters.
 With prefix arg NEW, always insert new cell."
@@ -111,9 +114,9 @@ With prefix arg NEW, always insert new cell."
       (error "Not in a source block"))
   (org-babel-execute-src-block)
   ;; add a new src block if there is no next one to jump to
-  (unless (or new (condition-case nil
-                       (org-babel-next-src-block)
-                     (error nil)))
+  (unless (or new (ignore-errors (org-babel-next-src-block)))
+    ;; FIXME: without this, the new block is added as part of the results of the last block
+    (sleep-for 0.2)
     (jupyter-org-insert-src-block t)))
 
 ;;;###autoload
@@ -127,19 +130,27 @@ With prefix arg NEW, always insert new cell."
         (org-babel-execute-src-block)))))
 
 ;;;###autoload
+(defun jupyter-org-restart-kernel-execute-block ()
+  "Restart the kernel of the source block where point is and execute it."
+  (interactive)
+  (jupyter-org-with-src-block-client
+   (jupyter-repl-restart-kernel))
+  (org-babel-execute-src-block-maybe))
+
+;;;###autoload
 (defun jupyter-org-restart-and-execute-to-point ()
   "Kill the kernel and run src-blocks to point."
   (interactive)
-  ;; FIXME: restaring the kernel does not work
-  (call-interactively #'jupyter-repl-restart-kernel)
+  (jupyter-org-with-src-block-client
+   (jupyter-repl-restart-kernel))
   (jupyter-org-execute-to-point))
 
 ;;;###autoload
 (defun jupyter-org-restart-kernel-execute-buffer ()
   "Restart kernel and execute buffer."
   (interactive)
-  ;; FIXME: restaring the kernel does not work
-  (call-interactively #'jupyter-repl-restart-kernel)
+  (jupyter-org-with-src-block-client
+   (jupyter-repl-restart-kernel))
   (org-babel-execute-buffer))
 
 ;;;###autoload
@@ -149,6 +160,8 @@ If narrowing is in effect, only a block in the narrowed region.
 Use a numeric prefix N to specify how many lines of context to use.
 Defaults to 3."
   (interactive "p")
+  (unless (require 'ivy nil t)
+    (error "Package `ivy' not installed"))
   (let ((p '()))
     (when (= 1 N) (setq N 3))
     (save-excursion
@@ -166,15 +179,17 @@ Defaults to 3."
     (ivy-read "block: " (reverse p)
               :action (lambda (candidate)
                         (goto-char (point-min))
-                        (forward-line (1- (second candidate)))
-                        (outline-show-entry)
+                        (forward-line (1- (nth 1 candidate)))
+                        (ignore-errors (outline-show-entry))
                         (recenter)))))
 
 ;;;###autoload
 (defun jupyter-org-jump-to-visible-block ()
   "Jump to a visible src block with avy."
   (interactive)
-  (avy-with jupyter-org-jump-to-block
+  (unless (require 'avy nil t)
+    (error "Package `avy' not installed"))
+  (avy-with #'jupyter-org-jump-to-block
             (avy-jump "#\\+begin_src" :beg (point-min) :end (point-max))))
 
 ;;;###autoload
@@ -184,7 +199,7 @@ Defaults to 3."
   (let ((src-info (org-babel-get-src-block-info 'light)))
     (unless src-info
       (error "Not in a source block"))
-    (let* ((header-start (sixth src-info))
+    (let* ((header-start (nth 5 src-info))
            (header-end (save-excursion (goto-char header-start)
                                        (line-end-position))))
       (setf (buffer-substring header-start header-end)
@@ -192,9 +207,9 @@ Defaults to 3."
                          (buffer-substring header-start header-end))))))
 
 (defun jupyter-org-select-block-and-results ()
-  "Return the region that covers a source block and its results (if any).
+  "Return the region that contains a source block and its results (if any).
 
-Return the region as (REGION_START . REGION_END)"
+Return the region as (BEGIN . END)"
   (unless (org-in-src-block-p)
     (error "Not in a source block"))
   (let* ((src (org-element-context))
@@ -205,11 +220,8 @@ Return the region as (REGION_START . REGION_END)"
               (goto-char results-start)
               (goto-char (org-babel-result-end))
               (point)))))
-    ;; return the region as (REGION_START . REGION_END)
     `(,(org-element-property :begin src) .
-      ,(or results-end
-           (- (org-element-property :end src)
-              (org-element-property :post-blank src))))))
+      ,(or results-end (jupyter-org-element-end-before-blanks src)))))
 
 ;;;###autoload
 (defun jupyter-org-kill-block-and-results ()
@@ -248,33 +260,40 @@ If BELOW is non-nil, add the cloned block below."
   (interactive)
   (unless (org-in-src-block-p)
     (error "Not in a source block"))
-  (let ((current-src-block (org-element-context))
-        (next-src-block (save-excursion
-                          (org-babel-next-src-block)
-                          (org-element-context))))
-    (let ((merged-code (concat (org-element-property :value current-src-block)
-                               (org-element-property :value next-src-block)))
-          (lang (org-element-property :language current-src-block))
-          (switches (or (org-element-property :switches current-src-block) ""))
-          (parameters (or (org-element-property :parameters current-src-block) "")))
-      ;; Remove source blocks
-      (mapc (lambda (src-block)
-              (goto-char (org-element-property :begin src-block))
-              (org-babel-remove-result)
-              (setf (buffer-substring (org-element-property :begin src-block)
-                                      (org-element-property :end src-block))
-                    ""))
-            (list next-src-block current-src-block))
-      ;; Now create the merged block, point is where the current block was
+  (let ((current-src-block (org-element-context)))
+    (org-babel-remove-result)
+    (org-babel-next-src-block)
+    (let* ((next-src-block (prog1 (org-element-context)
+                   (org-babel-remove-result)))
+           (next-src-block-beg (set-marker
+                      (make-marker)
+                      (org-element-property :begin next-src-block)))
+           (next-src-block-end (set-marker
+                      (make-marker)
+                      (jupyter-org-element-end-before-blanks next-src-block))))
+      (goto-char (jupyter-org-element-end-before-blanks current-src-block))
+      (forward-line -1)
       (insert
-       (org-element-interpret-data
-        (org-element-put-property
-         (jupyter-org-src-block lang parameters merged-code switches)
-         :post-blank 1)))
-      ;; (insert (format "#+BEGIN_SRC %s %s %s\n%s#+END_SRC\n\n"
-      ;;                 lang switches parameters merged-code))
-      (forward-line -3)
-      (end-of-line))))
+       (delete-and-extract-region
+        (save-excursion
+          (goto-char (jupyter-org-element-begin-after-affiliated next-src-block))
+          (forward-line 1)
+          (point))
+        (save-excursion
+          (goto-char next-src-block-end)
+          (forward-line -1)
+          (point))))
+      ;; delete a leftover space
+      (save-excursion
+        (goto-char next-src-block-end)
+        (when (looking-at-p "[[:space:]]*$")
+          (set-marker next-src-block-end (+ (point-at-eol) 1))))
+      (delete-region next-src-block-beg next-src-block-end)
+      (set-marker next-src-block-beg nil)
+      (set-marker next-src-block-end nil)))
+  ;; move to the end of the last line
+  (forward-line -1)
+  (end-of-line))
 
 ;;;###autoload
 (defun jupyter-org-move-src-block (&optional below)
@@ -285,17 +304,16 @@ If BELOW is non-nil, move the block down, otherwise move it up."
   (unless (org-in-src-block-p)
     (error "Not in a source block"))
   ;; throw error if there's no previous or next source block
-  (when (condition-case nil
-            (save-excursion
-              (if below
-                  (org-babel-next-src-block)
-                (org-babel-previous-src-block)))
-          (error nil))
+  (when (ignore-errors
+          (save-excursion
+            (if below
+                (org-babel-next-src-block)
+              (org-babel-previous-src-block))))
     (let* ((region (jupyter-org-select-block-and-results))
            (block (delete-and-extract-region (car region) (cdr region))))
       ;; if there is an empty line remaining, take that line as part of the
       ;; ... block
-      (when (looking-at-p "[[:space:]]*$")
+      (when (and (looking-at-p "[[:space:]]*$") (/= (point) (point-max)))
         (delete-region (point-at-bol) (+ (point-at-eol) 1))
         (setq block (concat block "\n")))
       (if below
@@ -327,15 +345,6 @@ If BELOW is non-nil, move the block down, otherwise move it up."
     (while (org-babel-next-src-block)
       (org-babel-remove-result))))
 
-;;;###autoload
-(defun jupyter-org-restart-kernel-execute-block ()
-  "Restart the kernel of the source block where point is and execute it."
-  (interactive)
-  (jupyter-org-with-src-block-client
-   (jupyter-repl-restart-kernel))
-  (org-babel-execute-src-block-maybe))
-
-
 (defun jupyter-org-hydra/body ()
   "Hack to bind a hydra only if the hydra package exists."
   (interactive)
@@ -348,21 +357,21 @@ If BELOW is non-nil, move the block down, otherwise move it up."
         Execute                   Navigate       Edit             Misc
 ----------------------------------------------------------------------
     _<return>_: current           _i_: previous  _w_: move up     _/_: inspect
-  _S-<return>_: current to next   _k_: next      _s_: move down   _l_: clear result
-_S-M-<return>_: to point          _g_: visible   _x_: kill        _L_: clear all
-  _s-<return>_: Restart/block     _G_: any       _n_: copy
-_M-s-<return>_: Restart/to point  ^ ^            _c_: clone
-  _H-<return>_: Restart/buffer    ^ ^            _m_: merge
+  _C-<return>_: current to next   _k_: next      _s_: move down   _l_: clear result
+  _M-<return>_: to point          _g_: visible   _x_: kill        _L_: clear all
+  _S-<return>_: Restart/block     _G_: any       _n_: copy
+_S-C-<return>_: Restart/to point  ^ ^            _c_: clone
+_S-M-<return>_: Restart/buffer    ^ ^            _m_: merge
            _r_: Goto repl         ^ ^            _-_: split
            ^ ^                    ^ ^            _+_: insert above
            ^ ^                    ^ ^            _=_: insert below
            ^ ^                    ^ ^            _h_: header"
     ("<return>" org-ctrl-c-ctrl-c :color red)
-    ("S-<return>" jupyter-org-execute-and-next-block :color red)
-    ("S-M-<return>" jupyter-org-execute-to-point)
-    ("s-<return>" jupyter-org-restart-kernel-execute-block)
-    ("M-s-<return>" jupyter-org-restart-and-execute-to-point)
-    ("H-<return>" jupyter-org-restart-kernel-execute-buffer)
+    ("C-<return>" jupyter-org-execute-and-next-block :color red)
+    ("M-<return>" jupyter-org-execute-to-point)
+    ("S-<return>" jupyter-org-restart-kernel-execute-block)
+    ("S-C-<return>" jupyter-org-restart-and-execute-to-point)
+    ("S-M-<return>" jupyter-org-restart-kernel-execute-buffer)
     ("r" org-babel-switch-to-session)
 
     ("i" org-babel-previous-src-block :color red)
