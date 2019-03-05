@@ -273,7 +273,10 @@ aligns on the current line."
     ;; NOTE: Parsing takes a very long time when the text
     ;; is > ~500000 characters.
     (jupyter--delete-script-tags beg end)
-    (let ((shr-put-image-function #'jupyter--shr-put-image))
+    (let ((shr-put-image-function #'jupyter--shr-put-image)
+          ;; Avoid issues with proportional fonts. Sometimes not all of the
+          ;; text is rendered using proportional fonts. See #52.
+          (shr-use-fonts nil))
       (if (save-excursion
             (goto-char beg)
             (looking-at "<\\?xml"))
@@ -284,7 +287,7 @@ aligns on the current line."
           (cl-letf (((symbol-function #'libxml-parse-html-region)
                      #'libxml-parse-xml-region))
             (shr-render-region beg end))
-          (shr-render-region beg end)))
+        (shr-render-region beg end)))
     (jupyter-add-font-lock-properties beg end)))
 
 ;;; Markdown
