@@ -77,7 +77,7 @@ exist or if LANG cannot be determined, assign variables using
 `org-babel-variable-assignments:python'."
   (or lang (setq lang (org-babel-jupyter--src-block-kernel-language)))
   (let ((fun (when lang
-               (intern (concat "org-babel-variable-assignments:" lang)))))
+               (intern (format "org-babel-variable-assignments:%s" lang)))))
     (if (functionp fun) (funcall fun params)
       (org-babel-variable-assignments:python params))))
 
@@ -118,7 +118,7 @@ includes the :dir parameter with the directory being an absolute
 path."
   (or lang (setq lang (org-babel-jupyter--src-block-kernel-language)))
   (let* ((expander (when lang
-                     (intern (concat "org-babel-expand-body:" lang))))
+                     (intern (format "org-babel-expand-body:%s" lang))))
          (expanded (if (functionp expander)
                        (funcall expander body params var-lines)
                      (org-babel-expand-body:generic body params var-lines)))

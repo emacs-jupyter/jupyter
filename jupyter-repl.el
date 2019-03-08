@@ -1937,7 +1937,7 @@ name. If nil or empty, a default will be used."
               (generate-new-buffer
                (format "*jupyter-repl[%s]*"
                        (if (zerop (length repl-name))
-                           (concat language-name " " language-version)
+                           (format "%s %s" language-name language-version)
                          repl-name))))
         (jupyter-with-repl-buffer client
           (setq-local jupyter-current-client client)

@@ -1369,8 +1369,8 @@ Image(filename='%s', width=300)" file)
                 (org-babel-script-escape results)))
              (jupyter-current-client (jupyter-kernel-client)))
     (oset jupyter-current-client kernel-info
-          (list :language_info (list :name "python")))
-    (should (equal (jupyter-kernel-language jupyter-current-client) "python"))
+          (list :language_info (list :name 'python)))
+    (should (equal (jupyter-kernel-language jupyter-current-client) 'python))
     ;; Bring in the python specific methods
     (jupyter-load-language-support jupyter-current-client)
     (should (equal (jupyter-org-result req (list :text/plain "[1, 2, 3]"))

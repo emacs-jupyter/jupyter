@@ -178,15 +178,12 @@ the :hb key is a `jupyter-hb-channel'.")))
 
 ;;; `jupyter-current-client' language method specializer
 
-(defvar jupyter--generic-lang-used (make-hash-table :test #'eql))
+(defvar jupyter--generic-lang-used (make-hash-table :test #'eq))
 
 (cl-generic-define-generalizer jupyter--generic-lang-generalizer
   50 (lambda (name &rest _)
        `(when (and ,name (object-of-class-p ,name 'jupyter-kernel-client))
-          ;; TODO: Make `jupyter-kernel-language' a symbol
-          ;; to avoid interning a constant string.
-          (gethash (intern (jupyter-kernel-language ,name))
-                   jupyter--generic-lang-used)))
+          (gethash (jupyter-kernel-language ,name) jupyter--generic-lang-used)))
   (lambda (tag &rest _)
     (and (eq (car-safe tag) 'jupyter-lang)
          (list tag))))
@@ -973,7 +970,7 @@ Methods that extend this generic function should
           (add-hook 'minibuffer-exit-hook
                     'jupyter--teardown-minibuffer nil t))
       (prog1 (read-from-minibuffer
-              (concat "Eval (" (jupyter-kernel-language client) "): ")
+              (format "Eval (%s): " (jupyter-kernel-language client))
               nil read-expression-map
               nil 'jupyter--read-expression-history)
         (jupyter-set client 'jupyter-eval-expression-history
@@ -1847,7 +1844,11 @@ kernel-info slot to the plist retrieved from the kernel, and
 return it.
 
 If the kernel CLIENT is connected to does not respond to a
-`:kernel-info-request', raise an error."
+`:kernel-info-request', raise an error.
+
+Note, the value of the :name key in the :language_info property
+list is a symbol as opposed to a string mainly to speed up method
+dispatching based on the kernel language."
   (cl-check-type client jupyter-kernel-client)
   (or (oref client kernel-info)
       (let* ((jupyter-inhibit-handlers t)
@@ -1856,7 +1857,11 @@ If the kernel CLIENT is connected to does not respond to a
                     req jupyter-long-timeout "Requesting kernel info...")))
         (unless msg
           (error "Kernel did not respond to kernel-info request"))
-        (oset client kernel-info (jupyter-message-content msg)))))
+        (prog1 (oset client kernel-info (jupyter-message-content msg))
+          ;; Convert to a language symbol for method dispatching
+          (let* ((info (plist-get (oref client kernel-info) :language_info))
+                 (lang (plist-get info :name)))
+            (plist-put info :name (intern lang)))))))
 
 (defun jupyter-kernel-language-mode-properties (client)
   "Get the `major-mode' info of CLIENT's kernel language.
@@ -1879,7 +1884,7 @@ purposes and SYNTAX-TABLE is the syntax table of MODE."
                    (push item jupyter-kernel-language-mode-properties))))))))
 
 (defun jupyter-kernel-language (client)
-  "Return the language of the kernel CLIENT is connected to."
+  "Return the language (as a symbol) of the kernel CLIENT is connected to."
   (cl-check-type client jupyter-kernel-client)
   (plist-get (plist-get (jupyter-kernel-info client) :language_info) :name))
 
@@ -1898,7 +1903,7 @@ purposes and SYNTAX-TABLE is the syntax table of MODE."
 CLIENT is a kernel client."
   (cl-check-type client jupyter-kernel-client)
   (let* ((lang (jupyter-kernel-language client))
-         (support (intern (concat "jupyter-" lang))))
+         (support (intern (format "jupyter-%s" lang))))
     (require support nil t)))
 
 (cl-defgeneric jupyter-send-kernel-info-request ((client jupyter-kernel-client))

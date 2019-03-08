@@ -433,7 +433,7 @@ any Jupyter code block, [jupyter]."
 (defun jupyter-org--define-key-filter (key &rest _)
   "Return the definition for KEY when inside a Jupyter src-block or nil."
   (jupyter-org-with-src-block-client
-   (let ((lang (intern (jupyter-kernel-language jupyter-current-client))))
+   (let ((lang (jupyter-kernel-language jupyter-current-client)))
      (or (jupyter-org--key-def key `[,lang])
          (jupyter-org--key-def key [jupyter])))))
 
