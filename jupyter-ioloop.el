@@ -179,12 +179,8 @@ should exclude the head element of the EVENT."
 Additionally set the :start and :quit properties of the process
 to t when they occur. See also `jupyter-ioloop-wait-until'."
   (when jupyter--debug
-    (message
-     (concat (upcase (symbol-name (car event)))
-             ": "
-             ;; TODO: Fix this
-             (replace-regexp-in-string
-              "%" "%%" (jupyter-ioloop-printer ioloop obj event)))))
+    (message "%s" (concat (upcase (symbol-name (car event))) ": "
+                          (jupyter-ioloop-printer ioloop obj event))))
   (with-slots (process) ioloop
     (cond
      ((eq (car-safe event) 'start)
