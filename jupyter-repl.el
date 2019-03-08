@@ -1289,6 +1289,11 @@ the REPL to disable that mode in those buffers. See
                 (when (eq jupyter-current-client client)
                   (jupyter-repl-interaction-mode -1)))))))))
 
+(defun jupyter-repl-error-before-major-mode-change ()
+  "Error if attempting to change the `major-mode' in a REPL buffer."
+  (when (eq major-mode 'jupyter-repl-mode)
+    (error "Attempting to change `major-mode' in the REPL buffer!")))
+
 (defun jupyter-repl-preserve-window-margins (&optional window)
   "Ensure that the margins of a REPL window are present.
 This function is added as a hook to `pre-redisplay-functions' to
@@ -1554,7 +1559,6 @@ in the appropriate direction, to the saved element."
     (define-key map (kbd "M-p") #'jupyter-repl-history-previous)
     map))
 
-;; TODO: Gaurd against a major mode change
 (put 'jupyter-repl-mode 'mode-class 'special)
 (define-derived-mode jupyter-repl-mode fundamental-mode
   "Jupyter-REPL"
@@ -1603,7 +1607,9 @@ in the appropriate direction, to the saved element."
     (jupyter-repl-initialize-fontification)
     (jupyter-repl-isearch-setup)
     (jupyter-repl-sync-execution-state)
-    (jupyter-repl-interaction-mode)))
+    (jupyter-repl-interaction-mode)
+    ;; Do this last so that it runs before any other `change-major-mode-hook's.
+    (add-hook 'change-major-mode-hook #'jupyter-repl-error-before-major-mode-change nil t)))
 
 (cl-defgeneric jupyter-repl-after-init ()
   "Hook function called whenever `jupyter-repl-mode' is enabled/disabled.
