@@ -1649,7 +1649,11 @@ Run FUN when the completions are available."
                      (not (eq (jupyter-message-type
                                (jupyter-request-last-message req))
                               :complete-reply)))
-            (jupyter-wait-until-received :complete-reply req))
+            (jupyter-wait-until req '(:status :complete-reply)
+              (lambda (msg)
+                (or (eq (jupyter-message-type msg) :complete-reply)
+                    (jupyter-message-status-idle-p msg)))
+              1))
           (when (eq (car jupyter-completion-cache) 'fetched)
             (jupyter-with-message-content (nth 2 jupyter-completion-cache)
                 (status matches metadata)
