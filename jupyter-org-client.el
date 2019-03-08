@@ -474,7 +474,7 @@ and they only take effect when the variable
             (defalias (make-symbol (symbol-name def))
               cmd (documentation def))
           cmd))))
-  ;; FIXME: This will set the key multiple times if the same binding is used
+  ;; NOTE: This will set the key multiple times if the same binding is used
   ;; for different kernel languages even though it only needs to be defined
   ;; once. `lookup-key' won't work for checking if it is already defined since
   ;; the filter function of the menu-item returns nil if a client isn't

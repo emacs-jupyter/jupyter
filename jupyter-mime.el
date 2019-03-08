@@ -447,8 +447,6 @@ width and height of the image."
 
 ;;; Insert with display IDs
 
-;; FIXME: The support for display IDs has not really been tested.
-
 (cl-defmethod jupyter-insert :before ((_display-id string) &rest _)
   "Initialize `juptyer-display-ids'"
   ;; FIXME: Set the local display ID hash table for the current buffer, or

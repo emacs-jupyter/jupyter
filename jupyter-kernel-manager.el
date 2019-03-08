@@ -158,8 +158,6 @@ of ARGS are the arguments of the command."
 (cl-defgeneric jupyter-start-kernel ((manager jupyter-kernel-manager) &optional timeout)
   "Start a kernel based on MANAGER's slots. Wait until TIMEOUT for startup.")
 
-;; TODO: Allow passing arguments like a different kernel file name or different
-;; ports and arguments to the kernel
 (cl-defmethod jupyter-start-kernel ((manager jupyter-kernel-manager) &optional timeout)
   "Start a kernel and associate it with MANAGER.
 

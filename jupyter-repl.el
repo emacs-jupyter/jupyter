@@ -63,8 +63,6 @@
 (require 'jupyter-kernel-manager)
 (require 'ring)
 
-;; TODO: Fallbacks for when the language doesn't have a major mode installed.
-
 ;; TODO: Define `jupyter-kernel-manager-after-restart-hook' to update the
 ;; execution count after a restart. More generally, define more ways to hook
 ;; into differnt events of the client/kernel interaction.
@@ -245,8 +243,9 @@ Similarly, OUTPUT-FORMS is evaluated for every output cell region
 with the buffer narrowed to the output cell.
 
 Note the narrowed regions may not be full input/output cells if
-BEG and END are inside an input/output cell."
-  (declare (indent 3) (debug ([&or symbolp form] [&or symbolp form] form &rest form)))
+BEG and END are within an input/output cell."
+  (declare (indent 3) (debug ([&or symbolp form] [&or symbolp form]
+                              form &rest form)))
   (let ((start (make-symbol "start"))
         (next (make-symbol "next"))
         (-end (make-symbol "-end")))
@@ -1137,11 +1136,6 @@ Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
                         (jupyter-repl-cell-code-position)))
               (code (jupyter-repl-cell-code))
               (replacement
-               ;; TODO: Convert to using indirect buffers if
-               ;; they are faster. We can keep an indirect
-               ;; buffer around with the languages major mode.
-               ;; This way we avoid copying the buffer strings
-               ;; back and forth between buffers.
                (jupyter-with-repl-lang-buffer
                  (insert code)
                  (goto-char pos)
@@ -1352,7 +1346,6 @@ manager. See `jupyter-start-new-kernel'."
     (jupyter-interrupt-kernel
      (oref jupyter-current-client manager))))
 
-;; TODO: Make timeouts configurable
 (defun jupyter-repl-restart-kernel (&optional shutdown client)
   "Restart the kernel `jupyter-current-client' is connected to.
 With a prefix argument, SHUTDOWN the kernel completely instead.

@@ -1589,8 +1589,6 @@ candidates can be used for PREFIX."
             (or (string= prefix "")
                 (not (eq (aref prefix (1- (length prefix))) ?\())))))
 
-;; TODO: Move functionality into a default `jupyter-handle-complete-reply'
-;; method rather than callbacks?
 (defun jupyter-completion-prefetch (fun)
   "Get completions for the current completion context.
 Run FUN when the completions are available."
