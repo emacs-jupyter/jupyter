@@ -148,6 +148,8 @@ line in the previous source block. See
 ;;;;; `jupyter-org-error-location'
 ;; Inspiration from https://kitchingroup.cheme.cmu.edu/blog/2017/06/10/Adding-keymaps-to-src-blocks-via-org-font-lock-hook/
 
+(defconst jupyter-org--goto-error-string "[goto error]")
+
 (cl-defgeneric jupyter-org-error-location ()
   "Return the line number corresponding to an error from a traceback.
 This method is called with `point' at `point-min' in a buffer
@@ -166,7 +168,7 @@ line number could not be found."
                                       (jupyter-org-error-location)))
                                   0))
                 (point-marker))))
-    (propertize "[goto error]"
+    (propertize jupyter-org--goto-error-string
                 'jupyter-error-loc loc
                 'face 'link
                 'keymap jupyter-org-goto-error-map)))
@@ -993,7 +995,14 @@ appear after the element."
 (defun jupyter-org--wrappable-element-p (element)
   "Return non-nil if ELEMENT can be removed and wrapped in a drawer."
   (or (jupyter-org-babel-result-p element)
-      (memq (org-element-type) '(latex-fragment latex-environment))))
+      (let ((type (org-element-type element)))
+        (or (memq type '(latex-fragment latex-environment))
+            ;; TODO: Figure out a better way. I predict there will be more
+            ;; situations where a comment would be useful to add. That means
+            ;; we would have to verify each one.
+            (and (eq type 'comment)
+                 (equal jupyter-org--goto-error-string
+                        (org-element-property :value element)))))))
 
 ;;;; Wrapping results
 
