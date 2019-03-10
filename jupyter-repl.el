@@ -1040,14 +1040,15 @@ elements."
       ("unknown"))))
 
 (defun jupyter-repl--insert-banner-and-prompt (client)
-  (goto-char (point-max))
-  (unless (jupyter-repl-cell-finalized-p)
-    (jupyter-repl-finalize-cell nil))
-  (jupyter-repl-newline)
-  (jupyter-repl-insert-banner
-   (plist-get (jupyter-kernel-info client) :banner))
-  (jupyter-repl-insert-prompt 'in)
-  (jupyter-repl-update-cell-count 1))
+  (jupyter-with-repl-buffer client
+    (goto-char (point-max))
+    (unless (jupyter-repl-cell-finalized-p)
+      (jupyter-repl-finalize-cell nil))
+    (jupyter-repl-newline)
+    (jupyter-repl-insert-banner
+     (plist-get (jupyter-kernel-info client) :banner))
+    (jupyter-repl-insert-prompt 'in)
+    (jupyter-repl-update-cell-count 1)))
 
 (cl-defmethod jupyter-handle-shutdown-reply ((client jupyter-repl-client) _req restart)
   (jupyter-with-repl-buffer client
