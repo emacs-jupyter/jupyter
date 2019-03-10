@@ -36,12 +36,11 @@
 ;;
 ;; Additionally, `jupyter-repl-associate-buffer' associates the
 ;; `current-buffer' with a REPL client appropriate for the buffer's
-;; `major-mode'. Associating a buffer with a REPL client enables the minor mode
-;; `jupyter-repl-interaction-mode' and, if `company-mode' is installed, enables
-;; code completion using the associated REPL client.
+;; `major-mode'. Associating a buffer with a REPL client enables the minor
+;; mode `jupyter-repl-interaction-mode'.
 ;;
 ;; `jupyter-repl-interaction-mode' adds the following keybindings for
-;; interacing a REPL client:
+;; interacting with a REPL client:
 ;;
 ;;     C-c C-c `jupyter-eval-line-or-region'
 ;;     C-c C-l `jupyter-eval-file'
