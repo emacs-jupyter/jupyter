@@ -34,6 +34,7 @@
 (require 'jupyter-kernel-manager)
 (require 'cl-lib)
 (require 'ert)
+(require 'subr-x)                       ; string-trim
 
 (declare-function org-babel-python-table-or-string "ob-python" (results))
 

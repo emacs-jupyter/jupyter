@@ -33,8 +33,9 @@
 
 (require 'jupyter-org-client)
 (require 'jupyter-org-extensions)
-;; For `jupyter-with-repl-buffer'
-(eval-when-compile (require 'jupyter-repl))
+(eval-when-compile
+  (require 'jupyter-repl) ; For `jupyter-with-repl-buffer'
+  (require 'subr-x))
 
 (declare-function org-element-at-point "org-element")
 (declare-function org-link-set-parameters "org" (type &rest parameters))

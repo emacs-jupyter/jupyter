@@ -31,6 +31,7 @@
   "A Jupyter client."
   :group 'jupyter)
 
+(eval-when-compile (require 'subr-x))
 (require 'jupyter-base)
 (require 'jupyter-channels)
 (require 'jupyter-channel-ioloop)
@@ -64,7 +65,6 @@ forwarded to a separate buffer."
 (declare-function yas-minor-mode "ext:yasnippet" (&optional arg))
 (declare-function yas-expand-snippet "ext:yasnippet" (content &optional start end expand-env))
 
-(declare-function hash-table-values "subr-x" (hash-table))
 (declare-function jupyter-insert "jupyter-mime")
 
 ;; This is mainly used by the REPL code, but is also set by

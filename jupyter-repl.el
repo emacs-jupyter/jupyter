@@ -55,6 +55,7 @@
   "A Jupyter REPL client"
   :group 'jupyter)
 
+(eval-when-compile (require 'subr-x))
 (require 'jupyter-base)
 (require 'jupyter-mime)
 (require 'jupyter-client)

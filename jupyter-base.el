@@ -29,10 +29,10 @@
 
 ;;; Code:
 
+(eval-when-compile (require 'subr-x))
 (require 'cl-lib)
 (require 'eieio)
 (require 'eieio-base)
-(require 'subr-x)
 (require 'json)
 (require 'zmq)
 (require 'hmac-def)

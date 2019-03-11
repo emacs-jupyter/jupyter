@@ -40,6 +40,7 @@
 
 ;;; Code:
 
+(eval-when-compile (require 'subr-x))
 (require 'jupyter-base)
 
 (defgroup jupyter-messages nil

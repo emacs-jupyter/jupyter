@@ -35,6 +35,7 @@
 
 ;;; Code:
 
+(eval-when-compile (require 'subr-x))
 (require 'jupyter-base)
 (require 'jupyter-messages)             ; For `jupyter-send'
 (require 'ring)

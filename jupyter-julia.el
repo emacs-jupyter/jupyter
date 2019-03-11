@@ -27,6 +27,7 @@
 
 ;;; Code:
 
+(eval-when-compile (require 'subr-x))
 (require 'jupyter-repl)
 
 (declare-function julia-latexsub-or-indent "ext:julia-mode" (arg))
