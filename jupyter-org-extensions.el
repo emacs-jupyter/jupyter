@@ -32,9 +32,9 @@
 (require 'jupyter-org-client)
 
 (declare-function org-babel-jupyter-initiate-session "ob-jupyter" (&optional session params))
-(declare-function avy-with nil)
-(declare-function avy-jump nil)
-(declare-function ivy-read nil)
+(declare-function avy-with "ext:avy")
+(declare-function avy-jump "ext:avy")
+(declare-function ivy-read "ext:ivy")
 
 ;;;###autoload
 (defun jupyter-org-insert-src-block (&optional below)
@@ -111,13 +111,17 @@ If a new block is created, use the same language, switches and parameters.
 With prefix arg NEW, always insert new cell."
   (interactive "P")
   (unless (org-in-src-block-p)
-      (error "Not in a source block"))
-  (org-babel-execute-src-block)
-  ;; add a new src block if there is no next one to jump to
-  (unless (or new (ignore-errors (org-babel-next-src-block)))
-    ;; FIXME: without this, the new block is added as part of the results of the last block
-    (sleep-for 0.2)
-    (jupyter-org-insert-src-block t)))
+    (error "Not in a source block"))
+  (let ((next-src-block
+         (save-excursion (ignore-errors (org-babel-next-src-block)))))
+    ;; instert a new block before executing the current block; otherwise, the new
+    ;; ... block gets added to the results of the next block (due to how
+    ;; ... jupyter works)
+    (when (or new (not next-src-block))
+      (save-excursion
+        (jupyter-org-insert-src-block t)))
+    (org-babel-execute-src-block)
+    (org-babel-next-src-block)))
 
 ;;;###autoload
 (defun jupyter-org-execute-to-point ()
@@ -219,6 +223,9 @@ Return the region as (BEGIN . END)"
             (save-excursion
               (goto-char results-start)
               (goto-char (org-babel-result-end))
+              ;; if results are empty, take its empy line
+              (when (looking-at-p org-babel-result-regexp)
+                (forward-line 1))
               (point)))))
     `(,(org-element-property :begin src) .
       ,(or results-end (jupyter-org-element-end-before-blanks src)))))
@@ -324,13 +331,16 @@ If BELOW is non-nil, move the block down, otherwise move it up."
               (org-babel-next-src-block))
             (let ((next-src-block (org-element-context))
                   (next-results-start (org-babel-where-is-src-block-result)))
-              (if next-results-start
-                  (progn
-                    (goto-char next-results-start)
-                    (goto-char (org-babel-result-end))
-                    (when (looking-at-p "[[:space:]]*$")
-                      (forward-line 1)))
-                (goto-char (org-element-property :end next-src-block)))))
+              (if (not next-results-start)
+                  (goto-char (org-element-property :end next-src-block))
+                (goto-char next-results-start)
+                (goto-char (org-babel-result-end))
+                (when  (and (looking-at-p org-babel-result-regexp)
+                            (/= (point) (point-max)))
+                  ;; the results are empty, take the next empty line
+                  (forward-line 1))
+                (when (looking-at-p "[[:space:]]*$")
+                  (forward-line 1)))))
         ;; else, move to the begining of the previous block
         (org-babel-previous-src-block))
       ;; keep cursor where the insertion takes place
