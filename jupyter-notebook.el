@@ -33,6 +33,7 @@
   "Notebook interface"
   :group 'jupyter)
 
+(eval-when-compile (require 'subr-x))
 (require 'jupyter-org-client)
 (require 'jupyter-messages)
 
@@ -49,23 +50,48 @@
   (if (listp source) source
     (split-string source "\n" t t)))
 
-(defun jupyter-notebook-parse-data ()
-  (let ((data (org-element-parse-buffer 'greater-element)))
-    (org-element-map data '(headline paragraph src-block)
-      (lambda (el)
-        (cl-case (org-element-type el)
-          (headline
+(defvar org-export-with-toc)
 
-           )
-          (paragraph
-           ;; TODO: Convert org to markdown syntax
-           )
-          (src-block
-           (goto-char (org-element-property :begin el))
-           (let ((res (org-babel-where-is-src-block-result)))
-             (when res
-               (org-with-point-at res
-                 (jupyter-notebook-parse-outputs))))))))))
+(defun jupyter-notebook-parse-data ()
+  (require 'ox-md)
+  (let* (org-export-with-toc
+         (data
+          (org-element-map (org-element-parse-buffer 'greater-element)
+              '(headline paragraph src-block)
+            (lambda (el)
+              (cl-case (org-element-type el)
+                (headline
+                 (list 'markdown-cell
+                       (org-export-string-as
+                        (concat (make-string (org-element-property :level el) ?*)
+                                " " (org-element-property :title el))
+                        'md t)))
+                (paragraph
+                 (list 'markdown-cell
+                       (org-export-string-as
+                        (buffer-substring-no-properties
+                         (org-element-property :contents-begin el)
+                         (org-element-property :contents-end el))
+                        'md t)))
+                (src-block
+                 (let ((code (org-element-property :value el))
+                       (metadata nil)
+                       (outputs
+                        (when-let* ((res (org-babel-where-is-src-block-result)))
+                          (org-with-point-at res
+                            (jupyter-notebook-parse-outputs)))))
+                   (list 'code-cell code outputs metadata))))))))
+    (nreverse
+     (cl-reduce
+      (lambda (a b)
+        (if (and (eq (car b) 'markdown-cell)
+                 (eq (caar a) 'markdown-cell))
+            (setcar a (list 'markdown-cell
+                            (concat (nth 1 (car a)) (nth 1 b))))
+          (push b a))
+        a)
+      data
+      :initial-value nil))))
 
 (defvar org-html-format-table-no-css)
 
