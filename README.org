@@ -43,7 +43,9 @@ extended to properly highlight rST when an inspect reply message is being
 inserted and the message is from a Python kernel.
 
 See the files =jupyter-python.el= and =jupyter-julia.el= for how these
-languages are integrated into the =emacs-jupyter= framework.
+languages are integrated into the =emacs-jupyter= framework. Note, you don't
+need to require these support files directly since they will be loaded
+automatically when needed.
 
 * How do I install this package?
 
