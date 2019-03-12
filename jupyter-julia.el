@@ -185,12 +185,13 @@ Make the character after `point' invisible."
   (when (plist-get changelist :dir)
     (setq code
           (format "\
-__JUPY_saved_dir = pwd()
-cd(\"%s\")
-try
-    %s
-finally
-    cd(__JUPY_saved_dir)
+let __JUPY_saved_dir = pwd()
+    cd(\"%s\")
+    try
+        %s
+    finally
+        cd(__JUPY_saved_dir)
+    end
 end"
                   (plist-get changelist :dir) code)))
   code)
