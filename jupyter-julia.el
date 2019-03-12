@@ -183,8 +183,16 @@ Make the character after `point' invisible."
 
 (cl-defmethod org-babel-jupyter-transform-code (code changelist &context (jupyter-lang julia))
   (when (plist-get changelist :dir)
-    (setq code (format "cd(\"%s\") do\n %s end"
-                       (plist-get changelist :dir) code)))
+    (setq code
+          (format "\
+__JUPY_saved_dir = pwd()
+cd(\"%s\")
+try
+    %s
+finally
+    cd(__JUPY_saved_dir)
+end"
+                  (plist-get changelist :dir) code)))
   code)
 
 (provide 'jupyter-julia)
