@@ -1042,7 +1042,7 @@ to the above explanation."
   (interactive (list (jupyter-read-expression) nil))
   (cl-check-type jupyter-current-client jupyter-kernel-client
                  "Not a valid client")
-  (let* ((jupyter-inhibit-handlers t)
+  (let* ((jupyter-inhibit-handlers '(not :input-request))
          (req (jupyter-send-execute-request jupyter-current-client
                 :code str :store-history nil))
          (had-result nil))
