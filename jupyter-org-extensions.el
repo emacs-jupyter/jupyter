@@ -36,6 +36,13 @@
 (declare-function avy-jump "ext:avy")
 (declare-function ivy-read "ext:ivy")
 
+(defcustom jupyter-org-jump-to-block-context-lines 3
+  "Number of lines to show when showing the context of a block.
+The function `jupyter-org-jump-to-block' uses these many lines from the
+beginning of a source block in a list."
+  :group 'ob-jupyter
+  :type 'integer)
+
 ;;;###autoload
 (defun jupyter-org-insert-src-block (&optional below)
   "Insert a src block above the current point.
@@ -158,16 +165,17 @@ With prefix arg NEW, always insert new cell."
   (org-babel-execute-buffer))
 
 ;;;###autoload
-(defun jupyter-org-jump-to-block (&optional N)
+(defun jupyter-org-jump-to-block (&optional context)
   "Jump to a block in the buffer.
-If narrowing is in effect, only a block in the narrowed region.
-Use a numeric prefix N to specify how many lines of context to use.
+If narrowing is in effect, jump to a block in the narrowed region.
+Use a numeric prefix CONTEXT to specify how many lines of context to use.
 Defaults to 3."
   (interactive "p")
   (unless (require 'ivy nil t)
     (error "Package `ivy' not installed"))
   (let ((p '()))
-    (when (= 1 N) (setq N 3))
+    (when (= 1 context)
+      (setq context jupyter-org-jump-to-block-context-lines))
     (save-excursion
       (goto-char (point-min))
       (while (re-search-forward org-babel-src-block-regexp nil t)
@@ -176,7 +184,7 @@ Defaults to 3."
                             (save-excursion
                               (goto-char (match-beginning 0))
                               (let ((s (point)))
-                                (forward-line N)
+                                (forward-line context)
                                 (buffer-substring s (point)))))
                     (line-number-at-pos (match-beginning 0)))
               p)))
