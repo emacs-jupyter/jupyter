@@ -329,11 +329,10 @@ to change the defaults for the =julia= kernel, you can set
 #+END_SRC
 ** Integration with =ob-async=
 
-There is interference between =ob-async= and Jupyter source blocks with the
-=:async yes= header argument which causes Jupyter source blocks to not work
-correctly. To get around this you can set
-[[https://github.com/astahlman/ob-async#ob-async-no-async-languages-alist][ob-async-no-async-languages-alist]] to a value that excludes Jupyter source
-blocks from being handled by =ob-aync=.
+If you use the =ob-async= package, make sure you add the Jupyter source block
+languages to [[https://github.com/astahlman/ob-async#ob-async-no-async-languages-alist][ob-async-no-async-languages-alist]] so that =ob-async= doesn't
+override =emacs-jupyter= when the =:async= header argument is specified. For
+example you can put the following in your configuration:
 
 #+BEGIN_SRC elisp
 (setq ob-async-no-async-languages-alist '("jupyter-python" "jupyter-julia"))
