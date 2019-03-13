@@ -166,16 +166,23 @@ With prefix arg NEW, always insert new cell."
 
 ;;;###autoload
 (defun jupyter-org-jump-to-block (&optional context)
-  "Jump to a block in the buffer.
+  "Jump to a source block in the buffer using `ivy'.
 If narrowing is in effect, jump to a block in the narrowed region.
-Use a numeric prefix CONTEXT to specify how many lines of context to use.
-Defaults to 3."
-  (interactive "p")
+Use a numeric prefix CONTEXT to specify how many lines of context to showin the
+process of selecting a source block.
+Defaults to `jupyter-org-jump-to-block-context-lines'."
+  (interactive
+   (list (if current-prefix-arg
+             (prefix-numeric-value current-prefix-arg)
+           jupyter-org-jump-to-block-context-lines)))
   (unless (require 'ivy nil t)
     (error "Package `ivy' not installed"))
-  (let ((p '()))
-    (when (= 1 context)
+  (let ((blocks '()))
+    (when (< context 1)
       (setq context jupyter-org-jump-to-block-context-lines))
+    ;; consider the #+SRC_BLOCK line of the block, thereby making CONTEXT
+    ;; ... equivalent to actual lines after the block header
+    (setq context (1+ context))
     (save-excursion
       (goto-char (point-min))
       (while (re-search-forward org-babel-src-block-regexp nil t)
@@ -187,8 +194,8 @@ Defaults to 3."
                                 (forward-line context)
                                 (buffer-substring s (point)))))
                     (line-number-at-pos (match-beginning 0)))
-              p)))
-    (ivy-read "block: " (reverse p)
+              blocks)))
+    (ivy-read "block: " (reverse blocks)
               :action (lambda (candidate)
                         (goto-char (point-min))
                         (forward-line (1- (nth 1 candidate)))
