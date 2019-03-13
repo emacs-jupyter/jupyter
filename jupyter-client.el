@@ -38,7 +38,8 @@
 (require 'jupyter-mime)
 (require 'jupyter-messages)
 
-(defcustom jupyter-eval-short-result-display-function #'message
+(defcustom jupyter-eval-short-result-display-function
+  (lambda (result) (message "%s" result))
   "Function for displaying short evaluation results.
 Evaluation results are considered short when they are less than
 `jupyter-eval-short-result-max-lines' long.
