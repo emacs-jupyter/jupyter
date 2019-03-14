@@ -141,6 +141,15 @@ With prefix arg NEW, always insert new cell."
         (org-babel-execute-src-block)))))
 
 ;;;###autoload
+(defun jupyter-org-inspect-src-block ()
+  "Inspect the symbol under point when in a source block."
+  (interactive)
+  (unless (jupyter-org-with-src-block-client
+           (jupyter-inspect-at-point)
+           t)
+    (error "Not in a source block")))
+
+;;;###autoload
 (defun jupyter-org-restart-kernel-execute-block ()
   "Restart the kernel of the source block where point is and execute it."
   (interactive)
@@ -417,7 +426,7 @@ _S-M-<return>_: Restart/buffer    ^ ^              _m_: merge
     ("L" jupyter-org-clear-all-results)
     ("h" jupyter-org-edit-header)
 
-    ("/" jupyter-inspect-at-point)))
+    ("/" jupyter-org-inspect-src-block)))
   (call-interactively #'jupyter-org-hydra/body))
 
 (define-key jupyter-org-interaction-mode-map (kbd "C-c h") #'jupyter-org-hydra/body)
