@@ -234,10 +234,10 @@ Defaults to `jupyter-org-jump-to-block-context-lines'."
             (read-string "Header: "
                          (buffer-substring header-start header-end))))))
 
-(defun jupyter-org-select-block-and-results ()
-  "Return the region that contains a source block and its results (if any).
-
-Return the region as (BEGIN . END)"
+(defun jupyter-org-src-block-bounds ()
+  "Return the region containing the current source block.
+If the source block has results, include the results in the
+returned region. The region is returned as (BEGIN . END)"
   (unless (org-in-src-block-p)
     (error "Not in a source block"))
   (let* ((src (org-element-context))
@@ -258,14 +258,14 @@ Return the region as (BEGIN . END)"
 (defun jupyter-org-kill-block-and-results ()
   "Kill the block and its results."
   (interactive)
-  (let ((region (jupyter-org-select-block-and-results)))
+  (let ((region (jupyter-org-src-block-bounds)))
     (kill-region (car region) (cdr region))))
 
 ;;;###autoload
 (defun jupyter-org-copy-block-and-results ()
   "Copy the src block at the current point and its results."
   (interactive)
-  (let ((region (jupyter-org-select-block-and-results)))
+  (let ((region (jupyter-org-src-block-bounds)))
     (kill-new (buffer-substring (car region) (cdr region)))))
 
 ;;;###autoload
@@ -340,7 +340,7 @@ If BELOW is non-nil, move the block down, otherwise move it up."
             (if below
                 (org-babel-next-src-block)
               (org-babel-previous-src-block))))
-    (let* ((region (jupyter-org-select-block-and-results))
+    (let* ((region (jupyter-org-src-block-bounds))
            (block (delete-and-extract-region (car region) (cdr region))))
       ;; if there is an empty line remaining, take that line as part of the
       ;; ... block
