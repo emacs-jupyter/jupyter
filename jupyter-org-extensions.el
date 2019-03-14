@@ -223,7 +223,7 @@ Defaults to `jupyter-org-jump-to-block-context-lines'."
   (unless (require 'avy nil t)
     (error "Package `avy' not installed"))
   (avy-with #'jupyter-org-jump-to-block
-            (avy-jump "#\\+begin_src" :beg (point-min) :end (point-max))))
+    (avy-jump "#\\+begin_src" :beg (point-min) :end (point-max))))
 
 ;;;###autoload
 (defun jupyter-org-edit-header ()
@@ -300,13 +300,13 @@ If BELOW is non-nil, add the cloned block below."
     (org-babel-remove-result)
     (org-babel-next-src-block)
     (let* ((next-src-block (prog1 (org-element-context)
-                   (org-babel-remove-result)))
+                             (org-babel-remove-result)))
            (next-src-block-beg (set-marker
-                      (make-marker)
-                      (org-element-property :begin next-src-block)))
+                                (make-marker)
+                                (org-element-property :begin next-src-block)))
            (next-src-block-end (set-marker
-                      (make-marker)
-                      (jupyter-org-element-end-before-blanks next-src-block))))
+                                (make-marker)
+                                (jupyter-org-element-end-before-blanks next-src-block))))
       (goto-char (jupyter-org-element-end-before-blanks current-src-block))
       (forward-line -1)
       (insert
@@ -392,7 +392,7 @@ If BELOW is non-nil, move the block down, otherwise move it up."
   ;; unbinding this function and define the hydra
   (fmakunbound 'jupyter-org-hydra/body)
   (eval `(defhydra jupyter-org-hydra (:color blue :hint nil)
-    "
+           "
           Execute                 Navigate       Edit             Misc
 ------------------------------------------------------------------------------
     _<return>_: current           _p_: previous  _C-p_: move up     _/_: inspect
@@ -405,33 +405,33 @@ _S-M-<return>_: Restart/buffer    ^ ^              _m_: merge
            ^ ^                    ^ ^              _+_: insert above
            ^ ^                    ^ ^              _=_: insert below
            ^ ^                    ^ ^              _h_: header"
-    ("<return>" org-ctrl-c-ctrl-c :color red)
-    ("C-<return>" jupyter-org-execute-and-next-block :color red)
-    ("M-<return>" jupyter-org-execute-to-point)
-    ("S-<return>" jupyter-org-restart-kernel-execute-block)
-    ("S-C-<return>" jupyter-org-restart-and-execute-to-point)
-    ("S-M-<return>" jupyter-org-restart-kernel-execute-buffer)
-    ("r" org-babel-switch-to-session)
+           ("<return>" org-ctrl-c-ctrl-c :color red)
+           ("C-<return>" jupyter-org-execute-and-next-block :color red)
+           ("M-<return>" jupyter-org-execute-to-point)
+           ("S-<return>" jupyter-org-restart-kernel-execute-block)
+           ("S-C-<return>" jupyter-org-restart-and-execute-to-point)
+           ("S-M-<return>" jupyter-org-restart-kernel-execute-buffer)
+           ("r" org-babel-switch-to-session)
 
-    ("p" org-babel-previous-src-block :color red)
-    ("n" org-babel-next-src-block :color red)
-    ("g" jupyter-org-jump-to-visible-block)
-    ("G" jupyter-org-jump-to-block)
+           ("p" org-babel-previous-src-block :color red)
+           ("n" org-babel-next-src-block :color red)
+           ("g" jupyter-org-jump-to-visible-block)
+           ("G" jupyter-org-jump-to-block)
 
-    ("C-p" jupyter-org-move-src-block :color red)
-    ("C-n" (jupyter-org-move-src-block t) :color red)
-    ("x" jupyter-org-kill-block-and-results)
-    ("c" jupyter-org-copy-block-and-results)
-    ("o" (jupyter-org-clone-block t))
-    ("m" jupyter-org-merge-blocks)
-    ("s" jupyter-org-split-src-block)
-    ("+" jupyter-org-insert-src-block)
-    ("=" (jupyter-org-insert-src-block t))
-    ("l" org-babel-remove-result)
-    ("L" jupyter-org-clear-all-results)
-    ("h" jupyter-org-edit-header)
+           ("C-p" jupyter-org-move-src-block :color red)
+           ("C-n" (jupyter-org-move-src-block t) :color red)
+           ("x" jupyter-org-kill-block-and-results)
+           ("c" jupyter-org-copy-block-and-results)
+           ("o" (jupyter-org-clone-block t))
+           ("m" jupyter-org-merge-blocks)
+           ("s" jupyter-org-split-src-block)
+           ("+" jupyter-org-insert-src-block)
+           ("=" (jupyter-org-insert-src-block t))
+           ("l" org-babel-remove-result)
+           ("L" jupyter-org-clear-all-results)
+           ("h" jupyter-org-edit-header)
 
-    ("/" jupyter-org-inspect-src-block)))
+           ("/" jupyter-org-inspect-src-block)))
   (call-interactively #'jupyter-org-hydra/body))
 
 (define-key jupyter-org-interaction-mode-map (kbd "C-c h") #'jupyter-org-hydra/body)
