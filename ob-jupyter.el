@@ -213,6 +213,8 @@ parameter will be used."
     (if buffer (pop-to-buffer buffer)
       (user-error "No source block at point"))))
 
+(defvar org-bracket-link-regexp)
+
 (defun org-babel-jupyter-cleanup-file-links ()
   "Delete the files of image links for the current source block result.
 Do this only if the file exists in

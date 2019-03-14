@@ -28,10 +28,15 @@
 
 ;;; Code:
 
-(require 'org)
 (require 'jupyter-org-client)
 
 (declare-function org-babel-jupyter-initiate-session "ob-jupyter" (&optional session params))
+(declare-function org-in-src-block-p "org" (&optional inside))
+(declare-function org-element-context "org-element" (&optional element))
+(declare-function org-element-property "org-element" (property element))
+(declare-function org-element-interpret-data "org-element" (data))
+(declare-function org-element-put-property "org-element" (element property value))
+(declare-function outline-show-entry "outline" ())
 (declare-function avy-with "ext:avy")
 (declare-function avy-jump "ext:avy")
 (declare-function ivy-read "ext:ivy")

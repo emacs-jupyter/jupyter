@@ -31,12 +31,27 @@
 (eval-when-compile (require 'subr-x))
 (require 'jupyter-repl)
 (require 'ob)
-(require 'org-element)
 
-(declare-function org-element-context "org-element" (&optional element))
-(declare-function org-in-src-block-p "org" (&optional inside))
 (declare-function org-babel-python-table-or-string "ob-python" (results))
 (declare-function org-babel-jupyter-initiate-session "ob-jupyter" (&optional session params))
+(declare-function org-element-context "org-element" (&optional element))
+(declare-function org-element-type "org-element" (element))
+(declare-function org-element-normalize-string "org-element" (s))
+(declare-function org-element-at-point "org-element" ())
+(declare-function org-drag-element-forward "org-element" ())
+(declare-function org-element-property "org-element" (property element))
+(declare-function org-element-set-contents "org-element" (element &rest contents))
+(declare-function org-element-latex-fragment-parser "org-element" ())
+(declare-function org-element-latex-environment-parser "org-element" (limit affiliated))
+(declare-function org-element-interpret-data "org-element" (data))
+(declare-function org-element-put-property "org-element" (element property value))
+(declare-function orgtbl-to-orgtbl "org-table" (table params))
+(declare-function org-table-align "org-table" ())
+(declare-function org-in-src-block-p "org" (&optional inside))
+(declare-function org-next-block "org" (arg &optional backward block-regexp))
+(declare-function org-at-table-p "org" ())
+(declare-function org-inside-LaTeX-fragment-p "org" ())
+(declare-function org-toggle-latex-fragment "org" (&optional arg))
 
 (defcustom jupyter-org-resource-directory "./.ob-jupyter/"
   "Directory used to store automatically generated image files.
@@ -188,6 +203,8 @@ to."
           (setq pos end))))))
 
 ;;;;; Handler
+
+(defvar org-font-lock-hook)
 
 (cl-defmethod jupyter-handle-error ((_client jupyter-org-client)
                                     (req jupyter-org-request)
@@ -527,6 +544,9 @@ C-x C-e         `jupyter-eval-line-or-region'"
 (add-hook 'org-mode-hook 'jupyter-org-interaction-mode)
 
 ;;; Constructing org syntax trees
+
+(defvar org-element-all-objects)
+(defvar org-element-all-elements)
 
 (defun jupyter-org-object-p (element)
   "Return non-nil if ELEMENT's type is a member of `org-element-all-objects'."
