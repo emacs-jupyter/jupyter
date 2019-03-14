@@ -187,7 +187,7 @@ Defaults to `jupyter-org-jump-to-block-context-lines'."
   (unless (require 'ivy nil t)
     (error "Package `ivy' not installed"))
   (let ((blocks '()))
-    (when (< context 1)
+    (when (or (null context) (< context 1))
       (setq context jupyter-org-jump-to-block-context-lines))
     ;; consider the #+SRC_BLOCK line of the block, thereby making CONTEXT
     ;; ... equivalent to actual lines after the block header
