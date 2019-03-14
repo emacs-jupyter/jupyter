@@ -4,7 +4,7 @@
 
 ;; Author: Carlos Garcia C. <carlos@binarycharly.com>
 ;; Created: 01 March 2019
-;; Version: 0.7.1
+;; Version: 0.7.3
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as

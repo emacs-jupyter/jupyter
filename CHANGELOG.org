@@ -1,38 +1,167 @@
-* How to update this file
+* v0.7.3
 
-Examine the output of
+- Fix an issue where loading =jupyter-org-client.el= would trigger a recursive
+  require of =org=.
 
-#+HEADER: :var PREV_VERSION="v0.6.0" VERSION="v0.7.0"
-#+BEGIN_SRC shell :results output
-git log --pretty=format:"%s" ${PREV_VERSION}...${VERSION}
-#+END_SRC
+- Don't fail if a short result has =%= characters in the default
+  =jupyter-eval-short-result-display-function=.
 
-and filter down to the most notable changes, summarize each one. Be sure to
-update the =VERSION= variables first.
+- Port scimax's source block helper functions. Thanks to =UndeadKernel= for the
+  work he put into this. See #45.
 
-* Update Version header
+- Fix an issue where a kernel would be stuck in the busy state waiting for
+  input from the user when calling =jupyter-eval-line-or-string= and friends.
+  The =:input-request= handler was being inhibited in these cases.
 
-Update the =Version= in the header of all source files.
+- When evaluating Julia code blocks with the =:dir= header argument, fix an
+  issue where top-level expressions like =using Plots= wouldn't work see #57.
 
-#+BEGIN_SRC elisp :results silent :var version="0.7.1"
-(let ((re "^;; Version: \\(\\([0-9]+\\)\\.\\([0-9]+\\)\\.\\([0-9]+\\)\\)" ))
-  (dolist (file (append (directory-files default-directory nil ".el$")
-                        (directory-files (expand-file-name "test" default-directory) t ".el$")))
-    (let* ((buf (find-buffer-visiting file))
-           (kill (null buf)))
-      (unless buf
-        (setq buf (find-file-noselect file)))
-      (with-current-buffer buf
-        (save-excursion
-          (save-restriction
-            (widen)
-            (goto-char (point-min))
-            (when (re-search-forward re nil t)
-              (replace-match version nil nil nil 1))
-            (save-buffer)
-            (when kill
-              (kill-buffer))))))))
-#+END_SRC
+- Don't use proportional fonts when rendering HTML. See #52.
+
+- Fix whitespace issues when wrapping =org-mode= source block results in a
+  =RESULTS= drawer.
+
+- Increase =jupyter-default-timeout= to 2.5 seconds. See #43.
+
+- Fix issues with the REPL restart process. See #50.
+  - Refactor REPL restart to avoid relying on a =status: starting= message to
+    be received.
+
+  - Actually restart the kernel process when using a kernel manager.
+
+  - In =jupyter-repl-restart-kernel= inhibit message handlers from running when
+    sending a shutdown request.
+
+- Add the functions =org-babel-jupyter-override-src-block= and
+  =org-babel-jupyter-restore-src-block= to provide a way of overriding normal
+  =org-mode= source block languages to use the Jupyter source block framework.
+  For example, by evaluating =(org-babel-jupyter-override-src-block "python")=
+  all =python= source blocks will actually be =jupyter-python= source blocks.
+
+- Add the customizable variable =jupyter-pop-up-frame= which controls if a
+  frame or a window is popped up when evaluating code using
+  =jupyter-eval-line-or-region= (bound to =C-c C-c= when
+  =jupyter-repl-interaction-mode= is enabled)
+
+- In =jupyter-repl-after-change=, maintain the text properties at the beginning
+  of a REPL input cell when text is deleted at the beginning of a cell. See #38.
+
+- In =jupyter-repl-font-lock-fontify-region= and
+  =jupyter-repl-syntax-propertize-function= narrow to the REPL input cell
+  before doing any work since the kernel language mode's fontification
+  functions do not know about REPL input/output boundaries.
+
+- In =jupyter-repl-do-after-change=, widen the buffer before doing any work to
+  take into account changes that narrow to fields. In such cases functions like
+  =jupyter-repl-cell-code-beginning-position= will not work right since they
+  look at positions before the =cell-code= field. See #38.
+
+- Handle the overflow of the prompt margin in the REPL by increasing the margin
+  width and re-calculating all the prompts in the buffer when the length of the
+  prompt string exceeds the width of the margin. See #39.
+  - Also, for the Julia kernel, don't replace the REPL prompt but add it as part of
+    the REPL cell.
+
+- Add support for suppressing =org-mode= table output from source blocks by
+  specifying =:results scalar=.
+
+- Add a new =org-mode= source block header argument =:display= which allows a
+  user to control which mimetype is displayed. See #17.
+
+- Fix an issue with undo in the REPL where the addition of continuation prompts
+  for multi-line input would add extra undo information that would interfere
+  with undo.
+
+- Update =org-mode= source block result insertion to consider changes in how
+  =fixed-width= and =example-block= elements and are printed to the buffer in
+  =org-mode= >= 9.2. Also start testing against the latest version of
+  =org-mode= in Travis.
+
+- Handle the case of an empty =RESULTS= drawer during source block result
+  insertion in the =:async yes= case.
+
+- Add a =file= slot to a =jupyter-org-request=. Also, internally remove the
+  =:file= header argument from an =org-mode= source block's parameters during
+  block evaluation so that =org-mode= doesn't specially handle the =:file=
+  argument as it interferes with insertion of results when =:async yes= is
+  specified. Note this is currently only done for the =:async yes= case.
+
+- In =jupyter-repl-syntax-propertize-function=, in addition to handling
+  parenthesis syntax, handle string syntax. This is so that any string syntax
+  characters in the output are not considered strings in the kernel's language.
+
+- In =jupyter--display-eval-result= prefer Markdown if it is available.
+
+* v0.7.2
+
+- In =jupyter-handle-input-request=, be more secure when reading passwords by
+  using =clear-string= after sending the message and avoiding printing
+  passwords to the =*Messages*= buffer when =jupyter--debug= is non-nil.
+
+- In =jupyter-insert-latex= remove modification-hooks from the image overlays
+  so that the images are not removed from the buffer when changing the text
+  properties of the underlying text.
+
+- In =jupyter-read-expression= show the kernel language when prompting in the
+  minibuffer.
+
+- In =jupyter-repl-kill-buffer-query-function= also ask to kill the kernel.
+
+- In =jupyter-with-display-buffer= properly advance
+  =jupyter-display-buffer-marker= when contents are added to the buffer so that
+  future inserts will insert at the end of the buffer. Also handle a =nil=
+  RESET argument.
+
+- Keep =:= as the start of a completion prefix for the Julia kernel to allow
+  completing dictionary keys.
+
+- Consider the state of the ioloop in the =jupyter-channel-alive-p= method of a
+  =jupyter-kernel-client=. In particular, ensure the method returns nil, when
+  the ioloop isn't alive.
+
+- Change the default completion context, the context returned by
+  =jupyter-code-context= with an argument of =completion=, to return all nested
+  levels of parenthesis.
+
+- In =org-babel-jupyter-setup-export=, use the kernelspecs on the system to add
+  to =org-latex-minted-langs=.
+
+- Add new hook variables =jupyter-repl-cell-{pre|post}-send-hook= that are
+  called before and after sending the contents of a REPL cell to the kernel.
+
+- In =jupyter-repl-finalize-cell= ensure that only the last cell in the REPL
+  buffer is finalized by going to =point-max= before accessing a cell's
+  properties. This avoids issues with modifying the properties of previously
+  finalized cells.
+
+- Integrate more with =font-lock= and =syntax-ppss= in the REPL by (1) adding a
+  custom =syntax-propertize-function= (2) handle REPL mode characters in the
+  Julia kernel and (3) use the kernel language syntax table when calling
+  =font-lock= functions.
+
+* v0.7.1
+
+- Fix a bug in =jupyter-connect-repl= which would cause the REPL to think that
+  the kernel wasn't alive. The issue was that the heartbeat channel was not
+  exchanging messages with the kernel and the heartbeat channel is relied on to
+  check for the liveness of a kernel connected to using =jupyter-connect-repl=.
+  See #29.
+
+- When using =jupyter-eval-string= (=C-c M-:=), properly use the client local
+  variable, =jupyter-eval-expression-history=, as the minibuffer history.
+
+- =jupyter-repl-restart-kernel= now prompts for a REPL client to restart if the
+  =jupyter-current-client= variable is not set in the current buffer. See #28.
+
+- Fix bug when a kernel does not respond to a shutdown request. Previously in
+  such cases, the kernel process would not be forcibly killed and would stay
+  alive.
+
+- Add =org-babel-jupyter-setup-export= to integrate the exporting process with
+  =emacs-jupyter=. This function is added to
+  =org-export-before-processing-hook= and currently only ensures that, when
+  exporting to LaTeX and the minted package is being used, the =jupyter-LANG=
+  source blocks use =LANG= for their minted language.
 
 * v0.7.0
 
@@ -96,3 +225,42 @@ Update the =Version= in the header of all source files.
   background of a traceback in the REPL buffer to distinguish it from other
   output. In addition to this face, there is also =jupyter-repl-input-prompt=
   and =jupyter-repl-output-prompt=.
+* How to update this file
+
+Examine the output of
+
+#+NAME: changelog
+#+HEADER: :var PREV_VERSION="v0.7.3" VERSION="master"
+#+BEGIN_SRC shell :results output
+git log --pretty=format:"%s" ${PREV_VERSION}...${VERSION}
+#+END_SRC
+
+and filter down to the most notable changes, summarize each one. Be sure to
+update the =VERSION= variables first.
+
+#+RESULTS: changelog
+
+* Update Version header
+
+Update the =Version= in the header of all source files.
+
+#+BEGIN_SRC elisp :results silent :var version="0.7.3"
+(let ((re "^;; Version: \\(\\([0-9]+\\)\\.\\([0-9]+\\)\\.\\([0-9]+\\)\\)" ))
+  (dolist (file (append (directory-files default-directory nil ".el$")
+                        (directory-files (expand-file-name "test" default-directory) t ".el$")))
+    (let* ((buf (find-buffer-visiting file))
+           (kill (null buf)))
+      (unless buf
+        (setq buf (find-file-noselect file)))
+      (with-current-buffer buf
+        (save-excursion
+          (save-restriction
+            (widen)
+            (goto-char (point-min))
+            (when (re-search-forward re nil t)
+              (replace-match version nil nil nil 1))
+            (save-buffer)
+            (when kill
+              (kill-buffer))))))))
+#+END_SRC
+
