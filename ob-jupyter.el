@@ -274,6 +274,12 @@ the PARAMS alist."
     (cond
      ((or (equal (alist-get :async params) "yes")
           (plist-member params :async))
+      ;; TODO: Support :results link in this case as well. What we can do is
+      ;; set `jupyter-org-request-silent-p' to "none" so that no results are
+      ;; appended, but then we have to remove the ID and insert the link once
+      ;; everything comes in. Maybe remove `jupyter-org-request-silent-p' and
+      ;; have the meaning of `jupyter-org-request-result-type' to also include
+      ;; silent results and link style results?
       (when (member "file" (assq :result-params params))
         (org-babel-jupyter--remove-file-param params))
       (if (jupyter-org-request-inline-block-p req) ""
