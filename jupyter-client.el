@@ -731,6 +731,19 @@ reporting progress to the user while waiting."
   (declare (indent 1))
   (jupyter-wait-until req msg-type #'identity timeout progress-msg))
 
+(defun jupyter-requests-pending-p (client)
+  "Return non-nil if CLIENT has open requests that the kernel has not handled.
+Specifically, this returns non-nil if the last request message
+sent to the kernel using CLIENT has not received an idle message
+back."
+  (cl-check-type client jupyter-kernel-client)
+  (jupyter--drop-idle-requests client)
+  (with-slots (requests) client
+    (let ((last-sent (gethash "last-sent" requests)))
+      (or (> (length requests) 1)
+          (when last-sent
+            (not (jupyter-request-idle-received-p last-sent)))))))
+
 ;;; Client handlers
 
 (cl-defgeneric jupyter-drop-request ((_client jupyter-kernel-client) _req)
