@@ -239,11 +239,6 @@ Do this only if the file exists in
                        (file-exists-p link-path))
               (delete-file link-path))))))))
 
-;; We remove the :file parameter in the async case because `org-babel' will
-;; insert a file link instead of the request ID which we don't want. In the
-;; synchronous case, in combination with ":results link", that makes sense to
-;; do so currently the file parameter is kept in the synchronous case.
-;;
 ;; TODO: What is a better way to handle discrepancies between how `org-mode'
 ;; views header arguments and how `emacs-jupyter' views them? Should the
 ;; strategy be to always try to emulate the `org-mode' behavior?
@@ -284,6 +279,14 @@ the PARAMS alist."
       (if (jupyter-org-request-inline-block-p req) ""
         (jupyter-org-insert-async-id req)))
      (t
+      (let ((result-params (assq :result-params params)))
+        (when (and (member "file" result-params)
+                   ;; In Org >= 9.2 these mean to ignore the results and insert
+                   ;; a link to file so don't remove the file parameters in
+                   ;; these cases since that is useful.
+                   (not (or (member "link" result-params)
+                            (member "graphics" result-params))))
+          (org-babel-jupyter--remove-file-param params)))
       (jupyter-wait-until-idle req most-positive-fixnum)
       (if (jupyter-org-request-inline-block-p req)
           ;; In the case of synchronous inline results, only the result of the
