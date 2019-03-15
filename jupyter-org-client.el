@@ -1267,29 +1267,21 @@ buffer."
 
 ;;; org-babel functions
 ;; These are meant to be called by `org-babel-execute:jupyter'
-;; FIXME: This is ugly!
-
-(defun jupyter-org--restore-message-function ()
-  (advice-remove 'message #'ignore)
-  (remove-hook 'pre-command-hook #'jupyter-org--restore-message-function))
-
-(defun jupyter-org--ignore-message-until-command ()
-  (advice-add 'message :override #'ignore)
-  (add-hook 'pre-command-hook #'jupyter-org--restore-message-function))
 
 (defun jupyter-org-insert-async-id (req)
   "Insert the ID of REQ.
 Meant to be used as the return value of
 `org-babel-execute:jupyter'."
   (prog1 nil
-    (jupyter-org--ignore-message-until-command)
-    (setq org-babel-after-execute-hook
-          (let ((hook org-babel-after-execute-hook))
+    (let ((log-max message-log-max)
+          (hook org-babel-after-execute-hook)
+          (id (jupyter-org-scalar (jupyter-org-request-id req))))
+      (setq message-log-max nil)
+      (setq org-babel-after-execute-hook
             (lambda ()
-              (jupyter-org--restore-message-function)
+              (setq message-log-max log-max)
               (unwind-protect
-                  (jupyter-org--add-result
-                   req (jupyter-org-scalar (jupyter-org-request-id req)))
+                  (jupyter-org--add-result req id)
                 (setq org-babel-after-execute-hook hook)
                 (run-hooks 'org-babel-after-execute-hook)))))))
 
