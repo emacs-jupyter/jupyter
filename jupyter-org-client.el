@@ -1237,11 +1237,11 @@ insertion into the buffer."
                         '(latex-fragment latex-environment))
               (save-excursion
                 ;; Go to a position contained in the fragment
-                (forward-line -1))
-              (let ((ov (car (overlays-at (point)))))
-                (unless (and ov (eq (overlay-get ov 'org-overlay-type)
-                                    'org-latex-overlay))
-                  (org-toggle-latex-fragment)))))))
+                (forward-line -1)
+                (let ((ov (car (overlays-at (point)))))
+                  (unless (and ov (eq (overlay-get ov 'org-overlay-type)
+                                      'org-latex-overlay))
+                    (org-toggle-latex-fragment))))))))
         (when (jupyter-org--stream-result-p result)
           (jupyter-org--mark-stream-result-newline result))))))
 
