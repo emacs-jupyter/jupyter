@@ -169,10 +169,41 @@ Make the character after `point' invisible."
         (put-text-property
          (point-min) (1+ (point-min)) 'syntax-table '(1 . ?.)))))
 
+;;; `jupyter-repl-after-init'
+
+(defun jupyter-julia--setup-hooks (client)
+  (let ((jupyter-inhibit-handlers t))
+    (jupyter-send-execute-request client
+      :store-history nil
+      :silent t
+      ;; This is mainly for supporting the :dir header argument in `org-mode'
+      ;; source blocks. We send this after initializing the REPL and after a
+      ;; kernel restart so that we can get proper line numbers when an error
+      ;; occurs.
+      :code "\
+if !isdefined(Main, :__JUPY_saved_dir)
+    Core.eval(Main, :(__JUPY_saved_dir = Ref(\"\")))
+    let popdir = () -> begin
+                if !isempty(Main.__JUPY_saved_dir[])
+                    cd(Main.__JUPY_saved_dir[])
+                    Main.__JUPY_saved_dir[] = \"\"
+                end
+            end
+        IJulia.push_posterror_hook(popdir)
+        IJulia.push_postexecute_hook(popdir)
+    end
+end")))
+
 (cl-defmethod jupyter-repl-after-init (&context (jupyter-lang julia))
   (add-function
    :after (local 'syntax-propertize-function)
-   #'jupyter-julia--propertize-repl-mode-char))
+   #'jupyter-julia--propertize-repl-mode-char)
+  (jupyter-julia--setup-hooks jupyter-current-client)
+  ;; Setup hooks after restart as well
+  (jupyter-add-hook jupyter-current-client 'jupyter-iopub-message-hook
+    (lambda (client msg)
+      (when (jupyter-message-status-starting-p msg)
+        (jupyter-julia--setup-hooks client)))))
 
 ;;; `jupyter-org'
 
@@ -185,15 +216,9 @@ Make the character after `point' invisible."
 (cl-defmethod org-babel-jupyter-transform-code (code changelist &context (jupyter-lang julia))
   (when (plist-get changelist :dir)
     (setq code
-          (format "\
-let __JUPY_saved_dir = pwd()
-    cd(\"%s\")
-    try
-        %s
-    finally
-        cd(__JUPY_saved_dir)
-    end
-end"
+          ;; Stay on one line so that tracebacks will report the right line
+          ;; numbers
+          (format "Main.__JUPY_saved_dir[] = pwd(); cd(\"%s\"); %s"
                   (plist-get changelist :dir) code)))
   code)
 
