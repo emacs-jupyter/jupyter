@@ -49,6 +49,10 @@ automatically when needed.
 
 * How do I install this package?
 
+*NOTE:* Your Emacs needs to have been built with module support for this
+package to work since it relies on the =emacs-zmq= package. See the README of
+that package for more information.
+
 The recommended way to install this package is through the built-in package
 manager in Emacs.
 
