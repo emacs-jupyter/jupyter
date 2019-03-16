@@ -139,7 +139,7 @@ source code block. Set by `org-babel-execute:jupyter'.")))
     (jupyter-org--add-result
      req (with-temp-buffer
            (jupyter-with-control-code-handling
-            (insert (ansi-color-apply text)))
+            (insert text))
            (buffer-string)))))
 
 ;;;; Errors
@@ -510,7 +510,67 @@ and they only take effect when the variable
 (jupyter-org-define-key (kbd "C-c C-r") #'jupyter-repl-restart-kernel)
 (jupyter-org-define-key (kbd "C-c C-i") #'jupyter-repl-interrupt-kernel)
 
+;;; Handling ANSI escapes in kernel output
+
+;; NOTE: We cache the properties here since this is called during the font-lock
+;; process (and maybe shouldn't be?) which means that it can be called many
+;; times on the same region. We don't want to re-compute the faces on each
+;; call.
+(defun jupyter-org--ansi-color-apply-on-region (begin end)
+  "Handle ANSI escape codes between (BEGIN . END) and cache the results.
+If (BEGIN . END) is not marked with a jupyter-ansi text property,
+apply `jupyter-ansi-color-apply-on-region' on the region and mark
+it with a non-nil jupyter-ansi property. Otherwise, prepend any
+non-nil font-lock-face properties in the region to the face
+property."
+  ;; Don't add these changes to the undo list, gives a slight speed up.
+  (let ((buffer-undo-list t)
+        (inhibit-modification-hooks t)
+        next begin1 end1)
+    (while (/= begin end)
+      (setq next (next-single-property-change begin 'jupyter-ansi nil end))
+      (if (get-text-property begin 'jupyter-ansi)
+          (progn
+            (setq begin1 begin
+                  end1 next
+                  begin next)
+            (while (/= begin1 end1)
+              (setq next (next-single-property-change
+                          begin1 'font-lock-face nil end1))
+              (when (get-text-property begin1 'font-lock-face)
+                (font-lock-prepend-text-property
+                 begin1 next 'face (get-text-property begin1 'font-lock-face)))
+              (setq begin1 next)))
+        (put-text-property begin next 'jupyter-ansi t)
+        (jupyter-ansi-color-apply-on-region begin next)
+        (setq begin next)))))
+
+;; Adapted from `org-fontify-meta-lines-and-blocks-1'
+(defun jupyter-org-font-lock-ansi-escapes (limit)
+  (let ((case-fold-search t))
+    (when (re-search-forward
+           "^\\([ \t]*#\\+begin_example[ \t]*\\|: .*\\)$" limit t)
+      (let ((beg (match-beginning 0))
+            (beg1 (line-beginning-position 2))
+            end)
+        (cond
+         ;; example block
+         ((not (eq (char-after beg) ?:))
+          (when (re-search-forward
+                 "^[ \t]*#\\+end_example\\>.*"
+                 nil t) ;; on purpose, we look further than LIMIT
+            (setq end (min (point-max) (1- (match-beginning 0))))
+            (jupyter-org--ansi-color-apply-on-region beg1 end)))
+         ;; fixed width
+         (t
+          (setq end (or (and (re-search-forward "^[^:]" nil t)
+                             (1- (match-beginning 0)))
+                        (point-max)))
+          (jupyter-org--ansi-color-apply-on-region beg end)))))))
+
 ;;; `jupyter-org-interaction-mode'
+
+(defvar org-font-lock-keywords)
 
 (define-minor-mode jupyter-org-interaction-mode
   "Minor mode for interacting with a Jupyter REPL from an `org-mode' buffer.
@@ -518,6 +578,9 @@ When this minor mode is enabled, some of the keybindings
 available in `jupyter-repl-interaction-mode' are also available
 when `point' is inside a Jupyter code block. Completion is also
 enabled when `point' is inside a code block.
+
+In addition, ANSI escape sequences in example blocks or
+fixed-width elements are fontified.
 
 By default this mode is enabled in every `org-mode' buffer.
 
@@ -536,10 +599,24 @@ C-x C-e         `jupyter-eval-line-or-region'"
   (cond
    (jupyter-org-interaction-mode
     (add-hook 'completion-at-point-functions 'jupyter-org-completion-at-point nil t)
-    (add-hook 'after-revert-hook 'jupyter-org-interaction-mode nil t))
+    (add-hook 'after-revert-hook 'jupyter-org-interaction-mode nil t)
+    (setq-local char-property-alias-alist
+                (copy-tree char-property-alias-alist))
+    (cl-callf append (alist-get 'invisible char-property-alias-alist)
+      '(jupyter-invisible))
+    (unless (cl-find-if (lambda (x) (eq (car x) 'jupyter-org-font-lock-ansi-escapes))
+                        org-font-lock-keywords)
+      (setq org-font-lock-keywords
+            (append org-font-lock-keywords
+                    '((jupyter-org-font-lock-ansi-escapes))))))
    (t
     (remove-hook 'completion-at-point-functions 'jupyter-org-completion-at-point t)
-    (remove-hook 'after-revert-hook 'jupyter-org-interaction-mode t))))
+    (remove-hook 'after-revert-hook 'jupyter-org-interaction-mode t)
+    (cl-callf2 delq 'jupyter-invisible
+               (alist-get 'invisible char-property-alias-alist))
+    (setq org-font-lock-keywords
+          (cl-remove-if (lambda (x) (eq (car x) 'jupyter-org-font-lock-ansi-escapes))
+                        org-font-lock-keywords)))))
 
 (add-hook 'org-mode-hook 'jupyter-org-interaction-mode)
 
@@ -951,7 +1028,7 @@ new \"scalar\" result with the result of calling
 
 (cl-defmethod jupyter-org-result ((_mime (eql :text/plain)) _params data
                                   &optional _metadata)
-  (ansi-color-apply data))
+  data)
 
 ;;;; Helper functions
 

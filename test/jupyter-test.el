@@ -1678,6 +1678,40 @@ print(\"foo\", flush=True)
 :END:
 ")))
 
+(ert-deftest jupyter-org-font-lock-ansi-escapes ()
+  :tags '(org)
+  (jupyter-org-test-src-block
+   "print('AB\x1b[43mCD\x1b[0mEF')"
+   ": AB[43mCD[0mEF\n")
+  (jupyter-org-test-src-block
+   "\
+from IPython.display import publish_display_data
+publish_display_data({'text/plain': 'AB\x1b[43mCD\x1b[0mEF'});"
+   ": AB[43mCD[0mEF\n")
+  (with-temp-buffer
+    (org-mode)
+    (jupyter-org-interaction-mode 1)
+    (let ((test-fun
+           (lambda (face-pos invisible-pos)
+             (font-lock-ensure)
+             (jupyter-test-text-has-property 'invisible t invisible-pos)
+             (should (listp (get-text-property face-pos 'face)))
+             (should (get-text-property face-pos 'font-lock-face))
+             (should (eq (caar (get-text-property face-pos 'face)) 'background-color)))))
+      (insert ": AB[43mCD[0mEF")
+      (funcall test-fun 10 '(5 6 7 8 9 12 13 14 15))
+      ;; Test the cached faces path
+      (remove-text-properties (point-min) (point-max) '(face))
+      (funcall test-fun 10 '(5 6 7 8 9 12 13 14 15))
+      (erase-buffer)
+      (insert "\
+#+begin_example
+AB[43mCD[0mEF
+#+end_example")
+      ;; Test the cached faces path
+      (remove-text-properties (point-min) (point-max) '(face))
+      (funcall test-fun 24 '(19 20 21 22 23 26 27 28 29)))))
+
 (ert-deftest org-babel-jupyter-:results-header-arg ()
   :tags '(org)
   (ert-info ("scalar suppresses table output")
