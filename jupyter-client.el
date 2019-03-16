@@ -1044,9 +1044,6 @@ text/plain representation."
 
 (defun jupyter-eval-string (str &optional cb)
   "Evaluate STR using the `jupyter-current-client'.
-Replaces the contents of the last cell in the REPL buffer with
-STR before evaluating.
-
 If the result of evaluation is more than
 `jupyter-eval-short-result-max-lines' long, a buffer
 displaying the results is shown. For less lines, the result is
@@ -1070,10 +1067,13 @@ to the above explanation."
               (message "jupyter: eval done"))
           (setq ename (ansi-color-apply ename))
           (setq evalue (ansi-color-apply evalue))
-          (if (string-prefix-p ename evalue)
+          (unless
               ;; Happens in IJulia
-              (message evalue)
-            (message "%s: %s" ename evalue))))
+              (> (apply #'+ (mapcar #'length (list ename evalue))) 250)
+            (if (string-prefix-p ename evalue)
+                ;; Also happens in IJulia
+                (message evalue)
+              (message "%s: %s" ename evalue)))))
       :execute-result
       (or (and (functionp cb) cb)
           (lambda (msg)
@@ -1083,7 +1083,7 @@ to the above explanation."
       (jupyter-message-lambda (traceback)
         ;; FIXME: Assumes the error in the
         ;; execute-reply is good enough
-        (when (> (apply '+ (mapcar 'length traceback)) 250)
+        (when (> (apply #'+ (mapcar #'length traceback)) 250)
           (jupyter-display-traceback traceback)))
       :stream
       (jupyter-message-lambda (name text)
