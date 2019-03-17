@@ -61,6 +61,8 @@
                                                 (:async . "no"))
   "Default header arguments for Jupyter src-blocks.")
 
+;;; Helper functions
+
 (defun org-babel-jupyter--src-block-kernel-language ()
   (when (org-in-src-block-p)
     (let ((info (org-babel-get-src-block-info)))
@@ -75,6 +77,8 @@
       ;; `org-babel-jupyter-override-src-block'
       (advice-member-p
        'ob-jupyter (intern (concat "org-babel-execute:" lang)))))
+
+;;; `ob' integration
 
 (defun org-babel-variable-assignments:jupyter (params &optional lang)
   "Assign variables in PARAMS according to the Jupyter kernel language.
@@ -290,8 +294,17 @@ the PARAMS alist."
       ;; silent results and link style results?
       (when (member "file" (assq :result-params params))
         (org-babel-jupyter--remove-file-param params))
-      (if (jupyter-org-request-inline-block-p req) ""
-        (jupyter-org-insert-async-id req)))
+      (cl-labels
+          ((sync-on-export
+            ()
+            (unless (jupyter-request-idle-received-p req)
+              (jupyter-wait-until-idle req most-positive-fixnum))
+            (remove-hook 'org-babel-after-execute-hook #'sync-on-export t)))
+        ;; Ensure we convert async blocks to synchronous ones when exporting
+        (when (bound-and-true-p org-export-current-backend)
+          (add-hook 'org-babel-after-execute-hook #'sync-on-export t t))
+        (if (jupyter-org-request-inline-block-p req) ""
+          (jupyter-org-insert-async-id req))))
      (t
       (let ((result-params (assq :result-params params)))
         (when (and (member "file" result-params)
@@ -312,6 +325,8 @@ the PARAMS alist."
           ;; Add after since the initial result params are used in
           ;; `jupyter-org-client'
           (nconc (alist-get :result-params params) (list "raw"))))))))
+
+;;; Overriding source block languages, language aliases
 
 (defvar org-babel-jupyter--babel-ops
   '("execute" "expand-body" "prep-session" "edit-prep"
@@ -399,6 +414,8 @@ Optional argument REFRESH has the same meaning as in
                                   (replace-regexp-in-string
                                    "[0-9]*" "" lang)))))))
 
+;;; `ox' integration
+
 (defvar org-latex-minted-langs)
 
 (defun org-babel-jupyter-setup-export (backend)
@@ -413,6 +430,8 @@ mapped to their appropriate minted language in
      for lang = (plist-get spec :language)
      do (cl-pushnew (list (intern (concat "jupyter-" lang)) lang)
                     org-latex-minted-langs :test #'equal)))))
+
+;;; Hook into `org'
 
 (org-babel-jupyter-aliases-from-kernelspecs)
 (add-hook 'org-export-before-processing-hook #'org-babel-jupyter-setup-export)
