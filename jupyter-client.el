@@ -433,6 +433,21 @@ kernel via CLIENT's ioloop."
     (prog1 req
       (ring-insert+extend pending-requests req 'grow))))
 
+(defun jupyter-requests-pending-p (client)
+  "Return non-nil if CLIENT has open requests that the kernel has not handled.
+Specifically, this returns non-nil if the last request message
+sent to the kernel using CLIENT has not received an idle message
+back."
+  (cl-check-type client jupyter-kernel-client)
+  (jupyter--drop-idle-requests client)
+  (with-slots (pending-requests requests) client
+    (or (> (ring-length pending-requests) 0)
+          ;; If there are two requests, then there is really only one since
+          ;; "last-sent" is an alias for the other.
+        (> (hash-table-count requests) 2)
+        (when-let* ((last-sent (gethash "last-sent" requests)))
+          (not (jupyter-request-idle-received-p last-sent))))))
+
 ;;; HB channel methods
 
 (cl-defmethod jupyter-hb-pause ((client jupyter-kernel-client))
@@ -730,19 +745,6 @@ If PROGRESS-MSG is non-nil, it is a message string to display for
 reporting progress to the user while waiting."
   (declare (indent 1))
   (jupyter-wait-until req msg-type #'identity timeout progress-msg))
-
-(defun jupyter-requests-pending-p (client)
-  "Return non-nil if CLIENT has open requests that the kernel has not handled.
-Specifically, this returns non-nil if the last request message
-sent to the kernel using CLIENT has not received an idle message
-back."
-  (cl-check-type client jupyter-kernel-client)
-  (jupyter--drop-idle-requests client)
-  (with-slots (requests) client
-    (let ((last-sent (gethash "last-sent" requests)))
-      (or (> (length requests) 1)
-          (when last-sent
-            (not (jupyter-request-idle-received-p last-sent)))))))
 
 ;;; Client handlers
 

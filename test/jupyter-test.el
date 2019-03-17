@@ -591,6 +591,25 @@
       (setq jupyter-inhibit-handlers '(:foo))
       (should-error (jupyter-send-kernel-info-request client)))))
 
+(ert-deftest jupyter-requests-pending-p ()
+  :tags '(client)
+  (jupyter-test-with-python-client client
+    (when-let* ((last-sent (gethash "last-sent" (oref client requests))))
+      (ignore-errors (jupyter-wait-until-idle last-sent)))
+    (let ((req (jupyter-send-kernel-info-request client)))
+      (ert-info ("Pending after send")
+        (should (jupyter-requests-pending-p client))
+        (jupyter-wait-until-idle req)
+        (should-not (jupyter-requests-pending-p client)))
+      (ert-info ("Pending until idle received")
+        (setq req (jupyter-send-execute-request client
+                    :code "import time; time.sleep(0.2)"))
+        ;; Empty out the pending-requests slot of CLIENT
+        (jupyter-wait-until-received :status req)
+        (should (jupyter-requests-pending-p client))
+        (jupyter-wait-until-idle req)
+        (should-not (jupyter-requests-pending-p client))))))
+
 ;;; IOloop
 
 (ert-deftest jupyter-ioloop-lifetime ()
