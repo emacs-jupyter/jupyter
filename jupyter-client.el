@@ -1635,7 +1635,7 @@ Run FUN when the completions are available."
         ;; we are already inside a company completion so we can't use
         ;; it, just use a sensible time value instead.
         (run-with-timer
-         0.3 nil
+         0.1 nil
          (lambda (buf win tick pos)
            (let ((company-minimum-prefix-length 0))
              (company-idle-begin buf win tick pos)))
