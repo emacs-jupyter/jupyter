@@ -304,7 +304,7 @@ the PARAMS alist."
         (when (bound-and-true-p org-export-current-backend)
           (add-hook 'org-babel-after-execute-hook #'sync-on-export t t))
         (if (jupyter-org-request-inline-block-p req) ""
-          (jupyter-org-insert-async-id req))))
+          (jupyter-org-pending-async-results req))))
      (t
       (let ((result-params (assq :result-params params)))
         (when (and (member "file" result-params)
