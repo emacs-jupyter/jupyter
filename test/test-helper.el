@@ -130,6 +130,9 @@ If the `current-buffer' is not a REPL, this is identical to
 
 (defvar jupyter-test-global-repls nil)
 
+;; TODO: Clean these macros up and handle a global kernel that has been
+;; shutdown for some reason, e.g. by a shutdown request.
+
 (defmacro jupyter-test-with-kernel-client (kernel client &rest body)
   "Start a new KERNEL client, bind it to CLIENT, evaluate BODY.
 This only starts a single global client unless the variable
@@ -142,6 +145,12 @@ This only starts a single global client unless the variable
        (jupyter-error-if-no-kernelspec ,kernel)
        (let* ((,real-kernel (caar (jupyter-find-kernelspecs ,kernel)))
               (,global (alist-get ,real-kernel jupyter-test-global-clients)))
+         ;; If a kernel has died, e.g. being shutdown ensure that we start it
+         ;; back up.
+         (when (and ,global
+                    (not (jupyter-kernel-alive-p (car ,global))))
+           (setq ,global nil)
+           (setf (alist-get ,real-kernel jupyter-test-global-clients) nil))
          (cl-destructuring-bind (,manager ,client)
              (if (and ,global (not jupyter-test-with-new-client))
                  ,global
