@@ -68,6 +68,14 @@
         (string-match "^jupyter-\\(.+\\)$" (car info))
         (match-string 1 (car info))))))
 
+(defun org-babel-jupyter-language-p (lang)
+  "Return non-nil if LANG src-blocks are executed using Jupyter."
+  (or (string-prefix-p "jupyter-" lang)
+      ;; Check if the language has been overridden, see
+      ;; `org-babel-jupyter-override-src-block'
+      (advice-member-p
+       'ob-jupyter (intern (concat "org-babel-execute:" lang)))))
+
 (defun org-babel-variable-assignments:jupyter (params &optional lang)
   "Assign variables in PARAMS according to the Jupyter kernel language.
 LANG is the kernel language of the source block. If LANG is nil,
@@ -324,9 +332,11 @@ the PARAMS alist."
         (unless (fboundp sym)
           (fset sym #'ignore))
         (funcall fun sym
-                 :override (intern (concat "org-babel-" fn ":jupyter-" lang)))))
+                 :override (intern (concat "org-babel-" fn ":jupyter-" lang))
+                 '((name . ob-jupyter)))))
     (funcall fun (intern (concat "org-babel-" lang "-initiate-session"))
-             :override #'org-babel-jupyter-initiate-session)
+             :override #'org-babel-jupyter-initiate-session
+             '((name . ob-jupyter)))
     (dolist (prefix '("org-babel-header-args:"
                       "org-babel-default-header-args:"))
       (when-let* ((var (intern-soft (concat prefix lang))))
