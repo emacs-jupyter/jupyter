@@ -822,7 +822,11 @@ are taken:
             (jupyter--run-callbacks req msg)
           (unwind-protect
               (jupyter--run-handler-maybe client channel req msg)
-            (when (jupyter-message-status-idle-p msg)
+            (when (or (jupyter-message-status-idle-p msg)
+                      ;; No idle message is received after a shutdown reply so
+                      ;; consider REQ as having received an idle message in
+                      ;; this case.
+                      (eq (jupyter-message-type msg) :shutdown-reply))
               (setf (jupyter-request-idle-received-p req) t))
             (jupyter--drop-idle-requests client)))))))
 
