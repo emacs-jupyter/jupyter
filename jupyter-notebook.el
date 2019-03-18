@@ -48,7 +48,7 @@
 
 (defun jupyter-notebook-split-source (source)
   (if (listp source) source
-    (split-string source "\n" t t)))
+    (split-string source "^" t)))
 
 (defvar org-export-with-toc)
 
@@ -97,40 +97,52 @@
 
 (defun jupyter-notebook-parse-outputs ()
   (let ((context (org-element-context)))
-    (cl-case (org-element-type context)
-      (keyword
-       ;; Empty results, only a RESULTS keyword
-       nil)
-      (drawer
-       ;; A results drawer
-       (save-restriction
-         (narrow-to-region
-          (save-excursion
-            (goto-char (org-element-property :begin context))
-            (line-beginning-position 2))
-          (save-excursion
-            (goto-char (jupyter-org-element-end-before-blanks context))
-            (line-beginning-position 0)))
-         (goto-char (point-min))
-         (cl-loop
-          nconc (jupyter-notebook-parse-outputs)
-          while (/= (org-forward-element) (point-max)))))
-      (table
-       (save-restriction
-         (narrow-to-region (org-element-property :begin context)
-                           (org-element-property :end context))
-         (let ((org-html-format-table-no-css t))
-           (list :html (org-export-as 'html nil nil 'body-only)))))
-      (_
-       ;; A result that passes `jupyter-org-babel-result-p'
-       ;; TODO: One issue here is that results that look like tables get
-       ;; converted into `org-mode' tables and information is lost there.
-       ;; Probably the best option here is to convert into an `html' table.
+    (or
+     (cl-case (org-element-type context)
+       (keyword
+        ;; Empty results, only a RESULTS keyword
+        nil)
+       (drawer
+        ;; A results drawer
+        (save-restriction
+          (narrow-to-region
+           (save-excursion
+             (goto-char (org-element-property :begin context))
+             (line-beginning-position 2))
+           (save-excursion
+             (goto-char (jupyter-org-element-end-before-blanks context))
+             (line-beginning-position 0)))
+          (goto-char (point-min))
+          (cl-loop
+           vconcat (jupyter-notebook-parse-outputs)
+           while (/= (org-forward-element) (point-max)))))
+       (table
+        (save-restriction
+          (narrow-to-region (org-element-property :begin context)
+                            (org-element-property :end context))
+          (let ((org-html-format-table-no-css t))
+            (vector
+             (jupyter-notebook-execute-result-output
+              :execution-count 0
+              :data (list :text/html (org-export-as 'html nil nil 'body-only)))))))
+       ;; Ambiguity between stream results and final result output
+       (fixed-width
+        (vector
+         (jupyter-notebook-execute-result-output
+          ;; TODO: Global execution count for notebook
+          :execution-count 0
+          :data (list :text/plain (org-element-property :value context)))))
+       (_
+        ;; A result that passes `jupyter-org-babel-result-p'
+        ;; TODO: One issue here is that results that look like tables get
+        ;; converted into `org-mode' tables and information is lost there.
+        ;; Probably the best option here is to convert into an `html' table.
 
-       ))))
+        ))
+     (vector))))
 
 (cl-defun jupyter-notebook-markdown-cell (&key source metadata)
-  (list :cell_type "markdown" :metadata metadata
+  (list :cell_type "markdown" :metadata (or metadata jupyter--empty-dict)
         :source (jupyter-notebook-split-source source)))
 
 (cl-defun jupyter-notebook-code-cell (&key execution-count
@@ -148,22 +160,31 @@
 (cl-defun jupyter-notebook-raw-cell (&key source metadata)
   (list :cell_type "raw"
         :source (jupyter-notebook-split-source source)
-        :metadata metadata))
+        :metadata (or metadata jupyter--empty-dict)))
 
 (cl-defun jupyter-notebook-stream-output (&key name text)
   (list :output_type "stream"
         :name name
         :text (jupyter-notebook-split-source text)))
 
+;; FIXME: Ambiguity with display-data output and execute-result output, when
+;; would an image be an execute result and when would it be a display data
+;; output? If we have a results drawer then there is possibly stream output or
+;; display data output. Without a results drawer then the ambiguity is if there
+;; is stream output or an execute result.
+;;
+;; Maybe I should prepend an Out[N] comment before the execute result to
+;; distinguish it from other results, then it would be easier to determine what
+;; kind of data is present.
 (cl-defun jupyter-notebook-display-data-output (&key data metadata)
   (list :output_type "display_data"
         :data data
-        :metadata metadata))
+        :metadata (or metadata jupyter--empty-dict)))
 
 (cl-defun jupyter-notebook-execute-result-output (&key execution-count data metadata)
   (list :output_type "execute_result"
         :data data
-        :metadata metadata
+        :metadata (or metadata jupyter--empty-dict)
         :execution_count execution-count))
 
 (cl-defun jupyter-notebook-error-output (&key ename evalue traceback)
