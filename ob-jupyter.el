@@ -297,9 +297,10 @@ the PARAMS alist."
       (cl-labels
           ((sync-on-export
             ()
+            ;; Remove the hook before waiting so it doesn't get called again.
+            (remove-hook 'org-babel-after-execute-hook #'sync-on-export t)
             (unless (jupyter-request-idle-received-p req)
-              (jupyter-wait-until-idle req most-positive-fixnum))
-            (remove-hook 'org-babel-after-execute-hook #'sync-on-export t)))
+              (jupyter-wait-until-idle req most-positive-fixnum))))
         ;; Ensure we convert async blocks to synchronous ones when exporting
         (when (bound-and-true-p org-export-current-backend)
           (add-hook 'org-babel-after-execute-hook #'sync-on-export t t))
