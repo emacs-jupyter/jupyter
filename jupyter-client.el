@@ -1367,10 +1367,11 @@ If the region is active, return it. Otherwise return the line."
     (if (zerop (nth 0 ppss))
         (jupyter-region-context (line-beginning-position) (point))
       (jupyter-region-context
-       ;; Return a context including all nested parenthesis and the closest
-       ;; contiguous non-whitespace sequence of characters at the top level.
+       ;; Return a context including the deepest nested parenthesis and the
+       ;; closest contiguous non-whitespace sequence of characters at the top
+       ;; level.
        (save-excursion
-         (goto-char (car (nth 9 ppss)))
+         (goto-char (nth 1 ppss))
          (skip-syntax-backward "->")
          (skip-syntax-backward "^->")
          (point))
