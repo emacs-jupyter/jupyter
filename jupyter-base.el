@@ -528,27 +528,37 @@ ignored and the host will be extracted from the information
 contained in the file name.
 
 Note that `zmq-make-tunnel' is used to create the tunnels."
-  (let ((conn-info (jupyter-read-plist conn-file))
-        (sock (zmq-socket (zmq-current-context) zmq-REP)))
-    (when (and (file-remote-p conn-file)
-               (functionp 'tramp-dissect-file-name))
-      (pcase-let (((cl-struct tramp-file-name user host)
-                   (tramp-dissect-file-name conn-file)))
-        (setq server (if user (concat user "@" host)
-                       host))))
-    (unwind-protect
-        (cl-loop
-         with remoteip = (plist-get conn-info :ip)
-         for (key maybe-rport) on conn-info by #'cddr
-         collect key and if (memq key '(:hb_port :shell_port :control_port
-                                                 :stdin_port :iopub_port))
-         collect (let ((lport (zmq-bind-to-random-port sock "tcp://127.0.0.1")))
-                   (zmq-unbind sock (zmq-socket-get sock zmq-LAST-ENDPOINT))
-                   (prog1 lport
-                     (zmq-make-tunnel lport maybe-rport server remoteip)))
-         else collect maybe-rport)
-      (zmq-socket-set sock zmq-LINGER 0)
-      (zmq-close sock))))
+  (catch 'no-tunnels
+    (let ((conn-info (jupyter-read-plist conn-file)))
+      (when (and (file-remote-p conn-file)
+                 (functionp 'tramp-dissect-file-name))
+        (pcase-let (((cl-struct tramp-file-name method user host)
+                     (tramp-dissect-file-name conn-file)))
+          (pcase method
+            ("docker"
+             ;; Assume docker is using the -p argument to publish its exposed
+             ;; ports to the localhost. The ports used in the container should
+             ;; be the same ports accessible on the local host. For example, if
+             ;; the shell port is on 1234 in the container, the published port
+             ;; flag should be "-p 1234:1234".
+             (throw 'no-tunnels conn-info))
+            (_
+             (setq server (if user (concat user "@" host)
+                            host))))))
+      (let ((sock (zmq-socket (zmq-current-context) zmq-REP)))
+        (unwind-protect
+            (cl-loop
+             with remoteip = (plist-get conn-info :ip)
+             for (key maybe-rport) on conn-info by #'cddr
+             collect key and if (memq key '(:hb_port :shell_port :control_port
+                                                     :stdin_port :iopub_port))
+             collect (let ((lport (zmq-bind-to-random-port sock "tcp://127.0.0.1")))
+                       (zmq-unbind sock (zmq-socket-get sock zmq-LAST-ENDPOINT))
+                       (prog1 lport
+                         (zmq-make-tunnel lport maybe-rport server remoteip)))
+             else collect maybe-rport)
+          (zmq-socket-set sock zmq-LINGER 0)
+          (zmq-close sock))))))
 
 (cl-defun jupyter-create-connection-info (&key
                                           (kernel-name "python")
