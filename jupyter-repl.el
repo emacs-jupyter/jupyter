@@ -1680,7 +1680,7 @@ VERBOSE has the same meaning as in
     ;; REPL language but with a modified syntactic fontification function
     (cl-destructuring-bind (kws &optional kws-only case-fold syntax-alist
                                 &rest vars)
-        fld
+        (or fld (list nil))
       (setq vars
             (append vars
                     (list
