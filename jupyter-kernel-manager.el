@@ -74,7 +74,7 @@
 If KILL-KERNEL is non-nil, delete MANAGER's kernel process if it
 is alive."
   (with-slots (kernel conn-file) manager
-    (when (file-exists-p conn-file)
+    (when (and conn-file (file-exists-p conn-file))
       (delete-file conn-file))
     (when (and kill-kernel (process-live-p kernel))
       (delete-process kernel))))
