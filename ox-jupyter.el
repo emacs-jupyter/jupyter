@@ -1,3 +1,6 @@
+;; TODO: Encapsulate the notebook state in some struct so it is easier to
+;; reason about which parts are stateful.
+
 (require 'jupyter-messages)             ; For `jupyter--empty-dict'
 (require 'jupyter-kernelspec)
 (eval-when-compile
@@ -9,8 +12,8 @@
   '((src-block . jupyter-notebook-src-block)
     (paragraph . jupyter-notebook-paragraph)
     (section . jupyter-notebook-section)
+    (headline . jupyter-notebook-headline)
     (fixed-width . jupyter-notebook-cell)
-    (drawer . jupyter-notebook-cell)
     (inner-template . jupyter-notebook-json))
   :menu-entry
   '(?j "Export to Jupyter Notebook"
@@ -39,11 +42,43 @@
 ;;   (headline)
 ;;   (headline
 ;;    (headline))))
-(defun jupyter-notebook-section (data contents _info)
-  contents)
+;;
+;; Once a section is complete, the headline nodes gets called so I need to have
+;; some state that allows me to put the headline at the front.
+
+
+;; Take the current cells and put them in a section, the node that gets called
+;; right after this one is the headline node which is then responsible for
+;; modifying the head of the section to add the headline
+(defun jupyter-notebook-section (_data contents info)
+  (message "section %s" contents)
+  (let ((cells (plist-get info :jupyter-cells)))
+    (plist-put info :jupyter-sections
+               (cons cells (plist-get info :jupyter-sections)))
+    (plist-put info :jupyter-cells nil))
+  "")
+
+;; TODO: Figure out when this gets called
+(defun jupyter-notebook-headline (data contents info)
+  (message "headline %s" contents)
+  (let* ((cell (jupyter-notebook--current-cell info))
+         (source (plist-get cell :source)))
+    (plist-put cell :source
+               (nconc source
+                      ;; TODO: Be able to control when to create a new markdown
+                      ;; cell? At what level of subtree should markdown cells
+                      ;; be created? For top-level subtrees or have a subtree
+                      ;; property that states when to create a subtree?
+                      (list "\n\n")
+                      (list (concat (make-string (org-element-property :level data) ?#) " "
+                                    (org-element-property :raw-value data))))))
+  "")
 
 (defun jupyter-notebook-paragraph (elem contents info)
-  (if (jupyter-notebook--markdown-cell-p info)
+  (message "paragraph %s" contents)
+  (let (context)
+    (cond
+     ((jupyter-notebook--markdown-cell-p info)
       (let* ((cell (jupyter-notebook--current-cell info))
              (source (plist-get cell :source)))
         (plist-put cell :source
@@ -54,15 +89,30 @@
                           ;; or have a subtree property that states when to
                           ;; create a subtree?
                           (list "\n\n")
-                          (jupyter-notebook-split-source contents))))
-    (jupyter-notebook--begin-cell
-     (jupyter-notebook-markdown-cell
-      :source (jupyter-notebook-split-source contents))
-     info))
+                          (jupyter-notebook-split-source contents)))))
+     ((jupyter-notebook--result-p
+       (save-excursion
+         (goto-char (jupyter-org-element-begin-after-affiliated elem))
+         ;; To handle links we need to get the context
+         (setq context (org-element-context)))
+       info)
+      ;; TODO: Rename this function to better represent what it does. It is a
+      ;; node in the parse tree that gets a source block's results.
+      (jupyter-notebook-cell context nil info))
+     (t
+      (jupyter-notebook--begin-cell
+       (jupyter-notebook-markdown-cell
+        :source (jupyter-notebook-split-source contents))
+       info))))
   "")
 
-(defun jupyter-notebook--complete-cell (elem info)
-  (when elem
+(defun jupyter-notebook--complete-cell (info)
+  (when-let* ((elem (plist-get info :jupyter-current-cell)))
+    ;; TODO: Handle the execute-result output. The last output should be
+    ;; translated into an execute result if need be. This will be somewhat
+    ;; difficult to do since there is no way to distinguish between an execute
+    ;; result or a stream or display-data result. So don't really know what the
+    ;; strategy should be.
     (let ((cells (plist-get info :jupyter-cells)))
       (push elem cells)
       (plist-put info :jupyter-cells cells)
@@ -70,14 +120,14 @@
 
 (defun jupyter-notebook--begin-cell (elem info)
   (when (plist-get info :jupyter-current-cell)
-    (jupyter-notebook--complete-cell
-     (plist-get info :jupyter-current-cell) info))
+    (jupyter-notebook--complete-cell info))
   (plist-put info :jupyter-current-cell elem))
 
 (defun jupyter-notebook--current-cell (info)
   (plist-get info :jupyter-current-cell))
 
 (defun jupyter-notebook-src-block (src-block contents info)
+  (message "src-block %s" contents)
   (jupyter-notebook--begin-cell
    (jupyter-notebook-code-cell
     ;; TODO: Global execution count
@@ -112,6 +162,57 @@ keyword, and ELEM passes `jupyter-org-babel-result-p'."
            ;; TODO: Isn't a result drawer also a babel result?
            (jupyter-notebook--result-drawer-p elem))))
 
+(defun jupyter-notebook--mime-bundle (elem)
+  ;; TODO: Is there a better way?
+  ;; NOTE: All elements are initially considered as display-data output, when
+  ;; the corresponding source block cell is completed, the last element in the
+  ;; :outputs key is converted into an execute-result if it should be.
+  (cl-case (org-element-type elem)
+    (table
+     (save-restriction
+       (narrow-to-region (org-element-property :begin elem)
+                         (org-element-property :end elem))
+       (let ((org-html-format-table-no-css t))
+         (jupyter-notebook-display-data-output
+          :data (list :text/html (org-export-as 'html nil nil 'body-only))))))
+    ;; Ambiguity between stream results and final result output
+    ((fixed-width example-block)
+     (jupyter-notebook-stream-output
+      ;; TODO: How to distinguish between stdout and stderr reliably? Maybe
+      ;; hijack the switches of an example block or add as affiliated keywords
+      ;; like ATTR_JUPYTER.
+      ;;
+      ;; The example block way would be
+      ;;
+      ;; #+BEGIN_EXAMPLE :stream err
+      ;; #+END_EXAMPLE
+      :name "stdout"
+      :text (org-element-property :value elem)))
+    ;; Image links
+    (link
+     (let* ((path (org-element-property :path elem))
+            (ext (file-name-extension path))
+            ;; TODO: Generalize this into a function and also use in
+            ;; `jupyter-org-client.el'
+            (mime (pcase ext
+                    ("png" :image/png)
+                    ("jpg" :image/jpeg)
+                    ("svg" :image/svg+xml)
+                    (_ (error "Unsupported file name extension (%s)" ext)))))
+       (list mime (with-temp-buffer
+                    (insert-file-contents-literally path)
+                    (when (memq mime '(:image/png :image/jpeg))
+                      (base64-encode-region (point-min) (point-max) 'no-line-breaks))
+                    (buffer-string))))
+     )
+    (_
+     ;; A result that passes `jupyter-org-babel-result-p'
+     ;; TODO: One issue here is that results that look like tables get
+     ;; converted into `org-mode' tables and information is lost there.
+     ;; Probably the best option here is to convert into an `html' table.
+
+     )))
+
 ;; TODO: Remember that the export process is depth first, so the higher level
 ;; nodes like drawers and sections will already have parsed contents of the
 ;; elements they contain. What I need to do is tag with text properties parts
@@ -124,15 +225,16 @@ keyword, and ELEM passes `jupyter-org-babel-result-p'."
 ;; 2. During export, if an element has been marked as a source block output,
 ;;    add it to the outputs of the current source block cell.
 (defun jupyter-notebook-cell (elem contents info)
+  (message "cell %s" contents)
   (if (jupyter-notebook--result-p elem info)
       (let ((cell (jupyter-notebook--current-cell info)))
-        (save-excursion
-          (goto-char (org-element-property :begin elem))
-          (plist-put cell :outputs (jupyter-notebook-parse-outputs))
-          (jupyter-notebook--complete-cell cell info)
-          ""))
-    (org-export-data-with-backend elem 'md info)
-    ))
+        (plist-put
+         cell :outputs (vconcat
+                        (plist-get cell :outputs)
+                        (list (jupyter-notebook--mime-bundle elem))))
+        "")
+    (let (org-export-with-toc)
+      (org-export-data-with-backend elem 'md info))))
 
 (defvar jupyter-notebook--kernelspec nil)
 
@@ -163,8 +265,7 @@ otherwise return the kernelspec used for the notebook."
 (defun jupyter-notebook-json (_ info)
   "From the Jupyter related properties in INFO, return the notebook JSON."
   ;; Finish up the last cell
-  (jupyter-notebook--complete-cell
-   (jupyter-notebook--current-cell info) info)
+  (jupyter-notebook--complete-cell info)
   (json-encode
    (list :cells (apply #'vector (nreverse (plist-get info :jupyter-cells)))
          :metadata (list :kernelspec (prog1 (or jupyter-notebook--kernelspec

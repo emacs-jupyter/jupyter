@@ -149,7 +149,7 @@
                                            source
                                            collapsed
                                            autoscroll
-                                           outputs)
+                                           (outputs []))
   (list :cell_type "code"
         :execution_count execution-count
         :metadata (list :collapsed (if collapsed t jupyter--false)
