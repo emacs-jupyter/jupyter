@@ -102,7 +102,12 @@ ELEM is the results of a source block if the current cell being
 processed in INFO is a code cell, ELEM has a RESULTS affiliated
 keyword, and ELEM passes `jupyter-org-babel-result-p'."
   (and (jupyter-notebook--code-cell-p info)
-       (org-element-property :results elem)
+       ;; If ELEM is associated with a #+RESULTS: keyword, it is considered a
+       ;; result
+       (cl-loop
+        with el = elem
+        while el thereis (org-element-property :results el)
+        do (setq el (org-element-property :parent el)))
        (or (jupyter-org-babel-result-p elem)
            ;; TODO: Isn't a result drawer also a babel result?
            (jupyter-notebook--result-drawer-p elem))))
