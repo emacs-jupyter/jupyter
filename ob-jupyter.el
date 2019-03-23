@@ -78,6 +78,29 @@
       (advice-member-p
        'ob-jupyter (intern (concat "org-babel-execute:" lang)))))
 
+(defun org-babel-jupyter-session-key (params)
+  "Return the session key based on the keys in PARAMS.
+PARAMS is the arguments alist as returned by
+`org-babel-get-src-block-info' and should contain a :kernel key
+and a valid :session key. The session key is used to access the
+clients in `org-babel-jupyter-session-clients'."
+  (let ((session (alist-get :session params))
+        (kernel (alist-get :kernel params)))
+    (unless (and session kernel
+                 (not (equal session "none")))
+      (error "Need a valid session and a kernel to form a key"))
+    (concat session "-" kernel)))
+
+(defun org-babel-jupyter-src-block-session ()
+  "Return the session key for the current Jupyter source block.
+Return nil if the current source block is not a Jupyter block or
+if there is no source block at point."
+  (when (org-in-src-block-p)
+    (cl-destructuring-bind (lang _ params . rest)
+        (org-babel-get-src-block-info 'light)
+      (when (org-babel-jupyter-language-p lang)
+        (org-babel-jupyter-session-key params)))))
+
 ;;; `ob' integration
 
 (defun org-babel-variable-assignments:jupyter (params &optional lang)
@@ -189,7 +212,7 @@ of one. The first kernel that is returned by
 `jupyter-find-kernelspecs' when passed the value of the `:kernel'
 parameter will be used."
   (let* ((kernel (alist-get :kernel params))
-         (key (concat session "-" kernel))
+         (key (org-babel-jupyter-session-key params))
          (client
           (or (gethash key org-babel-jupyter-session-clients)
               (let ((client
