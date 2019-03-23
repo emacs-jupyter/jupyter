@@ -485,7 +485,7 @@
                   :endpoint "tcp://127.0.0.1:5556"
                   :session (jupyter-session)))
         (died-cb-called nil)
-        (jupyter-hb-consider-dead-periods 1))
+        (jupyter-hb-max-failures 1))
     (oset channel time-to-dead 0.1)
     (should-not (jupyter-channel-alive-p channel))
     (should-not (jupyter-hb-beating-p channel))
