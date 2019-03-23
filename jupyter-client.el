@@ -225,45 +225,51 @@ passed as the argument has a language of LANG."
        (jupyter-clients))
       (error "No client found for session (%s)" session-id)))
 
+(defun jupyter--connection-info (info-or-session)
+  "Return the connection plist according to INFO-OR-SESSION.
+See `jupyter-initialize-connection'."
+  (cond
+   ((jupyter-session-p info-or-session)
+    (jupyter-session-conn-info info-or-session))
+   ((json-plist-p info-or-session) info-or-session)
+   ((stringp info-or-session)
+    (if (file-remote-p info-or-session)
+        ;; TODO: Don't tunnel if a tunnel already exists
+        (jupyter-tunnel-connection info-or-session)
+      (unless (file-exists-p info-or-session)
+        (error "File does not exist (%s)" info-or-session))
+      (jupyter-read-plist info-or-session)))
+   (t (signal 'wrong-type-argument
+              (list info-or-session
+                    '(or jupyter-session-p json-plist-p stringp))))))
+
 (defun jupyter-initialize-connection (client info-or-session)
   "Initialize CLIENT with connection INFO-OR-SESSION.
 INFO-OR-SESSION can be a file name, a plist, or a
 `jupyter-session' object that will be used to initialize CLIENT's
-connection. When INFO-OR-SESSION is a file name, read the
-contents of the file as a JSON plist and create a new
-`jupyter-session' from it. For remote files, create a new
-`jupyter-session' based on the plist returned from
-`jupyter-tunnel-connection'. When INFO-OR-SESSION is a plist, use
-it to create a new `jupyter-session'. Finally, when
-INFO-OR-SESSION is a `jupyter-session' it is used as the session
-for client. The session object used to initialize the connection
-will be set as the session slot of CLIENT.
+connection. If CLIENT is already connected to a kernel, its
+connection is first terminated before initializing a new one.
+
+When INFO-OR-SESSION is a file name, read the contents of the
+file as a JSON plist and create a new `jupyter-session' from it.
+For remote files, create a new `jupyter-session' based on the
+plist returned from `jupyter-tunnel-connection'.
+
+When INFO-OR-SESSION is a plist, use it to create a new
+`jupyter-session'.
+
+Finally, when INFO-OR-SESSION is a `jupyter-session' it is used
+as the session for CLIENT.
+
+The session object will then be used to initialize the client
+connection and will be accessible as the session slot of CLIENT.
 
 The necessary keys and values to initialize a connection can be
 found at
-http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files.
-
-As a side effect, if CLIENT is already connected to a kernel its
-connection is terminated before initializing a new one."
+http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
   (cl-check-type client jupyter-kernel-client)
-  (let* ((session nil)
-         (conn-info
-          (cond
-           ((jupyter-session-p info-or-session)
-            (setq session info-or-session)
-            (jupyter-session-conn-info session))
-           ((json-plist-p info-or-session)
-            info-or-session)
-           ((stringp info-or-session)
-            (if (file-remote-p info-or-session)
-                ;; TODO: Don't tunnel if a tunnel already exists
-                (jupyter-tunnel-connection info-or-session)
-              (unless (file-exists-p info-or-session)
-                (error "File does not exist (%s)" info-or-session))
-              (jupyter-read-plist info-or-session)))
-           (t (signal 'wrong-type-argument
-                      (list info-or-session
-                            '(or jupyter-session-p json-plist-p stringp)))))))
+  (let ((session (and (jupyter-session-p info-or-session) info-or-session))
+        (conn-info (jupyter--connection-info info-or-session)))
     (cl-destructuring-bind
         (&key shell_port iopub_port stdin_port hb_port ip
               key transport signature_scheme
