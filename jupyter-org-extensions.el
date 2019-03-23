@@ -33,6 +33,7 @@
 (declare-function org-babel-jupyter-initiate-session "ob-jupyter" (&optional session params))
 (declare-function org-babel-jupyter-src-block-session "ob-jupyter" ())
 (declare-function org-in-src-block-p "org" (&optional inside))
+(declare-function org-narrow-to-subtree "org" ())
 (declare-function org-element-context "org-element" (&optional element))
 (declare-function org-element-property "org-element" (property element))
 (declare-function org-element-interpret-data "org-element" (data))
@@ -202,6 +203,17 @@ Jupyter source blocks."
           (org-babel-execute-src-block))))
     (goto-char p)
     (set-marker p nil)))
+
+;;;###autoload
+(defun jupyter-org-execute-subtree (any)
+  "Execute Jupyter source blocks that start before point in the current subtree.
+This function narrows the buffer to the current subtree and calls
+`jupyter-org-execute-to-point'. See that function for the meaning
+of the ANY argument."
+  (interactive "P")
+  (save-restriction
+    (org-narrow-to-subtree)
+    (jupyter-org-execute-to-point any)))
 
 ;;;###autoload
 (defun jupyter-org-inspect-src-block ()
@@ -461,16 +473,17 @@ If BELOW is non-nil, move the block down, otherwise move it up."
     _<return>_: current           _p_: previous  _C-p_: move up     _/_: inspect
   _C-<return>_: current to next   _n_: next      _C-n_: move down   _l_: clear result
   _M-<return>_: to point          _g_: visible     _x_: kill        _L_: clear all
-  _S-<return>_: Restart/block     _G_: any         _c_: copy
-_S-C-<return>_: Restart/to point  ^ ^              _o_: clone
-_S-M-<return>_: Restart/buffer    ^ ^              _m_: merge
-           _r_: Goto repl         ^ ^              _s_: split
-           ^ ^                    ^ ^              _+_: insert above
+_C-M-<return>_: subtree to point  _G_: any         _c_: copy
+  _S-<return>_: Restart/block     ^ ^              _o_: clone
+_S-C-<return>_: Restart/to point  ^ ^              _m_: merge
+_S-M-<return>_: Restart/buffer    ^ ^              _s_: split
+           _r_: Goto repl         ^ ^              _+_: insert above
            ^ ^                    ^ ^              _=_: insert below
            ^ ^                    ^ ^              _h_: header"
            ("<return>" org-ctrl-c-ctrl-c :color red)
            ("C-<return>" jupyter-org-execute-and-next-block :color red)
            ("M-<return>" jupyter-org-execute-to-point)
+           ("C-M-<return>" jupyter-org-execute-subtree)
            ("S-<return>" jupyter-org-restart-kernel-execute-block)
            ("S-C-<return>" jupyter-org-restart-and-execute-to-point)
            ("S-M-<return>" jupyter-org-restart-kernel-execute-buffer)
