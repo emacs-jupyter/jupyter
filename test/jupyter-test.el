@@ -1712,6 +1712,30 @@ AB[43mCD[0mEF
       (remove-text-properties (point-min) (point-max) '(face))
       (funcall test-fun 24 '(19 20 21 22 23 26 27 28 29)))))
 
+(ert-deftest org-babel-jupyter-src-block-session ()
+  :tags '(org)
+  (jupyter-org-test
+   (insert "\
+#+BEGIN_SRC jupyter-foo :session bar
+#+END_SRC")
+   (goto-char (point-min))
+   (should-error (org-babel-jupyter-src-block-session))
+   (erase-buffer)
+   (insert "\
+#+BEGIN_SRC jupyter-foo :kernel bar
+#+END_SRC")
+   (goto-char (point-min))
+   (should-error (org-babel-jupyter-src-block-session))
+   (erase-buffer)
+   (insert "\
+#+BEGIN_SRC jupyter-foo :session bar :kernel bar
+#+END_SRC")
+   (goto-char (point-min))
+   (should (equal (org-babel-jupyter-src-block-session)
+                  (org-babel-jupyter-session-key
+                   (nth 2 (org-babel-get-src-block-info 'light)))))
+   (erase-buffer)))
+
 (ert-deftest org-babel-jupyter-:results-header-arg ()
   :tags '(org)
   (ert-info ("scalar suppresses table output")
