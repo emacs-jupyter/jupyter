@@ -178,6 +178,11 @@ kernel. Starting a kernel involves the following steps:
 
 3. Connect the control channel of MANAGER to the kernel."
   (unless (jupyter-kernel-alive-p manager)
+    ;; Remove any resources from a previous kernel that was started by this
+    ;; manager, e.g. when restarting a kernel. These resources will get cleaned
+    ;; up when the manager object is garbage collected (or when Emacs is
+    ;; killed) but this doesn't happen when restarting a kernel.
+    (jupyter-kernel-manager--cleanup manager)
     (cl-destructuring-bind (kernel-name . (resource-dir . spec))
         (car (jupyter-find-kernelspecs (oref manager name)))
       (make-directory jupyter-runtime-directory 'parents)
