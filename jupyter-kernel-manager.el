@@ -184,7 +184,9 @@ kernel. Starting a kernel involves the following steps:
     ;; killed) but this doesn't happen when restarting a kernel.
     (jupyter-kernel-manager--cleanup manager)
     (cl-destructuring-bind (kernel-name . (resource-dir . spec))
-        (car (jupyter-find-kernelspecs (oref manager name)))
+        (or (car (jupyter-find-kernelspecs (oref manager name)))
+            (error "No valid kernelspec for kernel name (%s)"
+                   (oref manager name)))
       (make-directory jupyter-runtime-directory 'parents)
       (let* ((temporary-file-directory jupyter-runtime-directory)
              (session (oref manager session))
