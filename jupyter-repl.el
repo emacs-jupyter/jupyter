@@ -1100,7 +1100,6 @@ execute the current cell."
           ;; when the kernel is busy.
           (when (jupyter-kernel-busy-p jupyter-current-client)
             (error "Kernel busy"))
-          (jupyter-repl-sync-execution-state)
           (cond
            (force (jupyter-send-execute-request jupyter-current-client))
            (jupyter-repl-use-builtin-is-complete
