@@ -89,18 +89,24 @@ If point is in a block, copy the header to the new block"
     (let* ((kernelspec (jupyter-completing-read-kernelspec))
            (lang (format "jupyter-%s" (plist-get (cddr kernelspec) :language)))
            (src-block (jupyter-org-src-block lang "" "\n"))
-           (blank-after-p (not (zerop (save-excursion
-                                        (1- (skip-chars-forward "\n")))))))
+           (blank-after-p (> (save-excursion
+                               (skip-chars-forward "\n"))
+                             1)))
       (beginning-of-line)
       ;; When there is no blank line before the source block, insert one
-      (when (zerop (save-excursion
-                     (1+ (skip-chars-backward "\n"))))
+      (when (and (not (bobp))
+                 (>= (save-excursion
+                       (skip-chars-backward "\n"))
+                     -1))
         (insert "\n"))
       (insert (org-element-interpret-data src-block))
-      ;; When there was already blank lines after the source block, delete the
-      ;; newline added by `org-element-interpret-data'
-      (when blank-after-p
-        (delete-char 1))
+      (if blank-after-p
+          ;; When there was already blank lines after the source block, delete
+          ;; the newline added by `org-element-interpret-data'.
+          (delete-char 1)
+        ;; When there were no blank lines, add one.
+        (unless (looking-at "\n")
+          (insert "\n")))
       (skip-chars-backward "\n")
       (forward-line -1))))
 
