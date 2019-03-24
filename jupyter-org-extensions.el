@@ -32,6 +32,7 @@
 
 (declare-function org-babel-jupyter-initiate-session "ob-jupyter" (&optional session params))
 (declare-function org-babel-jupyter-src-block-session "ob-jupyter" ())
+(declare-function org-babel-jupyter-language-p "ob-jupyter" (lang))
 (declare-function org-in-src-block-p "org" (&optional inside))
 (declare-function org-narrow-to-subtree "org" ())
 (declare-function org-element-context "org-element" (&optional element))
@@ -49,13 +50,70 @@ beginning of a source block in a list."
   :group 'ob-jupyter
   :type 'integer)
 
-;;;###autoload
-(defun jupyter-org-insert-src-block (&optional below)
-  "Insert a src block above the current point.
-With prefix arg BELOW, insert it below the current point.
+(defun jupyter-org-closest-jupyter-language (&optional query)
+  "Return the language of the closest Jupyter source block.
+If QUERY is non-nil, ask for a language to use instead. Asking
+for which language to use is also done if no Jupyter source
+blocks could be found in the buffer.
 
-If point is in a block, copy the header to the new block"
-  (interactive "P")
+Distance is line based, not character based. Also, `point' is
+assumed to not be inside a source block."
+  (save-excursion
+    (or (and (null query)
+             (cl-loop
+              with start = (line-number-at-pos)
+              with previous = (ignore-errors
+                                (save-excursion
+                                  (org-babel-previous-src-block)
+                                  (point)))
+              with next = (ignore-errors
+                            (save-excursion
+                              (org-babel-next-src-block)
+                              (point)))
+              with maybe-return-lang =
+              (lambda ()
+                (let ((info (org-babel-get-src-block-info 'light)))
+                  (when (org-babel-jupyter-language-p (nth 0 info))
+                    (cl-return (nth 0 info)))))
+              while (or previous next) do
+              (cond
+               ((or
+                 ;; Maybe return the previous Jupyter source block's language
+                 ;; if it is closer to the start point than the next source
+                 ;; block
+                 (and previous next (< (- start (line-number-at-pos previous))
+                                       (- (line-number-at-pos next) start)))
+                 ;; or when there is no next source block
+                 (and (null next) previous))
+                (goto-char previous)
+                (funcall maybe-return-lang)
+                (setq previous (ignore-errors
+                                 (org-babel-previous-src-block)
+                                 (point))))
+               (next
+                (goto-char next)
+                (funcall maybe-return-lang)
+                (setq next (ignore-errors
+                             (org-babel-next-src-block)
+                             (point)))))))
+        ;; If all else fails, query for the language to use
+        (let* ((kernelspec (jupyter-completing-read-kernelspec))
+               (lang (plist-get (cddr kernelspec) :language)))
+          (if (org-babel-jupyter-language-p lang) lang
+            (format "jupyter-%s" lang))))))
+
+;;;###autoload
+(defun jupyter-org-insert-src-block (&optional below query)
+  "Insert a src-block above `point'.
+With prefix arg BELOW, insert it below `point'.
+
+If `point' is in a src-block use the language of the src-block and
+copy the header to the new block.
+
+If QUERY is non-nil and `point' is not in a src-block, ask for
+the language to use for the new block. Otherwise try to select a
+language based on the src-block's near `point'."
+  (interactive (list current-prefix-arg nil))
   (if (org-in-src-block-p)
       (let* ((src (org-element-context))
              (start (org-element-property :begin src))
@@ -87,8 +145,7 @@ If point is in a block, copy the header to the new block"
              :post-blank 1)))
           (forward-line -3)))
     ;; not in a src block, insert a new block, query for jupyter kernel
-    (let* ((kernelspec (jupyter-completing-read-kernelspec))
-           (lang (format "jupyter-%s" (plist-get (cddr kernelspec) :language)))
+    (let* ((lang (jupyter-org-closest-jupyter-language query))
            (src-block (jupyter-org-src-block lang "" "\n"))
            (blank-after-p (> (save-excursion
                                (skip-chars-forward "\n"))
@@ -523,8 +580,8 @@ _S-M-<return>_: Restart/buffer    ^ ^              _s_: split
            ("o" (jupyter-org-clone-block t))
            ("m" jupyter-org-merge-blocks)
            ("s" jupyter-org-split-src-block)
-           ("+" jupyter-org-insert-src-block)
-           ("=" (jupyter-org-insert-src-block t))
+           ("+" (jupyter-org-insert-src-block nil current-prefix-arg))
+           ("=" (jupyter-org-insert-src-block t current-prefix-arg))
            ("l" org-babel-remove-result)
            ("L" jupyter-org-clear-all-results)
            ("h" jupyter-org-edit-header)

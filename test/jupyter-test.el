@@ -1712,6 +1712,37 @@ AB[43mCD[0mEF
       (remove-text-properties (point-min) (point-max) '(face))
       (funcall test-fun 24 '(19 20 21 22 23 26 27 28 29)))))
 
+(ert-deftest jupyter-org-closest-jupyter-language ()
+  :tags '(org)
+  (jupyter-org-test
+   (insert "\
+#+BEGIN_SRC jupyter-foo
+#+END_SRC
+
+x
+
+#+BEGIN_SRC jupyter-bar
+#+END_SRC
+
+#+BEGIN_SRC baz
+#+END_SRC
+")
+   (re-search-backward "x")
+   (should (equal (jupyter-org-closest-jupyter-language)
+                  "jupyter-bar"))
+   (forward-line -1)
+   (should (equal (jupyter-org-closest-jupyter-language)
+                  "jupyter-foo"))
+   (forward-line 2)
+   (should (equal (jupyter-org-closest-jupyter-language)
+                  "jupyter-bar"))
+   (goto-char (point-max))
+   (should (equal (jupyter-org-closest-jupyter-language)
+                  "jupyter-bar"))
+   (forward-line -3)
+   (should (equal (jupyter-org-closest-jupyter-language)
+                  "jupyter-bar"))))
+
 (ert-deftest org-babel-jupyter-src-block-session ()
   :tags '(org)
   (jupyter-org-test
