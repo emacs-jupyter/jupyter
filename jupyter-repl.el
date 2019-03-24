@@ -813,12 +813,6 @@ lines, truncate it to something less than
     (when payload
       (jupyter-handle-payload payload))))
 
-(cl-defmethod jupyter-handle-execute-input ((client jupyter-repl-client)
-                                            _req
-                                            _code
-                                            execution-count)
-  (oset client execution-count (1+ execution-count)))
-
 (cl-defmethod jupyter-handle-execute-result ((client jupyter-repl-client)
                                              req
                                              _execution-count

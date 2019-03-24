@@ -2039,13 +2039,6 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
   (declare (indent 1))
   nil)
 
-(cl-defmethod jupyter-handle-execute-input :before ((client jupyter-kernel-client)
-                                                    _req
-                                                    _code
-                                                    execution-count)
-  "Set CLIENT's execution-count slot to 1 + EXECUTION-COUNT."
-  (oset client execution-count (1+ execution-count)))
-
 (cl-defgeneric jupyter-handle-execute-result ((_client jupyter-kernel-client)
                                               _req
                                               _execution-count
