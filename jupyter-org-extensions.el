@@ -85,17 +85,24 @@ If point is in a block, copy the header to the new block"
              (jupyter-org-src-block lang parameters "\n" switches)
              :post-blank 1)))
           (forward-line -3)))
-
     ;; not in a src block, insert a new block, query for jupyter kernel
-    (beginning-of-line)
-    (let ((kernelspec (jupyter-completing-read-kernelspec)))
-      (insert
-       (org-element-interpret-data
-        (org-element-put-property
-         (jupyter-org-src-block
-             (format "jupyter-%s" (plist-get (cddr kernelspec) :language)) "" "\n")
-         :post-blank 0))))
-    (forward-line -2)))
+    (let* ((kernelspec (jupyter-completing-read-kernelspec))
+           (lang (format "jupyter-%s" (plist-get (cddr kernelspec) :language)))
+           (src-block (jupyter-org-src-block lang "" "\n"))
+           (blank-after-p (not (zerop (save-excursion
+                                        (1- (skip-chars-forward "\n")))))))
+      (beginning-of-line)
+      ;; When there is no blank line before the source block, insert one
+      (when (zerop (save-excursion
+                     (1+ (skip-chars-backward "\n"))))
+        (insert "\n"))
+      (insert (org-element-interpret-data src-block))
+      ;; When there was already blank lines after the source block, delete the
+      ;; newline added by `org-element-interpret-data'
+      (when blank-after-p
+        (delete-char 1))
+      (skip-chars-backward "\n")
+      (forward-line -1))))
 
 ;;;###autoload
 (defun jupyter-org-split-src-block (&optional below)
