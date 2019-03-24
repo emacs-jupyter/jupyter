@@ -815,9 +815,14 @@ are taken:
            (pmsg-id (jupyter-message-parent-id msg))
            (requests (oref client requests))
            (req (gethash pmsg-id requests)))
-      (when (eq (jupyter-message-type msg) :status)
-        (oset client execution-state
-              (jupyter-message-get msg :execution_state)))
+      ;; Update the state of the client
+      (cl-case (jupyter-message-type msg)
+        (:status
+         (oset client execution-state
+               (jupyter-message-get msg :execution_state)))
+        (:execute_input
+         (oset client execution-count
+               (1+ (jupyter-message-get msg :execution_count)))))
       (if (not req)
           (when (or (jupyter-get client 'jupyter-include-other-output)
                     ;; Always handle a startup message
