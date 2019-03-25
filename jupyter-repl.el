@@ -1770,7 +1770,7 @@ the `current-buffer' will automatically have
 
 (defun jupyter-repl-interaction-mode-reenable ()
   (when (and (not jupyter-repl-interaction-mode)
-             (jupyter-repl-client-p jupyter-current-client)
+             (cl-typep jupyter-current-client 'jupyter-repl-client)
              (eq major-mode
                  (jupyter-kernel-language-mode jupyter-current-client)))
     (jupyter-repl-interaction-mode)))
@@ -1780,7 +1780,7 @@ the `current-buffer' will automatically have
 '*' means the kernel is busy, '-' means the kernel is idle and
 the REPL is connected, 'x' means the REPL is disconnected
 from the kernel."
-  (and (jupyter-repl-client-p jupyter-current-client)
+  (and (cl-typep jupyter-current-client 'jupyter-repl-client)
        (concat " JuPy["
                (cond
                 ((not (jupyter-hb-beating-p jupyter-current-client)) "x")
