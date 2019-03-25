@@ -7,9 +7,9 @@ matrix:
     - env: EMACS_VERSION=git-snapshot ZMQ_VERSION=4.2.3
     - env: EMACS_VERSION=git-snapshot ZMQ_VERSION=4.2.5
 env:
-  - EMACS_VERSION=26-pretest ZMQ_VERSION=4.2.3
+  - EMACS_VERSION=26.1 ZMQ_VERSION=4.2.3
   - EMACS_VERSION=git-snapshot ZMQ_VERSION=4.2.3
-  - EMACS_VERSION=26-pretest ZMQ_VERSION=4.2.5
+  - EMACS_VERSION=26.1 ZMQ_VERSION=4.2.5
   - EMACS_VERSION=git-snapshot ZMQ_VERSION=4.2.5
 before_install:
   # Setup paths
