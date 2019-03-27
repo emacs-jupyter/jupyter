@@ -117,7 +117,7 @@ connect to MANAGER's kernel."
       (jupyter-initialize-connection client (oref manager session))
       (oset client manager manager))))
 
-(defun jupyter--kernel-sentinel (kernel _)
+(defun jupyter--kernel-sentinel (kernel &optional _)
   "Kill the KERNEL process and its buffer."
   (when (memq (process-status kernel) '(exit signal))
     (when (process-live-p kernel)
@@ -139,21 +139,19 @@ ARGS should be a list of command line arguments used to start the
 kernel process. The name of the command used to start the kernel
 should be the first element of ARGS and the rest of the elements
 of ARGS are the arguments of the command."
-  (let* ((process-environment
-          (append
-           ;; The first entry takes precedence when duplicated variables
-           ;; are found in `process-environment'
-           (cl-loop
-            for (k v) on env by #'cddr
-            collect (format "%s=%s" (cl-subseq (symbol-name k) 1) v))
-           process-environment))
-         (proc (apply #'start-process
-                      (format "jupyter-kernel-%s" kernel-name)
-                      (generate-new-buffer
-                       (format " *jupyter-kernel[%s]*" kernel-name))
-                      (car args) (cdr args))))
-    (prog1 proc
-      (set-process-sentinel proc #'jupyter--kernel-sentinel))))
+  (let ((process-environment
+         (append
+          ;; The first entry takes precedence when duplicated variables are
+          ;; found in `process-environment'
+          (cl-loop
+           for (k v) on env by #'cddr
+           collect (format "%s=%s" (cl-subseq (symbol-name k) 1) v))
+          process-environment)))
+    (apply #'start-process
+           (format "jupyter-kernel-%s" kernel-name)
+           (generate-new-buffer
+            (format " *jupyter-kernel[%s]*" kernel-name))
+           (car args) (cdr args))))
 
 (cl-defgeneric jupyter-start-kernel ((manager jupyter-kernel-manager) &optional timeout)
   "Start a kernel based on MANAGER's slots. Wait until TIMEOUT for startup.")
@@ -214,7 +212,13 @@ kernel. Starting a kernel involves the following steps:
             (jupyter-with-timeout
                 ((format "Starting %s kernel process..." kernel-name)
                  (or timeout jupyter-long-timeout)
-                 (error "Kernel did not read connection file within timeout"))
+                 (if (process-live-p proc)
+                     (error "Kernel did not read connection file within timeout")
+                   (error "Kernel process exited:\n%s"
+                          (with-current-buffer (process-buffer proc)
+                            (prog1 (ansi-color-apply (buffer-string))
+                              ;; Now run the sentinel to cleanup resources
+                              (jupyter--kernel-sentinel proc))))))
               (let ((attribs (file-attributes conn-file)))
                 ;; `file-attributes' can potentially return nil, in this case
                 ;; just assume it has read the connection file so that we can
@@ -222,10 +226,9 @@ kernel. Starting a kernel involves the following steps:
                 ;; any messages we send it.
                 (or (null attribs)
                     (not (equal atime (nth 4 attribs))))))
-            (unless (process-live-p proc)
-              (error "Kernel process exited:\n%s"
-                     (with-current-buffer (process-buffer proc)
-                       (ansi-color-apply (buffer-string)))))))))))
+            ;; Now set the sentinel of the kernel to cleanup resources if the
+            ;; kernel dies later on.
+            (set-process-sentinel proc #'jupyter--kernel-sentinel)))))))
 
 (cl-defmethod jupyter-start-channels ((manager jupyter-kernel-manager))
   "Start a control channel on MANAGER."
