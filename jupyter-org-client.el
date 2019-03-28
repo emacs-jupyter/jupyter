@@ -401,15 +401,17 @@ when it is evaluated.
 In addition to evaluating BODY with an active Jupyter client set,
 the `syntax-table' will be set to that of the REPL buffers."
   (declare (debug (body)))
-  `(jupyter-org-when-in-src-block
-    (let* ((params (car jupyter-org--src-block-cache))
-           (jupyter-current-client
-            (buffer-local-value 'jupyter-current-client
-                                (org-babel-jupyter-initiate-session
-                                 (alist-get :session params) params)))
-           (syntax (jupyter-kernel-language-syntax-table jupyter-current-client)))
-      (with-syntax-table syntax
-        ,@body))))
+  (let ((params (make-symbol "params"))
+        (syntax (make-symbol "syntax")))
+    `(jupyter-org-when-in-src-block
+      (let* ((,params (car jupyter-org--src-block-cache))
+             (jupyter-current-client
+              (buffer-local-value 'jupyter-current-client
+                                  (org-babel-jupyter-initiate-session
+                                   (alist-get :session ,params) ,params)))
+             (,syntax (jupyter-kernel-language-syntax-table jupyter-current-client)))
+        (with-syntax-table ,syntax
+          ,@body)))))
 
 (cl-defmethod jupyter-code-context ((_type (eql inspect))
                                     &context (major-mode org-mode))
