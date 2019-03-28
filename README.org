@@ -2,7 +2,37 @@ An interface to communicate with Jupyter kernels in Emacs.
 
 [[https://melpa.org/#/jupyter][https://melpa.org/packages/jupyter-badge.svg]] [[https://travis-ci.com/dzop/emacs-jupyter][https://travis-ci.com/dzop/emacs-jupyter.svg?branch=master]]
 
+* Table of Contents                                                     :TOC:
+- [[#what-does-this-package-do][What does this package do?]]
+  - [[#api-for-creating-jupyter-frontends-in-emacs][API for creating Jupyter frontends in Emacs]]
+  - [[#support-differences-between-kernel-languages][Support differences between kernel languages]]
+- [[#how-do-i-install-this-package][How do I install this package?]]
+  - [[#using-melpa][Using MELPA]]
+  - [[#building-a-package-archive-using-cask][Building a package archive using cask]]
+  - [[#manual-installation][Manual installation]]
+  - [[#building-the-widget-support-experimental][Building the widget support (EXPERIMENTAL)]]
+- [[#how-does-this-package-compare-to-other-similar-packages][How does this package compare to other similar packages?]]
+- [[#how-do-i-use-the-built-in-frontends][How do I use the built-in frontends?]]
+  - [[#repl][REPL]]
+  - [[#org-mode-source-blocks][=org-mode= source blocks]]
+- [[#api][API]]
+  - [[#naming-conventions][Naming conventions]]
+  - [[#overview][Overview]]
+  - [[#jupyter-kernel-client][=jupyter-kernel-client=]]
+  - [[#jupyter-kernel-manager][=jupyter-kernel-manager=]]
+  - [[#jupyter-widget-client][=jupyter-widget-client=]]
+  - [[#jupyter-repl-client][=jupyter-repl-client=]]
+  - [[#jupyter-ioloop][=jupyter-ioloop=]]
+  - [[#jupyter-channel-ioloop][=jupyter-channel-ioloop=]]
+  - [[#callbacks-and-hooks][Callbacks and hooks]]
+  - [[#waiting-for-messages][Waiting for messages]]
+  - [[#message-property-lists][Message property lists]]
+  - [[#modify-behavior-depending-on-kernel-language][Modify behavior depending on kernel language]]
+  - [[#org-mode][=org-mode=]]
+
 * What does this package do?
+
+** API for creating Jupyter frontends in Emacs
 
 This package provides an API for communicating with a Jupyter kernel via =zmq=
 sockets (http://github.com/dzop/emacs-zmq). It utilizes Emacs' object
@@ -48,6 +78,8 @@ need to require these support files directly since they will be loaded
 automatically when needed.
 
 * How do I install this package?
+
+** Using MELPA
 
 *NOTE:* Your Emacs needs to have been built with module support for this
 package to work since it relies on the =emacs-zmq= package. See the README of
@@ -166,11 +198,13 @@ a kernel with built-in Emacs features. The REPL support and =org-mode=
 integration are examples of how the API can be used. In the future, it would be
 nice to add some kind of notebook interface in =emacs-jupyter= or at least an
 efficient conversion process between notebook files and =org-mode=.
-* Jupyter REPL
+* How do I use the built-in frontends?
+** REPL
 
-To start a new kernel on the =localhost= and connect a REPL client to it, run
-the command =jupyter-run-repl=. Alternatively you can connect to an existing
-kernel by supplying the kernel's connection file to =jupyter-connect-repl=.
+To start a new kernel on the =localhost= and connect a REPL client to it
+=M-x jupyter-run-repl=. Alternatively you can connect to an existing
+kernel by supplying the kernel's connection file using
+=M-x jupyter-connect-repl=.
 
 The REPL supports most of the rich output that a kernel may send to a client.
 If the kernel requests a widget to be displayed, a browser is opened that
@@ -178,7 +212,7 @@ displays the widget. If the kernel sends image data, the image will be
 displayed in the REPL buffer. If LaTeX is sent, it will be compiled (using
 =org-mode=) and displayed.
 
-** Rich kernel output
+*** Rich kernel output
 
 A Jupyter kernel provides many representations of results that may be used by
 the frontend, in this case Emacs. Luckily, Emacs provides
@@ -198,18 +232,18 @@ display output.
 | =image/svg+xml=                            | Emacs built with librsvg2 |
 | =image/png=                                | none                      |
 | =text/plain=                               | none                      |
-** Inspection
+*** Inspection
 
 To send an inspect request to the kernel, press =M-i= when the cursor is at the
 location of the code you would like to inspect.
-** Completion
+*** Completion
 
 Completion is implemented through the =completion-at-point= interface. In
 addition to completing symbols in the REPL buffer, completion also works in
 buffers [[id:DA597E05-E9A9-4DCE-BBD7-6D25238638C5][associated]] with a REPL. For =org-mode= users, there is even completion
 in the =org-mode= buffer when editing the contents of a Jupyter source code
 block.
-** REPL history
+*** REPL history
 
 You can navigate through the REPL history using =C-n= and =C-p= or =M-n= and
 =M-p=.
@@ -217,7 +251,7 @@ You can navigate through the REPL history using =C-n= and =C-p= or =M-n= and
 You can also search through the history using =isearch=. To search through
 history, use the standard =isearch= keybindings: =C-s= to search forward
 through history and =C-s C-r= to search backward.
-** Associating other buffers with a REPL
+*** Associating other buffers with a REPL
 :PROPERTIES:
 :ID:       DA597E05-E9A9-4DCE-BBD7-6D25238638C5
 :END:
@@ -242,17 +276,17 @@ keybindings for interacting with the REPL:
 | =C-c C-r=   | =jupyter-repl-restart-kernel=      |
 | =C-c C-s=   | =jupyter-repl-scratch-buffer=      |
 | =C-c M-:=   | =jupyter-eval-string=              |
-** =jupyter-repl-persistent-mode=
+*** =jupyter-repl-persistent-mode=
 
 A global minor mode that will persist a kernel connection to a buffer about to
 be displayed if the current buffer is in =jupyter-repl-interaction-mode= and
 the buffer being switched to has the same =major-mode=. This mode is
 automatically enabled whenever =jupyter-run-repl= or =jupyter-connect-repl= is
 called.
-** =jupyter-repl-maximum-size=
+*** =jupyter-repl-maximum-size=
 
 Set the maximum number of lines before the REPL buffer is truncated.
-** Widget support
+*** Widget support
 
 There is also support for Jupyter widgets integrated into the REPL. If any of
 the results returned by a kernel have a widget representation, a browser is
@@ -261,7 +295,7 @@ per client.
 
 This feature is currently considered experimental and has only been tested for
 simple uses of widgets. See [[id:B15FF43B-114C-4D73-B69C-2095F108EBBB][=jupyter-widget-client=]].
-* Integration with =org-mode=
+** =org-mode= source blocks
 
 For users of =org-mode=, integration with =org-babel= is provided through the
 =ob-jupyter= library. To enable Jupyter support for source code blocks, add
@@ -331,7 +365,7 @@ to change the defaults for the =julia= kernel, you can set
                                                     (:session . "jl")
                                                     (:kernel . "julia-1.0")))
 #+END_SRC
-** Integration with =ob-async=
+*** Integration with =ob-async=
 
 If you use the =ob-async= package, make sure you add the Jupyter source block
 languages to [[https://github.com/astahlman/ob-async#ob-async-no-async-languages-alist][ob-async-no-async-languages-alist]] so that =ob-async= doesn't
@@ -342,7 +376,7 @@ example you can put the following in your configuration:
 (setq ob-async-no-async-languages-alist '("jupyter-python" "jupyter-julia"))
 #+END_SRC
 
-** Overriding built-in src-block languages
+*** Overriding built-in src-block languages
 
 You may find having to specify the names of Jupyter source blocks using
 =jupyter-LANG= a bit verbose and want to have the built-in support for =LANG=
@@ -375,7 +409,7 @@ blocks, you can restore the overridden functions by calling
 (org-babel-jupyter-restore-src-block "python")
 #+END_SRC
 
-** Rich kernel output
+*** Rich kernel output
 
 In =org-mode= a code block returns scalar data (plain text, numbers, lists,
 tables, \dots), an image file name, or code from another language. All of this
@@ -400,7 +434,7 @@ Below are the supported mimetypes ordered by priority
 Since it is possible to determine how a result should be represented in
 =org-mode= via its MIME type, only a few header arguments are supported.
 
-*** A note on using the =:results= header argument
+**** A note on using the =:results= header argument
 
 Results are inserted in the =org-mode= buffer in such a way that most header
 arguments that control how results should be inserted don't need to specified.
@@ -415,14 +449,14 @@ controlled by setting the =:results= header argument.
      converted into a table. To suppress this behavior you can specify
      =:results scalar=.
 
-*** Fixing the file name of images with the =:file= argument
+**** Fixing the file name of images with the =:file= argument
 
 Whenever an image result is returned, a random image file name is generated and
 the image is written into =org-babel-jupyter-resourse-directory=. In order to
 specify your own file name for the image, you can give an appropriate value to
 the =:file= header argument.
 
-*** Changing the mime-type priority with the =:display= argument
+**** Changing the mime-type priority with the =:display= argument
 
 The priority of mimetypes used to display results can be overwritten using the
 =:display= option. If instead of displaying HTML results we'd wish to display
@@ -437,7 +471,7 @@ pd.DataFrame(data, columns=["Foo", "Bar"])
 ,#+END_SRC
 #+END_SRC
 
-*** Image output without the =:file= header argument
+**** Image output without the =:file= header argument
 
 For images sent by the kernel, if no =:file= parameter is provided to the code
 block, a file name is automatically generated based on the image data and the
@@ -445,18 +479,18 @@ image is written to file in =org-babel-jupyter-resource-directory=. This is
 great for quickly generating throw-away plots while you are working on your
 code. Once you are happy with your results you can specify the =:file=
 parameter to fix the file name.
-*** =org-babel-jupyter-resource-directory=
+**** =org-babel-jupyter-resource-directory=
 
 This variable is similar to =org-preview-latex-image-directory= but solely for
 any files created when Jupyter code blocks are run, e.g. automatically
 generated image file names.
 
-**** Deletion of generated image files
+***** Deletion of generated image files
 
 Whenever you run a code block multiple times and replace its results, before
 the results are replaced, any generated files will be deleted to reduce the
 clutter in =org-babel-jupyter-resource-directory=.
-** Editing the contents of a code block
+*** Editing the contents of a code block
 
 When editing a Jupyter code block's contents, i.e. by pressing =C-c '= when at
 a code block, =jupyter-repl-interaction-mode= is automatically enabled in the
@@ -466,12 +500,12 @@ block (see =jupyter-repl-associate-buffer=).
 You may also bind the command =org-babel-jupyter-scratch-buffer= to an
 appropriate key in =org-mode= to display a scratch buffer in the code block's
 =major-mode= and connected to the code block's session.
-** Connecting to an existing kernel
+*** Connecting to an existing kernel
 
 To connect to an existing kernel, pass the kernel's connection file as the
 value of the =:session= parameter. The name of the file must have a =.json=
 suffix for this to work.
-*** Remote kernels
+**** Remote kernels
 
 If the connection file is a [[https://www.gnu.org/software/emacs/manual/html_node/emacs/Remote-Files.html][remote file name]], i.e. has a prefix like =/host:=,
 the kernel's ports are assumed to live on =host=. Before attempting to connect
@@ -485,7 +519,7 @@ the =:session= as
 ...
 ,#+END_SRC
 #+END_SRC
-**** Password handling for remote connections
+***** Password handling for remote connections
 Currently there is no password handling, so if your =ssh= connection requires a
 password I suggest you instead use [[https://www.ssh.com/ssh/keygen/][key-based authentication]]. Or if you are
 connecting to a server using a =pem= file add something like
@@ -498,7 +532,7 @@ Host ec2
 #+END_SRC
 
 to your =~/.ssh/config= file.
-** TODO Standard output, displayed data, and code block results
+*** TODO Standard output, displayed data, and code block results
 
 One significant difference between Jupyter code blocks and regular =org-mode=
 code blocks is that the underlying Jupyter kernel can request that the client
@@ -516,13 +550,13 @@ The implementation of =org-mode= code blocks is really meant to handle either
 capturing the standard output /or/ the result of a code block. When using
 Jupyter code blocks, if the kernel produces output or asks to display extra
 information, the results are appended to a =:RESULTS:= drawer.
-** =jupyter-org-interaction-mode=
+*** =jupyter-org-interaction-mode=
 
 A minor mode that enables completion and custom keybindings when =point= is
 inside a Jupyter code block. This mode is enabled by default in =org-mode=
 buffers, but only has an effect when =point= is inside a Jupyter code block.
 
-*** Custom keybindings inside Jupyter code blocks
+**** Custom keybindings inside Jupyter code blocks
 
 You can define new keybindings that are enabled when =point= is inside a
 Jupyter code block by using the function =jupyter-org-define-key=. These
