@@ -820,7 +820,7 @@ are taken:
         (:status
          (oset client execution-state
                (jupyter-message-get msg :execution_state)))
-        (:execute_input
+        ((:execute-input :execute-reply)
          (oset client execution-count
                (1+ (jupyter-message-get msg :execution_count)))))
       (if (not req)
