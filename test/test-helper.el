@@ -236,7 +236,9 @@ message contents."
   (list :msg_id (jupyter-new-uuid)
         :msg_type type
         :parent_header (list :msg_id (jupyter-request-id req))
-        :content content))
+        ;; Add a dummy execution count since it is handled specially in
+        ;; `jupyter-handle-message' to update the state of the client.
+        :content (append content (list :execution_count 0))))
 
 (defun jupyter-test-wait-until-idle-repl (client)
   "Wait until the execution state of a REPL CLIENT is idle."
