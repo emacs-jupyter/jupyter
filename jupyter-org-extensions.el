@@ -37,7 +37,6 @@
 (declare-function org-element-interpret-data "org-element" (data))
 (declare-function org-element-put-property "org-element" (element property value))
 (declare-function outline-show-entry "outline" ())
-(declare-function avy-with "ext:avy")
 (declare-function avy-jump "ext:avy")
 (declare-function ivy-read "ext:ivy")
 
@@ -235,8 +234,18 @@ Defaults to `jupyter-org-jump-to-block-context-lines'."
   (interactive)
   (unless (require 'avy nil t)
     (error "Package `avy' not installed"))
-  (avy-with #'jupyter-org-jump-to-block
-    (avy-jump "#\\+begin_src" :beg (point-min) :end (point-max))))
+  ;; Jumping through these hoops to avoid depending on `avy'
+  (defalias 'jupyter-org-jump-to-visible-block
+    (byte-compile
+     `(lambda ()
+        (interactive)
+        (avy-with #'jupyter-org-jump-to-block
+          (avy-jump "#\\+begin_src"
+                    :beg (point-min)
+                    :end (point-max)))))
+    (documentation 'jupyter-org-jump-to-visible-block))
+  ;; Now call the new definition
+  (jupyter-org-jump-to-visible-block))
 
 ;;;###autoload
 (defun jupyter-org-edit-header ()
