@@ -816,11 +816,11 @@ are taken:
            (requests (oref client requests))
            (req (gethash pmsg-id requests)))
       ;; Update the state of the client
-      (cl-case (jupyter-message-type msg)
+      (pcase (jupyter-message-type msg)
         (:status
          (oset client execution-state
                (jupyter-message-get msg :execution_state)))
-        ((:execute-input :execute-reply)
+        ((or :execute-input (and (guard req) :execute-reply))
          (oset client execution-count
                (1+ (jupyter-message-get msg :execution_count)))))
       (if (not req)
