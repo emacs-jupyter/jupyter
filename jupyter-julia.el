@@ -116,6 +116,26 @@ Make the character after `point' invisible."
     (overlay-put ov 'after-string (propertize " " 'display md))
     (overlay-put ov 'evaporate t)))
 
+(defun jupyter-julia-pkg-prompt ()
+  "Return the Pkg prompt.
+If the Pkg prompt can't be retrieved from the kernel, return
+nil."
+  (when-let* ((msg (jupyter-wait-until-received :execute-reply
+                     (jupyter-send-execute-request jupyter-current-client
+                       :code ""
+                       :silent t
+                       :user-expressions
+                       (list :prompt "import Pkg; Pkg.REPLMode.promptf()"))
+                     ;; Longer timeout to account for initial Pkg import and
+                     ;; compilation.
+                     jupyter-long-timeout)))
+    (cl-destructuring-bind (&key prompt &allow-other-keys)
+        (jupyter-message-get msg :user_expressions)
+      (cl-destructuring-bind (&key status data &allow-other-keys)
+          prompt
+        (when (equal status "ok")
+          (plist-get data :text/plain))))))
+
 (cl-defmethod jupyter-repl-after-change ((_type (eql insert)) beg _end
                                          &context (jupyter-lang julia))
   "Change the REPL prompt when a REPL mode is entered."
@@ -129,16 +149,10 @@ Make the character after `point' invisible."
         (setq last-command-event ?\[))
       (cl-case (char-after)
         (?\]
-         ;; Longer timeout to account for initial Pkg import and compilation.
-         (let* ((jupyter-default-timeout jupyter-long-timeout)
-                (pkg-prompt
-                 ;; FIXME: This modifies the ans variable in IJulia. Maybe
-                 ;; evaluate this in the user-expressions of an execute-request?
-                 (jupyter-eval "import Pkg; Pkg.REPLMode.promptf()")))
-           (when pkg-prompt
-             (jupyter-julia-add-prompt
-              (substring pkg-prompt 1 (1- (length pkg-prompt)))
-              (aref ansi-color-names-vector 5))))) ; magenta
+         (when-let* ((pkg-prompt (jupyter-julia-pkg-prompt)))
+           (jupyter-julia-add-prompt
+            (substring pkg-prompt 1 (1- (length pkg-prompt)))
+            (aref ansi-color-names-vector 5)))) ; magenta
         (?\;
          (jupyter-julia-add-prompt
           "shell> " (aref ansi-color-names-vector 1))) ; red
