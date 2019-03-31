@@ -416,6 +416,8 @@ image."
   ;; buffer which causes the query function to ask to kill the kernel client
   ;; when the temp buffers are killed!
   (let ((kill-buffer-query-functions nil)
+        ;; This is added to in `org-babel-jupyter-initiate-session-by-key'
+        (kill-buffer-hook nil)
         (org-format-latex-options
          `(:foreground
            default
@@ -430,6 +432,7 @@ image."
        'overlays nil 'forbuffer
        ;; Use the default method for creating image files
        org-preview-latex-default-process)
+      ;; Avoid deleting the image overlays due to text property changes
       (dolist (o (overlays-in beg end))
         (when (eq (overlay-get o 'org-overlay-type)
                   'org-latex-overlay)
