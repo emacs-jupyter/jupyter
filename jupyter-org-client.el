@@ -355,15 +355,12 @@ most recent completion request.")
         (let* ((info (org-babel-get-src-block-info el))
                (params (nth 2 info))
                (beg (save-excursion
-                      (goto-char
-                       (org-element-property :post-affiliated el))
+                      (goto-char (org-element-property :post-affiliated el))
                       (line-beginning-position 2)))
                (end (save-excursion
-                      (goto-char
-                       (org-element-property :end el))
-                      (let ((pblank (org-element-property :post-blank el)))
-                        (line-beginning-position
-                         (unless (zerop pblank) (- pblank)))))))
+                      (goto-char (org-element-property :end el))
+                      (skip-chars-backward "\r\n")
+                      (line-beginning-position))))
           (unless jupyter-org--src-block-cache
             (setq jupyter-org--src-block-cache
                   (list nil (point-marker) (point-marker)))
