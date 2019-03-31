@@ -146,7 +146,7 @@ language based on the src-block's near `point'."
           (forward-line -3)))
     ;; not in a src block, insert a new block, query for jupyter kernel
     (let* ((lang (jupyter-org-closest-jupyter-language query))
-           (src-block (jupyter-org-src-block lang "" "\n"))
+           (src-block (jupyter-org-src-block lang nil "\n"))
            (blank-after-p (> (save-excursion
                                (skip-chars-forward "\n"))
                              1)))
