@@ -302,7 +302,7 @@ of the ANY argument."
   (org-babel-execute-src-block-maybe))
 
 ;;;###autoload
-(defun jupyter-org-restart-and-execute-to-point (any)
+(defun jupyter-org-restart-and-execute-to-point (&optional any)
   "Kill the kernel and run all Jupyter src-blocks to point.
 With a prefix argument, run ANY source block that doesn't have a
 Jupyter session as well.
