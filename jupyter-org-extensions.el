@@ -107,6 +107,27 @@ assumed to not be inside a source block."
           (if (org-babel-jupyter-language-p lang) lang
             (format "jupyter-%s" lang))))))
 
+(defun jupyter-org-between-block-end-and-result-p ()
+  "If `point' is between a src-block and its result, return the result end.
+`point' is considered between a src-block and its result when the
+result begins where the src-block ends, i.e. when only whitespace
+separates the two."
+  ;; Move after a src block's results first if `point' is between a src
+  ;; block and it's results. Don't do this if the results are not directly
+  ;; after a src block, e.g. for named results that appear somewhere else.
+  (save-excursion
+    (let ((start (point)))
+      (when-let* ((src (and (ignore-errors (org-babel-previous-src-block))
+                            (org-element-context)))
+                  (end (org-element-property :end src))
+                  (result-pos (org-babel-where-is-src-block-result)))
+        (goto-char end)
+        (skip-chars-backward " \n\t\r")
+        (when (and (= result-pos end)
+                   (< (point) start result-pos))
+          (goto-char result-pos)
+          (org-element-property :end (org-element-context)))))))
+
 ;;;###autoload
 (defun jupyter-org-insert-src-block (&optional below query)
   "Insert a src-block above `point'.
@@ -125,12 +146,11 @@ language based on the src-block's near `point'."
              (end (org-element-property :end src))
              (lang (org-element-property :language src))
              (switches (org-element-property :switches src))
-             (parameters (org-element-property :parameters src))
-             location)
+             (parameters (org-element-property :parameters src)))
         (if below
-            (progn
-              (goto-char start)
-              (setq location (org-babel-where-is-src-block-result))
+            (let ((location (progn
+                              (goto-char start)
+                              (org-babel-where-is-src-block-result))))
               (if (not location)
                   (goto-char end)
                 (goto-char location)
@@ -154,9 +174,12 @@ language based on the src-block's near `point'."
              :post-blank 1)))
           (forward-line -3)))
     ;; not in a src block, insert a new block, query for jupyter kernel
+    (beginning-of-line)
     (let* ((lang (jupyter-org-closest-jupyter-language query))
            (src-block (jupyter-org-src-block lang nil "\n")))
-      (beginning-of-line)
+      (when-let* ((pos (jupyter-org-between-block-end-and-result-p)))
+        (goto-char pos)
+        (skip-chars-backward " \n\t\r"))
       (unless (looking-at-p "^[\t ]*$")
         ;; Move past the current element first
         (let ((elem (org-element-at-point)) parent)
@@ -167,7 +190,7 @@ language based on the src-block's near `point'."
                         (if below :end :begin) elem))))
         (cond
          (below
-          (skip-chars-backward " \n\t")
+          (skip-chars-backward " \n\t\r")
           (insert "\n"))
          (t
           (insert "\n")
