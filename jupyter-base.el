@@ -43,6 +43,17 @@
 (declare-function tramp-file-name-host "tramp")
 (declare-function jupyter-message-content "jupyter-messages" (msg))
 
+;;; Call the Jupyter command
+
+(defun jupyter-command (&rest args)
+  "Run a Jupyter shell command synchronously, return its output.
+The shell command run is
+
+    jupyter ARGS..."
+  (with-temp-buffer
+    (apply #'process-file "jupyter" nil t nil args)
+    (string-trim-right (buffer-string))))
+
 ;;; Custom variables
 
 (defcustom jupyter-include-other-output nil
@@ -98,9 +109,7 @@ for the message."
   :type 'hook)
 (put 'jupyter-stdin-message-hook 'permanent-local t)
 
-(defcustom jupyter-runtime-directory (string-trim-right
-                                      (shell-command-to-string
-                                       "jupyter --runtime-dir"))
+(defcustom jupyter-runtime-directory (jupyter-command "--runtime-dir")
   "The Jupyter runtime directory.
 When a new kernel is started through `jupyter-start-kernel', this
 directory is where kernel connection files are written to."

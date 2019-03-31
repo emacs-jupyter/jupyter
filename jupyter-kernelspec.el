@@ -69,10 +69,9 @@ information of the host as a prefix."
   (let ((host (or (file-remote-p default-directory) "local")))
     (or (and (not refresh) (gethash host jupyter--kernelspecs))
         (let ((spec-list
-               (cdr
-                (split-string
-                 (shell-command-to-string "jupyter kernelspec list")
-                 "\n" 'omitnull "[ \t]+")))
+               (cdr (split-string
+                     (jupyter-command "kernelspec" "list")
+                     "\n" 'omitnull "[ \t]+")))
               (get-kernelspec
                (lambda (s)
                  (cl-destructuring-bind (kernel dir)
