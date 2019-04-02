@@ -35,6 +35,8 @@
 (declare-function org-babel-jupyter-language-p "ob-jupyter" (lang))
 (declare-function org-in-src-block-p "org" (&optional inside))
 (declare-function org-narrow-to-subtree "org" ())
+(declare-function org-previous-line-empty-p "org" ())
+(declare-function org-next-line-empty-p "org" ())
 (declare-function org-element-context "org-element" (&optional element))
 (declare-function org-element-property "org-element" (property element))
 (declare-function org-element-interpret-data "org-element" (data))
@@ -146,25 +148,13 @@ language based on the src-block's near `point'."
           (forward-line -3)))
     ;; not in a src block, insert a new block, query for jupyter kernel
     (let* ((lang (jupyter-org-closest-jupyter-language query))
-           (src-block (jupyter-org-src-block lang nil "\n"))
-           (blank-after-p (> (save-excursion
-                               (skip-chars-forward "\n"))
-                             1)))
+           (src-block (jupyter-org-src-block lang nil "\n")))
       (beginning-of-line)
-      ;; When there is no blank line before the source block, insert one
-      (when (and (not (bobp))
-                 (>= (save-excursion
-                       (skip-chars-backward "\n"))
-                     -1))
+      (unless (or (bobp) (org-previous-line-empty-p))
         (insert "\n"))
-      (insert (org-element-interpret-data src-block))
-      (if blank-after-p
-          ;; When there was already blank lines after the source block, delete
-          ;; the newline added by `org-element-interpret-data'.
-          (delete-char 1)
-        ;; When there were no blank lines, add one.
-        (unless (looking-at "\n")
-          (insert "\n")))
+      (insert (string-trim-right (org-element-interpret-data src-block)))
+      (unless (org-next-line-empty-p)
+        (insert "\n"))
       (skip-chars-backward "\n")
       (forward-line -1))))
 
