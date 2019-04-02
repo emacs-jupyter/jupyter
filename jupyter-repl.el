@@ -1849,36 +1849,33 @@ the `jupyter-current-client' local to the buffer."
     (unless jupyter-repl-interaction-mode
       (jupyter-repl-interaction-mode))))
 
-(defun jupyter-repl-propagate-client (win-or-buffer &rest args)
-  "Propagate the `jupyter-current-client' to other buffers.
-WIN-OR-BUFFER is either a window that will display the buffer
-that should be checked or the buffer itself. In the case that
-WIN-OR-BUFFER is a window, the first element of ARGS is assumed
-to be the buffer to check.
+(defun jupyter-repl-propagate-client (buffer &rest _)
+  "Propagate the `jupyter-current-client' to BUFFER.
+If BUFFER's value of the variable `jupyter-repl-interaction-mode'
+is nil and the buffer has the same `major-mode' as the
+`jupyter-current-client's language mode, set the buffer local
+value of `jupyter-current-client' in BUFFER to the current value
+of that variable."
+  (when (and jupyter-current-client
+             (cl-typep jupyter-current-client 'jupyter-repl-client)
+             (or (bufferp buffer) (stringp buffer))
+             (setq buffer (get-buffer buffer))
+             (buffer-live-p buffer)
+             (null (buffer-local-value 'jupyter-repl-interaction-mode buffer))
+             (eq (buffer-local-value 'major-mode buffer)
+                 (jupyter-kernel-language-mode jupyter-current-client)))
+    (let ((client jupyter-current-client))
+      (with-current-buffer buffer
+        (jupyter-repl-associate-buffer client)))))
 
-If the checked buffer's value of the variable
-`jupyter-repl-interaction-mode' is non-nil and the buffer has the
-same `major-mode' as the `jupyter-current-client's language mode,
-set `jupyter-current-client' in the checked buffer to the same
-value as the `jupyter-current-client' of the `current-buffer'.
+(defun jupyter-repl--before-switch-to-buffer (buffer &rest _)
+  "Call `jupyter-repl-propagate-client' on BUFFER, handling a nil BUFFER.
+When BUFFER is nil use `other-buffer'."
+  (jupyter-repl-propagate-client (or buffer (other-buffer))))
 
-NOTE: Only intended to be added as advice to `switch-to-buffer',
-`display-buffer', or `set-window-buffer'."
-  (let* ((other-buffer (get-buffer
-                        (if (or (null win-or-buffer)
-                                (windowp win-or-buffer))
-                            (car args)
-                          win-or-buffer)))
-         (client
-          (and jupyter-current-client
-               (object-of-class-p jupyter-current-client 'jupyter-repl-client)
-               (eq (buffer-local-value 'major-mode other-buffer)
-                   (jupyter-kernel-language-mode jupyter-current-client))
-               jupyter-current-client)))
-    (when client
-      (with-current-buffer other-buffer
-        (unless jupyter-repl-interaction-mode
-          (jupyter-repl-associate-buffer client))))))
+(defun jupyter-repl--before-set-window-buffer (_ buffer &rest __)
+  "Call `jupyter-repl-propagate-client' on BUFFER."
+  (jupyter-repl-propagate-client buffer))
 
 ;;; `jupyter-repl-persistent-mode'
 
@@ -1895,14 +1892,14 @@ have the same `major-mode' as the client's kernel language and
   :init-value nil
   (cond
    (jupyter-repl-persistent-mode
-    (advice-add 'switch-to-buffer :before #'jupyter-repl-propagate-client)
+    (advice-add 'switch-to-buffer :before #'jupyter-repl--before-switch-to-buffer)
     (advice-add 'display-buffer :before #'jupyter-repl-propagate-client)
-    (advice-add 'set-window-buffer :before #'jupyter-repl-propagate-client)
+    (advice-add 'set-window-buffer :before #'jupyter-repl--before-set-window-buffer)
     (add-hook 'after-change-major-mode-hook 'jupyter-repl-interaction-mode-reenable))
    (t
-    (advice-remove 'switch-to-buffer #'jupyter-repl-propagate-client)
+    (advice-remove 'switch-to-buffer #'jupyter-repl--before-switch-to-buffer)
     (advice-remove 'display-buffer #'jupyter-repl-propagate-client)
-    (advice-remove 'set-window-buffer #'jupyter-repl-propagate-client)
+    (advice-remove 'set-window-buffer #'jupyter-repl--before-set-window-buffer)
     (remove-hook 'after-change-major-mode-hook 'jupyter-repl-interaction-mode-reenable))))
 
 ;;; Starting a REPL

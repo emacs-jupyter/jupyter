@@ -1221,6 +1221,31 @@ last element being the newest element added to the history."
       (backward-kill-word 1)
       (should (eql (field-at-pos (jupyter-repl-cell-code-beginning-position)) 'cell-code)))))
 
+(ert-deftest jupyter-repl-propagate-client ()
+  :tags '(repl)
+  (with-temp-buffer
+    (setq jupyter-current-client (jupyter-repl-client))
+    (oset jupyter-current-client kernel-info
+          (list :language_info
+                ;; :name is a symbol, see `jupyter-kernel-info'
+                (list :name 'python :file_extension "py")))
+    (let ((buffer (generate-new-buffer " *temp*")))
+      (unwind-protect
+          (progn
+            (ert-info ("Verify that `jupyter-current-client' is actually set")
+              (should-not (buffer-local-value 'jupyter-current-client buffer))
+              (with-current-buffer buffer
+                (python-mode))
+              (jupyter-repl-propagate-client buffer)
+              (should (eq (buffer-local-value 'jupyter-current-client buffer)
+                          jupyter-current-client)))
+            (ert-info ("Robust to bad arguments")
+              (jupyter-repl-propagate-client 1)
+              (jupyter-repl-propagate-client
+               (generate-new-buffer-name "foo"))))
+        (when (buffer-live-p buffer)
+          (kill-buffer buffer))))))
+
 ;;; `org-mode'
 
 (defvar org-babel-jupyter-resource-directory nil)
