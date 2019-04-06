@@ -305,6 +305,9 @@ See `jupyter-with-display-buffer'.")
     (unless buffer
       (setq buffer (get-buffer-create bname))
       (with-current-buffer buffer
+        ;; For buffers such as the jupyter REPL, showing trailing whitespaces
+        ;; may be a nuisance (as evidenced by the Python banner).
+        (setq-local show-trailing-whitespace nil)
         (unless (eq major-mode 'special-mode)
           (special-mode))))
     buffer))
