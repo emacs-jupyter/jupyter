@@ -1551,6 +1551,8 @@ in the appropriate direction, to the saved element."
   "Jupyter-REPL"
   "A Jupyter REPL major mode."
   (cl-check-type jupyter-current-client jupyter-repl-client)
+  ;; This is a better setting for rendering language banners.
+  (setq-local show-trailing-whitespace nil)
   ;; This is a better setting when rendering HTML tables
   (setq-local truncate-lines t)
   (setq-local indent-line-function #'jupyter-repl-indent-line)
