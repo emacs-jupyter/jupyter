@@ -229,7 +229,7 @@ See `jupyter-initialize-connection'."
               (list info-or-session
                     '(or jupyter-session-p json-plist-p stringp))))))
 
-;; NOTE: This requires that CLIENT is communicating with a kernel using a
+;; FIXME: This requires that CLIENT is communicating with a kernel using a
 ;; `jupyter-channel-ioloop-comm' object.
 (cl-defmethod jupyter-initialize-connection ((client jupyter-kernel-client) info-or-session)
   "Initialize CLIENT with connection INFO-OR-SESSION.
@@ -1773,7 +1773,10 @@ dispatching based on the kernel language."
       (let* ((jupyter-inhibit-handlers t)
              (req (jupyter-send-kernel-info-request client))
              (msg (jupyter-wait-until-received :kernel-info-reply
-                    req jupyter-long-timeout "Requesting kernel info...")))
+                    ;; Go to great lengths to ensure we have waited long
+                    ;; enough. When communicating with slow to start kernels
+                    ;; behind a kernel server this is necessary.
+                    req (* 3 jupyter-long-timeout) "Requesting kernel info...")))
         (unless msg
           (error "Kernel did not respond to kernel-info request"))
         (prog1 (oset client kernel-info (jupyter-message-content msg))

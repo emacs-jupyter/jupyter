@@ -240,6 +240,14 @@ more details."
                (oset client auth t)
              (jupyter-api--authenticate client (1- retries)))))))))
 
+(defun jupyter-api-auth-headers (client)
+  "Return the HTTP headers CLIENT is using for authentication or nil."
+  (cl-check-type client jupyter-rest-client)
+  (jupyter-api--authenticate client)
+  (with-slots (auth) client
+    (when (listp auth)
+      auth)))
+
 (defun jupyter-api-http-request (url endpoint method &rest data)
   "Send request to URL/ENDPOINT using HTTP METHOD.
 DATA is encoded into a JSON string using `json-encode' and sent

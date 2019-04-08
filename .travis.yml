@@ -28,7 +28,7 @@ install:
   - sudo pip3 install --upgrade setuptools pip &> /dev/null
   # --ignore-installed six since jupyter tries to upgrade it, but it can't be
   # ugraded since it is a distutils package
-  - sudo pip3 install --ignore-installed six jupyter &> /dev/null
+  - sudo pip3 install --ignore-installed six jupyter jupyter_kernel_gateway &> /dev/null
   # Install the kernelspec using the right python. Jupyter installs a default
   # python kernelspec that uses "python" for the command in
   # /usr/local/share/jupyter. This installs one with an absolute path using our

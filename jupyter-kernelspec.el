@@ -90,7 +90,7 @@ REFRESH has the same meaning as in
 `jupyter-available-kernelspecs'."
   (cdr (assoc name (jupyter-available-kernelspecs refresh))))
 
-(defun jupyter-find-kernelspecs (re &optional refresh)
+(defun jupyter-find-kernelspecs (re &optional specs refresh)
   "Find all specs of kernels that have names matching matching RE.
 RE is a regular expression use to match the name of a kernel.
 Return an alist with elements of the form:
@@ -104,13 +104,17 @@ resource directory.
 
 Optional argument REFRESH has the same meaning as in
 `jupyter-available-kernelspecs'."
-  (delq nil (mapcar (lambda (s) (and (string-match-p re (car s)) s))
-               (jupyter-available-kernelspecs refresh))))
+  (cl-remove-if-not
+   (lambda (s) (string-match-p re (car s)))
+   (or specs (jupyter-available-kernelspecs refresh))))
 
-(defun jupyter-guess-kernelspec (name)
+(defun jupyter-guess-kernelspec (name &optional specs refresh)
   "Return the first kernelspec matching NAME.
-Raise an error if no kernelspec could be found."
-  (or (car (jupyter-find-kernelspecs name))
+Raise an error if no kernelspec could be found.
+
+SPECS and REFRESH have the same meaning as in
+`jupyter-find-kernelspecs'."
+  (or (car (jupyter-find-kernelspecs name specs refresh))
       (error "No valid kernelspec for kernel name (%s)" name)))
 
 (defun jupyter-completing-read-kernelspec (&optional specs refresh)

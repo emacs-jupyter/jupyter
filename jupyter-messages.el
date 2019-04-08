@@ -209,6 +209,41 @@ The returned object has the same form as the object returned by
   "Encode TIME into an ISO 8601 time string."
   (format-time-string "%FT%T.%6N" time t))
 
+(cl-defun jupyter-encode-raw-message (session
+                                      type
+                                      &rest plist
+                                      &key
+                                      content
+                                      (msg-id (jupyter-new-uuid))
+                                      parent-header
+                                      metadata
+                                      buffers
+                                      &allow-other-keys)
+  "Encode a message into a JSON string.
+Similar to `jupyter-encode-message', but returns the JSON encoded
+string instead of a list of the encoded parts.
+
+PLIST is an extra property list added to the top level of the
+message before encoding."
+  (declare (indent 2))
+  (cl-check-type session jupyter-session)
+  (cl-check-type metadata json-plist)
+  (cl-check-type content json-plist)
+  (cl-check-type parent-header json-plist)
+  (cl-check-type buffers list)
+  (or content (setq content jupyter--empty-dict))
+  (or parent-header (setq parent-header jupyter--empty-dict))
+  (or metadata (setq metadata jupyter--empty-dict))
+  (or buffers (setq buffers []))
+  (jupyter--encode
+   (cl-list*
+    :parent_header parent-header
+    :header (jupyter--message-header session type msg-id)
+    :content content
+    :metadata metadata
+    :buffers buffers
+    plist)))
+
 (cl-defun jupyter-encode-message (session
                                   type
                                   &key idents

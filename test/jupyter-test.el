@@ -32,6 +32,7 @@
 (require 'jupyter-repl)
 (require 'jupyter-org-client)
 (require 'jupyter-kernel-manager)
+(require 'jupyter-server)
 (require 'cl-lib)
 (require 'ert)
 (require 'subr-x)                       ; string-trim
@@ -46,6 +47,13 @@
         jupyter-default-timeout 60))
 
 (message "system-configuration %s" system-configuration)
+
+(when noninteractive
+  (message "Starting up notebook process for tests")
+  (start-process "jupyter-notebook" nil "jupyter" "notebook"
+                 "--no-browser"
+                 "--NotebookApp.token=''"
+                 "--NotebookApp.password=''"))
 
 (declare-function org-babel-python-table-or-string "ob-python" (results))
 
@@ -678,6 +686,22 @@
                 (jupyter-stop-channels jupyter-current-client)))
           (jupyter-shutdown-kernel manager))))))
 
+(ert-deftest jupyter-server-kernel ()
+  :tags '(kernel server)
+  (let ((kernel (jupyter-server-kernel)))
+    (should-not (slot-boundp kernel 'id))
+    (should-not (jupyter-kernel-alive-p kernel))
+    ;; TODO: How should this work? Pass the server as an argument?
+    (should-error (jupyter-start-kernel kernel))
+    (oset kernel id "foobar")
+    ;; FIXME: Since the kernel does not have access to the server and is just a
+    ;; container for data, we suppose the kernel is alive when it has an ID
+    ;; assigned to it.
+    (should (jupyter-kernel-alive-p kernel))
+    (jupyter-kill-kernel kernel)
+    (should-not (slot-boundp kernel 'id))
+    (should-not (jupyter-kernel-alive-p kernel))))
+
 ;;; Client
 
 ;; TODO: Different values of the session argument
@@ -757,15 +781,18 @@
       (jupyter-initialize-connection client conn-info)
       (cl-loop
        for channel in '(:hb :shell :iopub :stdin)
-       do (should-not (jupyter-channel-alive-p client channel)))
+       for alive-p = (jupyter-channel-alive-p client channel)
+       do (should-not alive-p))
       (jupyter-start-channels client)
       (cl-loop
        for channel in '(:hb :shell :iopub :stdin)
-       do (should (jupyter-channel-alive-p client channel)))
+       for alive-p = (jupyter-channel-alive-p client channel)
+       do (should alive-p))
       (jupyter-stop-channels client)
       (cl-loop
        for channel in '(:hb :shell :iopub :stdin)
-       do (should-not (jupyter-channel-alive-p client channel))))))
+       for alive-p = (jupyter-channel-alive-p client channel)
+       do (should-not alive-p)))))
 
 (ert-deftest jupyter-inhibited-handlers ()
   :tags '(client handlers)
@@ -1723,6 +1750,85 @@ last element being the newest element added to the history."
             (sleep-for 1)
             (websocket-close ws))
         (jupyter-api-shutdown-kernel client id)))))
+
+;;; Server
+
+;; And `jupyter-server-kernel-comm'
+(ert-deftest jupyter-server ()
+  :tags '(server)
+  (let* ((server (jupyter-server))
+         (kernel (jupyter-server-kernel
+                  :spec (jupyter-guess-kernelspec
+                         "python" (jupyter-server-kernelspecs server)))))
+    (should-not (slot-boundp kernel 'id))
+    (let ((id (jupyter-start-kernel kernel server)))
+      (unwind-protect
+          (progn
+            (should (slot-boundp kernel 'id))
+            (should (equal id (oref kernel id)))
+            (should (jupyter-api-get-kernel server id))
+            (should-not (jupyter-server-kernel-connected-p server id))
+            (should-not (jupyter-comm-alive-p server))
+            (jupyter-comm-start server)
+            (should (jupyter-comm-alive-p server))
+            (unwind-protect
+                (progn
+                  (ert-info ("Connecting kernel comm to server")
+                    (let ((kcomm (jupyter-server-kernel-comm
+                                  :server server
+                                  :kernel kernel)))
+                      (should-not (jupyter-server-kernel-connected-p server id))
+                      (jupyter-connect-client server kcomm)
+                      (should (jupyter-server-kernel-connected-p server id))
+                      (should (jupyter-comm-alive-p kcomm))
+                      (jupyter-comm-stop kcomm)
+                      (should-not (jupyter-comm-alive-p kcomm))
+                      (should (jupyter-comm-alive-p server))))
+                  (ert-info ("Connecting kernel comm starts server comm if necessary")
+                    (let ((kcomm (jupyter-server-kernel-comm
+                                  :server server
+                                  :kernel kernel)))
+                      (jupyter-comm-stop server)
+                      (should-not (jupyter-comm-alive-p server))
+                      (jupyter-comm-start kcomm)
+                      (should (jupyter-comm-alive-p server))
+                      (should (jupyter-server-kernel-connected-p server id))
+                      (should (jupyter-comm-alive-p kcomm))
+                      (jupyter-comm-stop kcomm))))
+              (jupyter-comm-stop server)))
+        (jupyter-api-shutdown-kernel server id)))))
+
+(ert-deftest jupyter-server-kernel-manager ()
+  :tags '(server)
+  (let* ((server (jupyter-server))
+         (kernel (jupyter-server-kernel
+                  :spec (jupyter-guess-kernelspec
+                         "python" (jupyter-server-kernelspecs server))))
+         (manager (jupyter-server-kernel-manager
+                   :server server
+                   :kernel kernel)))
+    (should-not (jupyter-kernel-alive-p manager))
+    (let ((id (jupyter-start-kernel manager)))
+      (unwind-protect
+          (progn
+            (should (jupyter-kernel-alive-p manager))
+            ;; TODO: Does shutting down the kernel also send a
+            ;; disconnect-channels event?
+            )
+        (jupyter-api-shutdown-kernel server id)))))
+
+(ert-deftest jupyter-server-start-new-kernel ()
+  :tags '(server)
+  (let ((server (jupyter-server)))
+    (cl-destructuring-bind (manager client)
+        (jupyter-server-start-new-kernel server "python")
+      (unwind-protect
+          (let ((jupyter-current-client client))
+            ;; TODO: Get rid of these sleep calls
+            (sleep-for 2)
+            (should (equal (jupyter-eval "1 + 1") "2")))
+        (jupyter-shutdown-kernel manager)
+        (jupyter-comm-stop server)))))
 
 ;;; `org-mode'
 
