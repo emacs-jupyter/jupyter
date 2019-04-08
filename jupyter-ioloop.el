@@ -383,10 +383,7 @@ evaluation using `zmq-start-process'."
               jupyter-ioloop-pre-hook
               (mapcar #'byte-compile (append jupyter-ioloop-pre-hook
                                         (quote ,(mapcar #'macroexpand-all
-                                                   (oref ioloop callbacks)))))
-              ;; Timeout used when polling for events, whenever there are callbacks
-              ;; this gets set to 0.
-              jupyter-ioloop-timeout (if jupyter-ioloop-pre-hook 0 200))
+                                                   (oref ioloop callbacks))))))
              ;; Notify the parent process we are ready to do something
              (zmq-prin1 '(start))
              (let ((dispatcher
