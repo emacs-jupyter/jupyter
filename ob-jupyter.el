@@ -323,7 +323,7 @@ the PARAMS alist."
             ;; Remove the hook before waiting so it doesn't get called again.
             (remove-hook 'org-babel-after-execute-hook #'sync-on-export t)
             (unless (jupyter-request-idle-received-p req)
-              (jupyter-wait-until-idle req most-positive-fixnum))))
+              (while (null (jupyter-wait-until-idle req jupyter-long-timeout))))))
         ;; Ensure we convert async blocks to synchronous ones when exporting
         (when (bound-and-true-p org-export-current-backend)
           (add-hook 'org-babel-after-execute-hook #'sync-on-export t t))
@@ -338,7 +338,7 @@ the PARAMS alist."
                    (not (or (member "link" result-params)
                             (member "graphics" result-params))))
           (org-babel-jupyter--remove-file-param params)))
-      (jupyter-wait-until-idle req most-positive-fixnum)
+      (while (null (jupyter-wait-until-idle req jupyter-long-timeout)))
       (if (jupyter-org-request-inline-block-p req)
           ;; In the case of synchronous inline results, only the result of the
           ;; execute-result message will be added to
