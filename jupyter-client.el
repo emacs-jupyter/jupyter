@@ -1297,10 +1297,10 @@ DETAIL is the detail level to use for the request and defaults to
                        (list
                         ;; We find the client based on session so that we don't
                         ;; capture a reference to the client.
-                        (let ((session (jupyter-session-id (oref client session))))
+                        (let ((ref (jupyter-weak-ref client)))
                           (lambda ()
                             (let ((jupyter-current-client
-                                   (jupyter-find-client-for-session session)))
+                                   (jupyter-weak-ref-resolve ref)))
                               (if jupyter-current-client
                                   (jupyter-inspect code pos nil detail)
                                 (error "Client for session has been removed"))))))

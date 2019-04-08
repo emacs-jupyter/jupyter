@@ -415,7 +415,7 @@ evaluation using `zmq-start-process'."
 
 (defun jupyter-ioloop--make-filter (ioloop ref)
   (lambda (event)
-    (let ((obj (gethash t ref)))
+    (let ((obj (jupyter-weak-ref-resolve ref)))
       (if obj (jupyter-ioloop-handler ioloop obj event)
         (delete-process (oref ioloop process))))))
 
@@ -432,20 +432,18 @@ If IOLOOP was previously running, it is stopped first.
 If BUFFER is non-nil it should be a buffer that will be used as
 the IOLOOP subprocess buffer, see `zmq-start-process'."
   (jupyter-ioloop-stop ioloop)
-  (let* ((ref (make-hash-table :weakness 'value :size 1))
-         (process (zmq-start-process
-                   (jupyter-ioloop--function ioloop)
-                   :filter (progn
-                             ;; We go through this Emacs-fu, brought to you by Chris
-                             ;; Wellons, https://nullprogram.com/blog/2014/01/27/,
-                             ;; because we want OBJECT to be the final say in when
-                             ;; everything gets garbage collected. If OBJECT loses
-                             ;; scope, the ioloop process should be killed off. This
-                             ;; wouldn't happen if we hold a strong reference to
-                             ;; OBJECT.
-                             (puthash t object ref)
-                             (jupyter-ioloop--make-filter ioloop ref))
-                   :buffer buffer)))
+  (let ((process (zmq-start-process
+                  (jupyter-ioloop--function ioloop)
+                  ;; We go through this Emacs-fu, brought to you by Chris
+                  ;; Wellons, https://nullprogram.com/blog/2014/01/27/,
+                  ;; because we want OBJECT to be the final say in when
+                  ;; everything gets garbage collected. If OBJECT loses
+                  ;; scope, the ioloop process should be killed off. This
+                  ;; wouldn't happen if we hold a strong reference to
+                  ;; OBJECT.
+                  :filter (jupyter-ioloop--make-filter
+                           ioloop (jupyter-weak-ref object))
+                  :buffer buffer)))
     (oset ioloop process process)
     (jupyter-ioloop-wait-until ioloop 'start #'identity)))
 

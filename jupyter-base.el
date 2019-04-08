@@ -671,6 +671,21 @@ no :metadata key can be found, then META will be METADATA."
        (plist-get plist :metadata)
        metadata)))
 
+;;; Simple weak references
+;; Thanks to Chris Wellon https://nullprogram.com/blog/2014/01/27/
+
+(defun jupyter-weak-ref (object)
+  "Return a weak reference for OBJECT."
+  (let ((ref (make-hash-table :weakness 'value :size 1)))
+    (prog1 ref
+      (puthash t object ref))))
+
+(defsubst jupyter-weak-ref-resolve (ref)
+  "Resolve a weak REF.
+Return nil if the underlying object has been garbage collected,
+otherwise return the underlying object."
+  (gethash t ref))
+
 (provide 'jupyter-base)
 
 ;;; jupyter-base.el ends here
