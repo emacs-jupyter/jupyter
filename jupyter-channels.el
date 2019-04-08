@@ -192,8 +192,9 @@ seconds has elapsed without the kernel sending a ping back."
     (zmq-send (oref channel socket) "ping")
     (run-with-timer
      (oref channel time-to-dead) nil
-     (lambda ()
-       (when-let* ((sock (and (jupyter-hb--pingable-p channel)
+     (lambda (channel-ref)
+       (when-let* ((channel (jupyter-weak-ref-resolve channel-ref))
+                   (sock (and (jupyter-hb--pingable-p channel)
                               (oref channel socket))))
          (oset channel beating
                (condition-case nil
@@ -209,7 +210,8 @@ seconds has elapsed without the kernel sending a ping back."
                (jupyter-hb--send-ping channel (1+ failed-count))
              (oset channel paused t)
              (when (functionp (oref channel dead-cb))
-               (funcall (oref channel dead-cb))))))))))
+               (funcall (oref channel dead-cb)))))))
+     (jupyter-weak-ref channel))))
 
 (provide 'jupyter-channels)
 
