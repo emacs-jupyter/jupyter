@@ -484,6 +484,22 @@ fields:
   (id nil :read-only t)
   (key nil :read-only t))
 
+(cl-defmethod jupyter-session-endpoints ((session jupyter-session))
+  "Return a property list containing the endpoints from SESSION."
+  (cl-destructuring-bind
+      (&key shell_port iopub_port stdin_port hb_port ip transport
+            &allow-other-keys)
+      (jupyter-session-conn-info session)
+    (cl-assert (and transport ip))
+    (let ((addr (lambda (port) (format "%s://%s:%d" transport ip port))))
+      (cl-loop
+       for (channel . port) in `((:hb . ,hb_port)
+                                 (:stdin . ,stdin_port)
+                                 (:shell . ,shell_port)
+                                 (:iopub . ,iopub_port))
+       do (cl-assert port) and
+       collect channel and collect (funcall addr port)))))
+
 ;;; Request object definition
 
 (cl-defstruct (jupyter-request

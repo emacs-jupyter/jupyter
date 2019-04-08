@@ -33,8 +33,7 @@
 
 (eval-when-compile (require 'subr-x))
 (require 'jupyter-base)
-(require 'jupyter-channels)
-(require 'jupyter-channel-ioloop)
+(require 'jupyter-comm-layer)
 (require 'jupyter-mime)
 (require 'jupyter-messages)
 
@@ -108,9 +107,10 @@ requests like the above example.")
    (pending-requests
     :type ring
     :initform (make-ring 10)
-    :documentation "A ring of pending `jupyter-request's.
-A request is pending if it has not been sent to the kernel via the
-client's ioloop slot.")
+    :documentation "A ring of pending `jupyter-request's. A
+request is pending if a notification has not been received by the
+client that the message has actually been sent by the
+communication layer. See the kcomm slot.")
    (execution-state
     :type string
     :initform "idle"
@@ -142,9 +142,8 @@ client is expecting a reply from the kernel.")
 initializing this client. When `jupyter-start-channels' is
 called, this will be set to the kernel info plist returned
 from an initial `:kernel-info-request'.")
-   (ioloop
-    :type (or null jupyter-channel-ioloop)
-    :initform nil
+   (kcomm
+    :type jupyter-comm-layer
     :documentation "The process which receives events from channels.")
    (session
     :type jupyter-session
@@ -165,17 +164,7 @@ initialized the client.")
    (-buffer
     :type buffer
     :documentation "An internal buffer used to store client local
-variables and intermediate ioloop process output. When the ioloop
-slot is non-nil, its `process-buffer' will be `eq' to this
-buffer.")
-   (channels
-    :type list
-    :initform nil
-    :initarg :channels
-    :documentation "A property list describing the channels.
-The keys are channel types whose values are the status of the
-channels. The exception is the heartbeat channel. The value of
-the :hb key is a `jupyter-hb-channel'.")))
+variables.")))
 
 ;;; `jupyter-current-client' language method specializer
 
@@ -209,10 +198,7 @@ passed as the argument has a language of LANG."
       (lambda ()
         (when (buffer-live-p buffer)
           (kill-buffer buffer))
-        ;; Ensure the ioloop process gets cleaned up when the client goes out
-        ;; of scope.
-        (when (jupyter-channels-running-p client)
-          (jupyter-stop-channels client))))))
+        (jupyter-stop-channels client)))))
 
 (defun jupyter-clients ()
   "Return a list of all `jupyter-kernel-clients'."
@@ -243,12 +229,13 @@ See `jupyter-initialize-connection'."
               (list info-or-session
                     '(or jupyter-session-p json-plist-p stringp))))))
 
-(defun jupyter-initialize-connection (client info-or-session)
+;; NOTE: This requires that CLIENT is communicating with a kernel using a
+;; `jupyter-channel-ioloop-comm' object.
+(cl-defmethod jupyter-initialize-connection ((client jupyter-kernel-client) info-or-session)
   "Initialize CLIENT with connection INFO-OR-SESSION.
 INFO-OR-SESSION can be a file name, a plist, or a
 `jupyter-session' object that will be used to initialize CLIENT's
-connection. If CLIENT is already connected to a kernel, its
-connection is first terminated before initializing a new one.
+connection.
 
 When INFO-OR-SESSION is a file name, read the contents of the
 file as a JSON plist and create a new `jupyter-session' from it.
@@ -267,43 +254,22 @@ connection and will be accessible as the session slot of CLIENT.
 The necessary keys and values to initialize a connection can be
 found at
 http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
-  (cl-check-type client jupyter-kernel-client)
   (let ((session (and (jupyter-session-p info-or-session) info-or-session))
         (conn-info (jupyter--connection-info info-or-session)))
-    (cl-destructuring-bind
-        (&key shell_port iopub_port stdin_port hb_port ip
-              key transport signature_scheme
-              &allow-other-keys)
+    (cl-destructuring-bind (&key key signature_scheme &allow-other-keys)
         conn-info
       (when (and (> (length key) 0)
                  (not (functionp
                        (intern (concat "jupyter-" signature_scheme)))))
-        (error "Unsupported signature scheme: %s" signature_scheme))
-      ;; Stop the channels if connected to some other kernel
-      (when (jupyter-channels-running-p client)
-        (jupyter-stop-channels client))
-      ;; Initialize the channels
-      (unless session
-        (setq session (jupyter-session :key key :conn-info conn-info)))
-      (oset client session session)
-      (let ((addr (lambda (port) (format "%s://%s:%d" transport ip port))))
-        (setf (oref client channels)
-              ;; Construct the channel plist
-              (cl-list*
-               :hb (make-instance
-                    'jupyter-hb-channel
-                    :session session
-                    :endpoint (funcall addr hb_port))
-               (cl-loop
-                for (channel . port) in `((:stdin . ,stdin_port)
-                                          (:shell . ,shell_port)
-                                          (:iopub . ,iopub_port))
-                collect channel
-                and collect
-                ;; The session will be associated with these channels in the
-                ;; ioloop subprocess. See `jupyter-start-channels'.
-                (list :endpoint (funcall addr port)
-                      :alive-p nil))))))))
+        (error "Unsupported signature scheme: %s" signature_scheme)))
+    (oset client session
+          (or (copy-sequence session)
+              (jupyter-session
+               :key (plist-get conn-info :key)
+               :conn-info conn-info)))
+    (jupyter-initialize-connection
+     (oref client kcomm)
+     (oref client session))))
 
 ;;; Client local variables
 
@@ -314,11 +280,6 @@ subprocess buffer."
   (declare (indent 1))
   `(progn
      (cl-check-type ,client jupyter-kernel-client)
-     ;; NOTE: -buffer will be set as the IOLoop process buffer, see
-     ;; `jupyter-start-channels', but before the IOLoop process is started we
-     ;; would like to have a buffer available so that client local variables
-     ;; can be set on the buffer. This is why we create our own buffer when a
-     ;; client is initialized.
      (with-current-buffer (oref ,client -buffer)
        ,@body)))
 
@@ -409,19 +370,16 @@ Note that you can manipulate how to handle messages received in
 response to the sent message, see `jupyter-add-callback' and
 `jupyter-request-inhibited-handlers'."
   (declare (indent 1))
-  (let ((ioloop (oref client ioloop)))
-    (unless ioloop
-      (signal 'wrong-type-argument (list 'jupyter-ioloop ioloop 'ioloop)))
-    (jupyter-verify-inhibited-handlers)
-    (let ((msg-id (or msg-id (jupyter-new-uuid))))
-      (jupyter-send ioloop 'send channel type message msg-id)
-      ;; Anything sent to stdin is a reply not a request so don't add it as a
-      ;; pending request
-      (unless (eq channel :stdin)
-        (let ((req (jupyter-generate-request client message)))
-          (setf (jupyter-request-id req) msg-id)
-          (setf (jupyter-request-inhibited-handlers req) jupyter-inhibit-handlers)
-          (jupyter--push-pending-request client req))))))
+  (jupyter-verify-inhibited-handlers)
+  (let ((msg-id (or msg-id (jupyter-new-uuid))))
+    (jupyter-send (oref client kcomm) 'send channel type message msg-id)
+    ;; Anything sent to stdin is a reply not a request so don't add it as a
+    ;; pending request
+    (unless (eq channel :stdin)
+      (let ((req (jupyter-generate-request client message)))
+        (setf (jupyter-request-id req) msg-id)
+        (setf (jupyter-request-inhibited-handlers req) jupyter-inhibit-handlers)
+        (jupyter--push-pending-request client req)))))
 
 ;;; Pending requests
 
@@ -448,33 +406,18 @@ back."
   (jupyter--drop-idle-requests client)
   (with-slots (pending-requests requests) client
     (or (> (ring-length pending-requests) 0)
-          ;; If there are two requests, then there is really only one since
-          ;; "last-sent" is an alias for the other.
+        ;; If there are two requests, then there is really only one since
+        ;; "last-sent" is an alias for the other.
         (> (hash-table-count requests) 2)
         (when-let* ((last-sent (gethash "last-sent" requests)))
           (not (jupyter-request-idle-received-p last-sent))))))
 
-;;; HB channel methods
-
-(cl-defmethod jupyter-hb-pause ((client jupyter-kernel-client))
-  "Pause CLIENT's heartbeat channel."
-  (jupyter-hb-pause (plist-get (oref client channels) :hb)))
-
-(cl-defmethod jupyter-hb-unpause ((client jupyter-kernel-client))
-  "Unpause CLIENT's heartbeat channel."
-  (jupyter-hb-unpause (plist-get (oref client channels) :hb)))
-
-(cl-defmethod jupyter-hb-beating-p ((client jupyter-kernel-client))
-  "Is CLIENT still connected to its kernel?"
-  (jupyter-hb-beating-p (plist-get (oref client channels) :hb)))
-
-;;; IOLoop handlers (receiving messages, starting/stopping channels)
+;;; Event handlers
 
 ;;;; Sending/receiving
 
-(cl-defmethod jupyter-ioloop-handler ((_ioloop jupyter-ioloop)
-                                      (client jupyter-kernel-client)
-                                      (event (head sent)))
+(cl-defmethod jupyter-event-handler ((client jupyter-kernel-client)
+                                     (event (head sent)))
   (cl-destructuring-bind (_ channel-type msg-id) event
     (unless (eq channel-type :stdin)
       ;; Anything sent on stdin is a reply and therefore never added as a
@@ -486,145 +429,46 @@ back."
         (puthash msg-id req requests)
         (puthash "last-sent" req requests)))))
 
-(cl-defmethod jupyter-ioloop-printer ((_ioloop jupyter-ioloop)
-                                      (_client jupyter-kernel-client)
-                                      (event (head message)))
+(cl-defmethod jupyter-event-handler ((client jupyter-kernel-client)
+                                     (event (head message)))
   (cl-destructuring-bind (_ channel _idents . msg) event
-    (format "%s" (list
-                  channel
-                  (jupyter-message-type msg)
-                  (jupyter-message-content msg)))))
+    (when jupyter--debug
+      (message "%s" (concat (upcase (symbol-name (car event))) ": "
+                            (format "%s" (list
+                                          channel
+                                          (jupyter-message-type msg)
+                                          (jupyter-message-content msg))))))
+    (jupyter-handle-message client channel msg)))
 
-(cl-defmethod jupyter-ioloop-handler ((_ioloop jupyter-ioloop)
-                                      (client jupyter-kernel-client)
-                                      (event (head message)))
-  "For CLIENT, queue a message EVENT to be handled."
-  (cl-destructuring-bind (_ channel _idents . msg) event
-    ;; Run immediately after handling this event, i.e. on the next command loop
-    (run-at-time 0 nil #'jupyter-handle-message client channel msg)))
+;;; Starting communication with a kernel
 
-;;;; Channel alive methods
-
-(cl-defmethod jupyter-channel-alive-p ((client jupyter-kernel-client) channel)
-  (cl-assert (memq channel '(:hb :stdin :shell :iopub)) t)
-  (with-slots (ioloop channels) client
-    (if (not (eq channel :hb))
-        (when (and ioloop (jupyter-ioloop-alive-p ioloop))
-          (plist-get (plist-get channels channel) :alive-p))
-      (setq channel (plist-get channels :hb))
-      ;; The hb channel is implemented locally in the current process whereas the
-      ;; other channels are implemented in subprocesses and the current process
-      ;; acts as a proxy.
-      (and channel (jupyter-channel-alive-p channel)))))
-
-;;;; Start channel methods
-
-(cl-defmethod jupyter-ioloop-handler ((_ioloop jupyter-ioloop)
-                                      (client jupyter-kernel-client)
-                                      (event (head start-channel)))
-  (plist-put (plist-get (oref client channels) (cadr event)) :alive-p t))
-
-(cl-defmethod jupyter-start-channel ((client jupyter-kernel-client) channel)
-  (cl-assert (memq channel '(:hb :stdin :shell :iopub)) t)
-  (unless (jupyter-channel-alive-p client channel)
-    (with-slots (channels) client
-      (if (eq channel :hb)
-          (jupyter-start-channel (plist-get channels :hb))
-        (cl-destructuring-bind (&key endpoint &allow-other-keys)
-            (plist-get channels channel)
-          (jupyter-send
-           (oref client ioloop) 'start-channel channel endpoint))))))
-
-(cl-defmethod jupyter-start-channel :after ((client jupyter-kernel-client) channel)
-  "Verify that CLIENT's CHANNEL started.
-Raise an error if it did not start within
-`jupyter-default-timeout'."
-  (unless (or (eq channel :hb) (jupyter-channel-alive-p client channel))
-    (with-slots (ioloop) client
-      (or (jupyter-ioloop-wait-until ioloop 'start-channel
-            (lambda (_) (jupyter-channel-alive-p client channel)))
-          (error "Channel not started in ioloop subprocess (%s)" channel)))))
-
-;;;; Stop channel methods
-
-(cl-defmethod jupyter-ioloop-handler ((_ioloop jupyter-ioloop)
-                                      (client jupyter-kernel-client)
-                                      (event (head stop-channel)))
-  (plist-put (plist-get (oref client channels) (cadr event)) :alive-p nil))
-
-(cl-defmethod jupyter-stop-channel ((client jupyter-kernel-client) channel)
-  (cl-assert (memq channel '(:hb :stdin :shell :iopub)) t)
-  (when (jupyter-channel-alive-p client channel)
-    (if (eq channel :hb)
-        (jupyter-stop-channel (plist-get (oref client channels) :hb))
-      (jupyter-send (oref client ioloop) 'stop-channel channel))))
-
-(cl-defmethod jupyter-stop-channel :after ((client jupyter-kernel-client) channel)
-  "Verify that CLIENT's CHANNEL has stopped.
-Raise a warning if it has not been stopped within
-`jupyter-default-timeout'."
-  (unless (or (eq channel :hb) (not (jupyter-channel-alive-p client channel)))
-    (with-slots (ioloop) client
-      (or (jupyter-ioloop-wait-until ioloop 'stop-channel
-            (lambda (_) (not (jupyter-channel-alive-p client channel))))
-          (warn "Channel not stopped in ioloop subprocess")))))
-
-;;; Starting/stopping IOLoop
-
-(cl-defmethod jupyter-start-channels :before ((client jupyter-kernel-client)
-                                              &rest _)
-  "Start CLIENT's channel ioloop."
-  (with-slots (ioloop session) client
-    (unless ioloop
-      (oset client ioloop (jupyter-channel-ioloop))
-      (setq ioloop (oref client ioloop)))
-    (unless (jupyter-ioloop-alive-p ioloop)
-      (jupyter-ioloop-start ioloop session client))))
-
-(cl-defmethod jupyter-start-channels ((client jupyter-kernel-client)
-                                      &key (shell t)
-                                      (iopub t)
-                                      (stdin t)
-                                      (hb t))
-  "Start the pre-configured channels of CLIENT.
-Before starting the channels, ensure that the channel subprocess
-responsible for encoding/decoding messages and sending/receiving
-messages to/from the kernel is running.
-
-Call `jupyter-start-channel' for every channel whose key has a
-non-nil value passed to this function.
-
-If the shell channel is started, send an initial
-`:kernel-info-request' to set the kernel-info slot of CLIENT if
-necessary."
-  (cl-loop
-   for (channel . start) in `((:hb . ,hb)
-                              (:shell . ,shell)
-                              (:iopub . ,iopub)
-                              (:stdin . ,stdin))
-   when start do (jupyter-start-channel client channel))
-  ;; Needed for reliability. Sometimes we are not fast enough to capture the
-  ;; startup message of a kernel.
-  (sleep-for 0.3))
+(cl-defmethod jupyter-start-channels ((client jupyter-kernel-client))
+  (jupyter-connect-client (oref client kcomm) client))
 
 (cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
   "Stop any running channels of CLIENT."
-  (cl-loop
-   for channel in '(:shell :iopub :stdin :hb)
-   do (jupyter-stop-channel client channel)))
-
-(cl-defmethod jupyter-stop-channels :after ((client jupyter-kernel-client)
-                                            &rest _)
-  "Stop CLIENT's channel ioloop."
-  (with-slots (ioloop) client
-    (when ioloop
-      (jupyter-ioloop-stop ioloop))))
+  (when (slot-boundp client 'kcomm)
+    (jupyter-disconnect-client (oref client kcomm) client)))
 
 (cl-defmethod jupyter-channels-running-p ((client jupyter-kernel-client))
   "Are any channels of CLIENT running?"
-  (cl-loop
-   for channel in '(:shell :iopub :stdin :hb)
-   thereis (jupyter-channel-alive-p client channel)))
+  (jupyter-comm-alive-p (oref client kcomm)))
+
+(cl-defmethod jupyter-channel-alive-p ((client jupyter-kernel-client) channel)
+  (jupyter-channel-alive-p (oref client kcomm) channel))
+
+(cl-defmethod jupyter-hb-pause ((client jupyter-kernel-client))
+  (when (cl-typep (oref client kcomm) 'jupyter-hb-comm)
+    (jupyter-hb-pause (oref client kcomm))))
+
+(cl-defmethod jupyter-hb-unpause ((client jupyter-kernel-client))
+  (when (cl-typep (oref client kcomm) 'jupyter-hb-comm)
+    (jupyter-hb-unpause (oref client kcomm))))
+
+(cl-defmethod jupyter-hb-beating-p ((client jupyter-kernel-client))
+  "Is CLIENT still connected to its kernel?"
+  (or (null (cl-typep (oref client kcomm) 'jupyter-hb-comm))
+      (jupyter-hb-beating-p (oref client kcomm))))
 
 ;;; Message callbacks
 

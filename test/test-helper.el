@@ -30,6 +30,7 @@
 (require 'zmq)
 (require 'jupyter-client)
 (require 'jupyter-repl)
+(require 'jupyter-comm-layer)
 (require 'jupyter-org-client)
 (require 'jupyter-kernel-manager)
 (require 'cl-lib)
@@ -58,11 +59,12 @@ handling a message is always
 (cl-defmethod initialize-instance ((client jupyter-echo-client) &rest _slots)
   (cl-call-next-method)
   (oset client messages (make-ring 10))
-  (oset client channels
-        (list :hb (jupyter-hb-channel)
-              :shell (list :alive-p nil :endpoint "foo://bar")
-              :stdin (list :alive-p nil :endpoint "foo://bar")
-              :iopub (list :alive-p nil :endpoint "foo://bar"))))
+  (oset client kcomm (jupyter-channel-ioloop-comm))
+  (with-slots (kcomm) client
+    (oset kcomm hb (jupyter-hb-channel))
+    (oset kcomm stdin (make-jupyter-proxy-channel))
+    (oset kcomm shell (make-jupyter-proxy-channel))
+    (oset kcomm iopub (make-jupyter-proxy-channel))))
 
 (cl-defmethod jupyter-send ((client jupyter-echo-client)
                             channel
@@ -95,6 +97,29 @@ handling a message is always
 (cl-defmethod jupyter-handle-message ((client jupyter-echo-client) _channel msg)
   (ring-insert+extend (oref client messages) msg 'grow)
   (cl-call-next-method))
+
+;;; `jupyter-mock-comm-layer'
+
+(defclass jupyter-mock-comm-layer (jupyter-comm-layer)
+  ((alive :initform nil)))
+
+(cl-defmethod jupyter-comm-alive-p ((comm jupyter-mock-comm-layer))
+  (oref comm alive))
+
+(cl-defmethod jupyter-comm-start ((comm jupyter-mock-comm-layer))
+  (unless (oref comm alive)
+    (oset comm alive 0))
+  (cl-incf (oref comm alive)))
+
+(cl-defmethod jupyter-comm-stop ((comm jupyter-mock-comm-layer))
+  (cl-decf (oref comm alive))
+  (when (zerop (oref comm alive))
+    (oset comm alive nil)))
+
+(cl-defstruct jupyter-mock-comm-obj event)
+
+(cl-defmethod jupyter-event-handler ((obj jupyter-mock-comm-obj) event)
+  (setf (jupyter-mock-comm-obj-event obj) event))
 
 ;;; Macros
 

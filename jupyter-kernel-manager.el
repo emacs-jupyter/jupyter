@@ -114,8 +114,15 @@ connect to MANAGER's kernel."
     (signal 'wrong-type-argument (list '(subclass jupyter-kernel-client) class)))
   (let ((client (apply #'make-instance class slots)))
     (prog1 client
-      (jupyter-initialize-connection client (oref manager session))
-      (oset client manager manager))))
+      (oset client manager manager)
+      ;; TODO: We can also have the manager hold the kcomm object and just
+      ;; pass a single kcomm object to all clients using this manager since the
+      ;; kcomm broadcasts event to all connected clients. This is more
+      ;; efficient as it only uses one subprocess for every client connected to
+      ;; a kernel.
+      (oset client kcomm (jupyter-channel-ioloop-comm))
+      (jupyter-initialize-connection
+       client (copy-sequence (oref manager session))))))
 
 (defun jupyter--kernel-sentinel (kernel &optional _)
   "Kill the KERNEL process and its buffer."
