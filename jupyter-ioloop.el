@@ -371,38 +371,44 @@ evaluation using `zmq-start-process'."
   `(lambda (ctx)
      (push ,(file-name-directory (locate-library "jupyter-base")) load-path)
      (require 'jupyter-ioloop)
-     (setq jupyter-ioloop-poller (zmq-poller)
-           ;; Initialize any callbacks that were added before the ioloop was started
-           jupyter-ioloop-pre-hook
-           (mapcar #'byte-compile (quote ,(mapcar #'macroexpand-all
-                                        (oref ioloop callbacks))))
-           ;; Timeout used when polling for events, whenever there are callbacks
-           ;; this gets set to 0.
-           jupyter-ioloop-timeout (if jupyter-ioloop-pre-hook 0 200))
+     (setq jupyter-ioloop-poller (zmq-poller))
      ;; Poll for stdin messages
      (zmq-poller-add jupyter-ioloop-poller 0 zmq-POLLIN)
      (let (events)
        (condition-case nil
            (progn
              ,@(oref ioloop setup)
+             (setq
+              ;; Initialize any callbacks that were added before the ioloop was started
+              jupyter-ioloop-pre-hook
+              (mapcar #'byte-compile (append jupyter-ioloop-pre-hook
+                                        (quote ,(mapcar #'macroexpand-all
+                                                   (oref ioloop callbacks)))))
+              ;; Timeout used when polling for events, whenever there are callbacks
+              ;; this gets set to 0.
+              jupyter-ioloop-timeout (if jupyter-ioloop-pre-hook 0 200))
              ;; Notify the parent process we are ready to do something
              (zmq-prin1 '(start))
-             (while t
-               (run-hooks 'jupyter-ioloop-pre-hook)
-               (setq events
-                     (condition-case nil
-                         (zmq-poller-wait-all
-                          jupyter-ioloop-poller
-                          jupyter-ioloop-nsockets
-                          jupyter-ioloop-timeout)
-                       ((zmq-EAGAIN zmq-EINTR zmq-ETIMEDOUT) nil)))
-               (let ((stdin-event (assq 0 events)))
-                 (when stdin-event
-                   (setq events (delq stdin-event events))
-                   ,(jupyter-ioloop--event-dispatcher
-                     ioloop '(zmq-subprocess-read))))
-               (when events
-                 (run-hook-with-args 'jupyter-ioloop-post-hook events))))
+             (let ((dispatcher
+                    (byte-compile
+                     (lambda ()
+                       ,(jupyter-ioloop--event-dispatcher
+                         ioloop '(zmq-subprocess-read))))))
+               (while t
+                 (run-hooks 'jupyter-ioloop-pre-hook)
+                 (setq events
+                       (condition-case nil
+                           (zmq-poller-wait-all
+                            jupyter-ioloop-poller
+                            jupyter-ioloop-nsockets
+                            jupyter-ioloop-timeout)
+                         ((zmq-EAGAIN zmq-EINTR zmq-ETIMEDOUT) nil)))
+                 (let ((stdin-event (assq 0 events)))
+                   (when stdin-event
+                     (setq events (delq stdin-event events))
+                     (funcall dispatcher)))
+                 (when events
+                   (run-hook-with-args 'jupyter-ioloop-post-hook events)))))
          (quit
           ,@(oref ioloop teardown)
           (zmq-prin1 '(quit)))))))
