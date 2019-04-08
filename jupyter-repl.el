@@ -1410,7 +1410,10 @@ the kernel `jupyter-current-client' is connected to."
   (if (jupyter-repl-client-has-manager-p)
       (let ((manager (oref jupyter-current-client manager)))
         (if (jupyter-kernel-alive-p manager)
-            (display-buffer (process-buffer (oref manager kernel)))
+            (if (and (slot-boundp manager 'kernel)
+                     (processp (oref manager kernel)))
+                (display-buffer (process-buffer (oref manager kernel)))
+              (error "Manager needs a kernel slot"))
           (error "Kernel is not alive")))
     (user-error "Kernel not a subprocess")))
 
