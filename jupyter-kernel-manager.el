@@ -338,10 +338,7 @@ and the heartbeat channel unpaused. Note that the client's
 `manager' slot will also be set to the kernel manager instance,
 see `jupyter-make-client'."
   (or client-class (setq client-class 'jupyter-kernel-client))
-  (unless (child-of-class-p client-class 'jupyter-kernel-client)
-    (signal 'wrong-type-argument
-            (list '(subclass jupyter-kernel-client) client-class)))
-
+  (jupyter-error-if-not-client-class-p client-class)
   (let ((match (car (jupyter-find-kernelspecs kernel-name))))
     (unless match
       (error "No kernel found that starts with name (%s)" kernel-name))

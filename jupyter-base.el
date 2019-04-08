@@ -686,6 +686,14 @@ Return nil if the underlying object has been garbage collected,
 otherwise return the underlying object."
   (gethash t ref))
 
+;;; Errors
+
+(defun jupyter-error-if-not-client-class-p (class)
+  "Signal a wrong-type-argument error if CLASS is not a client class."
+  (unless (child-of-class-p class 'jupyter-kernel-client)
+    (signal 'wrong-type-argument
+            (list '(subclass jupyter-kernel-client) class))))
+
 (provide 'jupyter-base)
 
 ;;; jupyter-base.el ends here
