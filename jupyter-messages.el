@@ -287,15 +287,15 @@ and `:msg_type'."
       (cdr parts)
     (let ((dheader (jupyter--decode header)))
       (list
-       :header `(message-part ,header ,dheader)
+       :header (list 'message-part header dheader)
        :msg_id (plist-get dheader :msg_id)
        :msg_type (plist-get dheader :msg_type)
        ;; Also decode the parent header here since it is used quite often in
        ;; the parent Emacs process
-       :parent_header `(message-part ,parent-header
-                                     ,(jupyter--decode parent-header))
-       :metadata `(message-part ,metadata nil)
-       :content `(message-part ,content nil)
+       :parent_header (list 'message-part parent-header
+                            (jupyter--decode parent-header))
+       :metadata (list 'message-part metadata nil)
+       :content (list 'message-part content nil)
        :buffers buffers))))
 
 ;;; Sending/receiving

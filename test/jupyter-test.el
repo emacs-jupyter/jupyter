@@ -66,6 +66,32 @@
                        (jupyter-request-id req)))
         (should (equal (jupyter-message-get (caddr msgs) :execution_state) "idle"))))))
 
+;;;; Comm layer
+
+(ert-deftest jupyter-comm-layer ()
+  :tags '(mock comm)
+  (let ((comm (jupyter-mock-comm-layer))
+        (obj (make-jupyter-mock-comm-obj)))
+    (jupyter-connect-client comm obj)
+    (should (= (length (oref comm clients)) 1))
+    (should (eq (jupyter-weak-ref-resolve (car (oref comm clients))) obj))
+    (should (= (oref comm alive) 1))
+    (jupyter-connect-client comm obj)
+    (should (= (length (oref comm clients)) 1))
+    (should (eq (jupyter-weak-ref-resolve (car (oref comm clients))) obj))
+    (should (= (oref comm alive) 1))
+
+    (should-not (jupyter-mock-comm-obj-event obj))
+    (jupyter-event-handler comm '(event))
+    ;; Events are handled in a timer, not right away
+    (sleep-for 0.01)
+    (should (equal (jupyter-mock-comm-obj-event obj) '(event)))
+
+    (jupyter-disconnect-client comm obj)
+    (should (= (length (oref comm clients)) 0))
+    (should-not (oref comm alive))
+    (jupyter-disconnect-client comm obj)))
+
 ;;; Callbacks
 
 (ert-deftest jupyter-wait-until-idle ()
@@ -524,20 +550,25 @@
 ;;; Client
 
 ;; TODO: Different values of the session argument
+;; TODO: Update for new `jupyter-channel-ioloop-comm'
 (ert-deftest jupyter-initialize-connection ()
   :tags '(client init)
+  (skip-unless nil)
+  ;; The default comm is a jupyter-channel-ioloop-comm
   (let ((conn-info (jupyter-test-conn-info-plist))
         (client (jupyter-kernel-client)))
+    (oset client kcomm (jupyter-sync-channel-comm))
     (jupyter-initialize-connection client conn-info)
-    (with-slots (session channels) client
+    ;; kcomm by default is a `jupyter-channel-ioloop-comm'
+    (with-slots (session kcomm) client
       (ert-info ("Client session")
         (should (string= (jupyter-session-key session)
                          (plist-get conn-info :key)))
         (should (equal (jupyter-session-conn-info session)
                        conn-info)))
       (ert-info ("Heartbeat channel initialized")
-        (should (eq session (oref (plist-get channels :hb) session)))
-        (should (string= (oref (plist-get channels :hb) endpoint)
+        (should (eq session (oref (oref kcomm hb) session)))
+        (should (string= (oref (oref kcomm hb) endpoint)
                          (format "tcp://127.0.0.1:%d"
                                  (plist-get conn-info :hb_port)))))
       (ert-info ("Shell, iopub, stdin initialized")
@@ -566,6 +597,7 @@
   (ert-info ("Starting/stopping channels")
     (let ((conn-info (jupyter-test-conn-info-plist))
           (client (jupyter-kernel-client)))
+      (oset client kcomm (jupyter-sync-channel-comm))
       (jupyter-initialize-connection client conn-info)
       (cl-loop
        for channel in '(:hb :shell :iopub :stdin)
