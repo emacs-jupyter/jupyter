@@ -219,7 +219,8 @@ Delete the REPL buffer after running BODY."
            (cl-letf (((symbol-function 'yes-or-no-p)
                       (lambda (_prompt) t))
                      ((symbol-function 'y-or-n-p)
-                      (lambda (_prompt) t)))
+                      (lambda (_prompt) t))
+                     (jupyter-default-timeout 5))
              (when ,cleanup-after
                (kill-buffer (oref ,client buffer)))))))))
 
