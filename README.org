@@ -507,18 +507,34 @@ value of the =:session= parameter. The name of the file must have a =.json=
 suffix for this to work.
 **** Remote kernels
 
-If the connection file is a [[https://www.gnu.org/software/emacs/manual/html_node/emacs/Remote-Files.html][remote file name]], i.e. has a prefix like =/host:=,
-the kernel's ports are assumed to live on =host=. Before attempting to connect
-to the kernel, =ssh= tunnels for the connection are created. So if you had a
-remote kernel on a host named =ec2= whose connection file is
-=/run/user/1000/jupyter/kernel-julia-0.6.json= on that host, you would specify
-the =:session= as
+If the connection file is a [[https://www.gnu.org/software/emacs/manual/html_node/emacs/Remote-Files.html][remote file name]], i.e. has a prefix like
+=/method:host:=, the kernel's ports are assumed to live on =host=. Before
+attempting to connect to the kernel, =ssh= tunnels for the connection are
+created. So if you had a remote kernel on a host named =ec2= whose connection
+file is =/run/user/1000/jupyter/kernel-julia-0.6.json= on that host, you could
+specify the =:session= like
 
 #+BEGIN_SRC org
-,#+BEGIN_SRC jupyter-julia :session /ec2:/run/user/1000/jupyter/kernel-julia-0.6.json
+,#+BEGIN_SRC jupyter-julia :session /ssh:ec2:/run/user/1000/jupyter/kernel-julia-0.6.json
 ...
 ,#+END_SRC
 #+END_SRC
+
+Note, the kernel on the remote host needs to have the ZMQ socket ports exposed.
+This means that starting a kernel using
+
+#+BEGIN_SRC shell
+jupyter notebook --no-browser
+#+END_SRC
+
+currently doesn't work since the notebook server does not allow communication
+with a kernel using ZMQ sockets. You will have to use the connection file
+created from using something like
+
+#+BEGIN_SRC shell
+jupyter kernel --kernel=python
+#+END_SRC
+
 ***** Password handling for remote connections
 Currently there is no password handling, so if your =ssh= connection requires a
 password I suggest you instead use [[https://www.ssh.com/ssh/keygen/][key-based authentication]]. Or if you are
