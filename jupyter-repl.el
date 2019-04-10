@@ -1665,7 +1665,7 @@ VERBOSE has the same meaning as in
   (jupyter-with-repl-cell
     (funcall face-fun state)))
 
-(defun jupyter-repl-initialize-fontification ()
+(cl-defgeneric jupyter-repl-initialize-fontification ()
   "Initialize fontification for the current REPL buffer."
   (let (fld frf sff spf comment)
     (jupyter-with-repl-lang-buffer
