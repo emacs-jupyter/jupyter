@@ -165,22 +165,10 @@ while waiting using PROGRESS-MSG as the message."
   (cl-check-type ioloop jupyter-ioloop)
   (process-get (oref ioloop process) :last-event))
 
-(cl-defgeneric jupyter-ioloop-printer (_ioloop _obj event)
-  "Return a printed representation of an IOLOOP EVENT.
-IOLOOP, OBJ, and EVENT have the same meaning as in
-`jupyter-ioloop-handler'.
-
-This is mainly used for debugging purposes. The returned string
-should exclude the head element of the EVENT."
-  (format "%s" (cdr event)))
-
-(cl-defmethod jupyter-ioloop-handler :before ((ioloop jupyter-ioloop) obj event)
+(cl-defmethod jupyter-ioloop-handler :before ((ioloop jupyter-ioloop) _obj event)
   "Set the :last-event property of IOLOOP's process.
 Additionally set the :start and :quit properties of the process
 to t when they occur. See also `jupyter-ioloop-wait-until'."
-  (when jupyter--debug
-    (message "%s" (concat (upcase (symbol-name (car event))) ": "
-                          (jupyter-ioloop-printer ioloop obj event))))
   (with-slots (process) ioloop
     (cond
      ((eq (car-safe event) 'start)

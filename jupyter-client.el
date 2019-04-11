@@ -343,18 +343,6 @@ If it does not contain a valid value, raise an error."
        unless (plist-member jupyter-message-types msg-type)
        do (error "Not a valid message type (`%s')" msg-type))))
 
-(cl-defmethod jupyter-send :before ((_client jupyter-kernel-client)
-                                    _channel
-                                    type
-                                    message
-                                    &optional _msg-id)
-  (when jupyter--debug
-    ;; The logging of messages is deferred until the next command loop for
-    ;; security reasons. When sending :input-reply messages that read
-    ;; passwords, clearing the password string using `clear-string' happens
-    ;; *after* the call to `jupyter-send'.
-    (run-at-time 0 nil (lambda () (message "SENDING: %s %s" type message)))))
-
 (cl-defmethod jupyter-send ((client jupyter-kernel-client)
                             channel
                             type
@@ -372,6 +360,12 @@ response to the sent message, see `jupyter-add-callback' and
   (declare (indent 1))
   (jupyter-verify-inhibited-handlers)
   (let ((msg-id (or msg-id (jupyter-new-uuid))))
+    (when jupyter--debug
+      ;; The logging of messages is deferred until the next command loop for
+      ;; security reasons. When sending :input-reply messages that read
+      ;; passwords, clearing the password string using `clear-string' happens
+      ;; *after* the call to `jupyter-send'.
+      (run-at-time 0 nil (lambda () (message "SENDING: %s %s %s" type msg-id message))))
     (jupyter-send (oref client kcomm) 'send channel type message msg-id)
     ;; Anything sent to stdin is a reply not a request so don't add it as a
     ;; pending request
@@ -416,8 +410,23 @@ back."
 
 ;;;; Sending/receiving
 
+(defun jupyter--show-event (event)
+  (let ((event-name (upcase (symbol-name (car event))))
+        (repr (cl-case (car event)
+                (sent (format "%s" (cdr event)))
+                (message (cl-destructuring-bind (_ channel _idents . msg) event
+                           (format "%s" (list
+                                         channel
+                                         (jupyter-message-type msg)
+                                         (jupyter-message-content msg)))))
+                (t nil))))
+    (when repr
+      (message "%s" (concat event-name ": " repr)))))
+
 (cl-defmethod jupyter-event-handler ((client jupyter-kernel-client)
                                      (event (head sent)))
+  (when jupyter--debug
+    (jupyter--show-event event))
   (cl-destructuring-bind (_ channel-type msg-id) event
     (unless (eq channel-type :stdin)
       ;; Anything sent on stdin is a reply and therefore never added as a
@@ -431,13 +440,9 @@ back."
 
 (cl-defmethod jupyter-event-handler ((client jupyter-kernel-client)
                                      (event (head message)))
+  (when jupyter--debug
+    (jupyter--show-event event))
   (cl-destructuring-bind (_ channel _idents . msg) event
-    (when jupyter--debug
-      (message "%s" (concat (upcase (symbol-name (car event))) ": "
-                            (format "%s" (list
-                                          channel
-                                          (jupyter-message-type msg)
-                                          (jupyter-message-content msg))))))
     (jupyter-handle-message client channel msg)))
 
 ;;; Starting communication with a kernel
