@@ -945,6 +945,14 @@ to the above explanation."
           (lambda (msg)
             (setq had-result t)
             (jupyter--display-eval-result msg)))
+      :display-data
+      (jupyter-message-lambda (data metadata)
+        (setq had-result t)
+        (jupyter-with-display-buffer "display" req
+          (jupyter-insert data metadata)
+          (jupyter-display-current-buffer-reuse-window
+           :display-data nil (unless (jupyter-pop-up-frame-p :display-data)
+                               #'display-buffer-below-selected))))
       :error
       (jupyter-message-lambda (traceback)
         ;; FIXME: Assumes the error in the
