@@ -1045,7 +1045,9 @@ elements."
       ("invalid"
        ;; Force an execute to produce a traceback
        (jupyter-send-execute-request client))
-      ("unknown"))))
+      ("unknown"
+       ;; Let the kernel decide if the code is complete
+       (jupyter-send-execute-request client)))))
 
 (defun jupyter-repl--insert-banner-and-prompt (client)
   (jupyter-with-repl-buffer client
