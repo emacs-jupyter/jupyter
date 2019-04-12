@@ -129,6 +129,19 @@ This hook is run with `point' at the cell code beginning position."
   :type 'hook
   :group 'jupyter-repl)
 
+(defcustom jupyter-repl-allow-RET-when-busy nil
+  "Allow RET to insert a newline when the kernel is busy.
+Normally when the kernel is busy, pressing RET at an input cell
+is disallowed. This is because, when the kernel is busy, it does
+not respond to an `:is-complete-request' message and that message
+is used to avoid sending incomplete code to the kernel.
+
+If this variable is non-nil, RET is allowed to insert a newline.
+In this case, pressing RET on an empty line, i.e. RET RET, will
+send the code to the kernel."
+  :type 'boolean
+  :group 'jupyter-repl)
+
 ;;; Implementation
 
 (defclass jupyter-repl-client (jupyter-widget-client jupyter-kernel-client)
@@ -1092,11 +1105,14 @@ execute the current cell."
           ;; sending a request when the kernel is busy because of the
           ;; is-complete request. Some kernels don't respond to this request
           ;; when the kernel is busy.
-          (when (jupyter-kernel-busy-p jupyter-current-client)
+          (when (and (jupyter-kernel-busy-p jupyter-current-client)
+                     (not jupyter-repl-allow-RET-when-busy))
             (error "Kernel busy"))
           (cond
            (force (jupyter-send-execute-request jupyter-current-client))
-           (jupyter-repl-use-builtin-is-complete
+           ((or jupyter-repl-use-builtin-is-complete
+                (and jupyter-repl-allow-RET-when-busy
+                     (jupyter-kernel-busy-p jupyter-current-client)))
             (goto-char (point-max))
             (let ((complete-p (equal (buffer-substring-no-properties
                                       (line-beginning-position) (point))
