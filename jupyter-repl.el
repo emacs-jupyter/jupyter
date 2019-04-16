@@ -2033,6 +2033,7 @@ interactively, DISPLAY the new REPL buffer as well."
   (unless (child-of-class-p client-class 'jupyter-repl-client)
     (error "Class should be a subclass of `jupyter-repl-client' (`%s')" client-class))
   (let ((client (make-instance client-class)))
+    (oset client kcomm (jupyter-channel-ioloop-comm))
     (jupyter-initialize-connection client file-or-plist)
     (jupyter-start-channels client)
     (jupyter-hb-unpause client)
