@@ -1278,6 +1278,25 @@ last element being the newest element added to the history."
         (when (buffer-live-p buffer)
           (kill-buffer buffer))))))
 
+(ert-deftest jupyter-connect-repl ()
+  :tags '(repl)
+  (jupyter-test-with-python-repl client
+    (let ((client (jupyter-connect-repl
+                   (jupyter-session-conn-info
+                    (oref client session)))))
+      (unwind-protect
+          (let ((msg (jupyter-wait-until-received :execute-result
+                       (let ((jupyter-inhibit-handlers t))
+                         (jupyter-send-execute-request client
+                           :code "1 + 1")))))
+            (should msg)
+            (should (equal (jupyter-message-data msg :text/plain) "2")))
+        (cl-letf (((symbol-function 'yes-or-no-p)
+                   (lambda (_prompt) t))
+                  ((symbol-function 'y-or-n-p)
+                   (lambda (_prompt) t)))
+          (kill-buffer (oref client buffer)))))))
+
 ;;; `org-mode'
 
 (defvar org-babel-jupyter-resource-directory nil)

@@ -404,10 +404,12 @@ called if needed.")
     (if (eq channel :hb) (jupyter-stop-channel (oref comm hb))
       (with-slots (ioloop) comm
         (jupyter-send ioloop 'stop-channel channel)
-        ;; Verify that the channel stops
-        (or (jupyter-ioloop-wait-until ioloop 'stop-channel
-              (lambda (_) (not (jupyter-channel-alive-p comm channel))))
-            (error "Channel not stopped in ioloop subprocess"))))))
+        ;; TODO: Figure out why tests now need a longer timeout sometimes.
+        (let ((jupyter-default-timeout jupyter-long-timeout))
+          ;; Verify that the channel stops
+          (or (jupyter-ioloop-wait-until ioloop 'stop-channel
+                (lambda (_) (not (jupyter-channel-alive-p comm channel))))
+              (error "Channel not stopped in ioloop subprocess (%s)" channel)))))))
 
 (cl-defmethod jupyter-start-channel ((comm jupyter-channel-ioloop-comm) channel)
   (unless (jupyter-channel-alive-p comm channel)
