@@ -35,29 +35,16 @@
 (cl-defmethod jupyter-org-result ((_mime (eql :text/html)) params data
                                   &context (jupyter-lang R)
                                   &optional metadata)
-  "Parse and convert DATA of type 'text/html' into a prettier form.
-If METADATA has ':isolated' tag (e.g. DT::datatable()), save it to a file
-and open in a browser. Otherwise, try to use pandoc or libxml to convert
-DATA to a prettier form."
-  (cond
-   ((plist-get metadata :isolated)
+  "If html DATA is an iframe, save it to a separate file and open in browser.
+Otherwise, parse it as normal."
+  (if (plist-get metadata :isolated)
       (let ((file (or (alist-get :file params)
                       (jupyter-org-image-file-name data ".html"))))
         (with-temp-file file
           (insert data))
         (browse-url-of-file file)
-        (jupyter-org-file-link file)))
-   ((functionp 'pandoc-convert-stdio)
-    (jupyter-org-raw-string (pandoc-convert-stdio data "html" "org")))
-   ((functionp 'libxml-parse-html-region)
-    (with-temp-buffer
-      (insert data)
-      (let ((parsed-html (libxml-parse-html-region
-                          (point-min) (point-max))))
-        (erase-buffer)
-        (shr-insert-document parsed-html)
-        (buffer-string))))
-   (t (cl-call-next-method))))
+        (jupyter-org-file-link file))
+    (cl-call-next-method)))
 
 (provide 'jupyter-R)
 
