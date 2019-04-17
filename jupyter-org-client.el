@@ -845,6 +845,36 @@ the width or height of the image."
         metadata
       (jupyter-org-image-link file width height))))
 
+(defun jupyter-pandoc-convert (from to from-string &optional callback)
+  "Use pandoc to convert a string in FROM format to TO format.
+Starts a process and converts FROM-STRING, assumed to be in FROM
+format, to a string in TO format and returns the converted
+string.
+
+If CALLBACK is specified, return the process object. When the
+process exits, call CALLBACK with zero arguments and with the
+buffer containing the converted string current."
+  (cl-assert (executable-find "pandoc"))
+  (let* ((process-connection-type nil)
+         (proc (start-process
+                "jupyter-pandoc"
+                (generate-new-buffer " *jupyter-pandoc*")
+                "pandoc" "-f" from "-t" to "--")))
+    (set-process-sentinel
+     proc (lambda (proc _)
+            (when (memq (process-status proc) '(exit signal))
+              (with-current-buffer (process-buffer proc)
+                (funcall callback)
+                (kill-buffer (process-buffer proc))))))
+    (process-send-string proc from-string)
+    (process-send-eof proc)
+    (if callback proc
+      (let ((to-string ""))
+        (setq callback (lambda () (setq to-string (buffer-string))))
+        (while (zerop (length to-string))
+          (accept-process-output nil 1))
+        to-string))))
+
 (cl-defgeneric jupyter-org-result (_mime _params _data &optional _metadata)
   "Return an `org-element' representing a result.
 Either a string or an `org-element' is a valid return value of
@@ -991,9 +1021,18 @@ parsed, wrap DATA in a minipage environment and return it."
       (jupyter-org--parse-latex-element data)
     (jupyter-org-export-block "latex" data)))
 
-(cl-defmethod jupyter-org-result ((_mime (eql :text/html)) _params data
+(cl-defmethod jupyter-org-result ((_mime (eql :text/html)) params data
                                   &optional _metadata)
-  (jupyter-org-export-block "html" data))
+  (if (member "pandoc" (alist-get :result-params params))
+      (jupyter-org-scalar
+       (with-temp-buffer
+         (insert (jupyter-pandoc-convert "html" "org" data))
+         (goto-char (point-min))
+         (if (and (org-at-table-p)
+                  (eq (org-table-end) (point-max)))
+             (org-table-to-lisp)
+           (buffer-string))))
+    (jupyter-org-export-block "html" data)))
 
 ;; NOTE: The order of :around methods is that the more specialized wraps the
 ;; more general, this makes sense since it is how the primary methods work as
