@@ -1028,6 +1028,7 @@ parsed, wrap DATA in a minipage environment and return it."
        (with-temp-buffer
          (insert (jupyter-pandoc-convert "html" "org" data))
          (goto-char (point-min))
+         (delete-trailing-whitespace)
          (if (and (org-at-table-p)
                   (eq (org-table-end) (point-max)))
              (org-table-to-lisp)
