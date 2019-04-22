@@ -85,14 +85,10 @@ information of the host as a prefix."
 
 (defun jupyter-get-kernelspec (name &optional refresh)
   "Get the kernelspec for a kernel named NAME.
-If no kernelspec is found, return nil. Otherwise return a
-cons cell
-
-    (DIRECTORY . PLIST)
-
-where DIRECTORY is the resource directory of the kernel named
-NAME and PLIST is its kernelspec plist. Optional argument REFRESH
-has the same meaning as in `jupyter-available-kernelspecs'."
+If no kernelspec is found, return nil. Otherwise return the
+kernelspec plist for the kernel names NAME. Optional argument
+REFRESH has the same meaning as in
+`jupyter-available-kernelspecs'."
   (cdr (assoc name (jupyter-available-kernelspecs refresh))))
 
 (defun jupyter-find-kernelspecs (re &optional refresh)
