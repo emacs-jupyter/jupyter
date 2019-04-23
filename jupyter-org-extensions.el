@@ -537,18 +537,18 @@ If BELOW is non-nil, move the block down, otherwise move it up."
   (fmakunbound 'jupyter-org-hydra/body)
   (eval `(defhydra jupyter-org-hydra (:color blue :hint nil)
            "
-          Execute                 Navigate       Edit             Misc
+          Execute                     Navigate       Edit             Misc
 ------------------------------------------------------------------------------
-    _<return>_: current           _p_: previous  _C-p_: move up     _/_: inspect
-  _C-<return>_: current to next   _n_: next      _C-n_: move down   _l_: clear result
-  _M-<return>_: to point          _g_: visible     _x_: kill        _L_: clear all
-_C-M-<return>_: subtree to point  _G_: any         _c_: copy
-  _S-<return>_: Restart/block     ^ ^              _o_: clone
-_S-C-<return>_: Restart/to point  ^ ^              _m_: merge
-_S-M-<return>_: Restart/buffer    ^ ^              _s_: split
-           _r_: Goto repl         ^ ^              _+_: insert above
-           ^ ^                    ^ ^              _=_: insert below
-           ^ ^                    ^ ^              _h_: header"
+    _<return>_: current               _p_: previous  _C-p_: move up     _/_: inspect
+  _C-<return>_: current to next       _n_: next      _C-n_: move down   _l_: clear result
+  _M-<return>_: to point              _g_: visible     _x_: kill        _L_: clear all
+_C-M-<return>_: subtree to point      _G_: any         _c_: copy
+  _S-<return>_: Restart/block     _<tab>_: (un)fold    _o_: clone
+_S-C-<return>_: Restart/to point      ^ ^              _m_: merge
+_S-M-<return>_: Restart/buffer        ^ ^              _s_: split
+           _r_: Goto repl             ^ ^              _+_: insert above
+           ^ ^                        ^ ^              _=_: insert below
+           ^ ^                        ^ ^              _h_: header"
            ("<return>" org-ctrl-c-ctrl-c :color red)
            ("C-<return>" jupyter-org-execute-and-next-block :color red)
            ("M-<return>" jupyter-org-execute-to-point)
@@ -562,6 +562,7 @@ _S-M-<return>_: Restart/buffer    ^ ^              _s_: split
            ("n" org-babel-next-src-block :color red)
            ("g" jupyter-org-jump-to-visible-block)
            ("G" jupyter-org-jump-to-block)
+           ("<tab>" org-cycle :color red)
 
            ("C-p" jupyter-org-move-src-block :color red)
            ("C-n" (jupyter-org-move-src-block t) :color red)
