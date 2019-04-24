@@ -490,6 +490,13 @@ generated image file names.
 Whenever you run a code block multiple times and replace its results, before
 the results are replaced, any generated files will be deleted to reduce the
 clutter in =org-babel-jupyter-resource-directory=.
+**** Convert rich kernel output with the =:pandoc= header argument
+
+By default html, markdown, and latex results are wrapped in a =BEGIN_EXPORT=
+block. If the header argument =:pandoc t= is set, they are instead
+converted to org-mode format with [[https://pandoc.org/][pandoc]]. You can control which outputs get
+converted with the custom variable =jupyter-org-pandoc-convertable=.
+
 *** Editing the contents of a code block
 
 When editing a Jupyter code block's contents, i.e. by pressing =C-c '= when at

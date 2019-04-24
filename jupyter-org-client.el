@@ -66,6 +66,12 @@ automatically be shown if this is non-nil."
   :group 'ob-jupyter
   :type 'boolean)
 
+(defcustom jupyter-org-pandoc-convertable
+  '("html" "markdown" "latex")
+  "Export blocks to convert to org-mode when ':pandoc t' header is set."
+  :group 'ob-jupyter
+  :type 'string)
+
 (defconst jupyter-org-mime-types '(:text/org
                                    ;; Prioritize images over html
                                    :image/svg+xml :image/jpeg :image/png
@@ -648,6 +654,16 @@ inserted without modification as the result of a code block."
   "Return a comment `org-element' with VALUE."
   (list 'comment (list :value value)))
 
+(defun jupyter-org-export-or-pandoc (type value params)
+  "Returns VALUE, either converted with pandoc or in an export block.
+If PARAMS has non-nil value for key ':pandoc' and TYPE is in
+`jupyter-org-pandoc-convertable', convert the result with pandoc.
+Otherwise, wrap it in an export block."
+  (if (and (alist-get :pandoc params)
+           (member type jupyter-org-pandoc-convertable))
+      (jupyter-org-raw-string (jupyter-pandoc-convert type "org" value))
+    (jupyter-org-export-block type value)))
+
 (defun jupyter-org-export-block (type value)
   "Return an export-block `org-element'.
 The block will export TYPE and the contents of the block will be
@@ -955,9 +971,9 @@ passed to Jupyter org-mode source blocks."
                                   &optional metadata)
   (jupyter-org--image-result mime params nil data metadata))
 
-(cl-defmethod jupyter-org-result ((_mime (eql :text/markdown)) _params data
+(cl-defmethod jupyter-org-result ((_mime (eql :text/markdown)) params data
                                   &optional _metadata)
-  (jupyter-org-export-block "markdown" data))
+  (jupyter-org-export-or-pandoc "markdown" data params))
 
 (defun jupyter-org--parse-latex-element (data)
   "Return a latex-fragment or latex-environment org-element obtained from DATA.
@@ -989,11 +1005,11 @@ parsed, wrap DATA in a minipage environment and return it."
                                   &optional _metadata)
   (if (member "raw" (alist-get :result-params params))
       (jupyter-org--parse-latex-element data)
-    (jupyter-org-export-block "latex" data)))
+    (jupyter-org-export-or-pandoc "latex" data params)))
 
-(cl-defmethod jupyter-org-result ((_mime (eql :text/html)) _params data
+(cl-defmethod jupyter-org-result ((_mime (eql :text/html)) params data
                                   &optional _metadata)
-  (jupyter-org-export-block "html" data))
+  (jupyter-org-export-or-pandoc "html" data params))
 
 ;; NOTE: The order of :around methods is that the more specialized wraps the
 ;; more general, this makes sense since it is how the primary methods work as
