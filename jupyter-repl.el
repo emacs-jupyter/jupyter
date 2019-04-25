@@ -1561,8 +1561,6 @@ in the appropriate direction, to the saved element."
     (define-key map [remap backward-sentence] #'jupyter-repl-backward-cell)
     (define-key map [remap forward-sentence] #'jupyter-repl-forward-cell)
     (define-key map (kbd "RET") #'jupyter-repl-ret)
-    (define-key map (kbd "C-n") #'jupyter-repl-history-next)
-    (define-key map (kbd "C-p") #'jupyter-repl-history-previous)
     (define-key map (kbd "M-n") #'jupyter-repl-history-next)
     (define-key map (kbd "M-p") #'jupyter-repl-history-previous)
     map))
