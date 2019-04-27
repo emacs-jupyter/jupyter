@@ -116,6 +116,7 @@ exist or if LANG cannot be determined, assign variables using
   (let ((fun (when lang
                (intern (format "org-babel-variable-assignments:%s" lang)))))
     (if (functionp fun) (funcall fun params)
+      (require 'ob-python)
       (org-babel-variable-assignments:python params))))
 
 (cl-defgeneric org-babel-jupyter-transform-code (code _changelist)
