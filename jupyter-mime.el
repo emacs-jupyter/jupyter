@@ -625,6 +625,38 @@ message."
       (when (= (point) (point-min))
         (error "No display matching id (%s)" id)))))
 
+;;; Pandoc
+
+(defun jupyter-pandoc-convert (from to from-string &optional callback)
+  "Use pandoc to convert a string in FROM format to TO format.
+Starts a process and converts FROM-STRING, assumed to be in FROM
+format, to a string in TO format and returns the converted
+string.
+
+If CALLBACK is specified, return the process object. When the
+process exits, call CALLBACK with zero arguments and with the
+buffer containing the converted string current."
+  (cl-assert (executable-find "pandoc"))
+  (let* ((process-connection-type nil)
+         (proc (start-process
+                "jupyter-pandoc"
+                (generate-new-buffer " *jupyter-pandoc*")
+                "pandoc" "-f" from "-t" to "--")))
+    (set-process-sentinel
+     proc (lambda (proc _)
+            (when (memq (process-status proc) '(exit signal))
+              (with-current-buffer (process-buffer proc)
+                (funcall callback)
+                (kill-buffer (process-buffer proc))))))
+    (process-send-string proc from-string)
+    (process-send-eof proc)
+    (if callback proc
+      (let ((to-string ""))
+        (setq callback (lambda () (setq to-string (buffer-string))))
+        (while (zerop (length to-string))
+          (accept-process-output nil 1))
+        to-string))))
+
 (provide 'jupyter-mime)
 
 ;;; jupyter-mime.el ends here
