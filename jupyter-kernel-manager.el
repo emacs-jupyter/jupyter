@@ -227,11 +227,17 @@ kernel. Starting a kernel involves the following steps:
                               ;; Now run the sentinel to cleanup resources
                               (jupyter--kernel-sentinel proc))))))
               (let ((attribs (file-attributes conn-file)))
-                ;; `file-attributes' can potentially return nil, in this case
-                ;; just assume it has read the connection file so that we can
-                ;; know for sure it is not connected if it fails to respond to
-                ;; any messages we send it.
-                (or (null attribs)
+                ;; Windows systems may not have good time resolution when
+                ;; retrieving the last access time of a file so we don't bother
+                ;; with checking that the kernel has read the connection file
+                ;; and leave it to the downstream initialization to ensure that
+                ;; we can communicate with a kernel.
+                (or (memq system-type '(windows-nt cygwin ms-dos))
+                    ;; `file-attributes' can potentially return nil, in this case
+                    ;; just assume it has read the connection file so that we can
+                    ;; know for sure it is not connected if it fails to respond to
+                    ;; any messages we send it.
+                    (null attribs)
                     (not (equal atime (nth 4 attribs))))))
             ;; Now set the sentinel of the kernel to cleanup resources if the
             ;; kernel dies later on.
