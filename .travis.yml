@@ -38,4 +38,5 @@ script:
   - jupyter --runtime-dir
   - jupyter --paths
   - jupyter kernelspec list
+  - make compile
   - make test
