@@ -24,8 +24,15 @@ endif
 
 # Build the zmq module.
 .PHONY: zmq
+ifneq ($(APPVEYOR),)
+# There are issues with string quoting in Appveyor which causes the normal
+# evaluated command to give a parsing error so we just make this a no-op in
+# Appveyor. The pre-built binaries are used when building in Appveyor anyways.
+zmq:
+else
 zmq: cask
-	$(CASK) eval "(cl-letf (((symbol-function 'read-string) (lambda (&rest _) \"y\"))) (require 'zmq))"
+	$(CASK) emacs -Q -batch --eval "(progn (fset 'read-string (lambda (&rest _) \"y\")) (require 'zmq))"
+endif
 
 .PHONY: init
 init: cask
@@ -38,7 +45,7 @@ dev: cask
 	$(CASK) --dev update
 
 .PHONY: test
-test: zmq compile
+test: zmq
 	$(CASK) exec ert-runner --script $(TAGS) $(PATTERN)
 
 .PHONY: clean
