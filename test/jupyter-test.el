@@ -668,6 +668,14 @@
   (should (equal (cadr event) "message"))
   (setq jupyter-ioloop-test-handler-called t))
 
+(ert-deftest jupyter-ioloop-wait-until ()
+  :tags '(ioloop)
+  (let ((ioloop (jupyter-ioloop)))
+    (should-not (jupyter-ioloop-last-event ioloop))
+    (jupyter-ioloop-start ioloop :test)
+    (should (equal (jupyter-ioloop-last-event ioloop) '(start)))
+    (jupyter-ioloop-stop ioloop)))
+
 (ert-deftest jupyter-ioloop-callbacks ()
   :tags '(ioloop)
   (ert-info ("Callback added before starting the ioloop")
@@ -682,8 +690,10 @@
     (let ((ioloop (jupyter-ioloop)))
       (setq jupyter-ioloop-test-handler-called nil)
       (jupyter-ioloop-start ioloop :test)
+      (should (process-live-p (oref ioloop process)))
       (jupyter-ioloop-add-callback ioloop
         `(lambda () (zmq-prin1 (list 'test "message"))))
+      (jupyter-ioloop-wait-until ioloop 'test #'identity)
       (jupyter-ioloop-stop ioloop)
       (should jupyter-ioloop-test-handler-called))))
 
