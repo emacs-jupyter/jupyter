@@ -5,7 +5,7 @@
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 11 Jan 2018
 ;; Version: 0.7.3
-;; Package-Requires: ((emacs "26") (zmq "0.9.0") (cl-lib "0.5") (simple-httpd "1.5.0") (websocket "1.9"))
+;; Package-Requires: ((emacs "26") (zmq "0.10.3") (cl-lib "0.5") (simple-httpd "1.5.0") (websocket "1.9"))
 ;; URL: https://github.com/dzop/emacs-jupyter
 
 ;; This program is free software; you can redistribute it and/or
