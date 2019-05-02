@@ -1873,22 +1873,28 @@ x
 
 (ert-deftest org-babel-jupyter-:dir-header-arg ()
   :tags '(org)
-  (ert-info ("Python")
-    (jupyter-org-test-src-block
-     "\
-import os
-os.path.abspath(os.getcwd())"
-     (concat ": " (expand-file-name "~") "\n")
-     :dir "~")
-    (ert-info ("Directory restored")
+  (let ((convert-path
+         (lambda (s)
+           ;; Convert forward slashes to backslashes on Windows
+           (if (memq system-type '(windows-nt cygwin ms-dos))
+               (replace-regexp-in-string "/" "\\\\" s)
+             s))))
+    (ert-info ("Python")
       (jupyter-org-test-src-block
        "\
 import os
 os.path.abspath(os.getcwd())"
-       (concat ": " (expand-file-name
-                     ;; Remove the path separator at the end of
-                     ;; `default-directory'
-                     (substring default-directory nil -1)) "\n")))))
+       (concat ": " (funcall convert-path (expand-file-name "~")) "\n")
+       :dir "~")
+      (ert-info ("Directory restored")
+        (jupyter-org-test-src-block
+         "\
+import os
+os.path.abspath(os.getcwd())"
+         (concat ": "
+                 (funcall convert-path
+                          (expand-file-name
+                           (directory-file-name default-directory))) "\n"))))))
 
 (ert-deftest jupyter-org--find-mime-types ()
   :tags '(org mime)
