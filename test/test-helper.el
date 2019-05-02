@@ -244,9 +244,12 @@ extracts the IPython kernel's semver."
            (cl-loop for (key val) on (plist-get spec :env) by #'cddr
                     collect (concat (substring (symbol-name key) 1) "=" val))
            process-environment))
-         (version (shell-command-to-string
-                   (concat cmd " -c 'import ipykernel; \
-print(\"{}.{}.{}\".format(*ipykernel.version_info[:3]))'"))))
+         (version
+          (with-temp-buffer
+            (call-process cmd nil t nil
+                          "-c" "import ipykernel; \
+print(\"{}.{}.{}\".format(*ipykernel.version_info[:3]))")
+            (buffer-string))))
     (string-trim version)))
 
 (defun jupyter-error-if-no-kernelspec (kernel)
