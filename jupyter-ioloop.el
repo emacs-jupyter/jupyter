@@ -333,11 +333,9 @@ sending closures to the IOLOOP. An example:
       `(lambda () (zmq-prin1 'foo \"bar\")))"
   (declare (indent 1))
   (cl-assert (functionp cb))
-  (with-slots (process callbacks) ioloop
-    (oset ioloop callbacks (append callbacks (list cb)))
-    (when (process-live-p process)
-      (zmq-subprocess-send process
-        (list 'callback (macroexpand-all cb))))))
+  (cl-callf append (oref ioloop callbacks) (list cb))
+  (when (process-live-p (oref ioloop process))
+    (jupyter-send ioloop 'callback (macroexpand-all cb))))
 
 (defun jupyter-ioloop-poller-add (socket events)
   "Add SOCKET to be polled using the `jupyter-ioloop-poller'.
