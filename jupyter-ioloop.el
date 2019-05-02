@@ -53,9 +53,13 @@
 ;;; Code:
 
 (require 'jupyter-base)
+(eval-when-compile (require 'subr-x))
 
 (defvar jupyter-ioloop-poller nil
   "The polling object being used to poll for events in an ioloop.")
+
+(defvar jupyter-ioloop-stdin nil
+  "A file descriptor or ZMQ socket used to receive events in an ioloop.")
 
 (defvar jupyter-ioloop-nsockets 1
   "The number of sockets being polled by `jupyter-ioloop-poller'.")
@@ -351,51 +355,69 @@ EVENTS are the polling events that should be listened for on SOCKET."
     (zmq-poller-remove jupyter-ioloop-poller socket)
     (cl-decf jupyter-ioloop-nsockets)))
 
-(defun jupyter-ioloop--function (ioloop)
+(defun jupyter-ioloop--delete-process (process)
+  (when-let* ((stdin (process-get process :stdin))
+              (socket-p (zmq-socket-p stdin)))
+    (zmq-close stdin)
+    (process-put process :stdin nil))
+  (delete-process process))
+
+(defun jupyter-ioloop--function (ioloop port)
   "Return the function that does the work of IOLOOP.
 The returned function is suitable to send to a ZMQ subprocess for
-evaluation using `zmq-start-process'."
-  `(lambda (ctx)
-     (push ,(file-name-directory (locate-library "jupyter-base")) load-path)
-     (require 'jupyter-ioloop)
-     (setq jupyter-ioloop-poller (zmq-poller))
-     ;; Poll for stdin messages
-     (zmq-poller-add jupyter-ioloop-poller 0 zmq-POLLIN)
-     (let (events)
-       (condition-case nil
-           (progn
-             ,@(oref ioloop setup)
-             (setq
-              ;; Initialize any callbacks that were added before the ioloop was started
-              jupyter-ioloop-pre-hook
-              (mapcar #'byte-compile (append jupyter-ioloop-pre-hook
-                                        (quote ,(mapcar #'macroexpand-all
-                                                   (oref ioloop callbacks))))))
-             ;; Notify the parent process we are ready to do something
-             (zmq-prin1 '(start))
-             (let ((dispatcher
-                    (byte-compile
-                     (lambda ()
-                       ,(jupyter-ioloop--event-dispatcher
-                         ioloop '(zmq-subprocess-read))))))
-               (while t
-                 (run-hooks 'jupyter-ioloop-pre-hook)
-                 (setq events
-                       (condition-case nil
-                           (zmq-poller-wait-all
-                            jupyter-ioloop-poller
-                            jupyter-ioloop-nsockets
-                            jupyter-ioloop-timeout)
-                         ((zmq-EAGAIN zmq-EINTR zmq-ETIMEDOUT) nil)))
-                 (let ((stdin-event (assq 0 events)))
-                   (when stdin-event
-                     (setq events (delq stdin-event events))
-                     (funcall dispatcher)))
-                 (when events
-                   (run-hook-with-args 'jupyter-ioloop-post-hook events)))))
-         (quit
-          ,@(oref ioloop teardown)
-          (zmq-prin1 '(quit)))))))
+evaluation using `zmq-start-process'.
+
+If PORT is non-nil the returned function will create a ZMQ PULL
+socket to receive events from the parent process on the PORT of
+the local host, otherwise events are expected to be received on
+STDIN. This is useful on Windows systems which don't allow
+polling the STDIN file handle."
+  (let ((stdin-form
+         (if port `(let ((sock (zmq-socket ctx zmq-PULL)))
+                     (prog1 sock
+                       (zmq-connect sock (format "tcp://127.0.0.1:%s" ,port))))
+           '0))
+        (dispatcher-form
+         (jupyter-ioloop--event-dispatcher
+          ioloop (if port '(read (zmq-recv-decoded jupyter-ioloop-stdin))
+                   '(zmq-subprocess-read)))))
+    `(lambda (ctx)
+       (push ,(file-name-directory (locate-library "jupyter-base")) load-path)
+       (require 'jupyter-ioloop)
+       (setq jupyter-ioloop-poller (zmq-poller))
+       (setq jupyter-ioloop-stdin ,stdin-form)
+       (zmq-poller-add jupyter-ioloop-poller jupyter-ioloop-stdin zmq-POLLIN)
+       (let (events)
+         (condition-case nil
+             (progn
+               ,@(oref ioloop setup)
+               (setq
+                ;; Initialize any callbacks that were added before the ioloop was started
+                jupyter-ioloop-pre-hook
+                (mapcar #'byte-compile (append jupyter-ioloop-pre-hook
+                                          (quote ,(mapcar #'macroexpand-all
+                                                     (oref ioloop callbacks))))))
+               ;; Notify the parent process we are ready to do something
+               (zmq-prin1 '(start))
+               (let ((dispatcher (byte-compile (lambda () ,dispatcher-form))))
+                 (while t
+                   (run-hooks 'jupyter-ioloop-pre-hook)
+                   (setq events
+                         (condition-case nil
+                             (zmq-poller-wait-all
+                              jupyter-ioloop-poller
+                              jupyter-ioloop-nsockets
+                              jupyter-ioloop-timeout)
+                           ((zmq-EAGAIN zmq-EINTR zmq-ETIMEDOUT) nil)))
+                   (let ((stdin-event (zmq-assoc jupyter-ioloop-stdin events)))
+                     (when stdin-event
+                       (setq events (delq stdin-event events))
+                       (funcall dispatcher)))
+                   (when events
+                     (run-hook-with-args 'jupyter-ioloop-post-hook events)))))
+           (quit
+            ,@(oref ioloop teardown)
+            (zmq-prin1 '(quit))))))))
 
 (defun jupyter-ioloop-alive-p (ioloop)
   "Return non-nil if IOLOOP is ready to receive/send events."
@@ -407,7 +429,7 @@ evaluation using `zmq-start-process'."
   (lambda (event)
     (let ((obj (jupyter-weak-ref-resolve ref)))
       (if obj (jupyter-ioloop-handler ioloop obj event)
-        (delete-process (oref ioloop process))))))
+        (jupyter-ioloop--delete-process (oref ioloop process))))))
 
 (cl-defgeneric jupyter-ioloop-start ((ioloop jupyter-ioloop)
                                      object
@@ -422,20 +444,26 @@ If IOLOOP was previously running, it is stopped first.
 If BUFFER is non-nil it should be a buffer that will be used as
 the IOLOOP subprocess buffer, see `zmq-start-process'."
   (jupyter-ioloop-stop ioloop)
-  (let ((process (zmq-start-process
-                  (jupyter-ioloop--function ioloop)
-                  ;; We go through this Emacs-fu, brought to you by Chris
-                  ;; Wellons, https://nullprogram.com/blog/2014/01/27/,
-                  ;; because we want OBJECT to be the final say in when
-                  ;; everything gets garbage collected. If OBJECT loses
-                  ;; scope, the ioloop process should be killed off. This
-                  ;; wouldn't happen if we hold a strong reference to
-                  ;; OBJECT.
-                  :filter (jupyter-ioloop--make-filter
-                           ioloop (jupyter-weak-ref object))
-                  :buffer buffer)))
-    (oset ioloop process process)
-    (jupyter-ioloop-wait-until ioloop 'start #'identity)))
+  (let (stdin port)
+    (when (memq system-type '(windows-nt ms-dos cygwin))
+      (setq stdin (zmq-socket (zmq-current-context) zmq-PUSH))
+      (setq port (zmq-bind-to-random-port stdin "tcp://127.0.0.1")))
+    (let ((process (zmq-start-process
+                    (jupyter-ioloop--function ioloop (when stdin port))
+                    ;; We go through this Emacs-fu, brought to you by Chris
+                    ;; Wellons, https://nullprogram.com/blog/2014/01/27/,
+                    ;; because we want OBJECT to be the final say in when
+                    ;; everything gets garbage collected. If OBJECT loses
+                    ;; scope, the ioloop process should be killed off. This
+                    ;; wouldn't happen if we hold a strong reference to
+                    ;; OBJECT.
+                    :filter (jupyter-ioloop--make-filter
+                             ioloop (jupyter-weak-ref object))
+                    :buffer buffer)))
+      (oset ioloop process process)
+      (when stdin
+        (process-put process :stdin stdin))
+      (jupyter-ioloop-wait-until ioloop 'start #'identity))))
 
 (cl-defgeneric jupyter-ioloop-stop ((ioloop jupyter-ioloop))
   "Stop IOLOOP.
@@ -445,7 +473,10 @@ returning."
     (when (process-live-p process)
       (jupyter-send ioloop 'quit)
       (unless (jupyter-ioloop-wait-until ioloop 'quit #'identity)
-        (delete-process process)))))
+        (delete-process process))
+      (when-let* ((stdin (process-get process :stdin))
+                  (socket-p (zmq-socket-p stdin)))
+        (zmq-unbind stdin (zmq-get-option stdin zmq-LAST-ENDPOINT))))))
 
 (cl-defmethod jupyter-send ((ioloop jupyter-ioloop) &rest args)
   "Using IOLOOP, send ARGS to its process.
@@ -455,7 +486,11 @@ process unchanged. This means that all arguments should be
 serializable."
   (with-slots (process) ioloop
     (cl-assert (process-live-p process))
-    (zmq-subprocess-send process args)))
+    (let ((stdin (process-get process :stdin)))
+      (if stdin (zmq-send-encoded stdin (with-temp-buffer
+                                          (prin1 args (current-buffer))
+                                          (buffer-string)))
+        (zmq-subprocess-send process args)))))
 
 (provide 'jupyter-ioloop)
 
