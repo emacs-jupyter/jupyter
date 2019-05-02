@@ -163,7 +163,8 @@ while waiting using PROGRESS-MSG as the message."
 (defun jupyter-ioloop-last-event (ioloop)
   "Return the last event received on IOLOOP."
   (cl-check-type ioloop jupyter-ioloop)
-  (process-get (oref ioloop process) :last-event))
+  (and (oref ioloop process)
+       (process-get (oref ioloop process) :last-event)))
 
 (cl-defmethod jupyter-ioloop-handler :before ((ioloop jupyter-ioloop) _obj event)
   "Set the :last-event property of IOLOOP's process.
