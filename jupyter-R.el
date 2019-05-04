@@ -26,10 +26,13 @@
 ;;; Code:
 
 (require 'jupyter-repl)
+(require 'jupyter-org-client)
+
+(defvar ess-font-lock-keywords)
 
 (cl-defmethod jupyter-repl-initialize-fontification (&context (jupyter-lang R))
   (when (featurep 'ess)
-      (setq-local ess-font-lock-keywords 'ess-R-font-lock-keywords))
+    (setq-local ess-font-lock-keywords 'ess-R-font-lock-keywords))
   (cl-call-next-method))
 
 (cl-defmethod jupyter-org-result ((_mime (eql :text/html)) params data
