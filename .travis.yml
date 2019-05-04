@@ -8,7 +8,7 @@ env:
   - EMACS_VERSION=git-snapshot
 before_install:
   # Setup paths
-  - export PATH=${TRAVIS_BUILD_DIR}/.evm/bin:${TRAVIS_BUILD_DIR}/.cask/bin:${PATH}
+  - export PATH=${TRAVIS_BUILD_DIR}/.evm/bin:${HOME}/.cask/bin:${PATH}
   - sudo apt-get update
   # Install emacs
   - if [[ ${EMACS_VERSION} = git-snapshot ]]; then sudo apt-get install -y texinfo; fi
