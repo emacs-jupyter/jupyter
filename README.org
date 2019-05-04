@@ -286,6 +286,12 @@ called.
 *** =jupyter-repl-maximum-size=
 
 Set the maximum number of lines before the REPL buffer is truncated.
+*** =jupyter-repl-allow-RET-when-busy=
+
+If non-nil, allow inserting a newline in a REPL cell whenever the kernel is
+busy. Normally this isn't allowed since the REPL relies on the kernel
+responding to messages when =RET= is pressed, but a kernel does not respond to
+messages when it is busy.
 *** Widget support
 
 There is also support for Jupyter widgets integrated into the REPL. If any of
@@ -998,6 +1004,7 @@ interact with an [[https://github.com/jupyter-widgets/ipyleaflet][ipyleaflet]] m
 ** TODO =jupyter-repl-client=
 ** TODO =jupyter-ioloop=
 ** TODO =jupyter-channel-ioloop=
+** TODO =jupyter-comm-layer=
 ** Callbacks and hooks
 :PROPERTIES:
 :ID:       0E7CA280-8D14-4994-A3C7-C3B7204AC9D2

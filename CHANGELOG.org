@@ -1,4 +1,38 @@
-* master
+* v0.8.0
+
+- Support Windows
+
+- In =org-mode=, support a header argument =:pandoc t=. Whenever this header
+  argument is provided, certain kinds of code block results are translated into
+  =org-mode= syntax using a =pandoc= process, if available. See the variable
+  =jupyter-org-pandoc-convertable= for the kinds of results which can be
+  converted in this way.
+
+- Add initial support for C++.
+
+- Add a new customizable variable =jupyter-repl-allow-RET-when-busy= which
+  allows =RET= to insert a newline in a REPL cell whenever the kernel of the
+  REPL is busy. Normally this isn't allowed since, when a kernel is busy, it
+  doesn't respond to messages such as the =:is-complete-request= which
+  is used to determine when the code should be sent to the kernel or a newline
+  should be inserted whenever =RET= is pressed.
+
+- Add initial support for R. Thanks to =jackkamm=.
+
+- In =jupyter-eval-string= also handle =:display-data= messages.
+
+- Add a new =jupyter-comm-layer= class which generalizes how a
+  =jupyter-kernel-client= communicates with a kernel. Previously there was only
+  one method of communication with a kernel, via a subprocess which
+  communicates to the kernel using ZMQ sockets. In order to support other kinds
+  of communication, e.g. using websockets, the =jupyter-comm-layer= generalizes
+  the method of communication so that a client need not know how communication
+  occurs.
+
+- Add =jupyter-org-execute-subtree= (=C-M-<return>=) to the =jupyter-org=
+  =hydra=. Also, various improvements to the source block insertion functions
+  such as how they handle whitespace and determine the language of the source
+  block to insert.
 
 - Properly cleanup connection files when restarting a kernel.
 
@@ -273,7 +307,7 @@
 Examine the output of
 
 #+NAME: changelog
-#+HEADER: :var PREV_VERSION="v0.7.3" VERSION="master"
+#+HEADER: :var PREV_VERSION="v0.8.0" VERSION="master"
 #+BEGIN_SRC shell :results output
 git log --pretty=format:"%s" ${PREV_VERSION}...${VERSION}
 #+END_SRC
@@ -287,7 +321,7 @@ update the =VERSION= variables first.
 
 Update the =Version= in the header of all source files.
 
-#+BEGIN_SRC elisp :results silent :var version="0.7.3"
+#+BEGIN_SRC elisp :results silent :var version="0.8.0"
 (let ((re "^;; Version: \\(\\([0-9]+\\)\\.\\([0-9]+\\)\\.\\([0-9]+\\)\\)" ))
   (dolist (file (append (directory-files default-directory nil ".el$")
                         (directory-files (expand-file-name "test" default-directory) t ".el$")))
