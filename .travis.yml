@@ -1,6 +1,8 @@
 # https://github.com/travis-ci/travis-ci/issues/9061
 sudo: required
 matrix:
+  # Report build failure/success before allowed failures complete
+  fast_finish: true
   allow_failures:
     - env: EMACS_VERSION=git-snapshot
 env:
@@ -31,12 +33,12 @@ install:
   - sudo python3 -m ipykernel.kernelspec
   - cd $TRAVIS_BUILD_DIR
   - make dev
-script:
-  - cd $TRAVIS_BUILD_DIR
   # Ensure Jupyter runtime dir can be written to
   - mkdir -p $(jupyter --runtime-dir)
   - jupyter --runtime-dir
   - jupyter --paths
   - jupyter kernelspec list
+script:
+  - cd $TRAVIS_BUILD_DIR
   - make compile
   - make test
