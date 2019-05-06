@@ -435,9 +435,9 @@ Optional argument REFRESH has the same meaning as in
                         (cdr (assoc lang org-babel-tangle-lang-exts)))))
    (add-to-list 'org-src-lang-modes
                 (cons (concat "jupyter-" lang)
-                      (intern (or (cdr (assoc lang org-src-lang-modes))
-                                  (replace-regexp-in-string
-                                   "[0-9]*" "" lang)))))))
+                      (or (cdr (assoc lang org-src-lang-modes))
+                          (downcase (replace-regexp-in-string
+                                     "[0-9]*" "" lang)))))))
 
 ;;; `ox' integration
 
