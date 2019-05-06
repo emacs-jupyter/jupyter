@@ -36,6 +36,7 @@
   :group 'jupyter)
 
 (declare-function jupyter-read-plist "jupyter-base" (file))
+(declare-function jupyter-command "jupyter-base" (&rest args))
 
 (defvar jupyter--kernelspecs (make-hash-table :test #'equal :size 5)
   "An alist matching kernel names to their kernelspec directories.")
