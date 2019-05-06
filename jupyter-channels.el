@@ -81,7 +81,8 @@ send/receive messages.")
     :documentation "The socket used for communicating with the kernel.")))
 
 (cl-defgeneric jupyter-start-channel ((channel jupyter-channel) &key identity)
-  "Start a Jupyter CHANNEL using IDENTITY as the routing ID.")
+  "Start a Jupyter CHANNEL using IDENTITY as the routing ID.
+If CHANNEL is already alive, do nothing.")
 
 (cl-defmethod jupyter-start-channel ((channel jupyter-sync-channel)
                                      &key (identity (jupyter-session-id
@@ -95,7 +96,8 @@ send/receive messages.")
          (zmq-socket-set socket zmq-SUBSCRIBE ""))))))
 
 (cl-defgeneric jupyter-stop-channel ((channel jupyter-channel))
-  "Stop a Jupyter CHANNEL.")
+  "Stop a Jupyter CHANNEL.
+If CHANNEL is already stopped, do nothing.")
 
 (cl-defmethod jupyter-stop-channel ((channel jupyter-sync-channel))
   (when (jupyter-channel-alive-p channel)
