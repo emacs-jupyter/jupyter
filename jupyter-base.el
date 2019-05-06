@@ -476,7 +476,7 @@ fields:
   this session is used to sign messages for.
 
 - ID :: A string of bytes used as the `zmq-ROUTING-ID' for every
-  `jupyter-channel' that utilizes the sessiong object.
+  `jupyter-channel' that utilizes the session object.
 
 - KEY :: The key used when signing messages. If KEY is nil,
   message signing is not performed."
