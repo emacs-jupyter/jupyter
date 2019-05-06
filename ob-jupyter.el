@@ -459,15 +459,15 @@ mapped to their appropriate minted language in
 (defun org-babel-jupyter-strip-ansi-escapes (_backend)
   "Remove ANSI escapes from Jupyter src-block results in the current buffer."
   (org-babel-map-src-blocks nil
-    (when-let* ((jupyter-p (org-babel-jupyter-language-p lang))
-                (pos (org-babel-where-is-src-block-result))
-                (ansi-color-apply-face-function
-                 (lambda (beg end face)
-                   ;; Could be useful for export backends
-                   (when face
-                     (put-text-property beg end 'face face)))))
-      (goto-char pos)
-      (ansi-color-apply-on-region (point) (org-babel-result-end)))))
+    (when (org-babel-jupyter-language-p lang)
+      (let ((pos (org-babel-where-is-src-block-result))
+            (ansi-color-apply-face-function
+             (lambda (beg end face)
+               ;; Could be useful for export backends
+               (when face
+                 (put-text-property beg end 'face face)))))
+        (goto-char pos)
+        (ansi-color-apply-on-region (point) (org-babel-result-end))))))
 
 ;;; Hook into `org'
 
