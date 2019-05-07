@@ -171,6 +171,12 @@ If the `current-buffer' is not a REPL, this is identical to
                         saved)))
             (,client (if (and ,saved (not jupyter-test-with-new-client))
                          ,saved
+                       ;; Want a fresh kernel, so shutdown the cached one
+                       (when ,saved
+                         (if (slot-boundp ,saved 'manager)
+                             (jupyter-shutdown-kernel (oref ,saved manager))
+                           (jupyter-send-shutdown-request ,saved))
+                         (jupyter-stop-channels ,saved))
                        (let ((client (,client-fun (car ,spec))))
                          (prog1 client
                            (unless (or jupyter-test-with-new-client ,saved)
@@ -186,7 +192,10 @@ This only starts a single global client unless the variable
   `(jupyter-test-with-client-cache
        (lambda (name) (cadr (jupyter-start-new-kernel name)))
        jupyter-test-global-clients ,kernel ,client
-     ,@body))
+     (unwind-protect
+         (progn ,@body)
+       (when jupyter-test-with-new-client
+         (jupyter-shutdown-kernel (oref client manager))))))
 
 (defmacro jupyter-test-with-python-client (client &rest body)
   "Start a new Python kernel, bind it to CLIENT, evaluate BODY."
