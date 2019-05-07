@@ -534,18 +534,31 @@
     (should (jupyter-channel-alive-p channel))
     (should-not (jupyter-hb-beating-p channel))))
 
-;; (ert-deftest jupyter-weak-references ()
-;;   ;; Skip this test always. It is here as a reference for intended behavior.
-;;   ;; The garbage collector is non-deterministic and I haven't been able to get
-;;   ;; it to reliably clean up the objects. Under normal operating conditions,
-;;   ;; this works as intended.
-;;   (let ((ref (make-hash-table :size 1 :weakness 'value)))
-;;     (jupyter-test-with-python-client client
-;;       (puthash t client ref))
-;;     (garbage-collect))
-;;   (garbage-collect)
-;;   (should (= (length (jupyter-clients)) 0))
-;;   (should (= (length (jupyter-kernel-managers)) 0)))
+;;; GC
+
+(ert-deftest jupyter-weak-ref ()
+  :tags '(gc)
+  (let (ref)
+    (let ((obj (list 1)))
+      (setq ref (jupyter-weak-ref obj)))
+    (ignore (make-list (* 2 gc-cons-threshold) ?0))
+    (garbage-collect)
+    (should-not (jupyter-weak-ref-resolve ref))))
+
+(defclass jupyter-test-object (jupyter-finalized-object)
+  ((val)))
+
+(ert-deftest jupyter-add-finalizer ()
+  :tags '(gc)
+  (let ((val (list 1)))
+    (let ((obj (jupyter-test-object)))
+      (oset obj val val)
+      (jupyter-add-finalizer obj
+        (lambda () (setcar (oref obj val) nil))))
+    (ignore (make-list (* 2 gc-cons-threshold) ?0))
+    (garbage-collect)
+    (should (null (car val)))))
+
 
 ;;; Client
 
@@ -642,6 +655,12 @@
         (should (jupyter-requests-pending-p client))
         (jupyter-wait-until-idle req)
         (should-not (jupyter-requests-pending-p client))))))
+
+(ert-deftest jupyter-eval ()
+  :tags '(client)
+  (jupyter-test-with-python-client client
+    (let ((jupyter-current-client client))
+      (should (equal (jupyter-eval "1 + 1") "2")))))
 
 ;;; IOloop
 
