@@ -962,19 +962,30 @@ buffer to display TEXT."
           (font-lock-prepend-text-property
            beg end 'font-lock-face 'jupyter-repl-traceback)))))))
 
-(defun jupyter-repl-history--next (n)
-  "Helper function for `jupyter-repl-history-next'.
-Rotates `jupyter-repl-history' N times in the forward direction,
-towards newer history elements and returns the Nth history
-element in that direction relative to the current REPL history.
-If the sentinel value is found before rotating N times, return
-nil."
-  (if (> n 0)
-      (unless (eq (ring-ref jupyter-repl-history -1) 'jupyter-repl-history)
-        (ring-insert jupyter-repl-history
-                     (ring-remove jupyter-repl-history -1))
-        (jupyter-repl-history--next (1- n)))
-    (ring-ref jupyter-repl-history 0)))
+(defun jupyter-repl-history--rotate (n)
+  "Rotate the REPL history ring N times.
+The direction of rotation is determined by the sign of N. For N
+positive rotate to newer history elements, for N negative rotate
+to older elements.
+
+Return nil if the sentinel value is found before completing the
+required number of rotations, otherwise return the element
+rotated to, i.e. the one at index 0."
+  (let (ifun cidx ridx)
+    (if (> n 0)
+        (setq ifun 'ring-insert cidx -1 ridx -1)
+      (setq ifun 'ring-insert-at-beginning cidx 1 ridx 0))
+    (cl-loop
+     repeat (abs n)
+     ;; Check that the next index to rotate to is not the sentinel
+     if (eq (ring-ref jupyter-repl-history cidx) 'jupyter-repl-history)
+     return nil else do
+     ;; if it isn't, remove an element at RIDX and insert it using IFUN back
+     ;; into the history ring, thereby rotating the history
+     (funcall ifun jupyter-repl-history
+              (ring-remove jupyter-repl-history ridx))
+     ;; after N successful rotations, return the element rotated to
+     finally return (ring-ref jupyter-repl-history 0))))
 
 (defun jupyter-repl-history-next (&optional n)
   "Go to the next history element.
@@ -986,7 +997,7 @@ older history elements."
   (or n (setq n 1))
   (if (< n 0) (jupyter-repl-history-previous (- n))
     (goto-char (point-max))
-    (let ((code (jupyter-repl-history--next n)))
+    (let ((code (jupyter-repl-history--rotate n)))
       (if (and (null code) (equal (jupyter-repl-cell-code) ""))
           (error "End of history")
         (if (null code)
@@ -994,21 +1005,6 @@ older history elements."
             ;; direction and the cell code is not empty, make it empty.
             (jupyter-repl-replace-cell-code "")
           (jupyter-repl-replace-cell-code code))))))
-
-(defun jupyter-repl-history--previous (n)
-  "Helper function for `jupyter-repl-history-previous'.
-Rotates `jupyter-repl-history' N times in the backward direction,
-towards older history elements and returns the Nth history
-element in that direction relative to the current REPL history.
-If the sentinel value is found before rotating N times, return
-nil."
-  (if (> n 0)
-      (unless (eq (ring-ref jupyter-repl-history 1) 'jupyter-repl-history)
-        (ring-insert-at-beginning
-         jupyter-repl-history (ring-remove jupyter-repl-history 0))
-        (jupyter-repl-history--previous (1- n)))
-    (unless (eq (ring-ref jupyter-repl-history 0) 'jupyter-repl-history)
-      (ring-ref jupyter-repl-history 0))))
 
 (defun jupyter-repl-history-previous (&optional n)
   "Go to the previous history element.
@@ -1022,7 +1018,7 @@ elements."
     (unless (equal (jupyter-repl-cell-code)
                    (ring-ref jupyter-repl-history 0))
       (setq n (1- n)))
-    (let ((code (jupyter-repl-history--previous n)))
+    (let ((code (jupyter-repl-history--rotate (- n))))
       (if (null code)
           (error "Beginning of history")
         (jupyter-repl-replace-cell-code code)))))
@@ -1495,9 +1491,9 @@ the kernel `jupyter-current-client' is connected to."
   "Wrap the input history search when search fails.
 Go to the oldest history element for a forward search or to the
 newest history element for a backward search."
-  (if isearch-forward
-      (jupyter-repl-history--previous (ring-length jupyter-repl-history))
-    (jupyter-repl-history--next (ring-length jupyter-repl-history)))
+  (jupyter-repl-history--rotate
+   (* (if isearch-forward -1 1)
+      (ring-length jupyter-repl-history)))
   (jupyter-repl-replace-cell-code (ring-ref jupyter-repl-history 0))
   (goto-char (if isearch-forward (jupyter-repl-cell-code-beginning-position)
                (point-max))))
@@ -1513,13 +1509,12 @@ in the appropriate direction, to the saved element."
       (let ((elem (ring-ref jupyter-repl-history 0)))
         (lambda (_cmd)
           (when isearch-wrapped
-            (if isearch-forward
-                (jupyter-repl-history--next (ring-length jupyter-repl-history))
-              (jupyter-repl-history--previous (ring-length jupyter-repl-history))))
-          (while (not (eq (ring-ref jupyter-repl-history 0) elem))
-            (if isearch-forward
-                (jupyter-repl-history--previous 1)
-              (jupyter-repl-history--next 1)))
+            (jupyter-repl-history--rotate
+             (* (if isearch-forward 1 -1)
+                (ring-length jupyter-repl-history))))
+          (let ((dir (if isearch-forward -1 1)))
+            (while (not (eq (ring-ref jupyter-repl-history 0) elem))
+              (jupyter-repl-history--rotate dir)))
           (jupyter-repl-replace-cell-code (ring-ref jupyter-repl-history 0)))))
      (t
       (let ((elem code))
