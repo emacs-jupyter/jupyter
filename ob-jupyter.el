@@ -460,12 +460,12 @@ mapped to their appropriate minted language in
   "Remove ANSI escapes from Jupyter src-block results in the current buffer."
   (org-babel-map-src-blocks nil
     (when (org-babel-jupyter-language-p lang)
-      (let ((pos (org-babel-where-is-src-block-result))
-            (ansi-color-apply-face-function
-             (lambda (beg end face)
-               ;; Could be useful for export backends
-               (when face
-                 (put-text-property beg end 'face face)))))
+      (when-let* ((pos (org-babel-where-is-src-block-result))
+                  (ansi-color-apply-face-function
+                   (lambda (beg end face)
+                     ;; Could be useful for export backends
+                     (when face
+                       (put-text-property beg end 'face face)))))
         (goto-char pos)
         (ansi-color-apply-on-region (point) (org-babel-result-end))))))
 

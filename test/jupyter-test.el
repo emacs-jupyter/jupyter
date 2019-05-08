@@ -1874,6 +1874,50 @@ x
                    (nth 2 (org-babel-get-src-block-info 'light)))))
    (erase-buffer)))
 
+(ert-deftest org-babel-jupyter-strip-ansi-escapes ()
+  :tags '(org)
+  (jupyter-org-test
+   (insert "\
+#+BEGIN_SRC jupyter-foo
+#+END_SRC
+
+#+RESULTS:
+: AB[43mCD[0mEF\n")
+   (org-babel-jupyter-strip-ansi-escapes 'latex)
+   (should (equal (buffer-string)
+                  "\
+#+BEGIN_SRC jupyter-foo
+#+END_SRC
+
+#+RESULTS:
+: ABCDEF\n"))
+   (erase-buffer)
+   (insert "\
+#+BEGIN_SRC jupyter-foo
+#+END_SRC
+
+#+RESULTS:
+")
+   (org-babel-jupyter-strip-ansi-escapes 'latex)
+   (should (equal (buffer-string)
+                  "\
+#+BEGIN_SRC jupyter-foo
+#+END_SRC
+
+#+RESULTS:
+"))
+   (erase-buffer)
+   (insert "\
+#+BEGIN_SRC jupyter-foo
+#+END_SRC
+")
+   (org-babel-jupyter-strip-ansi-escapes 'latex)
+   (should (equal (buffer-string)
+                  "\
+#+BEGIN_SRC jupyter-foo
+#+END_SRC
+"))))
+
 (ert-deftest org-babel-jupyter-:results-header-arg ()
   :tags '(org)
   (ert-info ("scalar suppresses table output")
