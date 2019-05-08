@@ -541,7 +541,8 @@
   (let (ref)
     (let ((obj (list 1)))
       (setq ref (jupyter-weak-ref obj)))
-    (ignore (make-list (* 2 gc-cons-threshold) ?0))
+    (garbage-collect)
+    (garbage-collect)
     (garbage-collect)
     (should-not (jupyter-weak-ref-resolve ref))))
 
