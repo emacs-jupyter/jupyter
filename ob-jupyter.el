@@ -200,6 +200,15 @@ variables in PARAMS."
         (insert (org-babel-expand-body:jupyter (org-babel-chomp body) params))
         (current-buffer)))))
 
+(defun org-babel-jupyter--run-repl (session kernel)
+  (let ((remote (file-remote-p session)))
+    (when (and remote (zerop (length (file-local-name session))))
+      (error "No remote session name"))
+    (let* ((default-directory (or remote default-directory))
+           (runtime-directory (jupyter-command "--runtime-dir"))
+           (jupyter-runtime-directory (concat remote runtime-directory)))
+      (jupyter-run-repl kernel nil nil 'jupyter-org-client))))
+
 (defun org-babel-jupyter-initiate-session-by-key (session params)
   "Return the Jupyter REPL buffer for SESSION.
 If SESSION does not have a client already, one is created based
@@ -207,32 +216,39 @@ on SESSION and PARAMS. If SESSION ends with \".json\" then
 SESSION is interpreted as a kernel connection file and a new
 kernel connected to SESSION is created.
 
-Otherwise a kernel is started based on the `:kernel' parameter
-in PARAMS which should be either a valid kernel name or a prefix
-of one. The first kernel that is returned by
-`jupyter-find-kernelspecs' when passed the value of the `:kernel'
-parameter will be used."
+Otherwise a kernel is started based on the `:kernel' parameter in
+PARAMS which should be either a valid kernel name or a prefix of
+one, in which case the first kernel that matches the prefix will
+be used.
+
+If SESSION is a remote file name, like /ssh:ec2:jl, then the
+kernel starts on the remote host /ssh:ec2: with a session name of
+jl. The remote host must have jupyter installed since the
+\"jupyter kernel\" command will be used to start the kernel on
+the host."
   (let* ((kernel (alist-get :kernel params))
          (key (org-babel-jupyter-session-key params))
-         (client
-          (or (gethash key org-babel-jupyter-session-clients)
-              (let ((client
-                     (if (string-suffix-p ".json" session)
-                         (jupyter-connect-repl session nil nil 'jupyter-org-client)
-                       (jupyter-run-repl kernel nil nil 'jupyter-org-client))))
-                (jupyter-set client 'jupyter-include-other-output nil)
-                (jupyter-with-repl-buffer client
-                  (let ((name (buffer-name)))
-                    (when (string-match "^\\*\\(.+\\)\\*" name)
-                      (rename-buffer
-                       (concat "*" (match-string 1 name) "-" session "*")
-                       'unique)))
-                  (add-hook
-                   'kill-buffer-hook
-                   (lambda ()
-                     (remhash key org-babel-jupyter-session-clients))
-                   nil t))
-                (puthash key client org-babel-jupyter-session-clients)))))
+         (client (gethash key org-babel-jupyter-session-clients)))
+    (unless client
+      (setq client
+            (cond
+             ((string-suffix-p ".json" session)
+              (jupyter-connect-repl session nil nil 'jupyter-org-client))
+             (t
+              (org-babel-jupyter--run-repl session kernel))))
+      (jupyter-set client 'jupyter-include-other-output nil)
+      (jupyter-with-repl-buffer client
+        (let ((name (buffer-name)))
+          (when (string-match "^\\*\\(.+\\)\\*" name)
+            (rename-buffer
+             (concat "*" (match-string 1 name) "-" session "*")
+             'unique)))
+        (add-hook
+         'kill-buffer-hook
+         (lambda ()
+           (remhash key org-babel-jupyter-session-clients))
+         nil t))
+      (puthash key client org-babel-jupyter-session-clients))
     (oref client buffer)))
 
 (defun org-babel-jupyter-initiate-session (&optional session params)
