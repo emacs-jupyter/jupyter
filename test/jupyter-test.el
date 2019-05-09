@@ -36,6 +36,17 @@
 (require 'ert)
 (require 'subr-x)                       ; string-trim
 
+;; Increase timeouts when testing for consistency. I think what is going on is
+;; that communication with subprocesses gets slowed down when many processes
+;; are being open and closed? The kernel processes are cached so they are
+;; re-used for the most part except for tests that explicitly start and stop a
+;; process. Increasing these timeouts seemed to do the trick.
+(when (or (getenv "APPVEYOR") (getenv "TRAVIS"))
+  (setq jupyter-long-timeout 20
+        jupyter-default-timeout jupyter-long-timeout))
+
+(message "system-configuration %s" system-configuration)
+
 (declare-function org-babel-python-table-or-string "ob-python" (results))
 
 ;; TODO: Required tests
