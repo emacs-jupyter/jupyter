@@ -65,9 +65,8 @@ test_script:
           cd $env:APPVEYOR_BUILD_FOLDER
           make test
       }
-      # For some reason multiple Emacs processes are sometimes present.
       $emacs = $null
-      while (!$emacs -or $emacs.Count -gt 1) {
+      while (!$emacs) {
           Start-Sleep 1
           $emacs = Get-Process emacs -ErrorAction SilentlyContinue
       }
@@ -75,9 +74,17 @@ test_script:
       # $null when checked.
       $handle = $emacs.Handle
       $make_test | Receive-Job -Wait
+      # According to the Windows documentation
+      # (https://docs.microsoft.com/en-us/dotnet/api/system.diagnostics.process.exitcode#remarks)
+      # if an exited process's output is being redirected, there are
+      # asynchronous events occuring such that the process may still be alive
+      # even though HasExited returns true. The result is that ExitCode may
+      # return null even though the Job is supposes to be complete. The
+      # recommended solution is to ensure WaitForExit() is called.
+      $emacs.WaitForExit()
       $emacs_exitcode = $emacs.ExitCode
-      if ($emacs_exitcode -ne 0) {
-          throw "Tests failed"
-      } else {
+      if ($emacs_exitcode -eq 0) {
           Write-Host "Tests passed" -BackgroundColor green
+      } else {
+          throw "Tests failed"
       }
