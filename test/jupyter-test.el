@@ -572,6 +572,30 @@
     (should (null (car val)))))
 
 
+;;; Kernel
+
+(ert-deftest jupyter-command-kernel ()
+  :tags '(kernel)
+  (let ((kernel (jupyter-command-kernel
+                 :spec (jupyter-guess-kernelspec "python"))))
+    (ert-info ("Session set after kernel starts")
+      (should-not (jupyter-kernel-alive-p kernel))
+      (jupyter-start-kernel kernel)
+      (should (jupyter-kernel-alive-p kernel))
+      (should (oref kernel session)))
+    (ert-info ("Session is invalid when kernel is no longer alive")
+      (jupyter-kill-kernel kernel)
+      (should-not (jupyter-kernel-alive-p kernel))
+      (should-not (slot-boundp kernel 'session)))
+    (ert-info ("Can we communicate?")
+      (let ((manager (jupyter-kernel-manager :kernel kernel)))
+        (jupyter-start-kernel manager)
+        (let ((jupyter-current-client
+               (jupyter-make-client manager 'jupyter-kernel-client)))
+          (jupyter-start-channels jupyter-current-client)
+          (jupyter-wait-until-startup jupyter-current-client)
+          (should (equal (jupyter-eval "1 + 1") "2")))))))
+
 ;;; Client
 
 ;; TODO: Different values of the session argument
@@ -616,6 +640,27 @@
       (ert-info ("Invalid signature scheme")
         (plist-put conn-info :signature_scheme "hmac-foo")
         (should-error (jupyter-initialize-connection client conn-info))))))
+
+(ert-deftest jupyter-write-connection-file ()
+  :tags '(client)
+  (let (file fun)
+    (let* ((session (jupyter-session
+                     :conn-info (jupyter-create-connection-info)))
+           (client (jupyter-kernel-client))
+           (hook (copy-sequence kill-emacs-hook)))
+      (setq file (jupyter-write-connection-file session client))
+      (should (file-exists-p file))
+      (should-not (equal kill-emacs-hook hook))
+      (setq fun (car (cl-set-difference kill-emacs-hook hook)))
+      (should-not (memq fun hook)))
+    (garbage-collect)
+    (garbage-collect)
+    (garbage-collect)
+    (unwind-protect
+        (should-not (file-exists-p file))
+      (when (file-exists-p file)
+        (delete-file file)))
+    (should-not (memq fun kill-emacs-hook))))
 
 (ert-deftest jupyter-client-channels ()
   :tags '(client channels)
@@ -1419,7 +1464,10 @@ Latex(r'$\\alpha$')"
          (py-version
           (with-current-buffer jupyter-org-test-buffer
             (jupyter-test-ipython-kernel-version
-             (oref (oref jupyter-current-client manager) spec))))
+             (thread-first jupyter-current-client
+               (slot-value 'manager)
+               (slot-value 'kernel)
+               (slot-value 'spec)))))
          ;; There is a change in how the IPython kernel prints base64 encoded
          ;; images somewhere between [4.6.1, 5.1]. In 5.1, base64 encoded
          ;; images are printed with line breaks whereas in 4.6.1 they are not.
@@ -1998,5 +2046,6 @@ publish_display_data({'text/plain': \"foo\", 'text/latex': \"$\\alpha$\"});"
 
 ;; Local Variables:
 ;; byte-compile-warnings: (not free-vars)
+;; eval: (and (functionp 'aggressive-indent-mode) (aggressive-indent-mode -1))
 ;; End:
 ;;; jupyter-test.el ends here

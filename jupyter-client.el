@@ -574,6 +574,24 @@ display for reporting progress to the user while waiting."
         (progress-msg (or timeout jupyter-default-timeout))
       msg)))
 
+(defun jupyter-wait-until-startup (client &optional timeout progress-msg)
+  "Wait for CLIENT to receive a status: startup message.
+Return non-nil if CLIENT receives the message within TIMEOUT,
+otherwise nil. TIMEOUT defaults to `jupyter-long-timeout'.
+
+If PROGRESS-MSG is non-nil, it should be a message string to
+display for reporting progress to the user while waiting."
+  (let* ((msg nil)
+         (check (lambda (_ m)
+                  (when (jupyter-message-status-starting-p m)
+                    (setq msg m)))))
+    (jupyter-add-hook client 'jupyter-iopub-message-hook check)
+    (unwind-protect
+        (jupyter-with-timeout
+            (progress-msg (or timeout jupyter-long-timeout))
+          msg)
+      (jupyter-remove-hook client 'jupyter-iopub-message-hook check))))
+
 (defun jupyter-wait-until-idle (req &optional timeout progress-msg)
   "Wait until a status: idle message is received for a request.
 REQ has the same meaning as in `jupyter-add-callback'. If an idle

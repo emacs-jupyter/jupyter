@@ -183,10 +183,6 @@ is returned to the parent process."
       (oset channel endpoint endpoint)
       (jupyter-start-channel channel :identity (jupyter-session-id jupyter-ioloop-session))
       (jupyter-ioloop-poller-add (oref channel socket) zmq-POLLIN)
-      ;; Let the channel start. This avoids problems with the initial startup
-      ;; message for the python kernel. Sometimes we arent fast enough to get
-      ;; this message.
-      (sleep-for 0.2)
       (list 'start-channel type))))
 
 (defun jupyter-channel-ioloop-add-stop-channel-event (ioloop)

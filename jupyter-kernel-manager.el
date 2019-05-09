@@ -30,6 +30,7 @@
 (require 'jupyter-base)
 (require 'jupyter-messages)
 (require 'jupyter-client)
+(eval-when-compile (require 'subr-x))
 
 (declare-function ansi-color-apply "ansi-color" (string))
 
@@ -37,69 +38,227 @@
   "Jupyter kernel manager"
   :group 'jupyter)
 
-(defvar jupyter--managers nil
-  "A list of all live kernel managers.")
+;;; `jupyter-kernel-process'
 
-(defclass jupyter-kernel-manager (jupyter-finalized-object
-                                  jupyter-instance-tracker)
-  ((tracking-symbol :initform 'jupyter--managers)
-   (name
-    :initarg :name
-    :type string
-    :documentation "The name of the kernel that is being managed.")
+(defclass jupyter-kernel-lifetime (jupyter-finalized-object)
+  ()
+  :abstract t
+  :documentation "Trait to control the lifetime of a kernel.")
+
+(cl-defmethod initialize-instance ((kernel jupyter-kernel-lifetime) &optional _slots)
+  (cl-call-next-method)
+  (jupyter-add-finalizer kernel
+    (lambda ()
+      (when (jupyter-kernel-alive-p kernel)
+        (jupyter-kill-kernel kernel)))))
+
+(cl-defgeneric jupyter-kernel-alive-p ((kernel jupyter-kernel-lifetime))
+  "Return non-nil if KERNEL is alive.")
+
+(cl-defgeneric jupyter-start-kernel ((kernel jupyter-kernel-lifetime) &rest args)
+  "Start KERNEL.")
+
+(cl-defgeneric jupyter-kill-kernel ((kernel jupyter-kernel-lifetime))
+  "Tell the KERNEL to stop.")
+
+(cl-defgeneric jupyter-kernel-died ((kernel jupyter-kernel-lifetime))
+  "Called when a KERNEL dies unexpectedly.")
+
+(cl-defmethod jupyter-start-kernel :around ((kernel jupyter-kernel-lifetime) &rest _)
+  "Error when KERNEL is already alive, otherwise call the next method."
+  (when (jupyter-kernel-alive-p kernel)
+    (error "Kernel already alive"))
+  (cl-call-next-method))
+
+(cl-defmethod jupyter-kill-kernel :around ((kernel jupyter-kernel-lifetime))
+  "Call the next method only when KERNEL is alive."
+  (when (jupyter-kernel-alive-p kernel)
+    (cl-call-next-method)))
+
+(cl-defmethod jupyter-kernel-died ((_kernel jupyter-kernel-lifetime))
+  (ignore))
+
+(defclass jupyter-meta-kernel (jupyter-kernel-lifetime)
+  ((spec
+    :type cons
+    :initarg :spec
+    :documentation "The kernelspec for this kernel.
+SPEC is in the same format as one of the elements returned by
+`jupyter-find-kernelspecs'.")
    (session
     :type jupyter-session
     :initarg :session
-    :documentation "The session used to sign and send/receive messages.")
-   (kernel
-    :type (or null process)
-    :initform nil
-    :documentation "The local kernel process when the kernel is alive.")
-   (conn-file
-    :type (or null string)
-    :initform nil
-    :documentation "The path to the file holding the connection information.")
+    :documentation "The session used for communicating with the kernel.
+This slot is set to an unbound state after a call to
+`jupyter-kill-kernel'."))
+  :abstract t
+  :documentation "Partial representation of a Jupyter kernel.
+
+Contains the kernelspec associated with the kernel and the
+`jupyter-session' object used for communicating with the kernel
+when it is alive.
+
+Sub-classes must call `cl-next-method-method' in their
+implementation of `jupyter-kill-kernel'.
+
+A convenience method, `jupyter-kernel-name', is provided to
+access the name of the kernelspec.")
+
+(cl-defmethod jupyter-kill-kernel ((kernel jupyter-meta-kernel))
+  (when (slot-boundp kernel 'session)
+    (slot-makeunbound kernel 'session)))
+
+(cl-defmethod jupyter-kernel-name ((kernel jupyter-meta-kernel))
+  "Return the name of KERNEL."
+  (car (oref kernel spec)))
+
+(defclass jupyter-kernel-process (jupyter-meta-kernel)
+  ((process
+    :type process
+    :documentation "The kernel process."))
+  :documentation "A Jupyter kernel process.
+Starts a kernel process using `start-file-process'.
+
+If the kernel was started on a remote host, ensure that local
+tunnels are created when setting the session slot after the
+kernel starts.")
+
+(cl-defmethod jupyter-kernel-alive-p ((kernel jupyter-kernel-process))
+  (and (slot-boundp kernel 'process)
+       (process-live-p (oref kernel process))))
+
+(cl-defmethod jupyter-start-kernel ((kernel jupyter-kernel-process) &rest args)
+  "Start a KERNEL process with ARGS."
+  (let ((name (jupyter-kernel-name kernel)))
+    (oset kernel process
+          (apply #'start-file-process
+                 (format "jupyter-kernel-%s" name)
+                 (generate-new-buffer
+                  (format " *jupyter-kernel[%s]*" name))
+                 (car args) (cdr args)))
+    (set-process-query-on-exit-flag
+     (oref kernel process) jupyter--debug)))
+
+(defun jupyter--kernel-died-process-sentinel (kernel)
+  "Return a sentinel function calling KERNEL's `jupyter-kernel-died' method.
+The method will be called when the process exits or receives a
+fatal signal."
+  (cl-check-type kernel jupyter-kernel-lifetime)
+  (let ((ref (jupyter-weak-ref kernel)))
+    (lambda (process _)
+      (when (memq (process-status process) '(exit signal))
+        (when-let* ((kernel (jupyter-weak-ref-resolve ref)))
+          (jupyter-kernel-died kernel))))))
+
+(cl-defmethod jupyter-start-kernel :after ((kernel jupyter-kernel-process) &rest _args)
+  (setf (process-sentinel (oref kernel process))
+        (jupyter--kernel-died-process-sentinel kernel)))
+
+(cl-defmethod jupyter-kill-kernel ((kernel jupyter-kernel-process))
+  (with-slots (process) kernel
+    (delete-process process)
+    (when (buffer-live-p (process-buffer process))
+      (kill-buffer (process-buffer process))))
+  (cl-call-next-method))
+
+(defclass jupyter-command-kernel (jupyter-kernel-process)
+  ()
+  :documentation "A Jupyter kernel process using the \"jupyter kernel\" command.")
+
+(cl-defmethod jupyter-start-kernel ((kernel jupyter-command-kernel) &rest args)
+  "Start KERNEL, passing ARGS as command line arguments to \"jupyter kernel\".
+The --kernel argument of \"jupyter kernel\" is filled in with the
+`jupyter-kernel-name' of KERNEL and passed as the first
+argument of the process."
+  (apply #'cl-call-next-method
+         kernel "jupyter" "kernel"
+         (format "--kernel=%s" (jupyter-kernel-name kernel))
+         args))
+
+(cl-defmethod jupyter-start-kernel :after ((kernel jupyter-command-kernel) &rest _args)
+  "Set the session slot from KERNEL's process output."
+  (with-slots (process) kernel
+    (with-current-buffer (process-buffer process)
+      (jupyter-with-timeout
+          ((format "Launching %s kernel process..." (jupyter-kernel-name kernel))
+           jupyter-long-timeout
+           (if (process-live-p process)
+               (error "\
+`jupyter kernel` output did not show connection file within timeout")
+             (error "Kernel process exited:\n%s"
+                    (ansi-color-apply (buffer-string)))))
+        (and (process-live-p process)
+             (goto-char (point-min))
+             (re-search-forward "Connection file: \\(.+\\)\n" nil t)))
+      (let* ((conn-file (match-string 1))
+             (remote (file-remote-p default-directory))
+             (conn-info (if remote (jupyter-tunnel-connection
+                                    (concat remote conn-file))
+                          (jupyter-read-plist conn-file))))
+        (oset kernel session (jupyter-session
+                              :conn-info conn-info
+                              :key (plist-get conn-info :key)))))))
+
+(defclass jupyter-spec-kernel (jupyter-kernel-process)
+  ()
+  :documentation "A Jupyter kernel launched from a kernelspec.")
+
+(defun jupyter--block-until-conn-file-access (atime kernel conn-file)
+  (with-slots (process) kernel
+    (jupyter-with-timeout
+        ((format "Starting %s kernel process..." (jupyter-kernel-name kernel))
+         jupyter-long-timeout
+         ;; If the process is still alive, punt farther down the line.
+         (unless (process-live-p process)
+           (error "Kernel process exited:\n%s"
+                  (with-current-buffer (process-buffer process)
+                    (ansi-color-apply (buffer-string))))))
+      (let ((attribs (file-attributes conn-file)))
+        ;; `file-attributes' can potentially return nil, in this case
+        ;; just assume it has read the connection file so that we can
+        ;; know for sure it is not connected if it fails to respond to
+        ;; any messages we send it.
+        (or (null attribs)
+            (not (equal atime (nth 4 attribs))))))))
+
+(cl-defmethod jupyter-start-kernel ((kernel jupyter-spec-kernel) &rest _args)
+  (cl-destructuring-bind (_name . (resource-dir . spec)) (oref kernel spec)
+    (let ((conn-file (jupyter-write-connection-file
+                      (oref kernel session) kernel))
+          (process-environment
+           (append
+            ;; The first entry takes precedence when duplicated
+            ;; variables are found in `process-environment'
+            (cl-loop
+             for (k v) on (plist-get spec :env) by #'cddr
+             collect (format "%s=%s" (cl-subseq (symbol-name k) 1) v))
+            process-environment)))
+      (let ((atime (nth 4 (file-attributes conn-file))))
+        (apply #'cl-call-next-method
+               kernel (cl-loop
+                       for arg in (append (plist-get spec :argv) nil)
+                       if (equal arg "{connection_file}")
+                       collect (file-local-name conn-file)
+                       else if (equal arg "{resource_dir}")
+                       collect (file-local-name resource-dir)
+                       else collect arg))
+        ;; Windows systems may not have good time resolution when retrieving
+        ;; the last access time of a file so we don't bother with checking that
+        ;; the kernel has read the connection file and leave it to the
+        ;; downstream initialization to ensure that we can communicate with a
+        ;; kernel.
+        (unless (memq system-type '(ms-dos windows-nt cygwin))
+          (jupyter--block-until-conn-file-access atime kernel conn-file))))))
+
+(defclass jupyter-kernel-manager (jupyter-kernel-lifetime)
+  ((kernel
+    :type jupyter-meta-kernel
+    :initarg :kernel
+    :documentation "The name of the kernel that is being managed.")
    (control-channel
     :type (or null jupyter-sync-channel)
     :initform nil
-    :documentation "The kernel control channel.")
-   (spec
-    :type (or null json-plist)
-    :initarg :spec
-    :initform nil
-    :documentation "The kernelspec used to start/restart the kernel.")))
-
-(defun jupyter-kernel-manager--cleanup (manager &optional kill-kernel)
-  "Cleanup external resources of MANAGER.
-If KILL-KERNEL is non-nil, delete MANAGER's kernel process if it
-is alive."
-  (with-slots (kernel conn-file) manager
-    (when (and conn-file (file-exists-p conn-file))
-      (delete-file conn-file))
-    (when (and kill-kernel (process-live-p kernel))
-      (delete-process kernel))))
-
-(cl-defmethod initialize-instance ((manager jupyter-kernel-manager) &optional _slots)
-  "Initialize MANAGER based on SLOTS.
-If the `:name' slot is not found in SLOTS, it defaults to
-\"python\". This means that without providing a kernel name, the
-default kernel is a python kernel."
-  (cl-call-next-method)
-  (unless (slot-boundp manager 'name)
-    (oset manager name "python"))
-  (jupyter-add-finalizer manager
-    (lambda () (jupyter-kernel-manager--cleanup manager t))))
-
-(defun jupyter-kernel-managers ()
-  "Return a list of all live kernel managers."
-  (jupyter-all-objects 'jupyter--managers))
-
-(defun jupyter-delete-all-kernels ()
-  "Delete all kernel processes and external resources used."
-  (dolist (manager (jupyter-kernel-managers))
-    (jupyter-kernel-manager--cleanup manager t)))
-
-(add-hook 'kill-emacs-hook 'jupyter-delete-all-kernels)
+    :documentation "The kernel's control channel.")))
 
 (cl-defgeneric jupyter-make-client ((manager jupyter-kernel-manager) class &rest slots)
   "Make a new client from CLASS connected to MANAGER's kernel.
@@ -113,161 +272,56 @@ connect to MANAGER's kernel."
   (unless (child-of-class-p class 'jupyter-kernel-client)
     (signal 'wrong-type-argument (list '(subclass jupyter-kernel-client) class)))
   (let ((client (apply #'make-instance class slots)))
-    (prog1 client
-      (oset client manager manager)
-      ;; TODO: We can also have the manager hold the kcomm object and just
-      ;; pass a single kcomm object to all clients using this manager since the
-      ;; kcomm broadcasts event to all connected clients. This is more
-      ;; efficient as it only uses one subprocess for every client connected to
-      ;; a kernel.
-      (oset client kcomm (jupyter-channel-ioloop-comm))
-      (jupyter-initialize-connection
-       client (copy-sequence (oref manager session))))))
+    (with-slots (kernel) manager
+      (prog1 client
+        (oset client manager manager)
+        ;; TODO: We can also have the manager hold the kcomm object and just
+        ;; pass a single kcomm object to all clients using this manager since the
+        ;; kcomm broadcasts event to all connected clients. This is more
+        ;; efficient as it only uses one subprocess for every client connected to
+        ;; a kernel.
+        (oset client kcomm (jupyter-channel-ioloop-comm))
+        (jupyter-initialize-connection client (oref kernel session))))))
 
-(defun jupyter--kernel-sentinel (kernel &optional _)
-  "Kill the KERNEL process and its buffer."
-  (when (memq (process-status kernel) '(exit signal))
-    (when (process-live-p kernel)
-      (delete-process kernel))
-    (when (buffer-live-p (process-buffer kernel))
-      (kill-buffer (process-buffer kernel)))))
-
-(defun jupyter--start-kernel (kernel-name env args)
-  "Start a kernel.
-Start a kernel named KERNEL-NAME with ENV and ARGS. Return the
-newly created kernel process.
-
-If ENV is non-nil, then it should be a plist containing
-environment variable names as keywords along with their
-corresponding values. These will be set as the process
-environment before starting the kernel.
-
-ARGS should be a list of command line arguments used to start the
-kernel process. The name of the command used to start the kernel
-should be the first element of ARGS and the rest of the elements
-of ARGS are the arguments of the command."
-  (let ((process-environment
-         (append
-          ;; The first entry takes precedence when duplicated variables are
-          ;; found in `process-environment'
-          (cl-loop
-           for (k v) on env by #'cddr
-           collect (format "%s=%s" (cl-subseq (symbol-name k) 1) v))
-          process-environment)))
-    (apply #'start-process
-           (format "jupyter-kernel-%s" kernel-name)
-           (generate-new-buffer
-            (format " *jupyter-kernel[%s]*" kernel-name))
-           (car args) (cdr args))))
-
-(cl-defgeneric jupyter-start-kernel ((manager jupyter-kernel-manager) &optional timeout)
-  "Start a kernel based on MANAGER's slots. Wait until TIMEOUT for startup.")
-
-(cl-defmethod jupyter-start-kernel ((manager jupyter-kernel-manager) &optional timeout)
-  "Start a kernel and associate it with MANAGER.
-
-The MANAGER's `name' property is passed to
-`jupyter-find-kernelspecs' in order to find the kernel to start.
-If `jupyter-find-kernelspecs' returns multiple kernelspecs that
-match `name', the first one on the list is used.
-
-If a valid kernel is found, its kernelspec is used to start a new
-kernel. Starting a kernel involves the following steps:
-
-1. Write the connection info of MANAGER's session to a file in
-   the `jupyter-runtime-directory'.
-
-2. Start a kernel subprocess passing the connection info file as
-   the {connection_file} argument in the kernelspec argument
-   vector of the kernel.
-
-3. Connect the control channel of MANAGER to the kernel."
+(cl-defmethod jupyter-start-kernel ((manager jupyter-kernel-manager) &rest args)
+  "Start MANAGER's kernel."
   (unless (jupyter-kernel-alive-p manager)
-    ;; Remove any resources from a previous kernel that was started by this
-    ;; manager, e.g. when restarting a kernel. These resources will get cleaned
-    ;; up when the manager object is garbage collected (or when Emacs is
-    ;; killed) but this doesn't happen when restarting a kernel.
-    (jupyter-kernel-manager--cleanup manager)
-    (cl-destructuring-bind (kernel-name . (resource-dir . spec))
-        (or (car (jupyter-find-kernelspecs (oref manager name)))
-            (error "No valid kernelspec for kernel name (%s)"
-                   (oref manager name)))
-      (make-directory jupyter-runtime-directory 'parents)
-      (let* ((temporary-file-directory jupyter-runtime-directory)
-             (session (oref manager session))
-             (conn-info (jupyter-session-conn-info session))
-             (conn-file (make-temp-file "emacs-kernel-" nil ".json")))
-        ;; Write the connection info file
-        (let ((json-encoding-pretty-print t))
-          (with-temp-file conn-file
-            (insert (json-encode-plist conn-info))))
-        ;; Start the process
-        (let ((atime (nth 4 (file-attributes conn-file)))
-              (proc (jupyter--start-kernel
-                     kernel-name (plist-get spec :env)
-                     (cl-loop
-                      for arg in (append (plist-get spec :argv) nil)
-                      if (equal arg "{connection_file}")
-                      collect conn-file
-                      else if (equal arg "{resource_dir}")
-                      collect resource-dir
-                      else collect arg))))
-          (oset manager kernel proc)
-          (oset manager conn-file conn-file)
-          (prog1 manager
-            ;; Block until the kernel reads the connection file
-            (jupyter-with-timeout
-                ((format "Starting %s kernel process..." kernel-name)
-                 (or timeout jupyter-long-timeout)
-                 (if (process-live-p proc)
-                     (error "Kernel did not read connection file within timeout")
-                   (error "Kernel process exited:\n%s"
-                          (with-current-buffer (process-buffer proc)
-                            (prog1 (ansi-color-apply (buffer-string))
-                              ;; Now run the sentinel to cleanup resources
-                              (jupyter--kernel-sentinel proc))))))
-              (let ((attribs (file-attributes conn-file)))
-                ;; Windows systems may not have good time resolution when
-                ;; retrieving the last access time of a file so we don't bother
-                ;; with checking that the kernel has read the connection file
-                ;; and leave it to the downstream initialization to ensure that
-                ;; we can communicate with a kernel.
-                (or (memq system-type '(windows-nt cygwin ms-dos))
-                    ;; `file-attributes' can potentially return nil, in this case
-                    ;; just assume it has read the connection file so that we can
-                    ;; know for sure it is not connected if it fails to respond to
-                    ;; any messages we send it.
-                    (null attribs)
-                    (not (equal atime (nth 4 attribs))))))
-            ;; Now set the sentinel of the kernel to cleanup resources if the
-            ;; kernel dies later on.
-            (set-process-sentinel proc #'jupyter--kernel-sentinel)))))))
+    (with-slots (kernel) manager
+      (apply #'jupyter-start-kernel kernel args)
+      (jupyter-start-channels manager))))
+
+(cl-defmethod jupyter-start-kernel :after ((manager jupyter-kernel-manager) &rest _args)
+  (with-slots (kernel) manager
+    (when (object-of-class-p kernel 'jupyter-kernel-process)
+      (add-function
+       :after (process-sentinel (oref kernel process))
+       (jupyter--kernel-died-process-sentinel manager)))))
 
 (cl-defmethod jupyter-start-channels ((manager jupyter-kernel-manager))
   "Start a control channel on MANAGER."
-  (with-slots (session control-channel) manager
-    (if control-channel
-        (unless (jupyter-channel-alive-p control-channel)
-          (jupyter-start-channel
-           control-channel :identity (jupyter-session-id session)))
+  (with-slots (kernel control-channel) manager
+    (if control-channel (jupyter-start-channel control-channel)
       (cl-destructuring-bind (&key transport ip control_port &allow-other-keys)
-          (jupyter-session-conn-info session)
+          (jupyter-session-conn-info (oref kernel session))
         (oset manager control-channel
               (jupyter-sync-channel
                :type :control
-               :session session
-               :endpoint (format "%s://%s:%d" transport ip control_port)))))))
+               :session (oref kernel session)
+               :endpoint (format "%s://%s:%d" transport ip control_port)))
+        (jupyter-start-channels manager)))))
 
 (cl-defmethod jupyter-stop-channels ((manager jupyter-kernel-manager))
   "Stop the control channel on MANAGER."
-  (let ((channel (oref manager control-channel)))
-    (when channel
-      (jupyter-stop-channel channel)
-      (oset manager control-channel nil))))
+  (when-let* ((channel (oref manager control-channel)))
+    (jupyter-stop-channel channel)
+    (oset manager control-channel nil)))
 
 (cl-defgeneric jupyter-shutdown-kernel ((manager jupyter-kernel-manager) &optional restart timeout)
   "Shutdown MANAGER's kernel or restart instead if RESTART is non-nil.
 Wait until TIMEOUT before forcibly shutting down the kernel.")
+
+(cl-defmethod jupyter-kill-kernel ((manager jupyter-kernel-manager))
+  (jupyter-shutdown-kernel manager))
 
 (cl-defmethod jupyter-shutdown-kernel ((manager jupyter-kernel-manager) &optional restart timeout)
   "Shutdown MANAGER's kernel with an optional RESTART.
@@ -279,16 +333,16 @@ channel is stopped unless RESTART is non-nil."
   (when (jupyter-kernel-alive-p manager)
     ;; FIXME: For some reason the control-channel is nil sometimes
     (jupyter-start-channels manager)
-    (let ((session (oref manager session))
-          (sock (oref (oref manager control-channel) socket))
-          (msg (jupyter-message-shutdown-request :restart restart)))
-      (jupyter-send session sock :shutdown-request msg)
+    (with-slots (control-channel kernel) manager
+      (jupyter-send control-channel :shutdown-request
+                    (jupyter-message-shutdown-request :restart restart))
       (jupyter-with-timeout
-          ((format "%s kernel shutting down..." (oref manager name))
+          ((format "%s kernel shutting down..."
+                   (jupyter-kernel-name kernel))
            (or timeout jupyter-default-timeout)
            (message "%s kernel did not shutdown by request"
-                    (oref manager name))
-           (jupyter-kernel-manager--cleanup manager 'kill-kernel))
+                    (jupyter-kernel-name kernel))
+           (jupyter-kill-kernel kernel))
         (not (jupyter-kernel-alive-p manager)))
       (if restart
           (jupyter-start-kernel manager)
@@ -306,29 +360,32 @@ interrupt request on MANAGER's control channel and wait until
 TIMEOUT for a reply. Otherwise if the kernel does not specify an
 interrupt mode, send an interrupt signal to the kernel
 subprocess."
-  (pcase (plist-get (oref manager spec) :interrupt_mode)
-    ("message"
-     ;; FIXME: For some reason the control-channel is nil sometimes
-     (jupyter-start-channels manager)
-     (let ((session (oref manager session))
-           (sock (oref (oref manager control-channel) socket))
-           (msg (jupyter-message-interrupt-request)))
-       (jupyter-send session sock :interrupt-request msg)
-       (jupyter-with-timeout
-           (nil (or timeout jupyter-default-timeout)
-                (message "No interrupt reply from kernel (%s)" (oref manager name)))
-         (condition-case nil
-             (jupyter-recv session sock zmq-DONTWAIT)
-           (zmq-EAGAIN nil)))))
-    (_ (interrupt-process (oref manager kernel) t))))
-
-(cl-defgeneric jupyter-kernel-alive-p ((manager jupyter-kernel-manager))
-  "Return non-nil if MANAGER's kernel is alive, otherwise return nil.")
+  (when (jupyter-kernel-alive-p manager)
+    ;; FIXME: For some reason the control-channel is nil sometimes
+    (jupyter-start-channels manager)
+    (with-slots (kernel) manager
+      (cl-destructuring-bind (_name _resource-dir . spec) (oref kernel spec)
+        (pcase (plist-get spec :interrupt_mode)
+          ("message"
+           (with-slots (control-channel) manager
+             (jupyter-send control-channel :interrupt-request
+                           (jupyter-message-interrupt-request))
+             (jupyter-with-timeout
+                 ((format "Interruptin %s kernel"
+                          (jupyter-kernel-name kernel))
+                  (or timeout jupyter-default-timeout)
+                  (message "No interrupt reply from kernel (%s)"
+                           (jupyter-kernel-name kernel)))
+               (condition-case nil
+                   (with-slots (session socket) control-channel
+                     (jupyter-recv session socket zmq-DONTWAIT))
+                 (zmq-EAGAIN nil)))))
+          (_ (interrupt-process (oref kernel kernel) t)))))))
 
 (cl-defmethod jupyter-kernel-alive-p ((manager jupyter-kernel-manager))
   "Is MANGER's kernel alive?"
-  (when (oref manager kernel)
-    (process-live-p (oref manager kernel))))
+  (and (slot-boundp manager 'kernel)
+       (jupyter-kernel-alive-p (oref manager kernel))))
 
 (defun jupyter--error-if-no-kernel-info (client)
   (jupyter-kernel-info client))
@@ -349,47 +406,42 @@ to the kernel whose class is CLIENT-CLASS. The client is
 connected to the kernel with all channels listening for messages
 and the heartbeat channel unpaused. Note that the client's
 `manager' slot will also be set to the kernel manager instance,
-see `jupyter-make-client'."
-  (or client-class (setq client-class 'jupyter-kernel-client))
-  (jupyter-error-if-not-client-class-p client-class)
-  (let ((match (car (jupyter-find-kernelspecs kernel-name))))
-    (unless match
-      (error "No kernel found that starts with name (%s)" kernel-name))
-    (setq kernel-name (car match))
+see `jupyter-make-client'.
 
-    (let* ((key (jupyter-new-uuid))
-           (conn-info (jupyter-create-connection-info
-                       :kernel-name kernel-name :key key))
-           (session (jupyter-session :key key :conn-info conn-info))
-           (manager (jupyter-kernel-manager
-                     :name kernel-name
-                     :spec (cddr match)
-                     :session session))
-           (client (jupyter-make-client manager client-class))
-           started)
-      ;; Ensure that the necessary hooks to catch the startup message are
-      ;; in place before starting the kernel.
-      ;;
-      ;; NOTE: Startup messages have no parent header, hence the need for
-      ;; `jupyter-include-other-output'.
-      (let* ((jupyter-include-other-output t)
-             (cb (lambda (_ msg)
-                   (setq started
-                         (jupyter-message-status-starting-p msg)))))
-        (jupyter-add-hook client 'jupyter-iopub-message-hook cb)
-        (jupyter-start-channels client)
-        (jupyter-start-kernel manager)
-        (jupyter-start-channels manager)
-        (jupyter-with-timeout
-            ("Kernel starting up..." jupyter-long-timeout
-             (message "Kernel did not send startup message"))
-          started)
-        ;; Un-pause the hearbeat after the kernel starts since waiting for
-        ;; it to start may cause the heartbeat to think the kernel died.
-        (jupyter-hb-unpause client)
-        (jupyter-remove-hook client 'jupyter-iopub-message-hook cb)
-        (jupyter--error-if-no-kernel-info client)
-        (list manager client)))))
+Note, if `default-directory' is a remote directory, a kernel will
+start on the remote host by using the \"jupyter kernel\" shell
+command on the host."
+  (or client-class (setq client-class 'jupyter-kernel-client))
+  ;; TODO: Replace with
+  ;; (cl-assert (child-of-class-p client-class 'jupyter-kernel-client))
+  (jupyter-error-if-not-client-class-p client-class)
+  (let* ((spec (jupyter-guess-kernelspec kernel-name))
+         (kernel (if (file-remote-p default-directory)
+                     (jupyter-command-kernel :spec spec)
+                   (let* ((key (jupyter-new-uuid))
+                          (conn-info (jupyter-create-connection-info
+                                      :kernel-name kernel-name
+                                      :key key)))
+                     (jupyter-spec-kernel
+                      :spec spec
+                      ;; TODO: Convert `jupyter-session' into an object and
+                      ;; only require `conn-info'.
+                      :session (jupyter-session
+                                :key key
+                                :conn-info conn-info)))))
+         (manager (jupyter-kernel-manager :kernel kernel)))
+    (jupyter-start-kernel manager)
+    (let ((client (jupyter-make-client manager client-class)))
+      (jupyter-start-channels client)
+      ;; Attempt to catch the startup message
+      (jupyter-wait-until-startup
+       client jupyter-default-timeout
+       (format "Kernel %s starting up" (jupyter-kernel-name kernel)))
+      (jupyter--error-if-no-kernel-info client)
+      ;; Un-pause the hearbeat after the kernel starts since waiting for
+      ;; it to start may cause the heartbeat to think the kernel died.
+      (jupyter-hb-unpause client)
+      (list manager client))))
 
 (provide 'jupyter-kernel-manager)
 

@@ -1978,7 +1978,11 @@ the symbol `jupyter-repl-client', which is the default.
 
 When called interactively, DISPLAY the new REPL buffer.
 Otherwise, in a non-interactive call, return the REPL client
-connected to the kernel."
+connected to the kernel.
+
+Note, if `default-directory' is a remote directory, a kernel will
+start on the remote host by using the \"jupyter kernel\" shell
+command on the host."
   (interactive (list (car (jupyter-completing-read-kernelspec
                            nil current-prefix-arg))
                      (when current-prefix-arg

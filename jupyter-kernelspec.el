@@ -109,6 +109,12 @@ Optional argument REFRESH has the same meaning as in
   (delq nil (mapcar (lambda (s) (and (string-match-p re (car s)) s))
                (jupyter-available-kernelspecs refresh))))
 
+(defun jupyter-guess-kernelspec (name)
+  "Return the first kernelspec matching NAME.
+Raise an error if no kernelspec could be found."
+  (or (car (jupyter-find-kernelspecs name))
+      (error "No valid kernelspec for kernel name (%s)" name)))
+
 (defun jupyter-completing-read-kernelspec (&optional specs refresh)
   "Use `completing-read' to select a kernel and return its kernelspec.
 The returned kernelspec has the form

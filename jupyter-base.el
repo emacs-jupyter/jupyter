@@ -630,6 +630,31 @@ port for that channel."
     (zmq-socket-set sock zmq-LINGER 0)
     (zmq-close sock))))
 
+(defun jupyter-write-connection-file (session obj)
+  "Write a connection file based on SESSION to `jupyter-runtime-directory'.
+Return the path to the connection file.
+
+Also register a finalizer on OBJ to delete the file when OBJ is
+garbage collected. The file is also deleted when Emacs exits if
+it hasn't been already."
+  (cl-check-type session jupyter-session)
+  (cl-check-type obj jupyter-finalized-object)
+  (make-directory jupyter-runtime-directory 'parents)
+  (let* ((temporary-file-directory jupyter-runtime-directory)
+         (json-encoding-pretty-print t)
+         (file (make-temp-file "emacs-kernel-" nil ".json"))
+         (kill-hook (lambda () (when (and file (file-exists-p file))
+                            (delete-file file)))))
+    (add-hook 'kill-emacs-hook kill-hook)
+    (jupyter-add-finalizer obj
+      (lambda ()
+        (funcall kill-hook)
+        (remove-hook 'kill-emacs-hook kill-hook)))
+    (prog1 file
+      (with-temp-file file
+        (insert (json-encode-plist
+                 (jupyter-session-conn-info session)))))))
+
 (defun jupyter-connect-endpoint (type endpoint &optional identity)
   "Create socket with TYPE and connect to ENDPOINT.
 If IDENTITY is non-nil, it will be set as the ROUTING-ID of the
