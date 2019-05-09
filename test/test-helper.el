@@ -182,6 +182,9 @@ If the `current-buffer' is not a REPL, this is identical to
                            (unless (or jupyter-test-with-new-client ,saved)
                              (let ((el (cons (car ,spec) client)))
                                (push el ,saved-sym))))))))
+       ;; See the note about increasing timeouts during CI testing at the top
+       ;; of jupyter-test.el
+       (accept-process-output nil 0.2)
        ,@body)))
 
 (defmacro jupyter-test-with-kernel-client (kernel client &rest body)
