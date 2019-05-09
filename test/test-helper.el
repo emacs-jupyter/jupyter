@@ -56,7 +56,7 @@ handling a message is always
 - reply message
 - status: idle")
 
-(cl-defmethod initialize-instance ((client jupyter-echo-client) &rest _slots)
+(cl-defmethod initialize-instance ((client jupyter-echo-client) &optional _slots)
   (cl-call-next-method)
   (oset client messages (make-ring 10))
   (oset client kcomm (jupyter-channel-ioloop-comm))

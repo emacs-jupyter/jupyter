@@ -190,7 +190,7 @@ passed as the argument has a language of LANG."
 
 ;;; Initializing a `jupyter-kernel-client'
 
-(cl-defmethod initialize-instance ((client jupyter-kernel-client) &rest _slots)
+(cl-defmethod initialize-instance ((client jupyter-kernel-client) &optional _slots)
   (cl-call-next-method)
   (let ((buffer (generate-new-buffer " *jupyter-kernel-client*")))
     (oset client -buffer buffer)

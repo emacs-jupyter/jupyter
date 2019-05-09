@@ -194,7 +194,7 @@ called if needed.")
    (stdin :type jupyter-sync-channel)
    (thread)))
 
-(cl-defmethod initialize-instance ((_comm jupyter-sync-channel-comm) &rest _)
+(cl-defmethod initialize-instance ((_comm jupyter-sync-channel-comm) &optional _slots)
   (unless (functionp 'make-thread)
     (error "Need threading support"))
   (cl-call-next-method))
@@ -332,7 +332,7 @@ called if needed.")
    (shell :type jupyter-proxy-channel)
    (stdin :type jupyter-proxy-channel)))
 
-(cl-defmethod initialize-instance ((comm jupyter-channel-ioloop-comm) &rest _)
+(cl-defmethod initialize-instance ((comm jupyter-channel-ioloop-comm) &optional _slots)
   (cl-call-next-method)
   (oset comm ioloop (jupyter-channel-ioloop)))
 

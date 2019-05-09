@@ -79,7 +79,7 @@ is alive."
     (when (and kill-kernel (process-live-p kernel))
       (delete-process kernel))))
 
-(cl-defmethod initialize-instance ((manager jupyter-kernel-manager) &rest _slots)
+(cl-defmethod initialize-instance ((manager jupyter-kernel-manager) &optional _slots)
   "Initialize MANAGER based on SLOTS.
 If the `:name' slot is not found in SLOTS, it defaults to
 \"python\". This means that without providing a kernel name, the

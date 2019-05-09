@@ -67,7 +67,7 @@
   ()
   :documentation "A `jupyter-ioloop' configured for Jupyter channels.")
 
-(cl-defmethod initialize-instance ((ioloop jupyter-channel-ioloop) &rest _)
+(cl-defmethod initialize-instance ((ioloop jupyter-channel-ioloop) &optional _slots)
   (cl-call-next-method)
   (jupyter-ioloop-add-setup ioloop
     (require 'jupyter-channel-ioloop)

@@ -130,7 +130,7 @@ by the form created by `jupyter-ioloop-add-event'.
 
 See `jupyter-channel-ioloop' for an example of its usage.")
 
-(cl-defmethod initialize-instance ((ioloop jupyter-ioloop) &rest _)
+(cl-defmethod initialize-instance ((ioloop jupyter-ioloop) &optional _slots)
   (cl-call-next-method)
   (jupyter-add-finalizer ioloop
     (lambda ()
