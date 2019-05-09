@@ -69,19 +69,16 @@ kernelspec will be a remote file name with the connection
 information of the host as a prefix."
   (let ((host (or (file-remote-p default-directory) "local")))
     (or (and (not refresh) (gethash host jupyter--kernelspecs))
-        (let ((spec-list
-               (cdr (split-string
-                     (jupyter-command "kernelspec" "list")
-                     "\n" 'omitnull "[ \t]+")))
-              (get-kernelspec
-               (lambda (s)
-                 (cl-destructuring-bind (kernel dir)
-                     (split-string s " " 'omitnull)
-                   (unless (equal host "local")
-                     (setq dir (concat host dir)))
-                   (let ((spec (jupyter-read-kernelspec dir)))
-                     (cons kernel (cons dir spec)))))))
-          (puthash host (delq nil (mapcar get-kernelspec spec-list))
+        (let ((specs (plist-get
+                      (jupyter-read-plist-from-string
+                       (jupyter-command "kernelspec" "list" "--json"))
+                      :kernelspecs)))
+          (puthash host
+                   (cl-loop
+                    for (name spec) on specs by #'cddr
+                    collect (cons (substring (symbol-name name) 1)
+                                  (cons (plist-get spec :resource_dir)
+                                        (plist-get spec :spec))))
                    jupyter--kernelspecs)))))
 
 (defun jupyter-get-kernelspec (name &optional refresh)
