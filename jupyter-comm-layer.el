@@ -70,10 +70,10 @@
 
 ;;; `jupyter-comm-layer'
 
-(cl-defgeneric jupyter-comm-start ((comm jupyter-comm-layer) &rest _)
+(cl-defgeneric jupyter-comm-start ((comm jupyter-comm-layer) &rest _ignore)
   "Start communication on COMM.")
 
-(cl-defgeneric jupyter-comm-stop ((comm jupyter-comm-layer) &rest _)
+(cl-defgeneric jupyter-comm-stop ((comm jupyter-comm-layer) &rest _ignore)
   "Stop communication on COMM.")
 
 (cl-defgeneric jupyter-comm-alive-p ((comm jupyter-comm-layer))
@@ -99,8 +99,11 @@ called if needed.")
   "Send EVENT to the underlying kernel using COMM."
   (error "Subclasses need to override this method"))
 
-(cl-defgeneric jupyter-initialize-connection ((comm jupyter-comm-layer) &rest _)
-  "Initialize communication on COMM."
+(cl-defgeneric jupyter-initialize-connection ((comm jupyter-comm-layer) &rest _ignore)
+  "Initialize communication on COMM.")
+
+(cl-defmethod jupyter-initialize-connection ((comm jupyter-comm-layer) &rest _ignore)
+  "Raise an error if COMM is already alive."
   (when (jupyter-comm-alive-p comm)
     (error "Can't initialize a live comm")))
 

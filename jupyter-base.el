@@ -425,7 +425,7 @@ To access all the objects in TRACKING-SYMBOL, use
 `jupyter-all-objects'."
   :abstract t)
 
-(cl-defmethod initialize-instance ((obj jupyter-instance-tracker) &optional _)
+(cl-defmethod initialize-instance ((obj jupyter-instance-tracker) &optional _slots)
   (cl-call-next-method)
   (let ((sym (oref obj tracking-symbol)))
     (unless (hash-table-p (symbol-value sym))

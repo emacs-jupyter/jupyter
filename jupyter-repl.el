@@ -330,7 +330,7 @@ can contain the following keywords along with their values:
   (jupyter-repl-insert "\n"))
 
 (cl-defmethod jupyter-insert :around (mime-or-plist
-                                      &context (major-mode jupyter-repl-mode) &rest _)
+                                      &context (major-mode jupyter-repl-mode) &rest _ignore)
   "If MIME was inserted, mark the region that was inserted as read only.
 Do this only when the `major-mode' is `jupyter-repl-mode'."
   (if (listp mime-or-plist) (cl-call-next-method)

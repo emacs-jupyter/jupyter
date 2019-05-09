@@ -437,7 +437,7 @@ the `syntax-table' will be set to that of the REPL buffers."
 ;;; Inspection
 
 (cl-defmethod jupyter-inspect (&context (major-mode org-mode)
-                                        &rest _)
+                                        &rest _ignore)
   (jupyter-org-with-src-block-client
    (cl-call-next-method)))
 
@@ -906,7 +906,7 @@ and `image' to `:image/png'."
                (split-string req-types)))))
 
 (cl-defmethod jupyter-org-result ((req jupyter-org-request) plist
-                                  &optional metadata &rest _)
+                                  &optional metadata &rest _ignore)
   "For REQ, return the rendered DATA.
 PLIST is a property list, (:mimetype1 value1 ...), containing the
 different representations of a result returned by a kernel. Note,

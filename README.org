@@ -1292,7 +1292,7 @@ For a kernel language to extend the behavior of how results are inserted, the
 #+BEGIN_SRC elisp
 (cl-defmethod jupyter-org-result ((_mime (eql :text/plain))
                                   &context (jupyter-lang python)
-                                  &rest _)
+                                  &rest _ignore)
   (let ((result (cl-call-next-method)))
     (cond
      ((stringp result)

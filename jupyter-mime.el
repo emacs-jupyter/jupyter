@@ -513,7 +513,7 @@ width and height of the image."
 
 ;;; Insert with display IDs
 
-(cl-defmethod jupyter-insert :before ((_display-id string) &rest _)
+(cl-defmethod jupyter-insert :before ((_display-id string) &rest _ignore)
   "Initialize `juptyer-display-ids'"
   ;; FIXME: Set the local display ID hash table for the current buffer, or
   ;; should display IDs be global? Then we would have to associate marker

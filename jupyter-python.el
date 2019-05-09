@@ -58,7 +58,7 @@ buffer."
 
 (cl-defmethod jupyter-insert :around ((msg cons)
                                       &context (jupyter-lang python)
-                                      &rest _)
+                                      &rest _ignore)
   "Fontify docstrings after inserting inspect messages."
   (let ((mime (cl-call-next-method)))
     (prog1 mime
@@ -82,7 +82,7 @@ buffer."
 
 (cl-defmethod jupyter-org-result ((_mime (eql :text/plain))
                                   &context (jupyter-lang python)
-                                  &optional params &rest _)
+                                  &optional params &rest _ignore)
   (let ((result (cl-call-next-method)))
     (cond
      ((and (stringp result)

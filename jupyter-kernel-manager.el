@@ -64,7 +64,7 @@
 (cl-defgeneric jupyter-kernel-died ((kernel jupyter-kernel-lifetime))
   "Called when a KERNEL dies unexpectedly.")
 
-(cl-defmethod jupyter-start-kernel :around ((kernel jupyter-kernel-lifetime) &rest _)
+(cl-defmethod jupyter-start-kernel :around ((kernel jupyter-kernel-lifetime) &rest _args)
   "Error when KERNEL is already alive, otherwise call the next method."
   (when (jupyter-kernel-alive-p kernel)
     (error "Kernel already alive"))
