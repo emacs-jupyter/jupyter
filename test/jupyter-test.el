@@ -1295,16 +1295,19 @@ last element being the newest element added to the history."
 
 (ert-deftest jupyter-repl-prompts ()
   :tags '(repl prompt)
-  (let ((jupyter-test-with-new-client t))
-    (jupyter-test-with-python-repl client
-      (ert-info ("Prompt properties")
+  (jupyter-test-with-python-repl client
+    (let (cell-prop)
+      (jupyter-ert-info ("Prompt properties")
         (let (prompt-overlay)
           (goto-char (jupyter-repl-cell-beginning-position))
           (setq prompt-overlay (car (overlays-at (point))))
           (should-not (null prompt-overlay))
-          (should (equal (get-text-property (point) 'jupyter-cell) '(beginning 1)))
-          (should (= (jupyter-repl-cell-count) 1))))
-      (ert-info ("Input prompts")
+          (setq cell-prop (get-text-property (point) 'jupyter-cell))
+          (should (eq (car cell-prop) 'beginning))
+          (should (and (numberp (cadr cell-prop))
+                       (>= (cadr cell-prop) 1)))
+          (should (= (jupyter-repl-cell-count) (cadr cell-prop)))))
+      (jupyter-ert-info ("Input prompts")
         (goto-char (jupyter-repl-cell-code-beginning-position))
         ;; To prevent prompts from inheriting text properties of cell code there is
         ;; an invisible character at the end of every prompt. This is because
@@ -1317,13 +1320,13 @@ last element being the newest element added to the history."
                (cell-property (memq 'jupyter-cell props)))
           (should (not (null cell-property)))
           (should (listp (cdr cell-property)))
-          (should (equal (cadr cell-property) '(beginning 1)))))
-      (ert-info ("Continuation prompts")
+          (should (equal (cadr cell-property) cell-prop)))))
+    (jupyter-ert-info ("Continuation prompts")
 
-        )
-      (ert-info ("Output prompts")
+      )
+    (jupyter-ert-info ("Output prompts")
 
-        ))))
+      )))
 
 (ert-deftest jupyter-repl-prompt-margin ()
   :tags '(repl prompt)
