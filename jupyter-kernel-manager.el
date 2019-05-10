@@ -444,10 +444,6 @@ command on the host."
     (jupyter-start-kernel manager)
     (let ((client (jupyter-make-client manager client-class)))
       (jupyter-start-channels client)
-      ;; Attempt to catch the startup message
-      (jupyter-wait-until-startup
-       client jupyter-default-timeout
-       (format "Kernel %s starting up" (jupyter-kernel-name kernel)))
       (jupyter--error-if-no-kernel-info client)
       ;; Un-pause the hearbeat after the kernel starts since waiting for
       ;; it to start may cause the heartbeat to think the kernel died.
