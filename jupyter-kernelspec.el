@@ -73,13 +73,14 @@ information of the host as a prefix."
                       (jupyter-read-plist-from-string
                        (jupyter-command "kernelspec" "list" "--json"))
                       :kernelspecs)))
-          (puthash host
-                   (cl-loop
-                    for (name spec) on specs by #'cddr
-                    collect (cons (substring (symbol-name name) 1)
-                                  (cons (plist-get spec :resource_dir)
-                                        (plist-get spec :spec))))
-                   jupyter--kernelspecs)))))
+          (puthash
+           host (cl-loop
+                 for (name spec) on specs by #'cddr
+                 for dir = (concat (unless (equal host "local") host)
+                                   (plist-get spec :resource_dir))
+                 collect (cons (substring (symbol-name name) 1)
+                               (cons dir (plist-get spec :spec))))
+           jupyter--kernelspecs)))))
 
 (defun jupyter-get-kernelspec (name &optional refresh)
   "Get the kernelspec for a kernel named NAME.
