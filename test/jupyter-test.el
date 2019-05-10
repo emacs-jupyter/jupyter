@@ -593,11 +593,13 @@
     (ert-info ("Can we communicate?")
       (let ((manager (jupyter-kernel-manager :kernel kernel)))
         (jupyter-start-kernel manager)
-        (let ((jupyter-current-client
-               (jupyter-make-client manager 'jupyter-kernel-client)))
-          (jupyter-start-channels jupyter-current-client)
-          (jupyter-wait-until-startup jupyter-current-client)
-          (should (equal (jupyter-eval "1 + 1") "2")))))))
+        (unwind-protect
+            (let ((jupyter-current-client
+                   (jupyter-make-client manager 'jupyter-kernel-client)))
+              (jupyter-start-channels jupyter-current-client)
+              (jupyter-wait-until-startup jupyter-current-client)
+              (should (equal (jupyter-eval "1 + 1") "2")))
+          (jupyter-shutdown-kernel manager))))))
 
 ;;; Client
 
