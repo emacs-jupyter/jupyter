@@ -313,6 +313,14 @@ aligns on the current line."
         (setf (image-property image :ascent) 50)
         (force-window-update)))))
 
+(defun jupyter-insert-html--maybe-browse-url (beg end)
+  (save-excursion
+    (save-restriction
+      (narrow-to-region beg end)
+      (goto-char beg)
+      (when (re-search-forward "<script[^>]*>" nil t)
+        (browse-url-of-buffer)))))
+
 (defun jupyter--delete-script-tags (beg end)
   (save-excursion
     (save-restriction
@@ -329,10 +337,9 @@ aligns on the current line."
   "Parse and insert the HTML string using `shr'."
   (jupyter-with-insertion-bounds
       beg end (insert html)
-    ;; TODO: We can't really do much about javascript so
-    ;; delete those regions instead of trying to parse
-    ;; them. Maybe just re-direct to a browser like with
-    ;; widgets?
+    ;; Maybe open the html in external browser (e.g. if it has javascript)
+    (jupyter-insert-html--maybe-browse-url beg end)
+    ;; Render non-javascript regions in the buffer
     ;; NOTE: Parsing takes a very long time when the text
     ;; is > ~500000 characters.
     (jupyter--delete-script-tags beg end)
