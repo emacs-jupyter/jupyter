@@ -577,6 +577,48 @@
 
 ;;; Kernel
 
+(ert-deftest jupyter-kernel-lifetime ()
+  :tags '(kernel)
+  (let* ((conn-info (jupyter-create-connection-info))
+         (kernel (jupyter-spec-kernel
+                  :spec (jupyter-guess-kernelspec "python")
+                  :session (jupyter-session
+                            :key (plist-get conn-info :key)
+                            :conn-info conn-info))))
+    (should-not (jupyter-kernel-alive-p kernel))
+    (jupyter-start-kernel kernel)
+    (should (jupyter-kernel-alive-p kernel))
+    (should-error (jupyter-start-kernel kernel))
+    (jupyter-kill-kernel kernel)
+    (should-not (jupyter-kernel-alive-p kernel))
+    ;; A session should not be re-used across kernels
+    (should-not (slot-boundp kernel 'session))
+    (setq conn-info (jupyter-create-connection-info))
+    (ert-info ("`jupyter-kernel-manager'")
+      ;; TODO: Should the manager create a session if one isn't present?
+      (oset kernel session (jupyter-session
+                            :key (plist-get conn-info :key)
+                            :conn-info conn-info))
+      (let* ((manager (jupyter-kernel-manager :kernel kernel))
+             (control-channel (oref manager control-channel))
+             process)
+        (should-not (jupyter-kernel-alive-p manager))
+        (should-not control-channel)
+        (jupyter-start-kernel manager)
+        (setq process (oref kernel process))
+        (setq control-channel (oref manager control-channel))
+        (should (jupyter-sync-channel-p control-channel))
+        (should (jupyter-kernel-alive-p manager))
+        (should (jupyter-kernel-alive-p kernel))
+        (jupyter-shutdown-kernel manager)
+        (ert-info ("Kernel shutdown is clean")
+          (should-not (process-live-p process))
+          (should (zerop (process-exit-status process)))
+          (should-not (jupyter-kernel-alive-p manager))
+          (should-not (jupyter-kernel-alive-p kernel)))
+        (setq control-channel (oref manager control-channel))
+        (should-not (jupyter-sync-channel-p control-channel))))))
+
 (ert-deftest jupyter-command-kernel ()
   :tags '(kernel)
   (let ((kernel (jupyter-command-kernel
