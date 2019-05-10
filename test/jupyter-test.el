@@ -42,7 +42,7 @@
 ;; re-used for the most part except for tests that explicitly start and stop a
 ;; process. Increasing these timeouts seemed to do the trick.
 (when (or (getenv "APPVEYOR") (getenv "TRAVIS"))
-  (setq jupyter-long-timeout 20
+  (setq jupyter-long-timeout 30
         jupyter-default-timeout jupyter-long-timeout))
 
 (message "system-configuration %s" system-configuration)
@@ -705,21 +705,32 @@
 (ert-deftest jupyter-requests-pending-p ()
   :tags '(client)
   (jupyter-test-with-python-client client
-    (when-let* ((last-sent (gethash "last-sent" (oref client requests))))
-      (ignore-errors (jupyter-wait-until-idle last-sent)))
-    (let ((req (jupyter-send-kernel-info-request client)))
-      (ert-info ("Pending after send")
-        (should (jupyter-requests-pending-p client))
-        (jupyter-wait-until-idle req)
-        (should-not (jupyter-requests-pending-p client)))
-      (ert-info ("Pending until idle received")
-        (setq req (jupyter-send-execute-request client
-                    :code "import time; time.sleep(0.2)"))
-        ;; Empty out the pending-requests slot of CLIENT
-        (jupyter-wait-until-received :status req)
-        (should (jupyter-requests-pending-p client))
-        (jupyter-wait-until-idle req)
-        (should-not (jupyter-requests-pending-p client))))))
+    (let (pending)
+      (jupyter-with-timeout (nil jupyter-default-timeout)
+        (while (jupyter-requests-pending-p client)
+          (when-let* ((last-sent (gethash "last-sent" (oref client requests))))
+            (jupyter-wait-until-idle last-sent))))
+      ;; Don't pass CLIENT to `should-not' because `ert' will attempt to
+      ;; print the class object on failure and will fail at doing so.
+      (setq pending (jupyter-requests-pending-p client))
+      (should-not pending)
+      (let ((req (jupyter-send-kernel-info-request client)))
+        (ert-info ("Pending after send")
+          (setq pending (jupyter-requests-pending-p client))
+          (should pending)
+          (jupyter-wait-until-idle req)
+          (setq pending (jupyter-requests-pending-p client))
+          (should-not pending))
+        (ert-info ("Pending until idle received")
+          (setq req (jupyter-send-execute-request client
+                      :code "import time; time.sleep(0.2)"))
+          ;; Empty out the pending-requests slot of CLIENT
+          (jupyter-wait-until-received :status req)
+          (setq pending (jupyter-requests-pending-p client))
+          (should pending)
+          (jupyter-wait-until-idle req)
+          (setq pending (jupyter-requests-pending-p client))
+          (should-not pending))))))
 
 (ert-deftest jupyter-eval ()
   :tags '(client)
