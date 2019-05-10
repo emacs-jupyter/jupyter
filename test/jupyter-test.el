@@ -42,8 +42,8 @@
 ;; re-used for the most part except for tests that explicitly start and stop a
 ;; process. Increasing these timeouts seemed to do the trick.
 (when (or (getenv "APPVEYOR") (getenv "TRAVIS"))
-  (setq jupyter-long-timeout 30
-        jupyter-default-timeout jupyter-long-timeout))
+  (setq jupyter-long-timeout 120
+        jupyter-default-timeout 60))
 
 (message "system-configuration %s" system-configuration)
 
@@ -703,9 +703,7 @@
       (should-not (equal kill-emacs-hook hook))
       (setq fun (car (cl-set-difference kill-emacs-hook hook)))
       (should-not (memq fun hook)))
-    (let ((table (make-hash-table)))
-      (dotimes (_ gc-cons-threshold)
-        (puthash (random) t table)))
+    (garbage-collect)
     (garbage-collect)
     (garbage-collect)
     (garbage-collect)
@@ -751,7 +749,7 @@
   :tags '(client)
   (jupyter-test-with-python-client client
     (let (pending)
-      (jupyter-with-timeout (nil jupyter-default-timeout)
+      (jupyter-with-timeout (nil jupyter-long-timeout)
         (while (jupyter-requests-pending-p client)
           (when-let* ((last-sent (gethash "last-sent" (oref client requests))))
             (jupyter-wait-until-idle last-sent))))
