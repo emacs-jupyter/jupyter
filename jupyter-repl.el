@@ -1302,9 +1302,6 @@ the REPL to disable that mode in those buffers. See
 
 (defun jupyter-repl-preserve-window-margins (&optional window)
   "Ensure that the margins of a REPL window are present.
-This function is added as a hook to `pre-redisplay-functions' to
-ensure that a REPL windows margins are present.
-
 If WINDOW is showing a REPL buffer and the margins are not set to
 `jupyter-repl-prompt-margin-width', set them to the proper
 value."
