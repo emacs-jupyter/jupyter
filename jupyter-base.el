@@ -689,6 +689,33 @@ the ROUTING-ID of the socket. Return the created socket."
   (let ((json-object-type 'plist))
     (json-read-from-string string)))
 
+(defun jupyter-locate-python ()
+  "Return the path to the python executable in use by Jupyter.
+Examines the data paths of \"jupyter --paths\" in the order
+specified."
+  (let* ((remote (file-remote-p default-directory))
+         (paths (mapcar (lambda (x) (concat remote x))
+                   (or (plist-get
+                        (jupyter-read-plist-from-string
+                         (jupyter-command "--paths" "--json"))
+                        :data)
+                       (error "Can't get search paths"))))
+         (path nil))
+    (cl-loop
+     with programs = '("bin/python3" "bin/python"
+                       ;; Need to also check Windows since paths can be
+                       ;; pointing to local or remote files.
+                       "python3.exe" "python.exe")
+     with pred = (lambda (dir)
+                   (cl-loop
+                    for program in programs
+                    for spath = (expand-file-name program dir)
+                    thereis (setq path (and (file-exists-p spath) spath))))
+     for path in paths
+     thereis (locate-dominating-file path pred)
+     finally (error "No `python' found in search paths"))
+    path))
+
 (defun jupyter-normalize-data (plist &optional metadata)
   "Return a list (DATA META) from PLIST.
 DATA is a property list of mimetype data extracted from PLIST. If
