@@ -22,7 +22,7 @@ install:
       Add-Content -Path run-cask -Value @'
       #!/usr/bin/env bash
       # Swap stderr and stdout, seems that they are mixed up.
-      $CASK_PYTHON ~/.cask/bin/cask $@ 3>&2 2>&1 1>&3
+      $CASK_PYTHON ~/.cask/bin/cask $@
       '@
   - chmod +x run-cask
   - set PATH=%APPVEYOR_BUILD_FOLDER%;%PATH%
@@ -48,44 +48,9 @@ build_script:
   # https://docs.microsoft.com/en-us/windows/desktop/dlls/dynamic-link-library-search-order
   # TODO: Make this unnecessary
   - ps: $env:PATH = "$(Get-Location);$env:PATH"
-test_script:
-  # NOTE: Running "cask exec cmd" calls os.execvp to "replace" the current
-  # process with one executing cmd. On Windows, a new process is created
-  # instead of replacing the current one and the old process is exited using a
-  # 0 exit code (see https://bugs.python.org/issue13792 and
-  # https://bugs.python.org/issue19124). The issue here is that Appveyor checks
-  # the exit code of the original process which always returns 0 even in the
-  # case of failure.
-  #
-  # Since "make test" calls "cask exec ert-runner" we have to add some extra
-  # complexity to be able to cause the build to fail when ert-runner fails.
-  - cd %APPVEYOR_BUILD_FOLDER%
   - make compile
-  - ps: |
-      $make_test = Start-Job {
-          cd $env:APPVEYOR_BUILD_FOLDER
-          make test
-      }
-      $emacs = $null
-      while (!$emacs) {
-          Start-Sleep 1
-          $emacs = Get-Process emacs -ErrorAction SilentlyContinue
-      }
-      # Capture a handle to the process so that $emacs.ExitCode doesn't return
-      # $null when checked.
-      $handle = $emacs.Handle
-      $make_test | Receive-Job -Wait
-      # According to the Windows documentation
-      # (https://docs.microsoft.com/en-us/dotnet/api/system.diagnostics.process.exitcode#remarks)
-      # if an exited process's output is being redirected, there are
-      # asynchronous events occuring such that the process may still be alive
-      # even though HasExited returns true. The result is that ExitCode may
-      # return null even though the Job is supposes to be complete. The
-      # recommended solution is to ensure WaitForExit() is called.
-      $emacs.WaitForExit()
-      Write-Host "Emacs ExitCode '$($emacs.ExitCode)'"
-      if ($emacs.ExitCode -eq 0) {
-          Write-Host "Tests passed" -BackgroundColor green
-      } else {
-          throw "Tests failed"
-      }
+test_script:
+  - cd %APPVEYOR_BUILD_FOLDER%
+  - ps: $env:PATH = "$(bash -lc 'cd $APPVEYOR_BUILD_FOLDER; run-cask exec-path');$env:PATH"
+  - ps: $env:EMACSLOADPATH = (bash -lc 'cd $APPVEYOR_BUILD_FOLDER; run-cask load-path')
+  - ert-runner.bat --script -L .
