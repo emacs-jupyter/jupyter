@@ -159,33 +159,34 @@ If the `current-buffer' is not a REPL, this is identical to
   (declare (indent 4) (debug (functionp symbolp stringp symbolp &rest form)))
   (let ((spec (make-symbol "spec"))
         (saved (make-symbol "saved")))
-    `(let* ((,spec (progn (jupyter-error-if-no-kernelspec ,kernel)
-                          (car (jupyter-find-kernelspecs ,kernel))))
-            (,saved (let ((saved (cdr (assoc (car ,spec) ,saved-sym))))
-                      (if (and saved (slot-boundp saved 'manager)
-                               (not (jupyter-kernel-alive-p (oref saved manager))))
-                          ;; If a kernel has died, e.g. being shutdown, remove
-                          ;; it.
-                          (prog1 nil
-                            (delq (assoc (car ,spec) ,saved-sym) ,saved-sym))
-                        saved)))
-            (,client (if (and ,saved (not jupyter-test-with-new-client))
-                         ,saved
-                       ;; Want a fresh kernel, so shutdown the cached one
-                       (when ,saved
-                         (if (slot-boundp ,saved 'manager)
-                             (jupyter-shutdown-kernel (oref ,saved manager))
-                           (jupyter-send-shutdown-request ,saved))
-                         (jupyter-stop-channels ,saved))
-                       (let ((client (,client-fun (car ,spec))))
-                         (prog1 client
-                           (unless (or jupyter-test-with-new-client ,saved)
+    `(progn
+       ;; If a kernel has died, e.g. being shutdown, remove it.
+       (cl-loop
+        for saved in (copy-sequence ,saved-sym)
+        for client = (cdr saved)
+        when (and client (slot-boundp client 'manager)
+                  (not (jupyter-kernel-alive-p (oref client manager))))
+        do (jupyter-stop-channels client)
+        (cl-callf2 delq saved ,saved-sym))
+       (let* ((,spec (progn (jupyter-error-if-no-kernelspec ,kernel)
+                            (car (jupyter-find-kernelspecs ,kernel))))
+              (,saved (cdr (assoc (car ,spec) ,saved-sym)))
+              (,client (if (and ,saved (not jupyter-test-with-new-client))
+                           ,saved
+                         ;; Want a fresh kernel, so shutdown the cached one
+                         (when ,saved
+                           (if (slot-boundp ,saved 'manager)
+                               (jupyter-shutdown-kernel (oref ,saved manager))
+                             (jupyter-send-shutdown-request ,saved))
+                           (jupyter-stop-channels ,saved))
+                         (let ((client (,client-fun (car ,spec))))
+                           (prog1 client
                              (let ((el (cons (car ,spec) client)))
-                               (push el ,saved-sym))))))))
-       ;; See the note about increasing timeouts during CI testing at the top
-       ;; of jupyter-test.el
-       (accept-process-output nil 0.5)
-       ,@body)))
+                               (push el ,saved-sym)))))))
+         ;; See the note about increasing timeouts during CI testing at the top
+         ;; of jupyter-test.el
+         (accept-process-output nil 1)
+         ,@body))))
 
 (defmacro jupyter-test-with-kernel-client (kernel client &rest body)
   "Start a new KERNEL client, bind it to CLIENT, evaluate BODY.
