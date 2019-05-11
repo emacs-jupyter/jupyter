@@ -68,6 +68,15 @@
   ((clients :type list :initform nil))
   :abstract t)
 
+(defmacro jupyter-comm-client-loop (comm client &rest body)
+  "Loop over COMM's clients, binding each to CLIENT before evaluating BODY."
+  (declare (indent 2))
+  (let ((clients (make-symbol "clients")))
+    `(let ((,clients (oref ,comm clients)))
+       (while ,clients
+         (when-let* ((,client (jupyter-weak-ref-resolve (pop ,clients))))
+           ,@body)))))
+
 ;;; `jupyter-comm-layer'
 
 (cl-defgeneric jupyter-comm-start ((comm jupyter-comm-layer) &rest _ignore)
@@ -145,10 +154,8 @@ called if needed.")
   "Broadcast EVENT to all clients registered to receive them on COMM."
   ;; TODO: Dynamically cleanup list of garbage collected clients when looping
   ;; over it.
-  (let ((clients (oref comm clients)))
-    (while clients
-      (when-let* ((client (jupyter-weak-ref-resolve (pop clients))))
-        (run-at-time 0 nil #'jupyter-event-handler client event)))))
+  (jupyter-comm-client-loop comm client
+    (run-at-time 0 nil #'jupyter-event-handler client event)))
 
 ;;; `jupyter-hb-comm'
 ;; If the communication layer can talk to a heartbeat channel, then it should
