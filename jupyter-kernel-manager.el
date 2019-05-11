@@ -399,7 +399,10 @@ subprocess."
                    (with-slots (session socket) control-channel
                      (jupyter-recv session socket zmq-DONTWAIT))
                  (zmq-EAGAIN nil)))))
-          (_ (interrupt-process (oref kernel kernel) t)))))))
+          (_
+           (if (object-of-class-p kernel 'jupyter-kernel-process)
+               (interrupt-process (oref kernel process) t)
+             (warn "Can't interrupt kernel"))))))))
 
 (cl-defmethod jupyter-kernel-alive-p ((manager jupyter-kernel-manager))
   "Is MANGER's kernel alive?"
