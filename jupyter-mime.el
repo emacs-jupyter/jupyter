@@ -313,6 +313,18 @@ aligns on the current line."
         (setf (image-property image :ascent) 50)
         (force-window-update)))))
 
+(defun jupyter--insert-temp-file-browse-url (data)
+  (let ((file (make-temp-file "emacs-jupyter" nil ".html")))
+    (with-temp-file file (insert data))
+    (browse-url-of-file file)
+    ;; Give the external browser time to open the tmp file before deleting it
+    ;; based on mm-display-external
+    (lexical-let ((file file))
+      (run-at-time
+       60.0 nil
+       (lambda ()
+         (ignore-errors (delete-file file)))))))
+
 (defun jupyter--delete-script-tags (beg end)
   (save-excursion
     (save-restriction
@@ -466,11 +478,11 @@ width and height of the image."
 ;;; `jupyter-insert' method additions
 
 (cl-defmethod jupyter-insert ((_mime (eql :text/html)) data
-                              &context ((functionp 'libxml-parse-html-region)
-                                        (eql t))
                               &optional _metadata)
-  (jupyter-insert-html data)
-  (insert "\n"))
+  (if (not (functionp 'libxml-parse-html-region))
+      (cl-call-next-method)
+    (jupyter-insert-html data)
+    (insert "\n")))
 
 (cl-defmethod jupyter-insert ((_mime (eql :text/markdown)) data
                               &context ((require 'markdown-mode nil t)
