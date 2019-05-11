@@ -275,17 +275,25 @@ argument of the process."
   "Make a new client from CLASS connected to MANAGER's kernel.
 SLOTS are the slots used to initialize the client with.")
 
-(cl-defmethod jupyter-make-client ((manager jupyter-kernel-manager) class &rest slots)
+(cl-defmethod jupyter-make-client :before (_manager class &rest _slots)
+  "Signal an error if CLASS is not a subclass of `jupyter-kernel-client'."
+  (unless (child-of-class-p class 'jupyter-kernel-client)
+    (signal 'wrong-type-argument (list '(subclass jupyter-kernel-client) class))))
+
+(cl-defmethod jupyter-make-client (manager class &rest slots)
+  "Return an instance of CLASS using SLOTS and its manager slot set to MANAGER."
+  (let ((client (apply #'make-instance class slots)))
+    (prog1 client
+      (oset client manager manager))))
+
+(cl-defmethod jupyter-make-client ((manager jupyter-kernel-manager) _class &rest _slots)
   "Make a new client from CLASS connected to MANAGER's kernel.
 CLASS should be a subclass of `jupyter-kernel-client', a new
 instance of CLASS is initialized with SLOTS and configured to
 connect to MANAGER's kernel."
-  (unless (child-of-class-p class 'jupyter-kernel-client)
-    (signal 'wrong-type-argument (list '(subclass jupyter-kernel-client) class)))
-  (let ((client (apply #'make-instance class slots)))
+  (let ((client (cl-call-next-method)))
     (with-slots (kernel) manager
       (prog1 client
-        (oset client manager manager)
         ;; TODO: We can also have the manager hold the kcomm object and just
         ;; pass a single kcomm object to all clients using this manager since the
         ;; kcomm broadcasts event to all connected clients. This is more
