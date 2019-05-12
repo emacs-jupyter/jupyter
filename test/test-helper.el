@@ -100,7 +100,8 @@ handling a message is always
 
 ;;; `jupyter-mock-comm-layer'
 
-(defclass jupyter-mock-comm-layer (jupyter-comm-layer)
+(defclass jupyter-mock-comm-layer (jupyter-comm-layer
+                                   jupyter-comm-autostop)
   ((alive :initform nil)))
 
 (cl-defmethod jupyter-comm-alive-p ((comm jupyter-mock-comm-layer))
