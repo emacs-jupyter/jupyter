@@ -319,7 +319,7 @@ aligns on the current line."
     (browse-url-of-file file)
     ;; Give the external browser time to open the tmp file before deleting it
     ;; based on mm-display-external
-    (lexical-let ((file file))
+    (let ((file file))
       (run-at-time
        60.0 nil
        (lambda ()
