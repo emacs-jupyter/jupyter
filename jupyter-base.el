@@ -49,10 +49,12 @@
   "Run a Jupyter shell command synchronously, return its output.
 The shell command run is
 
-    jupyter ARGS..."
+    jupyter ARGS...
+
+If the command fails, return nil."
   (with-temp-buffer
-    (apply #'process-file "jupyter" nil t nil args)
-    (string-trim-right (buffer-string))))
+    (when (zerop (apply #'process-file "jupyter" nil t nil args))
+      (string-trim-right (buffer-string)))))
 
 ;;; Custom variables
 
