@@ -143,12 +143,7 @@ called if needed.")
         (cl-remove-if (lambda (ref)
                         (let ((deref (jupyter-weak-ref-resolve ref)))
                           (or (eq deref obj) (null deref))))
-                      (oref comm clients)))
-  ;; FIXME: This is more of a convenience and it probably makes sense to keep
-  ;; the comm open even though there are no clients.
-  (when (and (jupyter-comm-alive-p comm)
-             (zerop (length (oref comm clients))))
-    (jupyter-comm-stop comm)))
+                      (oref comm clients))))
 
 (cl-defmethod jupyter-event-handler ((comm jupyter-comm-layer) event)
   "Broadcast EVENT to all clients registered to receive them on COMM."
@@ -156,6 +151,19 @@ called if needed.")
   ;; over it.
   (jupyter-comm-client-loop comm client
     (run-at-time 0 nil #'jupyter-event-handler client event)))
+
+;;; `jupyter-comm-autostop'
+
+(defclass jupyter-comm-autostop ()
+  ()
+  :abstract t
+  :documentation "Stop the comm when the last client disconnects.")
+
+(cl-defmethod jupyter-disconnect-client :after ((comm jupyter-comm-autostop) _client)
+  "Stop COMM when there are no clients."
+  (when (and (jupyter-comm-alive-p comm)
+             (zerop (length (oref comm clients))))
+    (jupyter-comm-stop comm)))
 
 ;;; `jupyter-hb-comm'
 ;; If the communication layer can talk to a heartbeat channel, then it should
@@ -197,7 +205,8 @@ called if needed.")
     (:stdin 'stdin)))
 
 (defclass jupyter-sync-channel-comm (jupyter-comm-layer
-                                     jupyter-hb-comm)
+                                     jupyter-hb-comm
+                                     jupyter-comm-autostop)
   ((session :type jupyter-session)
    (iopub :type jupyter-sync-channel)
    (shell :type jupyter-sync-channel)
@@ -336,7 +345,9 @@ called if needed.")
 
 (cl-defstruct jupyter-proxy-channel endpoint alive-p)
 
-(defclass jupyter-channel-ioloop-comm (jupyter-ioloop-comm jupyter-hb-comm)
+(defclass jupyter-channel-ioloop-comm (jupyter-ioloop-comm
+                                       jupyter-hb-comm
+                                       jupyter-comm-autostop)
   ((session :type jupyter-session)
    (iopub :type jupyter-proxy-channel)
    (shell :type jupyter-proxy-channel)
