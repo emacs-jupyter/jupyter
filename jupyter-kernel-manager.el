@@ -354,6 +354,12 @@ channel is stopped unless RESTART is non-nil."
     (with-slots (control-channel kernel) manager
       (jupyter-send control-channel :shutdown-request
                     (jupyter-message-shutdown-request :restart restart))
+      ;; FIXME: This doesn't work properly, the kernel sends a shutdown reply
+      ;; but the process status cannot be determined correctly as it is still
+      ;; considered alive. This is mainly when using the
+      ;; `jupyter-command-kernel' and probably has to do with the fact that the
+      ;; kernel is launched by a python process instead of being launched
+      ;; directly as a process by Emacs.
       (jupyter-with-timeout
           ((format "%s kernel shutting down..."
                    (jupyter-kernel-name kernel))
