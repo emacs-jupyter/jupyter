@@ -130,9 +130,8 @@ kernel starts.")
 (cl-defmethod jupyter-start-kernel ((kernel jupyter-kernel-process) &rest args)
   "Start a KERNEL process with ARGS."
   (let ((name (jupyter-kernel-name kernel)))
-    (setf (car args) (or (executable-find (car args))
-                         (error "%s not found in `exec-path'" (car args))))
     (when jupyter--debug
+      (message "jupyter-start-kernel: default-directory = %s" default-directory)
       (message "jupyter-start-kernel: Starting process with args \"%s\""
                (mapconcat #'identity args " ")))
     (oset kernel process
