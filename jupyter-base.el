@@ -691,8 +691,13 @@ the ROUTING-ID of the socket. Return the created socket."
 
 (defun jupyter-locate-python ()
   "Return the path to the python executable in use by Jupyter.
-Examines the data paths of \"jupyter --paths\" in the order
-specified."
+If the `default-directory' is a remote directory, search on that
+remote. Raise an error if the executable could not be found.
+
+The paths examined are the data paths of \"jupyter --paths\" in
+the order specified.
+
+This function always returns the `file-local-name' of the path."
   (let* ((remote (file-remote-p default-directory))
          (paths (mapcar (lambda (x) (concat remote x))
                    (or (plist-get
@@ -714,7 +719,7 @@ specified."
      for path in paths
      thereis (locate-dominating-file path pred)
      finally (error "No `python' found in search paths"))
-    path))
+    (file-local-name path)))
 
 (defun jupyter-normalize-data (plist &optional metadata)
   "Return a list (DATA META) from PLIST.
