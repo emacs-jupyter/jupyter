@@ -693,6 +693,7 @@
 
 (ert-deftest jupyter-write-connection-file ()
   :tags '(client)
+  (skip-unless (not (memq system-type '(ms-dos windows-nt cygwin))))
   (let (file fun)
     (let* ((session (jupyter-session
                      :conn-info (jupyter-create-connection-info)))
@@ -708,6 +709,8 @@
     (garbage-collect)
     (garbage-collect)
     (unwind-protect
+        ;; This fails on Windows, probably has something to do with the file
+        ;; handle still being opened somehow.
         (should-not (file-exists-p file))
       (when (file-exists-p file)
         (delete-file file)))
