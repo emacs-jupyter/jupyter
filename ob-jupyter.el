@@ -357,34 +357,54 @@ the PARAMS alist."
   '("execute" "expand-body" "prep-session" "edit-prep"
     "variable-assignments" "load-session"))
 
+(defun org-babel-jupyter--override-restore-header-args (lang restore)
+  "Set `org-babel-header-args:LANG' to its Jupyter equivalent.
+`org-babel-header-args:LANG' is set to the value of
+`org-babel-header-args:jupyter-LANG', if the latter exists, when
+RESTORE is nil. If `org-babel-header-args:LANG' had a value, save
+it as a symbol property of `org-babel-header-args:LANG' for
+restoring it later.
+
+If RESTORE is non-nil, set `org-babel-header-args:LANG' to its
+saved value before it was overridden.
+
+Do the same for `org-babel-default-header-args:LANG'."
+  (dolist (prefix '("org-babel-header-args:"
+                    "org-babel-default-header-args:"))
+    (when-let* ((jupyter-var (intern-soft (concat prefix "jupyter-" lang))))
+      (let ((var (intern-soft (concat prefix lang))))
+        (if restore
+            (set var (get var 'jupyter-restore-value))
+          (if var (put var 'jupyter-restore-value (symbol-value var))
+            (setq var (intern (concat prefix lang))))
+          (set var (symbol-value jupyter-var)))))))
+
 (defun org-babel-jupyter--override-restore-src-block (lang restore)
-  (let ((fun (if restore
-                 (lambda (sym _ function &rest __)
-                   (advice-remove sym function))
-               #'advice-add)))
+  (cl-macrolet ((override-restore
+                 (sym jupyter-sym)
+                 `(cond
+                   (restore
+                    (advice-remove ,sym ,jupyter-sym)
+                    ;; The function didn't have a definition, so ensure that
+                    ;; we restore that fact.
+                    (when (eq (symbol-function ,sym) #'ignore)
+                      (fmakunbound ,sym)))
+                   (t
+                    ;; If a language doesn't have a function assigned, set one
+                    ;; so it can be overridden
+                    (unless (fboundp ,sym)
+                      (fset ,sym #'ignore))
+                    (advice-add ,sym :override ,jupyter-sym
+                                '((name . ob-jupyter)))))))
     (dolist (fn (cl-set-difference
                  org-babel-jupyter--babel-ops
                  '("variable-assignments" "expand-body")
                  :test #'equal))
       (let ((sym (intern (concat "org-babel-" fn ":" lang))))
-        ;; If a language doesn't have a function assigned, set one so it can be
-        ;; overridden
-        (unless (fboundp sym)
-          (fset sym #'ignore))
-        (funcall fun sym
-                 :override (intern (concat "org-babel-" fn ":jupyter-" lang))
-                 '((name . ob-jupyter)))))
-    (funcall fun (intern (concat "org-babel-" lang "-initiate-session"))
-             :override #'org-babel-jupyter-initiate-session
-             '((name . ob-jupyter)))
-    (dolist (prefix '("org-babel-header-args:"
-                      "org-babel-default-header-args:"))
-      (when-let* ((var (intern-soft (concat prefix lang))))
-        (if restore
-            (set var (get var 'jupyter-restore-value))
-          (let ((jupyter-var (intern (concat prefix "jupyter-" lang))))
-            (put var 'jupyter-restore-value (symbol-value var))
-            (set var (symbol-value jupyter-var))))))))
+        (override-restore sym (intern (concat "org-babel-" fn ":jupyter-" lang)))))
+    (override-restore (intern (concat "org-babel-" lang "-initiate-session"))
+                      #'org-babel-jupyter-initiate-session))
+  (org-babel-jupyter--override-restore-header-args lang restore))
 
 (defun org-babel-jupyter-override-src-block (lang)
   "Override the built-in `org-babel' functions for LANG.

@@ -2160,6 +2160,42 @@ x
                    (nth 2 (org-babel-get-src-block-info 'light)))))
    (erase-buffer)))
 
+(ert-deftest org-babel-jupyter-override-src-block ()
+  :tags '(org)
+  (let* ((lang (symbol-name (cl-gensym)))
+         (overriding-funs (cl-set-difference
+                           org-babel-jupyter--babel-ops
+                           '("variable-assignments" "expand-body")
+                           :test #'equal)))
+    (set (intern (concat "org-babel-header-args:jupyter-" lang))
+         '((:kernel . "foo")))
+    (unwind-protect
+        (cl-macrolet
+            ((advice-p (not name)
+                       `(,(if not 'should-not 'should)
+                         (advice-member-p 'ob-jupyter (intern ,name)))))
+          (ert-info ("Overriding")
+            (org-babel-jupyter-override-src-block lang)
+            (dolist (fn overriding-funs)
+              (advice-p nil (concat "org-babel-" fn ":" lang)))
+            (advice-p nil (concat "org-babel-" lang "-initiate-session"))
+            (should (equal (symbol-value (intern (concat "org-babel-header-args:" lang)))
+                           '((:kernel . "foo")))))
+          (ert-info ("Restoring")
+            (org-babel-jupyter-restore-src-block lang)
+            (dolist (fn overriding-funs)
+              (advice-p t (concat "org-babel-" fn ":" lang)))
+            (advice-p t (concat "org-babel-" lang "-initiate-session"))
+            (should-not (symbol-value (intern (concat "org-babel-header-args:" lang))))))
+      (dolist (fn org-babel-jupyter--babel-ops)
+        (obarray-remove obarray (intern (concat "org-babel-" fn ":" lang))))
+      (obarray-remove obarray
+                      (intern (concat "org-babel-header-args:" lang)))
+      (obarray-remove obarray
+                      (intern (concat "org-babel-header-args:jupyter-" lang)))
+      (obarray-remove obarray
+                      (intern (concat "org-babel-" lang "-initiate-session"))))))
+
 (ert-deftest org-babel-jupyter-strip-ansi-escapes ()
   :tags '(org)
   (jupyter-org-test
