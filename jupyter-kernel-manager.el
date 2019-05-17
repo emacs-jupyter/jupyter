@@ -174,10 +174,10 @@ fatal signal."
 The --kernel argument of \"jupyter kernel\" is filled in with the
 `jupyter-kernel-name' of KERNEL and passed as the first
 argument of the process."
-  ;; NOTE: On Windows, apparently the "jupyter kernel" command also launches a
-  ;; new process to start the kernel using something like an exec command, but
-  ;; exec like commands on Windows launch a new process instead of replacing
-  ;; the current one which results in the process we start here returning after
+  ;; NOTE: On Windows, apparently the "jupyter kernel" command uses something
+  ;; like an exec shell command to start the process which launches the kernel,
+  ;; but exec like commands on Windows start a new process instead of replacing
+  ;; the current one which results in the process we start here exiting after
   ;; the new process is launched. We call python directly to avoid this.
   (apply #'cl-call-next-method
          kernel (jupyter-locate-python)
