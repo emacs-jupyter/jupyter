@@ -577,6 +577,38 @@
 
 ;;; Kernel
 
+(ert-deftest jupyter-locate-python ()
+  :tags '(kernel)
+  ;; TODO: Generalize for Windows
+  (skip-unless (not (memq system-type '(ms-dos windows-nt cygwin))))
+  ;; Load file name handlers
+  (ignore (file-remote-p "/ssh:foo:"))
+  (cl-letf (((symbol-function #'jupyter-command)
+             (lambda (&rest _)
+               "{\"data\": [\"/home/USER/.local/share/jupyter\", \
+\"/home/USER/.julia/conda/3/share/jupyter\", \
+\"/usr/local/share/jupyter\", \
+\"/usr/share/jupyter\"]}"))
+            ((symbol-function #'file-exists-p)
+             (lambda (file)
+               (member file '("/home/USER/.julia/conda/3/bin/python3"
+                              "/ssh:foo:/usr/local/bin/python3")))))
+    (should (equal (jupyter-locate-python) "/home/USER/.julia/conda/3/bin/python3"))
+    (let ((default-directory "/ssh:foo:"))
+      (should (equal (jupyter-locate-python) "/usr/local/bin/python3"))))
+  (cl-letf (((symbol-function #'jupyter-command)
+             (lambda (&rest _)
+               "{\"foo\": [\"/home/USER/.local/share/jupyter\", \
+\"/usr/share/jupyter\"]}")))
+    (should-error (jupyter-locate-python)))
+  (cl-letf (((symbol-function #'jupyter-command)
+             (lambda (&rest _)
+               "{\"data\": [\"/home/USER/.local/share/jupyter\", \
+\"/usr/share/jupyter\"]}"))
+            ((symbol-function #'file-exists-p)
+             (lambda (_) nil)))
+    (should-error (jupyter-locate-python))))
+
 (ert-deftest jupyter-kernel-lifetime ()
   :tags '(kernel)
   (let* ((conn-info (jupyter-create-connection-info))
