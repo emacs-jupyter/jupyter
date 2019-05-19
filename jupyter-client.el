@@ -1074,11 +1074,11 @@ restore its position after evaluation."
   (jupyter-with-repl-buffer jupyter-current-client
     (let ((point-at-max (eql (point) (point-max))))
       (save-excursion
-        (end-of-buffer)
+        (goto-char (point-max))
         (jupyter-repl-insert str)
         (jupyter-repl-ret))
       (when point-at-max
-        (end-of-buffer)))))
+        (goto-char (point-max))))))
 
 (defun jupyter-send-to-repl-defun ()
   "Paste the current function in the repl and evaluate it there."
