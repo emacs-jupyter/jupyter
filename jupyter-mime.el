@@ -313,7 +313,8 @@ aligns on the current line."
         (setf (image-property image :ascent) 50)
         (force-window-update)))))
 
-(defun jupyter--insert-temp-file-browse-url (data)
+(defun jupyter-browse-url-in-temp-file (data)
+  "Insert DATA into a temp file and call `browse-url-of-file' on it."
   (let ((file (make-temp-file "emacs-jupyter" nil ".html")))
     (with-temp-file file (insert data))
     (browse-url-of-file file)

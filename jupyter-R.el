@@ -54,7 +54,7 @@ Otherwise, parse it as normal."
                               &context (jupyter-lang R)
                               &optional metadata)
   (if (plist-get metadata :isolated)
-      (jupyter--insert-temp-file-browse-url data)
+      (jupyter-browse-url-in-temp-file data)
     (cl-call-next-method)))
 
 (provide 'jupyter-R)
