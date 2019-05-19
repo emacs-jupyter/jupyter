@@ -334,11 +334,20 @@ If ARG is a `jupyter-request', reset the buffer if ARG's
 (defmacro jupyter-with-display-buffer (name reset &rest body)
   "In a buffer with a name derived from NAME current, evaluate BODY.
 The buffer's name is obtained by a call to
-`jupyter-get-buffer-create'. A display buffer is similar to a
-*Help* buffer, but maintains its previous output on subsequent
-invocations that use the same NAME. Before BODY is evaluated,
-`point' is moved to the end of the most recent output. Also note,
-BODY is wrapped using `jupyter-with-control-code-handling'.
+`jupyter-get-buffer-create'.
+
+A display buffer is similar to a *Help* buffer, but maintains its
+previous output on subsequent invocations that use the same NAME
+and BODY is wrapped using `jupyter-with-control-code-handling' so
+that any insertions into the buffer that contain ANSI escape
+codes are properly handled.
+
+Note, before BODY is evaluated, `point' is moved to the end of
+the most recent output.
+
+Also note, the `jupyter-current-client' variable in the buffer
+that BODY is evaluated in is let bound to whatever value it has
+before making that buffer current.
 
 RESET is a form or symbol that determines if the buffer should be
 erased before evaluating BODY. If RESET is nil, no erasing of the
@@ -348,14 +357,17 @@ request that generated output in the buffer is not the same
 request. Otherwise if RESET evaluates to any non-nil value, reset
 the output buffer."
   (declare (indent 2) (debug (stringp [&or atom form] body)))
-  (let ((buffer (make-symbol "buffer")))
-    `(let ((,buffer (jupyter-get-buffer-create ,name)))
+  (let ((buffer (make-symbol "buffer"))
+        (client (make-symbol "client")))
+    `(let ((,client jupyter-current-client)
+           (,buffer (jupyter-get-buffer-create ,name)))
        (setq other-window-scroll-buffer ,buffer)
        (with-current-buffer ,buffer
          (unless jupyter-display-buffer-marker
            (setq jupyter-display-buffer-marker (point-max-marker))
            (set-marker-insertion-type jupyter-display-buffer-marker t))
-         (let ((inhibit-read-only t))
+         (let ((inhibit-read-only t)
+               (jupyter-current-client ,client))
            (when (jupyter--reset-display-buffer-p ,reset)
              (erase-buffer)
              (set-marker jupyter-display-buffer-marker (point)))
