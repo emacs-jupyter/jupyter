@@ -1062,6 +1062,45 @@ representation of the results in the current buffer."
       (bounds-of-thing-at-point 'defun)
     (jupyter-eval-region beg end)))
 
+;; Alternative ESS-style evaluation that prints inputs/outputs in the
+;; REPL buffer
+
+(defun jupyter-send-to-repl-string (str)
+  "Paste STR to the repl and evaluate it there.
+If the repl's point is at the end, move it forward; otherwise,
+restore its position after evaluation."
+  (cl-check-type jupyter-current-client jupyter-kernel-client
+                 "Not a valid client")
+  (jupyter-with-repl-buffer jupyter-current-client
+    (let ((point-at-max (eql (point) (point-max))))
+      (save-excursion
+        (end-of-buffer)
+        (jupyter-repl-insert str)
+        (jupyter-repl-ret))
+      (when point-at-max
+        (end-of-buffer)))))
+
+(defun jupyter-send-to-repl-defun ()
+  "Paste the current function in the repl and evaluate it there."
+  (interactive)
+  (cl-destructuring-bind (beg . end)
+      (bounds-of-thing-at-point 'defun)
+    (jupyter-send-to-repl-string (buffer-substring beg end))))
+
+(defun jupyter-send-to-repl-line-or-region ()
+  "Paste the current line or region to the repl and evaluate it there."
+  (interactive)
+  (let* ((region (when (use-region-p)
+                   (car (region-bounds))))
+         (start (or (car region) (line-beginning-position)))
+         (end (or (cdr region) (line-end-position))))
+    (jupyter-send-to-repl-string (buffer-substring start end))))
+
+(defun jupyter-send-to-repl-buffer ()
+  "Paste the current buffer to the repl and evaluate it there"
+  (interactive)
+  (jupyter-send-to-repl-string (buffer-string)))
+
 ;;;;; Handlers
 
 (cl-defgeneric jupyter-send-execute-request ((client jupyter-kernel-client)
