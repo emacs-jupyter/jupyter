@@ -1076,6 +1076,9 @@ restore its position after evaluation."
       (save-excursion
         (goto-char (point-max))
         (jupyter-repl-insert str)
+        ;; extra newline needed for some special cases
+        ;; (e.g., Python defun's that end in EOF)
+        (jupyter-repl-insert "\n")
         (jupyter-repl-ret))
       (when point-at-max
         (goto-char (point-max))))))
