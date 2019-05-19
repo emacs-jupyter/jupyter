@@ -977,9 +977,13 @@ to the above explanation."
         (setq had-result t)
         (jupyter-with-display-buffer "display" req
           (jupyter-insert data metadata)
-          (jupyter-display-current-buffer-reuse-window
-           :display-data nil (unless (jupyter-pop-up-frame-p :display-data)
-                               #'display-buffer-below-selected))))
+          (if (> (line-number-at-pos (point-max))
+                 jupyter-eval-short-result-max-lines)
+              (jupyter-display-current-buffer-reuse-window
+               :display-data nil (unless (jupyter-pop-up-frame-p :display-data)
+                                   #'display-buffer-below-selected))
+            (funcall jupyter-eval-short-result-display-function
+                     (buffer-string)))))
       :error
       (jupyter-message-lambda (traceback)
         ;; FIXME: Assumes the error in the
