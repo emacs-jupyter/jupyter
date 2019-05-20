@@ -1,3 +1,24 @@
+* master
+
+- Add the new commands ~jupyter-repl-history-previous-matching~ and
+  ~jupyter-repl-history-next-matching~, bound to ~C-c M-r~ and ~C-c M-s~ in the
+  REPL.
+
+- In ~jupyter-with-display-buffer~, ~let~ bind ~jupyter-current-client~. This
+  fixes an issue where kernel language specific methods were not overriding the
+  defaults when attempting to display the contents of =display-data= messages
+  received from a kernel.
+
+- Fix a regression in ~jupyter-available-kernelspecs~ when getting the
+  kernelspecs on remote hosts.
+
+- Handle empty result blocks when stripping ANSI escape sequences during export
+  in ~org-babel-jupyter-strip-ansi-escapes~.
+
+- Call ~downcase~ on the language name when adding to ~org-src-lang-modes~.
+  This fixes an issue with the ~C++~ kernel where the corresponding mode is
+  ~c++-mode~.
+
 * v0.8.0
 
 - Support Windows
@@ -307,7 +328,7 @@
 Examine the output of
 
 #+NAME: changelog
-#+HEADER: :var PREV_VERSION="v0.8.0" VERSION="master"
+#+HEADER: :var PREV_VERSION="7554293d" VERSION="master"
 #+BEGIN_SRC shell :results output
 git log --pretty=format:"%s" ${PREV_VERSION}...${VERSION}
 #+END_SRC
