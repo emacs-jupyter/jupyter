@@ -987,6 +987,63 @@ rotated to, i.e. the one at index 0."
      ;; after N successful rotations, return the element rotated to
      finally return (ring-ref jupyter-repl-history 0))))
 
+(defun jupyter-repl-history--match-input (regexp arg)
+  "Return the index of the ARGth REGEXP match.
+Or nil, on failure. If ARG is positive, search backward from the most
+recent history element. If negative, search forward through items
+previously visited during this input session. If ARG is zero, do
+nothing."
+  ;; Adapted from `comint-previous-matching-input-string-position'
+  (let* ((direction (if (> arg 0) +1 -1))
+         (i (if (= direction -1) 0 -1)) ; adjust for initial increment
+         (failed (zerop arg))
+         ;;
+         code)
+    ;; Search ARG times
+    (while (not (or failed (zerop arg)))
+      (while (not (or (setq code (ring-ref jupyter-repl-history
+                                           (cl-incf i direction))
+                            failed (eq 'jupyter-repl-history code))
+                      (string-match-p regexp code))))
+      (setq arg (- arg direction)))
+    (unless failed i)))
+
+(defun jupyter-repl-history-previous-matching (&optional n)
+  "Search input history for the input pending before point.
+On success, replace the current input with the matching code element
+while preserving and returning point. Ding on failure. If N is negative,
+find the Nth next match; if positive, the Nth previous. If N is zero or
+nil, pretend it's one."
+  ;; Adapted from: `comint-previous-matching-input-from-input' and friends
+  (interactive "p")
+  (when (or (null n) (zerop n)) (setq n 1))
+  (let ((opoint (point))
+        (code (jupyter-repl-cell-code))
+        (is-prev (> n 0))
+        (input-string (buffer-substring
+                       (jupyter-repl-cell-code-beginning-position) (point)))
+        found)
+    ;; Look past an initial duplicate
+    (when (equal code (ring-ref jupyter-repl-history (if is-prev 0 -1)))
+      (cl-incf n (if is-prev 1 -1)))
+    (if (not (setq found (jupyter-repl-history--match-input
+                          (concat "^" (regexp-quote input-string)) n)))
+        (user-error "No %s matching input" (if is-prev "earlier" "later"))
+      (setq code (ring-ref jupyter-repl-history found))
+      (jupyter-repl-history--rotate (- found))
+      (jupyter-repl-replace-cell-code code)
+      (goto-char opoint))))
+
+(defun jupyter-repl-history-next-matching (&optional n)
+  "Search existing history session for an element matching input.
+Only consider the text before point. If N is negative, find the Nth
+previous match, otherwise the Nth next. If N is zero or nil, make it
+one. \"Existing history session\" means those history elements already
+visited while forming the current input."
+  (interactive "p")
+  (when (or (null n) (zerop n)) (setq n 1))
+  (jupyter-repl-history-previous-matching (- n)))
+
 (defun jupyter-repl-history-next (&optional n)
   "Go to the next history element.
 Navigate through the REPL history to the next (newer) history
