@@ -1,5 +1,11 @@
 * master
 
+- Allow =:session= to be a remote file name for =org-mode= source blocks. When
+  =:session= is a remote file name that doesn't end in =.json=, e.g.
+  =/ssh:ec2:jl=, a new kernel is started on the remote host using the
+  =jupyter kernel= command on that host. The local file name part serves to
+  distinguish different sessions on the remote host.
+
 - Add the new commands ~jupyter-repl-history-previous-matching~ and
   ~jupyter-repl-history-next-matching~, bound to ~C-c M-r~ and ~C-c M-s~ in the
   REPL.
