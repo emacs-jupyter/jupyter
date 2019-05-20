@@ -977,9 +977,12 @@ to the above explanation."
         (setq had-result t)
         (jupyter-with-display-buffer "display" req
           (jupyter-insert data metadata)
-          (jupyter-display-current-buffer-reuse-window
-           :display-data nil (unless (jupyter-pop-up-frame-p :display-data)
-                               #'display-buffer-below-selected))))
+          ;; Don't pop-up the display when it's empty (e.g. jupyter-R
+          ;; will open some HTML results in an external browser)
+          (when (/= (point-min) (point-max))
+            (jupyter-display-current-buffer-reuse-window
+             :display-data nil (unless (jupyter-pop-up-frame-p :display-data)
+                                 #'display-buffer-below-selected)))))
       :error
       (jupyter-message-lambda (traceback)
         ;; FIXME: Assumes the error in the

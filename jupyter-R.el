@@ -27,6 +27,7 @@
 
 (require 'jupyter-repl)
 (require 'jupyter-org-client)
+(require 'jupyter-mime)
 
 (defvar ess-font-lock-keywords)
 
@@ -47,6 +48,13 @@ Otherwise, parse it as normal."
           (insert data))
         (browse-url-of-file file)
         (jupyter-org-file-link file))
+    (cl-call-next-method)))
+
+(cl-defmethod jupyter-insert ((_mime (eql :text/html)) data
+                              &context (jupyter-lang R)
+                              &optional metadata)
+  (if (plist-get metadata :isolated)
+      (jupyter-browse-url-in-temp-file data)
     (cl-call-next-method)))
 
 (provide 'jupyter-R)
