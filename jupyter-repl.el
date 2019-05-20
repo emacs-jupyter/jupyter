@@ -1614,6 +1614,8 @@ in the appropriate direction, to the saved element."
     (define-key map (kbd "RET") #'jupyter-repl-ret)
     (define-key map (kbd "M-n") #'jupyter-repl-history-next)
     (define-key map (kbd "M-p") #'jupyter-repl-history-previous)
+    (define-key map (kbd "C-c M-r") #'jupyter-repl-history-previous-matching)
+    (define-key map (kbd "C-c M-s") #'jupyter-repl-history-next-matching)
     map))
 
 (put 'jupyter-repl-mode 'mode-class 'special)
