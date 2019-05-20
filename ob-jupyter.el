@@ -158,7 +158,7 @@ path."
   (let* ((expander (when lang
                      (intern (format "org-babel-expand-body:%s" lang))))
          (expanded (if (functionp expander)
-                       (funcall expander body params var-lines)
+                       (funcall expander body params)
                      (org-babel-expand-body:generic body params var-lines)))
          (changelist nil))
     (when-let* ((dir (alist-get :dir params)))
