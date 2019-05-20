@@ -561,6 +561,13 @@ Host ec2
 #+END_SRC
 
 to your =~/.ssh/config= file.
+*** Starting a remote kernel
+
+If =:session= is a remote file name that doesn't end in =.json=, e.g.
+=/ssh:ec2:jl=, then a kernel on the remote host =/ssh:ec2:= is started using
+the =jupyter kernel= command on the host. The local part of the session name
+serves to distinguish different remote sessions on the same host.
+
 *** TODO Standard output, displayed data, and code block results
 
 One significant difference between Jupyter code blocks and regular =org-mode=
