@@ -985,7 +985,9 @@ rotated to, i.e. the one at index 0."
      (funcall ifun jupyter-repl-history
               (ring-remove jupyter-repl-history ridx))
      ;; after N successful rotations, return the element rotated to
-     finally return (ring-ref jupyter-repl-history 0))))
+     finally return (let ((el (ring-ref jupyter-repl-history 0)))
+                      (unless (eq el 'jupyter-repl-history)
+                        el)))))
 
 (defun jupyter-repl-history--match-input (regexp arg)
   "Return the index of the ARGth REGEXP match.
