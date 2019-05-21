@@ -298,6 +298,16 @@ If non-nil, allow inserting a newline in a REPL cell whenever the kernel is
 busy. Normally this isn't allowed since the REPL relies on the kernel
 responding to messages when =RET= is pressed, but a kernel does not respond to
 messages when it is busy.
+*** =jupyter-repl-echo-eval-p=
+
+If non-nil, when evaluating code using the =jupyter-eval-*= functions
+like =M-x jupyter-eval-line-or-region=, copy the evaluated code as a REPL input
+cell and display any output generated in the REPL. When this variable is nil,
+copying to the REPL does not occur and output/results are inserted in pop-up
+buffers or added to the =*Messages*= buffer according to
+=jupyter-eval-short-result-max-lines= and
+=jupyter-eval-short-result-display-function=.
+
 *** Widget support
 
 There is also support for Jupyter widgets integrated into the REPL. If any of
