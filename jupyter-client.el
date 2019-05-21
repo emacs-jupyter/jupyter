@@ -1057,9 +1057,9 @@ representation of the results in the current buffer."
 (defun jupyter-eval-defun ()
   "Evaluate the function at `point'."
   (interactive)
-  (cl-destructuring-bind (beg . end)
-      (bounds-of-thing-at-point 'defun)
-    (jupyter-eval-region beg end)))
+  (when-let* ((bounds (bounds-of-thing-at-point 'defun)))
+    (cl-destructuring-bind (beg . end) bounds
+      (jupyter-eval-region beg end))))
 
 ;;;;; Handlers
 
