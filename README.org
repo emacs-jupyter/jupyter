@@ -15,6 +15,7 @@ An interface to communicate with Jupyter kernels in Emacs.
 - [[#how-do-i-use-the-built-in-frontends][How do I use the built-in frontends?]]
   - [[#repl][REPL]]
   - [[#org-mode-source-blocks][=org-mode= source blocks]]
+  - [[#customizable-variables-available-for-all-frontends][Customizable variables available for all frontends]]
 - [[#api][API]]
   - [[#naming-conventions][Naming conventions]]
   - [[#overview][Overview]]
@@ -24,6 +25,7 @@ An interface to communicate with Jupyter kernels in Emacs.
   - [[#jupyter-repl-client][=jupyter-repl-client=]]
   - [[#jupyter-ioloop][=jupyter-ioloop=]]
   - [[#jupyter-channel-ioloop][=jupyter-channel-ioloop=]]
+  - [[#jupyter-comm-layer][=jupyter-comm-layer=]]
   - [[#callbacks-and-hooks][Callbacks and hooks]]
   - [[#waiting-for-messages][Waiting for messages]]
   - [[#message-property-lists][Message property lists]]
@@ -609,6 +611,17 @@ available when =jupyter-org-interaction-mode= is enabled
 | =C-x C-e=   | =jupyter-eval-line-or-region=   |
 | =C-c C-i=   | =jupyter-repl-interrupt-kernel= |
 | =C-c C-r=   | =jupyter-repl-restart-kernel=   |
+
+** Customizable variables available for all frontends
+
+*** =jupyter-eval-short-result-max-lines=
+
+If the number of lines of an evaluation result is smaller than this variable,
+the function stored in =jupyter-eval-short-result-display-function= is used to
+display the result. Otherwise the result is displayed in a pop-up buffer.
+
+This variable is mainly used by the =jupyter-eval-*= commands such as
+=M-x jupyter-eval-line-or-region=.
 
 * API
 ** Naming conventions
