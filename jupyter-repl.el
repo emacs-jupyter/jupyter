@@ -1833,7 +1833,7 @@ the updated state."
     (define-key map (kbd "C-c C-s") #'jupyter-repl-scratch-buffer)
     (define-key map (kbd "C-c C-b") #'jupyter-eval-buffer)
     (define-key map (kbd "C-c C-l") #'jupyter-load-file)
-    (define-key map (kbd "C-c M-:") #'jupyter-eval-string)
+    (define-key map (kbd "C-c M-:") #'jupyter-eval-string-command)
     (define-key map (kbd "M-i") #'jupyter-inspect-at-point)
     (define-key map (kbd "C-c C-r") #'jupyter-repl-restart-kernel)
     (define-key map (kbd "C-c C-i") #'jupyter-repl-interrupt-kernel)
