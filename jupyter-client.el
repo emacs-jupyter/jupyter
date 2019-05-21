@@ -980,9 +980,7 @@ to the above explanation."
           ;; Don't pop-up the display when it's empty (e.g. jupyter-R
           ;; will open some HTML results in an external browser)
           (when (/= (point-min) (point-max))
-            (jupyter-display-current-buffer-reuse-window
-             :display-data nil (unless (jupyter-pop-up-frame-p :display-data)
-                                 #'display-buffer-below-selected)))))
+            (jupyter-display-current-buffer-guess-where :display-data))))
       :error
       (jupyter-message-lambda (traceback)
         ;; FIXME: Assumes the error in the
@@ -996,9 +994,7 @@ to the above explanation."
                                        (_ "output"))
             req
           (jupyter-insert-ansi-coded-text text)
-          (jupyter-display-current-buffer-reuse-window
-           :stream nil (unless (jupyter-pop-up-frame-p :stream)
-                         #'display-buffer-below-selected)))))
+          (jupyter-display-current-buffer-guess-where :stream))))
     req))
 
 (defun jupyter-eval-region (beg end &optional cb)
@@ -1942,9 +1938,7 @@ If RESTART is non-nil, request a restart instead of a complete shutdown."
   (jupyter-with-display-buffer "traceback" 'reset
     (jupyter-insert-ansi-coded-text traceback)
     (goto-char (point-min))
-    (jupyter-display-current-buffer-reuse-window
-     :error nil (unless (jupyter-pop-up-frame-p :error)
-                  #'display-buffer-below-selected))))
+    (jupyter-display-current-buffer-guess-where :error)))
 
 (cl-defgeneric jupyter-handle-error ((_client jupyter-kernel-client)
                                      _req

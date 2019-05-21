@@ -404,6 +404,16 @@ new window or frame."
   (or (eq jupyter-pop-up-frame t)
       (memq msg-type jupyter-pop-up-frame)))
 
+(defun jupyter-display-current-buffer-guess-where (msg-type)
+  "Display the current buffer in a window or frame depending on MSG-TYPE.
+Call `jupyter-display-current-buffer-reuse-window' passing
+MSG-TYPE as argument. If MSG-TYPE should be displayed in a window
+and the current buffer is not already being displayed, display
+the buffer below the selected window."
+  (jupyter-display-current-buffer-reuse-window
+   msg-type nil (unless (jupyter-pop-up-frame-p msg-type)
+                  #'display-buffer-below-selected)))
+
 ;;; Signing functions/UUID
 
 (defun jupyter-sha256 (object)
