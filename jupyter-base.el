@@ -785,11 +785,15 @@ otherwise return the underlying object."
 
 ;;; Errors
 
-(defun jupyter-error-if-not-client-class-p (class)
-  "Signal a wrong-type-argument error if CLASS is not a client class."
-  (unless (child-of-class-p class 'jupyter-kernel-client)
+(defun jupyter-error-if-not-client-class-p (class &optional check-class)
+  "Signal a wrong-type-argument error if CLASS is not a client class.
+If CHECK-CLASS is provided check CLASS against it. CHECK-CLASS
+defaults to `jupyter-kernel-client'."
+  (or check-class (setq check-class 'jupyter-kernel-client))
+  (cl-assert (class-p check-class))
+  (unless (child-of-class-p class check-class)
     (signal 'wrong-type-argument
-            (list '(subclass jupyter-kernel-client) class))))
+            (list (list 'subclass check-class) class))))
 
 (provide 'jupyter-base)
 
