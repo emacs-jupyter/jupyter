@@ -1,6 +1,10 @@
 An interface to communicate with Jupyter kernels in Emacs.
 
-[[https://melpa.org/#/jupyter][https://melpa.org/packages/jupyter-badge.svg]] [[https://travis-ci.com/dzop/emacs-jupyter][https://travis-ci.com/dzop/emacs-jupyter.svg?branch=master]] [[https://ci.appveyor.com/project/dzop/emacs-jupyter/branch/master][https://ci.appveyor.com/api/projects/status/htj8e742k604w2vk/branch/master?svg=true]]
+#+BEGIN_HTML
+<a href="https://melpa.org/#/jupyter"><img src="https://melpa.org/packages/jupyter-badge.svg"></a>
+<a href="https://travis-ci.com/dzop/emacs-jupyter"><img src="https://travis-ci.com/dzop/emacs-jupyter.svg?branch=master"></a>
+<a href="https://ci.appveyor.com/project/dzop/emacs-jupyter/branch/master"><img src="https://ci.appveyor.com/api/projects/status/htj8e742k604w2vk/branch/master?svg=true"></a>
+#+END_HTML
 
 * Table of Contents                                                     :TOC:
 - [[#what-does-this-package-do][What does this package do?]]
