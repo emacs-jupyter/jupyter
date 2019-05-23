@@ -195,6 +195,31 @@ The kernelspecs are returned in the same form as returned by
                                 (cons nil (plist-get spec :spec)))))))
   (plist-get (oref server kernelspecs) :kernelspecs))
 
+(defun jupyter-completing-read-server-kernel (server)
+  "Use `completing-read' to select a kernel on SERVER.
+A model of the kernel is returned as a property list and has at
+least the following keys:
+
+- :id :: The ID used to identify the kernel on the server
+- :last_activity :: The last channel activity of the kernel
+- :name :: The kernelspec name used to start the kernel
+- :execution_state :: The status of the kernel
+- :connections :: The number of websocket connections for the kernel"
+  (let* ((kernels (jupyter-api-get-kernel server))
+         (display-names
+          (if (null kernels) (error "No kernels @ %s" (oref server url))
+            (mapcar (lambda (k)
+                 (cl-destructuring-bind
+                     (&key name id last_activity &allow-other-keys) k
+                   (concat name " (last activity: " last_activity ", id: " id ")")))
+               kernels)))
+         (name (completing-read "kernel: " display-names nil t)))
+    (when (equal name "")
+      (error "No kernel selected"))
+    (nth (- (length display-names)
+            (length (member name display-names)))
+         (append kernels nil))))
+
 ;;; `jupyter-server-kernel-comm' methods
 
 (cl-defmethod jupyter-comm-start ((comm jupyter-server-kernel-comm) &rest _ignore)
