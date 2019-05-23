@@ -1978,36 +1978,60 @@ have the same `major-mode' as the client's kernel language and
 
 ;;; Starting a REPL
 
-(defun jupyter-repl--new-repl (client &optional repl-name)
-  "Initialize a new REPL buffer based on CLIENT.
-CLIENT is a REPL client already connected to its kernel and has a
-non-nil kernel-info slot.
+(cl-defgeneric jupyter-bootstrap-repl ((client jupyter-repl-client)
+                                       &optional repl-name associate-buffer display)
+  "Initialize a new REPL buffer based on CLIENT, return CLIENT.
+CLIENT should be a REPL client already connected to its kernel.
 
 A new REPL buffer communicating with CLIENT's kernel is created
 and set as CLIENT's buffer slot. If CLIENT already has a non-nil
-buffer slot, raise an error.
+buffer slot, do nothing.
 
 REPL-NAME is a string that will be used to generate the buffer
-name. If nil or empty, a default will be used."
-  (unless jupyter-repl-persistent-mode (jupyter-repl-persistent-mode))
-  (if (oref client buffer) (error "Client already has a REPL buffer")
-    (cl-destructuring-bind (&key language_info
-                                 banner
-                                 &allow-other-keys)
-        (jupyter-kernel-info client)
-      (let ((language-name (plist-get language_info :name))
-            (language-version (plist-get language_info :version)))
-        (oset client buffer
-              (generate-new-buffer
-               (format "*jupyter-repl[%s]*"
-                       (if (zerop (length repl-name))
-                           (format "%s %s" language-name language-version)
-                         repl-name))))
-        (jupyter-with-repl-buffer client
-          (setq-local jupyter-current-client client)
-          (jupyter-repl-mode)
-          (jupyter-repl-insert-banner banner)
-          (jupyter-repl-insert-prompt 'in))))))
+name. If nil or empty, a default will be used.
+
+If ASSOCIATE-BUFFER is non-nil, attempt to \"connect\" the
+`current-buffer' to the REPL (see
+`jupyter-repl-associate-buffer') if it is compatible with the
+underlying kernel.
+
+If DISPLAY is non-nil, display the REPL buffer after
+completing all of the above.")
+
+(cl-defmethod jupyter-bootstrap-repl :before ((_client jupyter-repl-client)
+                                              &optional _repl-name _associate-buffer _display)
+  "Enable `jupyter-repl-persistent-mode' if needed."
+  (unless jupyter-repl-persistent-mode (jupyter-repl-persistent-mode)))
+
+(cl-defmethod jupyter-bootstrap-repl :after ((client jupyter-repl-client)
+                                             &optional _repl-name associate-buffer display)
+  (when (and associate-buffer
+             (eq major-mode (jupyter-kernel-language-mode client)))
+    (jupyter-repl-associate-buffer client))
+  (when display
+    (pop-to-buffer (oref client buffer))))
+
+(cl-defmethod jupyter-bootstrap-repl ((client jupyter-repl-client)
+                                      &optional repl-name _associate-buffer _display)
+  (prog1 client
+    (unless (oref client buffer)
+      (cl-destructuring-bind (&key language_info
+                                   banner
+                                   &allow-other-keys)
+          (jupyter-kernel-info client)
+        (let ((language-name (plist-get language_info :name))
+              (language-version (plist-get language_info :version)))
+          (oset client buffer
+                (generate-new-buffer
+                 (format "*jupyter-repl[%s]*"
+                         (if (zerop (length repl-name))
+                             (format "%s %s" language-name language-version)
+                           repl-name))))
+          (jupyter-with-repl-buffer client
+            (setq-local jupyter-current-client client)
+            (jupyter-repl-mode)
+            (jupyter-repl-insert-banner banner)
+            (jupyter-repl-insert-prompt 'in)))))))
 
 ;;;###autoload
 (defun jupyter-run-repl (kernel-name &optional repl-name associate-buffer client-class display)
@@ -2050,20 +2074,7 @@ command on the host."
     (error "Class should be a subclass of `jupyter-repl-client' (`%s')" client-class))
   (cl-destructuring-bind (_manager client)
       (jupyter-start-new-kernel kernel-name client-class)
-    (jupyter-repl--new-repl client repl-name)
-    ;; TODO: An alist mapping kernel languages to their
-    ;; corresponding major modes in Emacs. This ways we can
-    ;; error out earlier before starting the REPL. The
-    ;; reason why this can't be done is because we use the
-    ;; extension key of the kernel-info to get the major
-    ;; mode using `auto-mode-alist'. See
-    ;; `jupyter-repl-kernel-language-mode-properties'.
-    (when (and associate-buffer
-               (eq major-mode (jupyter-kernel-language-mode client)))
-      (jupyter-repl-associate-buffer client))
-    (when display
-      (pop-to-buffer (oref client buffer)))
-    client))
+    (jupyter-bootstrap-repl client repl-name associate-buffer display)))
 
 ;;;###autoload
 (defun jupyter-connect-repl (file-or-plist &optional repl-name associate-buffer client-class display)
@@ -2092,13 +2103,7 @@ interactively, DISPLAY the new REPL buffer as well."
     (jupyter-initialize-connection client file-or-plist)
     (jupyter-start-channels client)
     (jupyter-hb-unpause client)
-    (jupyter-repl--new-repl client repl-name)
-    (when (and associate-buffer
-               (eq major-mode (jupyter-kernel-language-mode client)))
-      (jupyter-repl-associate-buffer client))
-    (when display
-      (pop-to-buffer (oref client buffer)))
-    client))
+    (jupyter-bootstrap-repl client repl-name associate-buffer display)))
 
 (provide 'jupyter-repl)
 
