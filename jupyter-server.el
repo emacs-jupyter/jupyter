@@ -367,6 +367,28 @@ the same meaning as in `jupyter-run-repl'."
       (jupyter-server-start-new-kernel server kernel-name client-class)
     (jupyter-bootstrap-repl client repl-name associate-buffer display)))
 
+;;;###autoload
+(defun jupyter-connect-server-repl
+    (server kernel-id &optional repl-name associate-buffer client-class display)
+  "On SERVER, connect to the kernel with KERNEL-ID.
+REPL-NAME, ASSOCIATE-BUFFER, CLIENT-CLASS, and DISPLAY all have
+the same meaning as in `jupyter-connect-repl'."
+  (interactive
+   (let ((server (jupyter-guess-server)))
+     (list server
+           (plist-get (jupyter-completing-read-server-kernel server) :id)
+           (when current-prefix-arg
+             (read-string "REPL Name: "))
+           t nil t)))
+  (or client-class (setq client-class 'jupyter-repl-client))
+  (jupyter-error-if-not-client-class-p client-class 'jupyter-repl-client)
+  (let* ((spec-name (plist-get (jupyter-api-get-kernel server kernel-id) :name))
+         (kernel (jupyter-server-kernel
+                  :id kernel-id
+                  :spec (assoc spec-name (jupyter-server-kernelspecs server))))
+         (client (jupyter-server--kernel-client server kernel client-class)))
+    (jupyter-bootstrap-repl client repl-name associate-buffer display)))
+
 (provide 'jupyter-server)
 
 ;;; jupyter-server.el ends here
