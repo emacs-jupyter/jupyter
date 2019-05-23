@@ -570,6 +570,23 @@ If =:session= is a remote file name that doesn't end in =.json=, e.g.
 the =jupyter kernel= command on the host. The local part of the session name
 serves to distinguish different remote sessions on the same host.
 
+*** Communicating with kernel (notebook) servers
+
+If =:session= has the form of a url, =http://HOST:PORT:name= or
+=http://HOST:name=, =HOST[:PORT]= is assumed to be a kernel server that can be
+communicated with using the Jupyter REST API and a kernel with a kernelspec
+name matching the =:kernel= header argument will be used to communicate with
+the server. Note, =name= is just used as an identifier for the session in
+=org-mode= and serves no other purpose, but is required to distinguish
+sessions.
+
+Alternatively, to connect to a kernel behind a kernel server, =:session= can
+look like =http://HOST:PORT/KERNEL-ID= or =http://HOST/KERNEL-ID= where
+=KERNEL-ID= is the ID of the kernel on the server. In this case, =:session=
+represents a connection to the kernel with =KERNEL-ID= on the server. Note, in
+this case the kernel must have been started with a kernelspec that matches the
+=:kernel= header argument.
+
 *** TODO Standard output, displayed data, and code block results
 
 One significant difference between Jupyter code blocks and regular =org-mode=

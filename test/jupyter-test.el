@@ -1830,6 +1830,52 @@ last element being the newest element added to the history."
         (jupyter-shutdown-kernel manager)
         (jupyter-comm-stop server)))))
 
+(ert-deftest org-babel-jupyter-server-session ()
+  :tags '(server org)
+  (let ((initiate-session
+         (lambda (session &optional args)
+           (erase-buffer)
+           (insert (format "\
+#+BEGIN_SRC jupyter-python :session %s %s
+1 + 1
+#+END_SRC" session (or args "")))
+           (goto-char (point-min))
+           (let ((params (nth 2 (org-babel-get-src-block-info))))
+             (org-babel-jupyter-initiate-session
+              (alist-get :session params) params)))))
+    (jupyter-org-test
+     (ert-info ("No session name")
+       (should-error (funcall initiate-session "http://localhost:8888")))
+     (let ((server (or (jupyter-find-server "http://localhost:8888")
+                       (jupyter-server :url "http://localhost:8888"))))
+       (should (jupyter-server-kernelspecs server))
+       (ert-info ("Non-existent kernel")
+         (should-error (funcall initiate-session
+                                "http://localhost:8888:py" ":kernel foo"))
+         (should-error (funcall initiate-session
+                                "http://localhost:8888/123")))
+       (ert-info ("Connect to an existing kernel")
+         (let ((id (plist-get (jupyter-api-start-kernel server) :id)))
+           (unwind-protect
+               (let ((session (funcall initiate-session
+                                       (concat "http://localhost:8888/" id))))
+                 (should (not (null session)))
+                 (cl-letf (((symbol-function 'yes-or-no-p)
+                            (lambda (_prompt) t))
+                           ((symbol-function 'y-or-n-p)
+                            (lambda (_prompt) t)))
+                   (kill-buffer session)))
+             (ignore-errors (jupyter-api-shutdown-kernel server id)))))
+       (ert-info ("Start a new kernel")
+         (let ((session (funcall initiate-session
+                                 "http://localhost:8888:py")))
+           (should (not (null session)))
+           (cl-letf (((symbol-function 'yes-or-no-p)
+                      (lambda (_prompt) t))
+                     ((symbol-function 'y-or-n-p)
+                      (lambda (_prompt) t)))
+             (kill-buffer session))))))))
+
 ;;; `org-mode'
 
 (defvar org-babel-jupyter-resource-directory nil)

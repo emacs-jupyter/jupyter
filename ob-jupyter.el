@@ -47,6 +47,16 @@
 (declare-function org-babel-expand-body:generic "ob-core" (body params &optional var-lines))
 (declare-function org-export-derived-backend-p "ox" (backend &rest backends))
 
+(declare-function jupyter-find-server "jupyter-server" (url &optional ws-url))
+(declare-function jupyter-run-server-repl "jupyter-server"
+                  (server kernel-name &optional repl-name
+                          associate-buffer client-class display))
+(declare-function jupyter-connect-server-repl "jupyter-server"
+                  (server kernel-name &optional repl-name
+                          associate-buffer client-class display))
+(declare-function jupyter-server-kernelspecs "jupyter-server")
+(declare-function jupyter-api-get-kernel "jupyter-rest-api" (client &optional id))
+
 (defvaralias 'org-babel-jupyter-resource-directory
   'jupyter-org-resource-directory)
 
@@ -209,6 +219,39 @@ variables in PARAMS."
            (jupyter-runtime-directory (concat remote runtime-directory)))
       (jupyter-run-repl kernel nil nil 'jupyter-org-client))))
 
+(defun org-babel-jupyter--parse-url (url)
+  (save-match-data
+    (let ((stem "\\`https?://[^:]+\\(?::[0-9]+\\)?" ))
+      (when (string-match stem url)
+        (or (string-match (concat stem "\\(:[^0-9].+\\)\\'") url)
+            (string-match (concat stem "\\(/.+\\)\\'") url))
+        (if (match-string 1 url)
+            (let* ((session (prog1 (match-string 1 url)
+                              (setq url (replace-match "" nil nil url 1))))
+                   (connect-p (eq (aref session 0) ?/))
+                   (name-or-id (substring session 1)))
+              (list url name-or-id connect-p))
+          (list url nil nil))))))
+
+(defun org-babel-jupyter--server-repl (kernel url name-or-id connect-p)
+  (require 'jupyter-server)
+  (unless name-or-id
+    (error "No remote server session name"))
+  (let ((server (or (jupyter-find-server url)
+                    (jupyter-server :url url))))
+    (unless (jupyter-guess-kernelspec kernel (jupyter-server-kernelspecs server))
+      (error "No kernelspec matching \"%s\" exists at %s" kernel url))
+    (if connect-p
+        (cl-destructuring-bind (&key name &allow-other-keys)
+            (or (ignore-errors (jupyter-api-get-kernel server name-or-id))
+                (error "Kernel with ID (%s) doesn't exist" name-or-id))
+          (unless (string-match-p kernel name)
+            (error "\":kernel %s\" doesn't match \"%s\"" kernel name))
+          (jupyter-connect-server-repl
+           server name-or-id nil nil 'jupyter-org-client))
+      (jupyter-run-server-repl
+       server kernel nil nil 'jupyter-org-client))))
+
 (defun org-babel-jupyter-initiate-session-by-key (session params)
   "Return the Jupyter REPL buffer for SESSION.
 If SESSION does not have a client already, one is created based
@@ -235,7 +278,10 @@ the host."
              ((string-suffix-p ".json" session)
               (jupyter-connect-repl session nil nil 'jupyter-org-client))
              (t
-              (org-babel-jupyter--run-repl session kernel))))
+              (let ((server-args (org-babel-jupyter--parse-url session)))
+                (if server-args
+                    (apply #'org-babel-jupyter--server-repl kernel server-args)
+                  (org-babel-jupyter--run-repl session kernel))))))
       (jupyter-set client 'jupyter-include-other-output nil)
       (jupyter-with-repl-buffer client
         (let ((name (buffer-name)))
