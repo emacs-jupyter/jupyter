@@ -315,15 +315,24 @@ aligns on the current line."
 
 (defun jupyter-browse-url-in-temp-file (data)
   "Insert DATA into a temp file and call `browse-url-of-file' on it."
-  (let ((file (make-temp-file "emacs-jupyter" nil ".html")))
-    (with-temp-file file (insert data))
-    (browse-url-of-file file)
-    ;; Give the external browser time to open the tmp file before deleting it
-    ;; based on mm-display-external
-    (run-at-time
-     60.0 nil
-     (lambda ()
-       (ignore-errors (delete-file file))))))
+  (let* ((secs (time-to-seconds))
+         ;; Allow showing the same DATA, but only after a 10s period. This is
+         ;; so that the same data doesn't get displayed multiple times very
+         ;; quickly. See #121.
+         (secs (- secs (cl-rem secs 10)))
+         (hash (sha1 (concat data (format-time-string "%H%M%S" secs))))
+         (file (expand-file-name
+                (concat "emacs-jupyter-" hash ".html")
+                temporary-file-directory)))
+    (unless (file-exists-p file)
+      (with-temp-file file (insert data))
+      (browse-url-of-file file)
+      ;; Give the external browser time to open the tmp file before deleting it
+      ;; based on mm-display-external
+      (run-at-time
+       60 nil
+       (lambda ()
+         (ignore-errors (delete-file file)))))))
 
 (defun jupyter--delete-script-tags (beg end)
   (save-excursion
