@@ -104,13 +104,6 @@ requests like the above example.")
 (defclass jupyter-kernel-client (jupyter-finalized-object
                                  jupyter-instance-tracker)
   ((tracking-symbol :initform 'jupyter--clients)
-   (pending-requests
-    :type ring
-    :initform (make-ring 10)
-    :documentation "A ring of pending `jupyter-request's. A
-request is pending if a notification has not been received by the
-client that the message has actually been sent by the
-communication layer. See the kcomm slot.")
    (execution-state
     :type string
     :initform "idle"
@@ -370,26 +363,14 @@ response to the sent message, see `jupyter-add-callback' and
     ;; Anything sent to stdin is a reply not a request so don't add it as a
     ;; pending request
     (unless (eq channel :stdin)
-      (let ((req (jupyter-generate-request client message)))
+      (let ((req (jupyter-generate-request client message))
+            (requests (oref client requests)))
         (setf (jupyter-request-id req) msg-id)
         (setf (jupyter-request-inhibited-handlers req) jupyter-inhibit-handlers)
-        (jupyter--push-pending-request client req)))))
+        (puthash msg-id req requests)
+        (puthash "last-sent" req requests)))))
 
 ;;; Pending requests
-
-(defun jupyter--pop-pending-request (client)
-  "Return the oldest pending request CLIENT sent to its ioloop."
-  (with-slots (pending-requests) client
-    (unless (ring-empty-p pending-requests)
-      (ring-remove pending-requests))))
-
-(defun jupyter--push-pending-request (client req)
-  "For CLIENT, mark REQ as the newest pending request.
-Return REQ. A request is pending if it has not been sent to the
-kernel via CLIENT's ioloop."
-  (with-slots (pending-requests) client
-    (prog1 req
-      (ring-insert+extend pending-requests req 'grow))))
 
 (defun jupyter-requests-pending-p (client)
   "Return non-nil if CLIENT has open requests that the kernel has not handled.
@@ -398,13 +379,16 @@ sent to the kernel using CLIENT has not received an idle message
 back."
   (cl-check-type client jupyter-kernel-client)
   (jupyter--drop-idle-requests client)
-  (with-slots (pending-requests requests) client
-    (or (> (ring-length pending-requests) 0)
-        ;; If there are two requests, then there is really only one since
-        ;; "last-sent" is an alias for the other.
-        (> (hash-table-count requests) 2)
+  (with-slots (requests) client
+    ;; If there are two requests, then there is really only one since
+    ;; "last-sent" is an alias for the other.
+    (or (> (hash-table-count requests) 2)
         (when-let* ((last-sent (gethash "last-sent" requests)))
           (not (jupyter-request-idle-received-p last-sent))))))
+
+(defsubst jupyter-last-sent-request (client)
+  "Return the most recent `jupyter-request' made by CLIENT."
+  (gethash "last-sent" (oref client requests)))
 
 ;;; Event handlers
 
@@ -423,20 +407,11 @@ back."
     (when repr
       (message "%s" (concat event-name ": " repr)))))
 
-(cl-defmethod jupyter-event-handler ((client jupyter-kernel-client)
+;; TODO: Get rid of this method
+(cl-defmethod jupyter-event-handler ((_client jupyter-kernel-client)
                                      (event (head sent)))
   (when jupyter--debug
-    (jupyter--show-event event))
-  (cl-destructuring-bind (_ channel-type msg-id) event
-    (unless (eq channel-type :stdin)
-      ;; Anything sent on stdin is a reply and therefore never added as a
-      ;; pending request
-      (let ((req (jupyter--pop-pending-request client))
-            (requests (oref client requests)))
-        (cl-assert (equal (jupyter-request-id req) msg-id)
-                   nil "Message request sent out of order to the kernel.")
-        (puthash msg-id req requests)
-        (puthash "last-sent" req requests)))))
+    (jupyter--show-event event)))
 
 (cl-defmethod jupyter-event-handler ((client jupyter-kernel-client)
                                      (event (head message)))

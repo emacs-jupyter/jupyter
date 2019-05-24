@@ -407,7 +407,7 @@ results instead of an equality match."
       (org-with-point-at (org-babel-where-is-src-block-result nil info)
         (when (equal (alist-get :async args) "yes")
           (jupyter-wait-until-idle
-           (ring-ref (oref jupyter-current-client pending-requests) 0)))
+           (jupyter-last-sent-request jupyter-current-client)))
         (let ((element (org-element-context)))
           ;; Handle empty results with just a RESULTS keyword
           ;;
