@@ -394,9 +394,10 @@ polling the STDIN file handle."
                (setq
                 ;; Initialize any callbacks that were added before the ioloop was started
                 jupyter-ioloop-pre-hook
-                (mapcar #'byte-compile (append jupyter-ioloop-pre-hook
-                                          (quote ,(mapcar #'macroexpand-all
-                                                     (oref ioloop callbacks))))))
+                (mapcar (lambda (f) (unless (byte-code-function-p f) (byte-compile f)))
+                   (append jupyter-ioloop-pre-hook
+                           (quote ,(mapcar #'macroexpand-all
+                                      (oref ioloop callbacks))))))
                ;; Notify the parent process we are ready to do something
                (zmq-prin1 '(start))
                (let ((dispatcher (byte-compile (lambda () ,dispatcher-form))))
