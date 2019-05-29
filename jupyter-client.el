@@ -768,14 +768,21 @@ PASSWORD is t, then `read-passwd' is used to get input from the
 user. Otherwise `read-from-minibuffer' is used."
   (declare (indent 1))
   (let* ((value (condition-case nil
-                    (if (eq password t) (read-passwd prompt)
-                      (read-from-minibuffer prompt))
+                    ;; Disallow any `with-timeout's from timing out. This
+                    ;; prevents any calls to `jupyter-wait-until-received' from
+                    ;; timing out when reading input. See #35.
+                    (let ((timeout-spec (with-timeout-suspend)))
+                      (unwind-protect
+                          (if (eq password t) (read-passwd prompt)
+                            (read-from-minibuffer prompt))
+                        (with-timeout-unsuspend timeout-spec)))
                   (quit "")))
          (msg (jupyter-message-input-reply :value value)))
-    (jupyter-send client :stdin :input-reply msg)
-    (if (eq password t)
-        (progn (clear-string value) "")
-      value)))
+    (unwind-protect
+        (jupyter-send client :stdin :input-reply msg)
+      (when (eq password t)
+        (clear-string value)))
+    value))
 
 (defalias 'jupyter-handle-input-reply 'jupyter-handle-input-request)
 
