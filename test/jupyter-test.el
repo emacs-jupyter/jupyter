@@ -1839,6 +1839,88 @@ next(x"))))))
             (should (jupyter-request-callbacks req))
             (jupyter-wait-until-idle req)))))))
 
+;;; REST API
+
+(ert-deftest jupyter-rest-api ()
+  :tags '(rest)
+  (let ((client (jupyter-rest-client
+                 :url "http://foo"
+                 :ws-url "ws://foo"
+                 :auth t)))
+    (jupyter-test-rest-api
+     (jupyter-api-request client "GET" "kernels")
+     (should (equal url "http://foo/api/kernels"))
+     (should (equal url-request-method "GET"))
+     (should (equal url-request-data nil))
+     (should (equal url-request-extra-headers nil)))
+    (jupyter-test-rest-api
+     (jupyter-api-request client "POST" "kernels" "ID" :name "bar")
+     (should (equal url "http://foo/api/kernels/ID"))
+     (should (equal url-request-method "POST"))
+     (should (equal url-request-data (json-encode '(:name "bar"))))
+     (should (equal (alist-get "Content Type" url-request-extra-headers nil nil #'equal)
+                    "application/json")))
+    (cl-letf (((symbol-function #'websocket-open)
+               (lambda (url &rest plist)
+                 (should (equal url "ws://foo/api/kernels"))
+                 (should (equal (plist-get plist :on-open) 'identity)))))
+      (jupyter-api-request client "WS" "kernels" :on-open 'identity))))
+
+(ert-deftest jupyter-api--copy-cookies ()
+  :tags '(rest)
+  (let (url-cookie-storage)
+    (url-cookie-store "_xsrf" "1" nil "localhost" "/")
+    (url-cookie-store "username-login-8888" "2" nil "localhost" "/")
+    (let ((old-cookies (url-cookie-retrieve "localhost" "/")) cookies)
+      (jupyter-api--copy-cookies "http://localhost:8888")
+      (should (setq cookies (url-cookie-retrieve "localhost:8888" "/")))
+      (cl-loop
+       for cookie in old-cookies
+       do (setf (url-cookie-domain cookie) "localhost:8888"))
+      (cl-loop
+       for cookie in cookies
+       ;; old-cookies now have the domain of the new cookies for verification
+       ;; purposes
+       do (should (member cookie old-cookies))))))
+
+(ert-deftest jupyter-api--password-login ()
+  (let (cookies-copied-before-write
+        cookies-written
+        url-cookie-storage)
+    (cl-letf (((symbol-function #'read-passwd)
+               (lambda (&rest _) "foo"))
+              ((symbol-function #'jupyter-api--copy-cookies)
+               (lambda (&rest _)
+                 (setq cookies-copied-before-write t)))
+              ((symbol-function #'url-cookie-write-file)
+               (lambda (&rest _)
+                 (should cookies-copied-before-write)
+                 (setq cookies-written t))))
+      (url-cookie-store "_xsrf" "1" nil "localhost" "/")
+      (jupyter-test-rest-api
+          (jupyter-api--password-login
+           (jupyter-rest-client :url "http://localhost:8888"))
+        (should (equal url-request-method "POST"))
+        (should (equal url "http://localhost:8888/login"))
+        (should (equal (cdr (assoc "X-XSRFTOKEN" url-request-extra-headers)) "1"))
+        (should (equal (cdr (assoc "Content-Type" url-request-extra-headers))
+                       "application/x-www-form-urlencoded"))
+        (should (equal url-request-data "password=foo"))))
+    (should cookies-written)))
+
+;; TODO
+(ert-deftest jupyter-api-get-kernel-ws ()
+  :tags '(rest)
+  (skip-unless nil)
+  (let ((client (jupyter-rest-client)))
+    (cl-destructuring-bind (&key id &allow-other-keys)
+        (jupyter-api-start-kernel client)
+      (unwind-protect
+          (let ((ws (jupyter-api-get-kernel-ws client id)))
+            (sleep-for 1)
+            (websocket-close ws))
+        (jupyter-api-shutdown-kernel client id)))))
+
 ;;; `org-mode'
 
 (defvar org-babel-jupyter-resource-directory nil)
