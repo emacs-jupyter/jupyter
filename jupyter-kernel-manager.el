@@ -380,7 +380,7 @@ connect to MANAGER's kernel."
     (jupyter-stop-channel channel)
     (oset manager control-channel nil)))
 
-(cl-defgeneric jupyter-shutdown-kernel ((manager jupyter-kernel-manager) &optional restart timeout)
+(cl-defgeneric jupyter-shutdown-kernel ((manager jupyter-kernel-manager) &rest args)
   "Shutdown MANAGER's kernel or restart instead if RESTART is non-nil.
 Wait until TIMEOUT before forcibly shutting down the kernel.")
 
@@ -418,7 +418,7 @@ channel is stopped unless RESTART is non-nil."
           (jupyter-start-kernel manager)
         (jupyter-stop-channels manager)))))
 
-(cl-defgeneric jupyter-interrupt-kernel ((manager jupyter-kernel-manager) &optional timeout)
+(cl-defgeneric jupyter-interrupt-kernel ((manager jupyter-kernel-manager) &rest args)
   "Interrupt MANAGER's kernel.
 When the kernel has an interrupt mode of \"message\" send an
 interrupt request and wait until TIMEOUT for a reply.")
