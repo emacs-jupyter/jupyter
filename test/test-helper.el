@@ -37,6 +37,15 @@
 (require 'cl-lib)
 (require 'ert)
 
+;; Increase timeouts when testing for consistency. I think what is going on is
+;; that communication with subprocesses gets slowed down when many processes
+;; are being open and closed? The kernel processes are cached so they are
+;; re-used for the most part except for tests that explicitly start and stop a
+;; process. Increasing these timeouts seemed to do the trick.
+(when (or (getenv "APPVEYOR") (getenv "TRAVIS"))
+  (setq jupyter-long-timeout 120
+        jupyter-default-timeout 60))
+
 (defvar jupyter-test-with-new-client nil
   "Whether the global client for a kernel should be used for tests.
 Let bind to a non-nil value around a call to
@@ -49,15 +58,9 @@ start a new kernel REPL instead of re-using one.")
   (make-temp-file jupyter-test-temporary-directory-name 'directory)
   "The directory where temporary processes/files will start or be written to.")
 
-(message "system-configuration %s" system-configuration)
+(make-directory (expand-file-name "tmp" jupyter-test-temporary-directory))
 
-(when noninteractive
-  (message "Starting up notebook process for tests")
-  (let ((default-directory jupyter-test-temporary-directory))
-    (start-process "jupyter-notebook" nil "jupyter" "notebook"
-                   "--no-browser"
-                   "--NotebookApp.token=''"
-                   "--NotebookApp.password=''")))
+(message "system-configuration %s" system-configuration)
 
 (add-hook
  'kill-emacs-hook
@@ -293,9 +296,8 @@ running BODY."
       ,(jupyter-ioloop--event-dispatcher ioloop event))))
 
 (defmacro jupyter-test-rest-api (bodyform &rest check-forms)
-  "Replace the body of `url-retrieve-synchronously' with CHECK-FORMS, evaluate BODYFORM.
-The body of `url-retrieve' is also replaced and calls
-CHECK-FORMS, then calls the callback function with a nil status."
+  "Replace the body of `url-retrieve*' with CHECK-FORMS, evaluate BODYFORM.
+For `url-retrieve', the callback will be called with a nil status."
   (declare (indent 1))
   `(progn
      (defvar url-request-data)
@@ -303,10 +305,12 @@ CHECK-FORMS, then calls the callback function with a nil status."
      (defvar url-request-extra-headers)
      (defvar url-http-end-of-headers)
      (defvar url-http-response-status)
+     (defvar url-http-content-type)
      (let (url-request-data
            url-request-method
            url-request-extra-headers
            url-http-end-of-headers
+           url-http-content-type
            (url-http-response-status 200)
            (fun (lambda (url &rest _)
                   (setq url-http-end-of-headers (point-min))
@@ -516,5 +520,61 @@ Result:
                              result nil nil test-result nil nil
                              'ignore-case)
                             t))))))))))
+
+;;; Notebook server
+
+(defvar jupyter-test-notebook nil
+  "A cons cell (PROC . PORT).
+PROC is the notebook process and PORT is the port it is connected
+to.")
+
+(defun jupyter-test-ensure-notebook-server ()
+  "Ensure there is a notebook process available.
+Return the port it was started on. The starting directory of the
+process will be in the `jupyter-test-temporary-directory'."
+  (if (process-live-p (car jupyter-test-notebook))
+      (cdr jupyter-test-notebook)
+    (unless noninteractive
+      (error "This should only be called in batch mode"))
+    (message "Starting up notebook process for tests")
+    (let* ((sock (zmq-socket (zmq-current-context) zmq-PUB))
+           (port (zmq-bind-to-random-port sock "tcp://127.0.0.1")))
+      (prog1 port
+        (zmq-unbind sock (zmq-get-option sock zmq-LAST-ENDPOINT))
+        (zmq-close sock)
+        (let ((default-directory jupyter-test-temporary-directory)
+              (buffer (generate-new-buffer "*jupyter-notebook*"))
+              (args (append
+                     (list "notebook" "--no-browser" "--debug"
+                           (format "--NotebookApp.port=%s" port))
+                     (cond
+                      ((eq authentication t)
+                       (list))
+                      ((stringp authentication)
+                       (list
+                        "--NotebookApp.token=''"
+                        (format "--NotebookApp.password='%s'"
+                                authentication)))
+                      (t
+                       (list
+                        "--NotebookApp.token=''"
+                        "--NotebookApp.password=''"))))))
+          (setq jupyter-test-notebook
+                (cons (start-process
+                       "jupyter-notebook" (generate-new-buffer "*jupyter-notebook*")
+                       "jupyter" "notebook"
+                       "--no-browser"
+                       "--NotebookApp.token=''"
+                       "--NotebookApp.password=''"
+                       (format "--NotebookApp.port=%s" port))
+                      port))
+          (sleep-for 5))))))
+
+(add-hook 'kill-emacs-hook
+          (lambda ()
+            (ignore-errors
+              (message "%s" (with-current-buffer
+                                (process-buffer (car jupyter-test-notebook))
+                              (buffer-string))))))
 
 ;;; test-helper.el ends here

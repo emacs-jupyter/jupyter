@@ -229,7 +229,7 @@
         (when (file-exists-p tfile)
           (delete-file tfile))
         (when (file-exists-p tdir)
-          (delete-directory tdir))))))
+          (delete-directory tdir t))))))
 
 (ert-deftest jupyter-tramp-file-attributes ()
   :tags '(tramp)
@@ -265,7 +265,7 @@
 
 (ert-deftest jupyter-tramp-expand-file-name ()
   :tags '(tramp)
-  (should (equal "/foo" (expand-file-name "/foo" "/jpy:h:/foo")))
+  (should (equal "/foo" (tramp-drop-volume-letter (expand-file-name "/foo" "/jpy:h:/foo"))))
   (should (equal "~/foo" (abbreviate-file-name (expand-file-name "~/foo" "/jpy:h:/foo"))))
   (should (equal "/jpy:h:/foo/bar" (expand-file-name "bar" "/jpy:h:/foo")))
   (should (equal "/jpy:h:/foo/bar" (expand-file-name "bar" "/jpy:h:/foo/")))
@@ -274,7 +274,8 @@
   (let ((default-directory "/jpy:h:/"))
     (should (equal "/jpy:h:/foo" (expand-file-name "foo"))))
   (let ((default-directory nil))
-    (should (equal "/foo" (jupyter-tramp-expand-file-name "foo")))))
+    (should (equal "/foo" (tramp-drop-volume-letter
+                           (jupyter-tramp-expand-file-name "foo"))))))
 
 ;; TODO
 (ert-deftest jupyter-tramp-file-name-all-completions ()
