@@ -627,6 +627,18 @@ If =:session= is a remote file name that doesn't end in =.json=, e.g.
 the =jupyter kernel= command on the host. The local part of the session name
 serves to distinguish different remote sessions on the same host.
 
+*** Communicating with kernel (notebook) servers
+
+If =:session= is a Jupyter TRAMP file name like =/jpy:localhost#8888:NAME= is
+interpreted as corresponding to a connection to a kernel through a Jupyter
+notebook server located at =localhost:8888=. If =NAME= is a kernel ID
+corresponding to an existing kernel on a server, e.g.
+=/jpy::161b2318-180c-497a-b4bf-de76176061d9=, then a connection that kernel
+will be made. Otherwise, a new kernel will be launched on the server and used
+the for the session. Note, the =:kernel= header argument must match the name of
+the kernelspec of the kernel being connected to when =NAME= is a kernel ID of
+an existing kernel.
+
 *** TODO Standard output, displayed data, and code block results
 
 One significant difference between Jupyter code blocks and regular =org-mode=
