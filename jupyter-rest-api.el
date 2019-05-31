@@ -510,7 +510,14 @@ opened using the REST api url and PLIST will be used in a call to
                    (append
                     (plist-get head :custom-header-alist)
                     url-request-extra-headers))))
-    (apply #'jupyter-api--request method plist)))
+    (condition-case err
+        (apply #'jupyter-api--request method plist)
+      (jupyter-api-http-error
+       ;; Reset the `auth' state when un-authorized so that we ask again.
+       (when (and (= (cadr err) 403)
+                  (equal (caddr err) "Forbidden"))
+         (oset client auth 'ask))
+       (signal (car err) (cdr err))))))
 
 ;;; Endpoints
 
