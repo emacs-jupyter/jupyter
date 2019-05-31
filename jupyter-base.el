@@ -129,6 +129,9 @@ from the kernel.")
 A longer timeout is needed, for example, when retrieving the
 `jupyter-kernel-info' to allow for the kernel to startup.")
 
+(defconst jupyter-version "0.8.1-dev"
+  "Current version of Jupyter.")
+
 ;;; Macros
 
 (defmacro jupyter-with-timeout (spec &rest wait-forms)

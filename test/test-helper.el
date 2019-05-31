@@ -43,6 +43,27 @@ Let bind to a non-nil value around a call to
 `jupyter-test-with-kernel-client' or `jupyter-test-with-kernel-repl' to
 start a new kernel REPL instead of re-using one.")
 
+(defvar jupyter-test-temporary-directory-name "jupyter")
+
+(defvar jupyter-test-temporary-directory
+  (make-temp-file jupyter-test-temporary-directory-name 'directory)
+  "The directory where temporary processes/files will start or be written to.")
+
+(message "system-configuration %s" system-configuration)
+
+(when noninteractive
+  (message "Starting up notebook process for tests")
+  (let ((default-directory jupyter-test-temporary-directory))
+    (start-process "jupyter-notebook" nil "jupyter" "notebook"
+                   "--no-browser"
+                   "--NotebookApp.token=''"
+                   "--NotebookApp.password=''")))
+
+(add-hook
+ 'kill-emacs-hook
+ (lambda ()
+   (ignore-errors (delete-directory jupyter-test-temporary-directory))))
+
 ;;; `jupyter-echo-client'
 
 (defclass jupyter-echo-client (jupyter-kernel-client)
@@ -147,6 +168,13 @@ If the `current-buffer' is not a REPL, this is identical to
        (let ((inhibit-read-only t))
          (erase-buffer)
          (jupyter-test-repl-ret-sync)))
+     ,@body))
+
+(defmacro jupyter-test-at-temporary-directory (&rest body)
+  (declare (debug (&rest form)))
+  `(let ((default-directory jupyter-test-temporary-directory)
+         (temporary-file-directory jupyter-test-temporary-directory)
+         (tramp-cache-data (make-hash-table :test #'equal)))
      ,@body))
 
 (defmacro jupyter-with-echo-client (client &rest body)

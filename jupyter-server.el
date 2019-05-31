@@ -693,7 +693,10 @@ the same meaning as in `jupyter-connect-repl'."
           (revert-buffer)
         (setq tabulated-list-format (jupyter-server--kernel-list-format)
               tabulated-list-entries #'jupyter-server--kernel-list-entries)
-        (jupyter-server-kernel-list-mode))
+        (jupyter-server-kernel-list-mode)
+        ;; So that `dired-jump' will visit the directory of the kernel server.
+        (setq default-directory
+              (jupyter-tramp-file-name-from-url (oref server url))))
       (jupyter-display-current-buffer-reuse-window))))
 
 (provide 'jupyter-server)

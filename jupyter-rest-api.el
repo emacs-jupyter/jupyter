@@ -678,13 +678,13 @@ A file model is a plist that contains the following keys:
      "?content=" (if no-content "0" "1")
      (and type (concat "&type=" type)))))
 
-(defun jupyter-api-delete-file (client file)
-  "Send a request using CLIENT to delete FILE from the server.
+(defun jupyter-api-delete-file (client file-or-dir)
+  "Send a request using CLIENT to delete FILE-OR-DIR from the server.
 
 Note, only the `file-local-name' of FILE-OR-DIR is considered."
   (declare (indent 1))
   (jupyter-api/contents client "DELETE"
-    (jupyter-api-content-path file)))
+    (jupyter-api-content-path file-or-dir)))
 
 (defun jupyter-api-rename-file (client file newname)
   "Send a request using CLIENT to rename FILE to NEWNAME.
@@ -696,8 +696,10 @@ considered."
     (jupyter-api-content-path file)
     :path (jupyter-api-content-path newname)))
 
+;; NOTE: The Jupyter REST API doesn't allow copying directories in an easy way
 (defun jupyter-api-copy-file (client file newname)
   "Send a request using CLIENT to copy FILE to NEWNAME.
+NEWNAME must not be an existing file.
 
 Note, only the `file-local-name' of FILE and NEWNAME are
 considered."
