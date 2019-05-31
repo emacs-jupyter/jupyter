@@ -39,6 +39,7 @@
 (eval-when-compile (require 'subr-x))
 (require 'jupyter-base)
 (require 'websocket)
+(require 'url)
 
 (declare-function jupyter-decode-time "jupyter-messages")
 
@@ -71,7 +72,9 @@ operation of a `jupyter-rest-client'."
   `(progn
      (require 'url)
      (url-do-setup)
-     (url-cookie-parse-file)
+     ;; Don't save any cookies or history in a subprocess
+     (ignore-errors (cancel-timer url-history-timer))
+     (ignore-errors (cancel-timer url-cookie-timer))
      (push ,(file-name-directory (locate-library "jupyter-base")) load-path)
      (push ,(file-name-directory (locate-library "websocket")) load-path)
      (require 'jupyter-rest-api)
@@ -391,19 +394,22 @@ Raise an error on failure."
   (cl-check-type client jupyter-rest-client)
   (unless jupyter-api--authentication-in-progress-p
     (let ((jupyter-api--authentication-in-progress-p t))
+      (url-do-setup)
       (with-slots (auth url) client
         (unless (or (listp auth)
                     (not (memq auth '(ask token password))))
           (when (eq auth 'ask)
-            ;; Check to see if the server is accessible first
+            ;; Check to see if the server is accessible first by trying to
+            ;; access the login page and checking if we can make an
+            ;; authenticated request afterwards.
+            (let ((jupyter-api-max-authentication-attempts 1))
+              (jupyter-api-password-authenticator client
+                (lambda (_) "")))
             (if (jupyter-api-server-accessible-p client)
-                ;; Get the _xsrf cookie if we don't have it already.
-                (progn
-                  (unless (jupyter-api-xsrf-header-from-cookies url)
-                    (let ((jupyter-api-max-authentication-attempts 1))
-                      (jupyter-api-password-authenticator client
-                        (lambda (_) ""))))
-                  (oset client auth t))
+                (oset client auth t)
+              (when noninteractive
+                (signal 'jupyter-api-login-failed
+                        (list "Can't authenticate non-interactively")))
               (cond
                ((y-or-n-p (format "Token authenticated [%s]? " url))
                 (oset client auth 'token))
@@ -486,26 +492,24 @@ As a special case, if METHOD is \"WS\", a websocket will be
 opened using the REST api url and PLIST will be used in a call to
 `websocket-open'."
   (jupyter-api--ensure-authenticated client)
-  (let* ((xsrf (jupyter-api-xsrf-header-from-cookies (oref client url)))
-         (url-request-extra-headers url-request-extra-headers)
+  (let* ((url-request-extra-headers
+          (append (jupyter-api-auth-headers client)
+                  (jupyter-api-xsrf-header-from-cookies (oref client url))
+                  url-request-extra-headers))
          (jupyter-api-url (if (equal method "WS")
                               (oref client ws-url)
                             (oref client url))))
-    (if (equal method "WS")
-        (let ((head plist))
-          (while (and head (not (keywordp (car head))))
-            (pop head))
-          (setq head (or (plist-member head :custom-header-alist)
-                         (setcdr (last plist)
-                                 (list :custom-header-alist nil))))
-          (let ((cur (plist-get head :custom-header-alist)))
-            (plist-put head :custom-header-alist
-                       (append xsrf
-                               (jupyter-api-auth-headers client)
-                               cur))))
-      (cl-callf2 append
-          (append xsrf (jupyter-api-auth-headers client))
-          url-request-extra-headers))
+    (when (equal method "WS")
+      (let ((head plist))
+        (while (and head (not (keywordp (car head))))
+          (pop head))
+        (setq head (or (plist-member head :custom-header-alist)
+                       (setcdr (last plist)
+                               (list :custom-header-alist nil))))
+        (plist-put head :custom-header-alist
+                   (append
+                    (plist-get head :custom-header-alist)
+                    url-request-extra-headers))))
     (apply #'jupyter-api--request method plist)))
 
 ;;; Endpoints
