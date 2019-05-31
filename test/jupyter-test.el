@@ -48,15 +48,6 @@
   (setq jupyter-long-timeout 120
         jupyter-default-timeout 60))
 
-(message "system-configuration %s" system-configuration)
-
-(when noninteractive
-  (message "Starting up notebook process for tests")
-  (start-process "jupyter-notebook" nil "jupyter" "notebook"
-                 "--no-browser"
-                 "--NotebookApp.token=''"
-                 "--NotebookApp.password=''"))
-
 (declare-function org-babel-python-table-or-string "ob-python" (results))
 
 ;; TODO: Required tests
