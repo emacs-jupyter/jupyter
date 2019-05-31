@@ -86,6 +86,10 @@
 (require 'jupyter-ioloop-comm)
 (require 'jupyter-server-ioloop)
 
+(declare-function jupyter-tramp-file-name-p "jupyter-tramp" (filename))
+(declare-function jupyter-tramp-server-from-file-name "jupyter-tramp" (filename))
+(declare-function jupyter-tramp-file-name-from-url "jupyter-tramp" (url))
+
 (defgroup jupyter-server nil
   "Support for the Jupyter kernel gateway"
   :group 'jupyter)
@@ -397,40 +401,61 @@ least the following keys:
          (append kernels nil))))
 
 (defun jupyter-current-server (&optional ask)
-  "Return an existing `jupyter-server' or a new one.
-If `jupyter-current-server' is non-nil, return its value.
-Otherwise, return the most recently used server.
+  "Return an existing `jupyter-server' or ASK for a new one.
+If ASK is non-nil, always ask for a URL and return the
+`jupyter-server' object corresponding to it.
 
-With a prefix argument, ASK to select one and set the selected
-one as the most recently used.
+If the buffer local value of `jupyter-current-server' is non-nil,
+return its value. If `jupyter-current-server' is nil and the
+`jupyter-current-client' is communicating with a kernel behind a
+kernel server, return the `jupyter-server' managing the
+connection.
 
-If no servers exist, ask the user to create one and return its
-value."
+If `jupyter-current-client' is nil or not communicating with a
+kernel behind a server and if `default-directory' is a Jupyter
+remote file name, return the `jupyter-server' object
+corresponding to that connection.
+
+If all of the above fails, either return the most recently used
+`jupyter-server' object if there is one or ask for one based off
+a URL."
   (interactive "P")
   (let ((read-url-make-server
          (lambda ()
-           (let ((url (read-string "Server URL: " "http://localhost:8888"))
-                 (ws-url (read-string "Websocket URL: " "ws://localhost:8888")))
+           ;; From the list of available server
+           ;; (if (> (length jupyter--servers) 1)
+           ;;     (let ((server (cdr (completing-read
+           ;;                         "Jupyter Server: "
+           ;;                         (mapcar (lambda (x) (cons (oref x url) x))
+           ;;                            jupyter--servers)))))
+           ;;   )
+           (let* ((url (read-string "Server URL: " "http://localhost:8888"))
+                  (ws-url (read-string "Websocket URL: " "ws://localhost:8888")))
              (or (jupyter-find-server url ws-url)
                  (jupyter-server :url url :ws-url ws-url))))))
-    (if ask (let ((server (funcall read-url-make-server)))
-              (prog1 server
-                (setq jupyter--servers
-                      (cons server (delq server jupyter--servers)))))
-      (or jupyter-current-server
-          (and (file-remote-p default-directory)
-               (jupyter-tramp-file-name-p default-directory)
-               (jupyter-tramp-server-from-file-name default-directory))
-          (if (> (length jupyter--servers) 1)
-              (let ((server (cdr (completing-read
-                                  "Jupyter Server: "
-                                  (mapcar (lambda (x) (cons (oref x url) x))
-                                     jupyter--servers)))))
-                (prog1 server
-                  (setq jupyter--servers
-                        (cons server (delq server jupyter--servers)))))
-            (or (car jupyter--servers)
-                (funcall read-url-make-server)))))))
+    (let ((server
+           (if ask (funcall read-url-make-server)
+             (cond
+              (jupyter-current-server)
+              ;; Server of the current kernel client
+              ((and jupyter-current-client
+                    (object-of-class-p
+                     (oref jupyter-current-client kcomm)
+                     'jupyter-server-kernel-comm)
+                    (thread-first jupyter-current-client
+                      (oref kcomm)
+                      (oref server))))
+              ;; Server of the current TRAMP remote context
+              ((and (file-remote-p default-directory)
+                    (jupyter-tramp-file-name-p default-directory)
+                    (jupyter-tramp-server-from-file-name default-directory)))
+              ;; Most recently accessed
+              (t
+               (or (car jupyter--servers)
+                   (funcall read-url-make-server)))))))
+      (prog1 server
+        (setq jupyter--servers
+              (cons server (delq server jupyter--servers)))))))
 
 ;;; Commands
 
@@ -626,7 +651,11 @@ the same meaning as in `jupyter-connect-repl'."
     (overlay-put
      (make-overlay 1 2)
      'before-string
-     (concat (propertize url 'face '(fixed-pitch default)) "\n"))))
+     (concat (propertize url 'face '(fixed-pitch default)) "\n")))
+  ;; So that `dired-jump' will visit the directory of the kernel server.
+  (setq default-directory
+        (jupyter-tramp-file-name-from-url
+         (oref jupyter-current-server url))))
 
 (defun jupyter-server--kernel-list-format ()
   (let* ((get-time
