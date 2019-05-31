@@ -632,7 +632,7 @@ the same meaning as in `jupyter-connect-repl'."
   (let* ((get-time
           (lambda (a)
             (or (get-text-property 0 'jupyter-time a)
-                (let ((time (jupyter--decode-time a)))
+                (let ((time (jupyter-decode-time a)))
                   (prog1 time
                     (put-text-property 0 1 'jupyter-time time a))))))
          (time-sort
@@ -659,7 +659,7 @@ the same meaning as in `jupyter-connect-repl'."
        (&key name id last_activity execution_state
              connections &allow-other-keys)
        kernel
-     (let* ((time (jupyter--decode-time last_activity))
+     (let* ((time (jupyter-decode-time last_activity))
             (name
              (let ((same (cl-remove-if-not
                           (lambda (x) (string-prefix-p name x)) names)))
