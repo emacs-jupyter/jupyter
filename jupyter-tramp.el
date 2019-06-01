@@ -747,9 +747,12 @@ the server. For any other file, call ORIG, which is the function
       (tramp-run-real-handler
        'make-temp-file
        (list "jupyter-tramp." nil (file-name-extension filename t)
-             (if (jupyter-api-binary-content-p model)
-                 (base64-decode-string content)
-               content))))))
+             (cond
+              ((jupyter-api-binary-content-p model)
+               (base64-decode-string content))
+              ((jupyter-api-notebook-p model)
+               (error "Notebooks not supported yet"))
+              (t content)))))))
 
 ;;; File/directory attributes
 
