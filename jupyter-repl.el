@@ -762,6 +762,18 @@ lines, truncate it to something less than
       (jupyter-repl-next-cell)
       (delete-region (point-min) (point)))))
 
+(defun jupyter-repl-clear-cells ()
+  "Clear the input and output cells of the current buffer."
+  (interactive)
+  (jupyter-repl-without-continuation-prompts
+   (let ((inhibit-read-only t))
+     (save-excursion
+       (goto-char (point-min))
+       (when (get-text-property (point) 'jupyter-banner)
+         (goto-char (next-single-property-change (point) 'jupyter-banner)))
+       (delete-region (point) (point-max))
+       (jupyter-repl-insert-prompt 'in)))))
+
 ;;; Handlers
 
 (defun jupyter-repl-history-add (code)
@@ -1614,6 +1626,7 @@ in the appropriate direction, to the saved element."
     (define-key map (kbd "RET") #'jupyter-repl-ret)
     (define-key map (kbd "M-n") #'jupyter-repl-history-next)
     (define-key map (kbd "M-p") #'jupyter-repl-history-previous)
+    (define-key map (kbd "C-c C-o") #'jupyter-repl-clear-cells)
     (define-key map (kbd "C-c M-r") #'jupyter-repl-history-previous-matching)
     (define-key map (kbd "C-c M-s") #'jupyter-repl-history-next-matching)
     map))
@@ -1782,8 +1795,10 @@ it."
    (let ((start (point)))
      (jupyter-repl-insert banner)
      (jupyter-repl-newline)
-     (add-text-properties start (point) '(font-lock-face
-                                          shadow fontified t font-lock-fontified t)))))
+     (add-text-properties
+      start (point) '(jupyter-banner
+                      t font-lock-face shadow
+                      fontified t font-lock-fontified t)))))
 
 (defun jupyter-repl-sync-execution-state ()
   "Synchronize the `jupyter-current-client's kernel state.
