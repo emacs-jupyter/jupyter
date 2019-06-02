@@ -34,6 +34,7 @@
 
 (declare-function org-babel-python-table-or-string "ob-python" (results))
 (declare-function org-babel-jupyter-initiate-session "ob-jupyter" (&optional session params))
+(declare-function org-babel-jupyter-language-p "ob-jupyter" (lang))
 (declare-function org-element-context "org-element" (&optional element))
 (declare-function org-element-type "org-element" (element))
 (declare-function org-element-normalize-string "org-element" (s))
@@ -357,7 +358,7 @@ most recent completion request.")
   (unless (jupyter-org--same-src-block-p)
     (let* ((el (org-element-at-point))
            (lang (org-element-property :language el)))
-      (when (string-prefix-p "jupyter-" lang)
+      (when (org-babel-jupyter-language-p lang)
         (let* ((info (org-babel-get-src-block-info el))
                (params (nth 2 info))
                (beg (save-excursion
