@@ -13,7 +13,7 @@ cache:
 install:
   - pacman --needed --noconfirm -Syu
   - pacman --needed --noconfirm -Sy
-  - pacman --needed --noconfirm -S mingw-w64-x86_64-emacs
+  - pacman --needed --noconfirm -S mingw-w64-x86_64-emacs mingw-w64-x86_64-libxml2 mingw-w64-x86_64-libjpeg-turbo
   # Install Cask
   # NOTE: Using bash here so that cask writes to ~/.cask
   - bash -lc "curl -fsSL https://raw.githubusercontent.com/cask/cask/master/go | $CASK_PYTHON"
