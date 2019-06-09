@@ -19,6 +19,7 @@ An interface to communicate with Jupyter kernels in Emacs.
 - [[#how-do-i-use-the-built-in-frontends][How do I use the built-in frontends?]]
   - [[#repl][REPL]]
   - [[#org-mode-source-blocks][=org-mode= source blocks]]
+  - [[#kernelnotebook-server][Kernel/notebook server]]
   - [[#customizable-variables-available-for-all-frontends][Customizable variables available for all frontends]]
 - [[#api][API]]
   - [[#naming-conventions][Naming conventions]]
@@ -629,15 +630,20 @@ serves to distinguish different remote sessions on the same host.
 
 *** Communicating with kernel (notebook) servers
 
-If =:session= is a Jupyter TRAMP file name like =/jpy:localhost#8888:NAME= is
+If =:session= is a TRAMP file name like =/jpy:localhost#8888:NAME= it is
 interpreted as corresponding to a connection to a kernel through a Jupyter
-notebook server located at =localhost:8888=. If =NAME= is a kernel ID
+notebook server located at =http://localhost:8888=. If =NAME= is a kernel ID
 corresponding to an existing kernel on a server, e.g.
-=/jpy::161b2318-180c-497a-b4bf-de76176061d9=, then a connection that kernel
-will be made. Otherwise, a new kernel will be launched on the server and used
-the for the session. Note, the =:kernel= header argument must match the name of
-the kernelspec of the kernel being connected to when =NAME= is a kernel ID of
-an existing kernel.
+=/jpy::161b2318-180c-497a-b4bf-de76176061d9=, then a connection to an existing
+kernel with the corresponding ID will be made. Otherwise, a new kernel will be
+launched on the server and =NAME= will be used as an identifier for the
+session.
+
+Note, the =:kernel= header argument must match the name of the kernelspec of
+the kernel being connected to when =NAME= is a kernel ID of an existing kernel.
+
+To connect to a kernel behind an =HTTPS= connection use a TRAMP file name that
+looks like =/jpys:...= instead.
 
 *** TODO Standard output, displayed data, and code block results
 
@@ -680,6 +686,45 @@ available when =jupyter-org-interaction-mode= is enabled
 | =C-x C-e=   | =jupyter-eval-line-or-region=   |
 | =C-c C-i=   | =jupyter-repl-interrupt-kernel= |
 | =C-c C-r=   | =jupyter-repl-restart-kernel=   |
+
+** Kernel/notebook server
+*** Managing live kernels
+
+The main entry point for working working with a kernel server is the
+=jupyter-server-list-kernels= command which shows a list of all live kernels
+from the server URL that you provide when first calling the command. Any
+subsequent calls to the command will use the same URL as the first call. To
+change URLs give a prefix argument, =C-u M-x jupyter-server-list-kernels=. This
+will then set the current server URL for future calls to the one you provide.
+See the =jupyter-current-server= command for more details.
+
+From the buffer shown by =jupyter-server-list-kernels= you can launch new
+kernels, connect a REPL to an existing kernel, interrupt a kernel, etc. See the
+=jupyter-server-kernel-list-mode= for all the available key bindings.
+
+Note, the =default-directory= of the =jupyter-server-kernel-list-mode= buffer
+will be the root directory of the kernel server (so that =dired-jump= will show
+a =dired= listing of the directory). See the section on TRAMP integration
+below.
+
+*** TRAMP integration
+
+There is also integration with the Jupyter notebook contents API in the form of
+a TRAMP backend. This means that reading/writing the contents of directories
+the notebook server has access to can be done using normal Emacs file
+operations using file names with TRAMP syntax. Two new TRAMP file name methods
+are defined, =jpy= for HTTP connections and =jpys= for HTTPS connections. So
+suppose you have a local notebook server at http://localhost:8888, then to
+access its directory contents you can type
+
+#+begin_example
+M-x dired RET /jpy:localhost#8888:/
+#+end_example
+
+Note =localhost= is the default host and =8888= is the default port so =/jpy::=
+is equivalent to =/jpy:localhost#8888:=. You can change the defaults by
+modifying the =jpy= or =jpys= methods in the variable =tramp-methods= and
+=tramp-default-host-alist=.
 
 ** Customizable variables available for all frontends
 
