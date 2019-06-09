@@ -471,6 +471,8 @@ any Jupyter code block, [jupyter]."
   (jupyter-org-with-src-block-client
    (call-interactively def)))
 
+(defvar jupyter-org--defining-key-p nil)
+
 (defun jupyter-org-define-key (key def &optional lang)
   "Bind KEY to DEF, but only when inside a Jupyter code block.
 
@@ -503,15 +505,19 @@ and they only take effect when the variable
             (defalias (make-symbol (symbol-name def))
               cmd (documentation def))
           cmd))))
-  ;; NOTE: This will set the key multiple times if the same binding is used
-  ;; for different kernel languages even though it only needs to be defined
-  ;; once. `lookup-key' won't work for checking if it is already defined since
-  ;; the filter function of the menu-item returns nil if a client isn't
-  ;; defined.
-  (define-key jupyter-org-interaction-mode-map key
-    `(menu-item
-      "" nil :filter
-      ,(apply-partially #'jupyter-org--define-key-filter key))))
+  (let ((jupyter-org--defining-key-p t))
+    (unless (lookup-key jupyter-org-interaction-mode-map key)
+      (define-key jupyter-org-interaction-mode-map key
+        (list 'menu-item "" nil :filter
+              (lambda (&rest _)
+                (if jupyter-org--defining-key-p
+                    ;; Stub definition so that `lookup-key' returns a non-nil
+                    ;; value since the normal filter only returns a definition
+                    ;; when inside a source block. We only need to make the
+                    ;; definition for KEY once and not on every re-definition
+                    ;; of KEY for a particular language.
+                    #'undefined
+                  (jupyter-org--define-key-filter key))))))))
 
 (jupyter-org-define-key (kbd "C-x C-e") #'jupyter-eval-line-or-region)
 (jupyter-org-define-key (kbd "C-M-x") #'jupyter-eval-defun)
