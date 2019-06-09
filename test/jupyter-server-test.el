@@ -184,14 +184,16 @@
     (should-not (jupyter-kernel-alive-p kernel))
     ;; TODO: How should this work? Pass the server as an argument?
     (should-error (jupyter-start-kernel kernel))
-    (oset kernel id "foobar")
-    ;; FIXME: Since the kernel does not have access to the server and is just a
-    ;; container for data, we suppose the kernel is alive when it has an ID
-    ;; assigned to it.
-    (should (jupyter-kernel-alive-p kernel))
-    (jupyter-kill-kernel kernel)
-    (should-not (slot-boundp kernel 'id))
-    (should-not (jupyter-kernel-alive-p kernel))))
+    (ert-info ("ID slot as a proxy for kernel liveness")
+      (should-not (jupyter-kernel-alive-p kernel))
+      (oset kernel id "foobar")
+      ;; FIXME: There is actually nowhere in the code where the ID slot is made
+      ;; unbound since the event handler of the server relies on the ID slot,
+      ;; but if the kernel is shutdown the necessary communication layer
+      ;; connections are removed.
+      (should (jupyter-kernel-alive-p kernel)))
+    (ert-info ("Force killing a server kernel isn't possible")
+      (should-error (jupyter-kill-kernel kernel)))))
 
 (ert-deftest jupyter-server-kernel-manager ()
   :tags '(server)
