@@ -98,7 +98,7 @@ source code block. Set by `org-babel-execute:jupyter'.")))
   id-cleared-p
   inline-block-p
   marker
-  async)
+  async-p)
 
 ;;; `jupyter-kernel-client' interface
 
@@ -123,7 +123,7 @@ source code block. Set by `org-babel-execute:jupyter'.")))
          :result-type (alist-get :result-type block-params)
          :file (alist-get :file block-params)
          :block-params block-params
-         :async (equal (alist-get :async block-params) "yes")
+         :async-p (equal (alist-get :async block-params) "yes")
          :silent-p (car (or (member "none" result-params)
                             (member "silent" result-params)))))
     (cl-call-next-method)))
@@ -264,7 +264,7 @@ to."
       ;; TODO: Possibly file links are allowed as well. See
       ;; `org-babel-insert-result'
       (setq data (plist-get data :text/plain))
-      (if (jupyter-org-request-async req)
+      (if (jupyter-org-request-async-p req)
           (org-with-point-at (jupyter-org-request-marker req)
             (org-babel-insert-result data))
         ;; The results are returned in `org-babel-execute:jupyter' in the
@@ -325,7 +325,7 @@ to."
   (if (equal status "ok")
       (message "Code block evaluation complete.")
     (message "An error occurred when evaluating code block."))
-  (when (jupyter-org-request-async req)
+  (when (jupyter-org-request-async-p req)
     (jupyter-org--clear-request-id req)
     (run-hooks 'org-babel-after-execute-hook)))
 
@@ -1403,7 +1403,7 @@ results can be appended properly."
    ((jupyter-org-request-silent-p req)
     (unless (equal (jupyter-org-request-silent-p req) "none")
       (message "%s" (org-element-interpret-data result))))
-   ((jupyter-org-request-async req)
+   ((jupyter-org-request-async-p req)
     (unless (jupyter-org-request-id-cleared-p req)
       (jupyter-org--clear-request-id req))
     (org-with-point-at (jupyter-org-request-marker req)
