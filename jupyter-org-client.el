@@ -544,21 +544,22 @@ property."
         next begin1 end1)
     (while (/= begin end)
       (setq next (next-single-property-change begin 'jupyter-ansi nil end))
-      (if (get-text-property begin 'jupyter-ansi)
-          (progn
-            (setq begin1 begin
-                  end1 next
-                  begin next)
-            (while (/= begin1 end1)
-              (setq next (next-single-property-change
-                          begin1 'font-lock-face nil end1))
-              (when (get-text-property begin1 'font-lock-face)
-                (font-lock-prepend-text-property
-                 begin1 next 'face (get-text-property begin1 'font-lock-face)))
-              (setq begin1 next)))
+      (cond
+       ((get-text-property begin 'jupyter-ansi)
+        (setq begin1 begin
+              end1 next
+              begin next)
+        (while (/= begin1 end1)
+          (setq next (next-single-property-change
+                      begin1 'font-lock-face nil end1))
+          (when (get-text-property begin1 'font-lock-face)
+            (font-lock-prepend-text-property
+             begin1 next 'face (get-text-property begin1 'font-lock-face)))
+          (setq begin1 next)))
+       (t
         (put-text-property begin next 'jupyter-ansi t)
         (jupyter-ansi-color-apply-on-region begin next)
-        (setq begin next)))))
+        (setq begin next))))))
 
 ;; Adapted from `org-fontify-meta-lines-and-blocks-1'
 (defun jupyter-org-font-lock-ansi-escapes (limit)
