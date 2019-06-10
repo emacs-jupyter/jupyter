@@ -69,7 +69,7 @@ automatically be shown if this is non-nil."
 
 (defcustom jupyter-org-pandoc-convertable
   '("html" "markdown" "latex")
-  "Export blocks to convert to org-mode when ':pandoc t' header is set."
+  "Export blocks to convert to `org-mode' when ':pandoc t' header is set."
   :group 'ob-jupyter
   :type 'string)
 
