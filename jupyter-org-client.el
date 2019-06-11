@@ -1113,6 +1113,8 @@ appear after the element."
               export-block fixed-width item
               link plain-list src-block table))))
 
+;;;; Wrapping results
+
 (defun jupyter-org--wrappable-element-p (element)
   "Return non-nil if ELEMENT can be removed and wrapped in a drawer."
   (or (jupyter-org-babel-result-p element)
@@ -1124,8 +1126,6 @@ appear after the element."
             (and (eq type 'comment)
                  (equal jupyter-org--goto-error-string
                         (org-element-property :value element)))))))
-
-;;;; Wrapping results
 
 (defun jupyter-org--wrap-result-maybe (context result)
   "Depending on CONTEXT, wrap RESULT in a drawer."
@@ -1143,22 +1143,6 @@ appear after the element."
           ;; `org-element-interpret-data' already normalizes the string.
           (org-element-put-property context :post-blank nil))
       result)))
-
-(defun jupyter-org--delete-unwrapped-result (element)
-  "Delete ELEMENT from the buffer.
-If ELEMENT represents a previous result it, along with the result
-about to be inserted, will be wrapped in a drawer."
-  (if (eq (org-element-type element) 'table)
-      ;; The `org-element-contents' of a table is nil which interferes with how
-      ;; `org-element-table-interpreter' works when calling
-      ;; `org-element-interpret-data' so set the contents and delete ELEMENT from the
-      ;; buffer.
-      (org-element-set-contents
-       element (delete-and-extract-region
-                (org-element-property :contents-begin element)
-                (jupyter-org-element-end-before-blanks element)))
-    (when (jupyter-org--wrappable-element-p element)
-      (jupyter-org--delete-element element))))
 
 ;;;; Stream results
 
@@ -1355,11 +1339,21 @@ results can be appended properly."
         ;; Insert the first result. In this case `point' is at the first
         ;; line after the #+RESULTS keyword.
         (keyword nil)
-        ;; Any other context is a previous result. Remove it from the
-        ;; buffer since it, along with the new result will be wrapped in a
-        ;; drawer and re-inserted into the buffer.
+        ;; Any other context that looks like a result needs to be removed since
+        ;; it, along with the new result will be wrapped in a drawer and
+        ;; re-inserted into the buffer.
+        (table
+         ;; The `org-element-contents' of a table is nil which interferes with
+         ;; how `org-element-table-interpreter' works when calling
+         ;; `org-element-interpret-data' so set the contents and delete CONTEXT
+         ;; from the buffer.
+         (org-element-set-contents
+          context (delete-and-extract-region
+                   (org-element-property :contents-begin context)
+                   (jupyter-org-element-end-before-blanks context))))
         (t
-         (jupyter-org--delete-unwrapped-result context)))
+         (when (jupyter-org--wrappable-element-p context)
+           (jupyter-org--delete-element context))))
       (jupyter-org-indent-inserted-region
           (save-excursion
             (forward-line -1)
