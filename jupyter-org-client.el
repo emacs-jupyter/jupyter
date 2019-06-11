@@ -1060,11 +1060,12 @@ new \"scalar\" result with the result of calling
 
 (defun jupyter-org--clear-request-id (req)
   "Delete the ID of REQ in the `org-mode' buffer if present."
-  (org-with-point-at (jupyter-org-request-marker req)
-    (when (search-forward (jupyter-request-id req) nil t)
-      (delete-region (line-beginning-position)
-                     (1+ (line-end-position)))
-      (setf (jupyter-org-request-id-cleared-p req) t))))
+  (unless (jupyter-org-request-id-cleared-p req)
+    (org-with-point-at (jupyter-org-request-marker req)
+      (when (search-forward (jupyter-request-id req) nil t)
+        (delete-region (line-beginning-position)
+                       (1+ (line-end-position)))
+        (setf (jupyter-org-request-id-cleared-p req) t)))))
 
 (defun jupyter-org-element-begin-after-affiliated (element)
   "Return the beginning position of ELEMENT after any affiliated keywords."
@@ -1398,8 +1399,7 @@ results can be appended properly."
     (unless (equal (jupyter-org-request-silent-p req) "none")
       (message "%s" (org-element-interpret-data result))))
    ((jupyter-org-request-async-p req)
-    (unless (jupyter-org-request-id-cleared-p req)
-      (jupyter-org--clear-request-id req))
+    (jupyter-org--clear-request-id req)
     (org-with-point-at (jupyter-org-request-marker req)
       (goto-char (org-babel-where-is-src-block-result 'insert))
       (let ((context (org-element-context)))
