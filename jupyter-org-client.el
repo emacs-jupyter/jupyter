@@ -663,7 +663,7 @@ inserted without modification as the result of a code block."
   (list 'comment (list :value value)))
 
 (defun jupyter-org-export-block-or-pandoc (type value params)
-  "Returns VALUE, either converted with pandoc or in an export block.
+  "Return VALUE, either converted with pandoc or in an export block.
 If PARAMS has non-nil value for key ':pandoc' and TYPE is in
 `jupyter-org-pandoc-convertable', convert the result with pandoc.
 Otherwise, wrap it in an export block."
