@@ -1058,6 +1058,9 @@ new \"scalar\" result with the result of calling
 
 ;;;; Helper functions
 
+(defsubst jupyter-org--first-result-context-p (context)
+  (eq (org-element-type context) 'keyword))
+
 (defun jupyter-org--clear-request-id (req)
   "Delete the ID of REQ in the `org-mode' buffer if present."
   (unless (jupyter-org-request-id-cleared-p req)
@@ -1131,7 +1134,7 @@ appear after the element."
 (defun jupyter-org--wrap-result-maybe (context result)
   "Depending on CONTEXT, wrap RESULT in a drawer."
   (cond
-   ((eq (org-element-type context) 'keyword)
+   ((jupyter-org--first-result-context-p context)
     ;; Only wrap the result if it can't be removed by `org-babel'.
     (if (jupyter-org-babel-result-p result) result
       (jupyter-org-results-drawer result)))
@@ -1334,28 +1337,26 @@ results can be appended properly."
       (jupyter-org-indent-inserted-region nil
         (jupyter-org--append-stream-result result)))
      (t
-      (cl-case (org-element-type context)
-        ;; Go to the end of the drawer to insert the new result.
-        (drawer
-         (goto-char (jupyter-org-element-contents-end context)))
-        ;; Insert the first result. In this case `point' is at the first
-        ;; line after the #+RESULTS keyword.
-        (keyword nil)
-        ;; Any other context that looks like a result needs to be removed since
-        ;; it, along with the new result will be wrapped in a drawer and
-        ;; re-inserted into the buffer.
-        (table
-         ;; The `org-element-contents' of a table is nil which interferes with
-         ;; how `org-element-table-interpreter' works when calling
-         ;; `org-element-interpret-data' so set the contents and delete CONTEXT
-         ;; from the buffer.
-         (org-element-set-contents
-          context (delete-and-extract-region
-                   (org-element-property :contents-begin context)
-                   (jupyter-org-element-end-before-blanks context))))
-        (t
-         (when (jupyter-org--wrappable-element-p context)
-           (jupyter-org--delete-element context))))
+      (unless (jupyter-org--first-result-context-p context)
+        (cl-case (org-element-type context)
+          ;; Go to the end of the drawer to insert the new result.
+          (drawer
+           (goto-char (jupyter-org-element-contents-end context)))
+          ;; Any other context that looks like a result needs to be removed
+          ;; since it, along with the new result will be wrapped in a drawer
+          ;; and re-inserted into the buffer.
+          (table
+           ;; The `org-element-contents' of a table is nil which interferes
+           ;; with how `org-element-table-interpreter' works when calling
+           ;; `org-element-interpret-data' so set the contents and delete
+           ;; CONTEXT from the buffer.
+           (org-element-set-contents
+            context (delete-and-extract-region
+                     (org-element-property :contents-begin context)
+                     (jupyter-org-element-end-before-blanks context))))
+          (t
+           (when (jupyter-org--wrappable-element-p context)
+             (jupyter-org--delete-element context)))))
       (jupyter-org-indent-inserted-region
           (save-excursion
             (forward-line -1)
