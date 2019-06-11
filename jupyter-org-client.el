@@ -1130,20 +1130,21 @@ appear after the element."
 
 (defun jupyter-org--wrap-result-maybe (context result)
   "Depending on CONTEXT, wrap RESULT in a drawer."
-  ;; If a keyword is the context, this is the first result.
-  (if (eq (org-element-type context) 'keyword)
-      ;; Only wrap the result if it can't be removed by `org-babel'.
-      (if (jupyter-org-babel-result-p result) result
-        (jupyter-org-results-drawer result))
-    (if (jupyter-org--wrappable-element-p context)
-        (prog1 (jupyter-org-results-drawer context result)
-          ;; Ensure that a #+RESULTS: line is not prepended to context
-          ;; when calling `org-element-interpret-data'.
-          (org-element-put-property context :results nil)
-          ;; Ensure there is no post-blank since
-          ;; `org-element-interpret-data' already normalizes the string.
-          (org-element-put-property context :post-blank nil))
-      result)))
+  (cond
+   ((eq (org-element-type context) 'keyword)
+    ;; Only wrap the result if it can't be removed by `org-babel'.
+    (if (jupyter-org-babel-result-p result) result
+      (jupyter-org-results-drawer result)))
+   ((jupyter-org--wrappable-element-p context)
+    (prog1 (jupyter-org-results-drawer context result)
+      ;; Ensure that a #+RESULTS: line is not prepended to context when calling
+      ;; `org-element-interpret-data'.
+      (org-element-put-property context :results nil)
+      ;; Ensure there is no post-blank since `org-element-interpret-data'
+      ;; already normalizes the string.
+      (org-element-put-property context :post-blank nil)))
+   (t
+    result)))
 
 ;;;; Stream results
 
