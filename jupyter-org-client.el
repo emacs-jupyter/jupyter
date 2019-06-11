@@ -565,8 +565,8 @@ property."
 (defun jupyter-org-font-lock-ansi-escapes (limit)
   (let ((case-fold-search t))
     (when (re-search-forward
-           "^\\([ \t]*#\\+begin_example[ \t]*\\|: .*\\)$" limit t)
-      (let ((beg (match-beginning 0))
+           "^[ \t]*\\(#\\+begin_example[ \t]*\\|: .*\\)$" limit t)
+      (let ((beg (match-beginning 1))
             (beg1 (line-beginning-position 2))
             end)
         (cond
@@ -579,7 +579,7 @@ property."
             (jupyter-org--ansi-color-apply-on-region beg1 end)))
          ;; fixed width
          (t
-          (setq end (or (and (re-search-forward "^[^:]" nil t)
+          (setq end (or (and (re-search-forward "^[ \t]*[^:]" nil t)
                              (1- (match-beginning 0)))
                         (point-max)))
           (jupyter-org--ansi-color-apply-on-region beg end)))))))
