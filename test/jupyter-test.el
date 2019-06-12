@@ -2012,6 +2012,22 @@ file:foo
 : b
 "))))
 
+(ert-deftest jupyter-org-indent-inserted-region ()
+  :tags '(org)
+  (with-temp-buffer
+    (insert " a")
+    (jupyter-org-indent-inserted-region nil
+      (insert "\nb\n c\n"))
+    (should (equal (buffer-string) " a\n b\n  c\n"))
+    (erase-buffer)
+    (jupyter-org-indent-inserted-region 2
+      (insert "a\n b\n c\n"))
+    (should (equal (buffer-string) "  a\n   b\n   c\n"))
+    (erase-buffer)
+    (jupyter-org-indent-inserted-region nil
+      (insert " a\nb\nc"))
+    (should (equal (buffer-string) " a\nb\nc"))))
+
 (ert-deftest jupyter-org-coalesce-stream-results ()
   :tags '(org)
   (let ((org-edit-src-content-indentation 0))
