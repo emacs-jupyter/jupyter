@@ -1980,6 +1980,38 @@ file:foo
         (should-not (jupyter-org--stream-context-p (org-element-at-point))))
       (erase-buffer))))
 
+(ert-deftest jupyter-org--append-to-fixed-width ()
+  :tags '(org)
+  (with-temp-buffer
+    (org-mode)
+    (pop-to-buffer (current-buffer))
+    (insert ": foo\n")
+    (skip-chars-backward "\n")
+    (jupyter-org--append-to-fixed-width "bar" nil)
+    (should (equal (buffer-string) ": foobar\n"))
+    (skip-chars-backward "\n")
+    (jupyter-org--append-to-fixed-width "bar" t)
+    (should (equal (buffer-string) "\
+: foobar
+: bar
+"))
+    (skip-chars-backward "\n")
+    (jupyter-org--append-to-fixed-width "a\nb" nil)
+    (should (equal (buffer-string) "\
+: foobar
+: bara
+: b
+"))
+    (skip-chars-backward "\n")
+    (jupyter-org--append-to-fixed-width "a\nb" t)
+    (should (equal (buffer-string) "\
+: foobar
+: bara
+: b
+: a
+: b
+"))))
+
 (ert-deftest jupyter-org-coalesce-stream-results ()
   :tags '(org)
   (let ((org-edit-src-content-indentation 0))

@@ -1217,22 +1217,17 @@ non-nil, ensure that the appended RESULT begins on a newline."
 (defun jupyter-org--append-to-fixed-width (result keep-newline)
   "Append RESULT to the fixed-width element at point.
 `point' is assumed to be at the insertion point. If KEEP-NEWLINE is
-non-nil, ensure that the appended RESULT begins on a newline.
-
-If RESULT ends in a newline, place a non-nil
-jupyter-stream-newline property on the ending newline after
-insertion into the buffer."
+non-nil, ensure that the appended RESULT begins on a newline."
   (save-match-data
-    (string-match "\n" result)
-    (let ((first-newline (match-end 0)))
+    (let ((first-newline (string-match "\n" result)))
       (if (not (or first-newline keep-newline))
           (insert result)
         (let (head tail)
           (if keep-newline
               (setq head "\n"
                     tail result)
-            (setq head (substring result 0 first-newline)
-                  tail (substring result first-newline)))
+            (setq head (substring result 0 (1+ first-newline))
+                  tail (substring result (1+ first-newline))))
           (insert head)
           ;; Delete the newline that will be re-inserted by
           ;; `org-element-interpret-data'
