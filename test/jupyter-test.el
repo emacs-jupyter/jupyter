@@ -2012,6 +2012,88 @@ file:foo
 : b
 "))))
 
+(defvar org-edit-src-preserve-indentation)
+(defvar org-src-preserve-indentation)
+
+(ert-deftest jupyter-org--append-to-example-block ()
+  :tags '(org)
+  (let ((org-src-preserve-indentation 0))
+    (with-temp-buffer
+      (org-mode)
+      (insert "\
+#+begin_example
+|
+#+end_example
+")
+      (search-backward "|")
+      (forward-char)
+      (jupyter-org--append-to-example-block "a\nb" nil)
+      (should (equal (buffer-string) "\
+#+begin_example
+|a
+b
+#+end_example
+"))
+      (backward-char)
+      (jupyter-org--append-to-example-block "a\nb" t)
+      (should (equal (buffer-string) "\
+#+begin_example
+|a
+b
+a
+b
+#+end_example
+"))))
+  (when (version<= "9.2" (org-version))
+    (let ((org-src-preserve-indentation nil)
+          (org-edit-src-preserve-indentation 2))
+      (ert-info ("Example block indentation")
+        (with-temp-buffer
+          (org-mode)
+          (insert "\
+#+begin_example
+  |
+#+end_example
+")
+          (search-backward "|")
+          (forward-char)
+          (jupyter-org--append-to-example-block "ab" nil)
+          (should (equal (buffer-string) "\
+#+begin_example
+  |ab
+#+end_example
+"))
+          (backward-char)
+          (jupyter-org--append-to-example-block "ab" t)
+          (should (equal (buffer-string) "\
+#+begin_example
+  |ab
+  ab
+#+end_example
+"))
+          (backward-char)
+          ;; TODO: What to about the case of removing the common indentation
+          ;; while appending to a line?
+          (jupyter-org--append-to-example-block " a\n  b" nil)
+          (should (equal (buffer-string) "\
+#+begin_example
+  |ab
+  ab a
+  b
+#+end_example
+"))
+          (backward-char)
+          (jupyter-org--append-to-example-block " a\n b" t)
+          (should (equal (buffer-string) "\
+#+begin_example
+  |ab
+  ab a
+  b
+  a
+  b
+#+end_example
+")))))))
+
 (ert-deftest jupyter-org-indent-inserted-region ()
   :tags '(org)
   (with-temp-buffer

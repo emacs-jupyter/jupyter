@@ -1253,11 +1253,19 @@ RESULT."
   (when (and (not org-src-preserve-indentation)
              (/= 0 org-edit-src-content-indentation)
              (version<= "9.2" (org-version)))
-    (let ((ind (make-string org-edit-src-content-indentation ?\s)))
-      (setq result (replace-regexp-in-string
-                    "^[ \t]*\\S-"
-                    (concat ind "\\&")
-                    (org-remove-indentation result)))))
+    (let ((ind (make-string org-edit-src-content-indentation ?\s))
+          head tail)
+      (if keep-newline
+          (setq head ""
+                tail result)
+        (let ((first-newline (save-match-data
+                               (string-match "\n" result))))
+          (setq head (substring result 0 (1+ first-newline))
+                tail (substring result (1+ first-newline)))))
+      (setq result (concat head (replace-regexp-in-string
+                                 "^[ \t]*\\S-"
+                                 (concat ind "\\&")
+                                 (org-remove-indentation tail))))))
   (insert (concat (when keep-newline "\n") result)))
 
 (defun jupyter-org--append-stream-result (result)
