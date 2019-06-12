@@ -1248,11 +1248,16 @@ RESULT."
   ;; Delete the newline that will be re-inserted by the call to
   ;; `org-element-normalize-string'.
   (delete-char 1)
-  (setq result (thread-last result
-                 org-element-normalize-string
-                 ;; Strip any indentation since indentation is handled by
-                 ;; `jupyter-org--insert-result'
-                 org-remove-indentation))
+  (setq result (org-element-normalize-string result))
+  ;; From `org-element-example-block-interpreter'
+  (when (and (not org-src-preserve-indentation)
+             (/= 0 org-edit-src-content-indentation)
+             (version<= "9.2" (org-version)))
+    (let ((ind (make-string org-edit-src-content-indentation ?\s)))
+      (setq result (replace-regexp-in-string
+                    "^[ \t]*\\S-"
+                    (concat ind "\\&")
+                    (org-remove-indentation result)))))
   (insert (concat (when keep-newline "\n") result)))
 
 (defun jupyter-org--append-stream-result (result)
