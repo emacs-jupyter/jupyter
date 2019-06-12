@@ -579,7 +579,7 @@ property."
             (jupyter-org--ansi-color-apply-on-region beg1 end)))
          ;; fixed width
          (t
-          (setq end (or (and (re-search-forward "^[ \t]*[^:]" nil t)
+          (setq end (or (and (re-search-forward "^[ \t]*[^ \t:]" nil t)
                              (1- (match-beginning 0)))
                         (point-max)))
           (jupyter-org--ansi-color-apply-on-region beg end)))))))

@@ -2314,7 +2314,20 @@ AB[43mCD[0mEF
 #+end_example")
       ;; Test the cached faces path
       (remove-text-properties (point-min) (point-max) '(face))
-      (funcall test-fun 24 '(19 20 21 22 23 26 27 28 29)))))
+      (funcall test-fun 24 '(19 20 21 22 23 26 27 28 29))))
+  (ert-info ("Leading indentation")
+    (with-temp-buffer
+      (org-mode)
+      (jupyter-org-interaction-mode 1)
+      (pop-to-buffer (current-buffer))
+      (let ((beg (+ (point-min) 2)) end)
+        (insert "  : AB[43mCD[0mEF\n")
+        (insert "  : AB[43mCD[0mEF\n")
+        (setq end (1- (point)))
+        (insert "hey\n")
+        (goto-char (point-min))
+        (jupyter-org-font-lock-ansi-escapes (point-max))
+        (should-not (text-property-not-all beg end 'jupyter-ansi t))))))
 
 (ert-deftest jupyter-org-closest-jupyter-language ()
   :tags '(org)
