@@ -1,5 +1,29 @@
 * master
 
+- In =org-mode=, when inserting the results of an asynchronously evaluated
+  src-block, indent the results to match the surrounding indentation level.
+
+- In =org-mode=, fix an issue when a src-block is nested within a list that
+  would cause the entire list to be erased when asynchronously evaluating the
+  src-block.
+
+- Add new customizable variable ~jupyter-repl-echo-eval-p~ that causes the REPL
+  to behave similarly to comint or ESS when evaluating code. Specifically, it
+  causes any code that is sent to the underlying kernel to also be displayed as
+  a REPL input cell. The previous behavior would only display the sent code as
+  an input cell if it was explicitly typed in at the REPL.
+
+- Add the new command ~jupyter-repl-clear-cells~ to clear all of the current
+  input and output cells in a REPL buffer. Bound to ~C-c C-o~ by default in the
+  REPL.
+
+- Fix an issue where timeouts started using ~with-timeout~ would timeout when
+  the kernel requests input from the user. The timeouts are now suspended in
+  such cases.
+
+- In =jupyter-R.el= handle the =isolated= metadata property of HTML results by
+  opening up an external browser to display the result.
+
 - Allow =:session= to be a remote file name for =org-mode= source blocks. When
   =:session= is a remote file name that doesn't end in =.json=, e.g.
   =/ssh:ec2:jl=, a new kernel is started on the remote host using the
@@ -334,7 +358,7 @@
 Examine the output of
 
 #+NAME: changelog
-#+HEADER: :var PREV_VERSION="7554293d" VERSION="master"
+#+HEADER: :var PREV_VERSION="99986e5978058cfaeb5769740524d6d1274ee187" VERSION="master"
 #+BEGIN_SRC shell :results output
 git log --pretty=format:"%s" ${PREV_VERSION}...${VERSION}
 #+END_SRC
