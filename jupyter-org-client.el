@@ -1320,16 +1320,21 @@ result can be appended to a current stream result, do so.
 Otherwise setup the state of the buffer depending on CONTEXT and
 call the primary method.
 
-After the above, if RESULT is a stream result, be sure to add a
-jupyter-stream-newline property to the last newline of the
-inserted representatation of RESULT so that subseqeuent stream
-results can be appended properly."
-  (let ((pos (and (jupyter-org--stream-result-p result)
+After the above, indent the newly inserted region according to
+the surrounding indentation. Also, if RESULT is a stream result,
+be sure to add a jupyter-stream-newline property to the last
+newline of the inserted representatation of RESULT so that
+subseqeuent stream results can be appended properly."
+  (let ((indent (save-excursion
+                  (forward-line -1)
+                  ;; Use the indentation of the #+RESULTS line
+                  (current-indentation)))
+        (pos (and (jupyter-org--stream-result-p result)
                   (jupyter-org--stream-context-p context))))
     (cond
      (pos
       (goto-char pos)
-      (jupyter-org-indent-inserted-region nil
+      (jupyter-org-indent-inserted-region indent
         (jupyter-org--append-stream-result result)))
      (t
       (unless (jupyter-org--first-result-context-p context)
@@ -1352,10 +1357,7 @@ results can be appended properly."
           (t
            (when (jupyter-org--wrappable-element-p context)
              (jupyter-org--delete-element context)))))
-      (jupyter-org-indent-inserted-region
-          (save-excursion
-            (forward-line -1)
-            (current-indentation))
+      (jupyter-org-indent-inserted-region indent
         (cl-call-next-method))))
     (when (jupyter-org--stream-result-p result)
       (jupyter-org--mark-stream-result-newline result))))
