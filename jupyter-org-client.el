@@ -1059,7 +1059,10 @@ new \"scalar\" result with the result of calling
 ;;;; Helper functions
 
 (defsubst jupyter-org--first-result-context-p (context)
-  (eq (org-element-type context) 'keyword))
+  (cl-case (org-element-type context)
+    (drawer (not (equal "RESULTS"
+                        (org-element-property :drawer-name context))))
+    (t (not (jupyter-org--wrappable-element-p context)))))
 
 (defun jupyter-org--clear-request-id (req)
   "Delete the ID of REQ in the `org-mode' buffer if present."
@@ -1191,6 +1194,15 @@ is a stream result. Otherwise return nil."
     (when (looking-at-p "\\(?::[\t ]\\|#\\+END_EXAMPLE\\)")
       (line-end-position (unless (eq (char-after) ?:) 0)))))
 
+(defsubst jupyter-org--append-stream-result-p (context result)
+  "Depending on CONTEXT, return the position where RESULT should be appended.
+Return nil if CONTEXT does not represent a previous stream result
+already present in the buffer or if RESULT is not a stream
+result."
+  (when (and (jupyter-org--stream-result-p result)
+             (not (jupyter-org--first-result-context-p context)))
+    (jupyter-org--stream-context-p context)))
+
 ;;;;; Fixed width -> example block promotion
 
 (defun jupyter-org--fixed-width-to-example-block (element result keep-newline)
@@ -1296,6 +1308,37 @@ of the fixed-width element and RESULT concatenated together."
      (t
       (jupyter-org--append-to-example-block result keep-newline)))))
 
+(defsubst jupyter-org--prepare-append-result (context)
+  "Depending on CONTEXT do something to prepare for inserting a result.
+
+- If CONTEXT is a drawer move `point' to the end of its contents.
+
+- If CONTEXT is a table, delete it from the buffer and set the
+  deleted text as the contents of CONTEXT.
+
+- Otherwise, if CONTEXT is a previous unwrapped result, delete it
+  from the buffer. An unwrapped result is a previous result not
+  wrapped in a drawer."
+  (cl-case (org-element-type context)
+    ;; Go to the end of the drawer to insert the new result.
+    (drawer
+     (goto-char (jupyter-org-element-contents-end context)))
+    ;; Any other context that looks like a result needs to be removed
+    ;; since it, along with the new result will be wrapped in a drawer
+    ;; and re-inserted into the buffer.
+    (table
+     ;; The `org-element-contents' of a table is nil which interferes
+     ;; with how `org-element-table-interpreter' works when calling
+     ;; `org-element-interpret-data' so set the contents and delete
+     ;; CONTEXT from the buffer.
+     (org-element-set-contents
+      context (delete-and-extract-region
+               (org-element-property :contents-begin context)
+               (jupyter-org-element-end-before-blanks context))))
+    (t
+     (when (jupyter-org--wrappable-element-p context)
+       (jupyter-org--delete-element context)))))
+
 ;;;; Insert result
 
 (defmacro jupyter-org-indent-inserted-region (indentation &rest body)
@@ -1315,6 +1358,41 @@ after evaluation is indented by INDENTATION."
          (when (and (numberp ,indent) (> ,indent 0))
            (indent-rigidly beg end ,indent))))))
 
+(defvar org-bracket-link-regexp)
+
+(defsubst jupyter-org--normalized-insertion-context ()
+  "Return an `org-element' of the current results context.
+Assumes `point' is on the #+RESULTS keyword line."
+  (let ((context (org-element-context)))
+    ;; Handle file links which are org element objects and are contained
+    ;; within paragraph contexts.
+    (when (eq (org-element-type context) 'paragraph)
+      (save-excursion
+        (goto-char (jupyter-org-element-begin-after-affiliated context))
+        (when (looking-at-p (format "^[ \t]*%s[ \t]*$" org-bracket-link-regexp))
+          (setq context (org-element-context)))))
+    context))
+
+(defun jupyter-org--do-insert-result (req result)
+  (org-with-point-at (jupyter-org-request-marker req)
+    (goto-char (org-babel-where-is-src-block-result 'insert))
+    (let* ((indent (current-indentation))
+           (context (jupyter-org--normalized-insertion-context))
+           (pos (jupyter-org--append-stream-result-p context result)))
+      (cond
+       (pos
+        (goto-char pos)
+        (jupyter-org-indent-inserted-region indent
+          (jupyter-org--append-stream-result result)))
+       (t
+        (forward-line 1)
+        (unless (bolp) (insert "\n"))
+        (jupyter-org--prepare-append-result context)
+        (jupyter-org-indent-inserted-region indent
+          (jupyter-org--insert-result req context result)))))
+    (when (jupyter-org--stream-result-p result)
+      (jupyter-org--mark-stream-result-newline result))))
+
 (cl-defgeneric jupyter-org--insert-result (req context result)
   "For REQ and given CONTEXT, insert RESULT.
 REQ is a `jupyter-org-request' that contains the context of the
@@ -1324,56 +1402,6 @@ CONTEXT is the `org-element-context' for the results of the
 source block associated with REQ.
 
 RESULT is the new result, as an org element, to be inserted.")
-
-(cl-defmethod jupyter-org--insert-result :around (_req context result)
-  "Use CONTEXT to determine how RESULT should be inserted and insert RESULT.
-If RESULT is a stream result and CONTEXT looks like a stream
-result can be appended to a current stream result, do so.
-
-Otherwise setup the state of the buffer depending on CONTEXT and
-call the primary method.
-
-After the above, indent the newly inserted region according to
-the surrounding indentation. Also, if RESULT is a stream result,
-be sure to add a jupyter-stream-newline property to the last
-newline of the inserted representatation of RESULT so that
-subseqeuent stream results can be appended properly."
-  (let ((indent (save-excursion
-                  (forward-line -1)
-                  ;; Use the indentation of the #+RESULTS line
-                  (current-indentation)))
-        (pos (and (jupyter-org--stream-result-p result)
-                  (jupyter-org--stream-context-p context))))
-    (cond
-     (pos
-      (goto-char pos)
-      (jupyter-org-indent-inserted-region indent
-        (jupyter-org--append-stream-result result)))
-     (t
-      (unless (jupyter-org--first-result-context-p context)
-        (cl-case (org-element-type context)
-          ;; Go to the end of the drawer to insert the new result.
-          (drawer
-           (goto-char (jupyter-org-element-contents-end context)))
-          ;; Any other context that looks like a result needs to be removed
-          ;; since it, along with the new result will be wrapped in a drawer
-          ;; and re-inserted into the buffer.
-          (table
-           ;; The `org-element-contents' of a table is nil which interferes
-           ;; with how `org-element-table-interpreter' works when calling
-           ;; `org-element-interpret-data' so set the contents and delete
-           ;; CONTEXT from the buffer.
-           (org-element-set-contents
-            context (delete-and-extract-region
-                     (org-element-property :contents-begin context)
-                     (jupyter-org-element-end-before-blanks context))))
-          (t
-           (when (jupyter-org--wrappable-element-p context)
-             (jupyter-org--delete-element context)))))
-      (jupyter-org-indent-inserted-region indent
-        (cl-call-next-method))))
-    (when (jupyter-org--stream-result-p result)
-      (jupyter-org--mark-stream-result-newline result))))
 
 (cl-defmethod jupyter-org--insert-result (_req context result)
   (insert (org-element-interpret-data
@@ -1412,24 +1440,7 @@ subseqeuent stream results can be appended properly."
       (message "%s" (org-element-interpret-data result))))
    ((jupyter-org-request-async-p req)
     (jupyter-org--clear-request-id req)
-    (org-with-point-at (jupyter-org-request-marker req)
-      (goto-char (org-babel-where-is-src-block-result 'insert))
-      (let ((context (org-element-context)))
-        (forward-line)
-        ;; Handle file links which are org element objects and are contained
-        ;; within paragraph contexts.
-        (when (eq (org-element-type context) 'paragraph)
-          (setq context (org-element-context))
-          ;; If the context is still a paragraph context after moving to the
-          ;; line after the RESULTS keyword, as opposed to a file link, then
-          ;; re-add whitespace after the RESULTS line and return the RESULT
-          ;; keyword as the context.
-          (when (eq (org-element-type context) 'paragraph)
-            (save-excursion
-              (insert "\n")
-              (forward-line -1)
-              (setq context (org-element-context)))))
-        (jupyter-org--insert-result req context result))))
+    (jupyter-org--do-insert-result req result))
    (t
     (push result (jupyter-org-request-results req)))))
 
