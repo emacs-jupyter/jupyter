@@ -506,7 +506,7 @@ and they only take effect when the variable
               cmd (documentation def))
           cmd))))
   (let ((jupyter-org--defining-key-p t))
-    (unless (lookup-key jupyter-org-interaction-mode-map key)
+    (unless (functionp (lookup-key jupyter-org-interaction-mode-map key))
       (define-key jupyter-org-interaction-mode-map key
         (list 'menu-item "" nil :filter
               (lambda (&rest _)
