@@ -2382,6 +2382,42 @@ x
    (should (equal (jupyter-org-closest-jupyter-language)
                   "jupyter-bar"))))
 
+(ert-deftest jupyter-org-define-key ()
+  :tags '(org)
+  (jupyter-org-test
+   (save-excursion
+     (insert (format "\
+#+begin_src jupyter-python :session %s
+1 + 1
+#+end_src" jupyter-org-test-session)))
+   ;; Needed for the text properties
+   (font-lock-ensure)
+   (forward-line)
+   (let ((test-key
+          (lambda (key &optional lang no-def)
+            (or lang (setq lang 'jupyter))
+            (let* ((jupyter-org-interaction-mode-map (make-sparse-keymap))
+                   (test-def-called nil)
+                   (test-def (lambda ()
+                               (interactive)
+                               (setq test-def-called t))))
+              (jupyter-org-define-key key test-def lang)
+              (let ((def (lookup-key jupyter-org-interaction-mode-map key)))
+                (if no-def (should-not def)
+                  (should (functionp def))
+                  (call-interactively test-def)
+                  (should test-def-called)))))))
+     (ert-info ("Simple definition")
+       (funcall test-key "i"))
+     (ert-info ("Prefix keys")
+       (funcall test-key (kbd "C-x C-e")))
+     (ert-info ("Language based keys")
+       (funcall test-key (kbd "g") 'python)
+       (funcall test-key (kbd "g") 'julia 'no-def))
+     (forward-line -1)
+     (ert-info ("No definition outside source block")
+       (funcall test-key (kbd "g") 'python 'no-def)))))
+
 (ert-deftest org-babel-jupyter-src-block-session ()
   :tags '(org)
   (jupyter-org-test
