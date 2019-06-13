@@ -256,12 +256,14 @@ the host."
   (if (equal session "none") (error "Need a session to run")
     (org-babel-jupyter-initiate-session-by-key session params)))
 
+;;;###autoload
 (defun org-babel-jupyter-scratch-buffer ()
   "Display a scratch buffer connected to the current block's session."
   (interactive)
   (let (buffer)
     (org-babel-do-in-edit-buffer
-     (setq buffer (jupyter-repl-scratch-buffer)))
+     (setq buffer (save-window-excursion
+                    (jupyter-repl-scratch-buffer))))
     (if buffer (pop-to-buffer buffer)
       (user-error "No source block at point"))))
 

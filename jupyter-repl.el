@@ -1633,7 +1633,8 @@ in the appropriate direction, to the saved element."
 ;;; `jupyter-repl-mode'
 
 (defun jupyter-repl-scratch-buffer ()
-  "Display a scratch buffer associated with the current REPL buffer."
+  "Switch to a scratch buffer connected to the current REPL in another window.
+Return the buffer switched to."
   (interactive)
   (if (jupyter-repl-connected-p)
       (let* ((client jupyter-current-client)
