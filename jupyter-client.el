@@ -1275,7 +1275,8 @@ If the region is active, return it. Otherwise return the line."
        ;; closest contiguous non-whitespace sequence of characters at the top
        ;; level.
        (save-excursion
-         (goto-char (nth 1 ppss))
+         (when (nth 1 ppss)
+           (goto-char (nth 1 ppss)))
          (skip-syntax-backward "->")
          (skip-syntax-backward "^->")
          (point))
