@@ -620,7 +620,6 @@
     (should-not (jupyter-kernel-alive-p kernel))
     (jupyter-start-kernel kernel)
     (should (jupyter-kernel-alive-p kernel))
-    (should-error (jupyter-start-kernel kernel))
     (jupyter-kill-kernel kernel)
     (should-not (jupyter-kernel-alive-p kernel))
     (setq conn-info (jupyter-create-connection-info))

@@ -66,9 +66,8 @@
 
 (cl-defmethod jupyter-start-kernel :around ((kernel jupyter-kernel-lifetime) &rest _args)
   "Error when KERNEL is already alive, otherwise call the next method."
-  (when (jupyter-kernel-alive-p kernel)
-    (error "Kernel already alive"))
-  (cl-call-next-method))
+  (unless (jupyter-kernel-alive-p kernel)
+    (cl-call-next-method)))
 
 (cl-defmethod jupyter-kill-kernel :around ((kernel jupyter-kernel-lifetime))
   "Call the next method only when KERNEL is alive."
