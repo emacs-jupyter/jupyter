@@ -623,8 +623,6 @@
     (should-error (jupyter-start-kernel kernel))
     (jupyter-kill-kernel kernel)
     (should-not (jupyter-kernel-alive-p kernel))
-    ;; A session should not be re-used across kernels
-    (should-not (slot-boundp kernel 'session))
     (setq conn-info (jupyter-create-connection-info))
     (ert-info ("`jupyter-kernel-manager'")
       ;; TODO: Should the manager create a session if one isn't present?
@@ -659,11 +657,9 @@
       (should-not (jupyter-kernel-alive-p kernel))
       (jupyter-start-kernel kernel)
       (should (jupyter-kernel-alive-p kernel))
-      (should (oref kernel session)))
-    (ert-info ("Session is invalid when kernel is no longer alive")
+      (should (oref kernel session))
       (jupyter-kill-kernel kernel)
-      (should-not (jupyter-kernel-alive-p kernel))
-      (should-not (slot-boundp kernel 'session)))
+      (should-not (jupyter-kernel-alive-p kernel)))
     (ert-info ("Can we communicate?")
       (let ((manager (jupyter-kernel-manager :kernel kernel)))
         (jupyter-start-kernel manager)

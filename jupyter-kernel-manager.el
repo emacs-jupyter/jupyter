@@ -104,9 +104,8 @@ implementation of `jupyter-kill-kernel'.
 A convenience method, `jupyter-kernel-name', is provided to
 access the name of the kernelspec.")
 
-(cl-defmethod jupyter-kill-kernel ((kernel jupyter-meta-kernel))
-  (when (slot-boundp kernel 'session)
-    (slot-makeunbound kernel 'session)))
+(cl-defmethod jupyter-kill-kernel ((_kernel jupyter-meta-kernel))
+  (ignore))
 
 (cl-defmethod jupyter-kernel-name ((kernel jupyter-meta-kernel))
   "Return the name of KERNEL."
