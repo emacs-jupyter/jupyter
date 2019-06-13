@@ -71,7 +71,7 @@ automatically be shown if this is non-nil."
   '("html" "markdown" "latex")
   "Export blocks to convert to `org-mode' when ':pandoc t' header is set."
   :group 'ob-jupyter
-  :type 'string)
+  :type '(repeat string))
 
 (defconst jupyter-org-mime-types '(:text/org
                                    ;; Prioritize images over html
