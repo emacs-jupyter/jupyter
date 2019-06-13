@@ -2282,6 +2282,33 @@ print(\"foo\", flush=True)
 :END:
 ")))
 
+(ert-deftest jupyter-org-issue-126 ()
+  :tags '(org)
+  (jupyter-org-test
+   (insert (format "\
+* H1
+  - list1
+    #+begin_src jupyter-python :session %s :async yes
+      print(\"Hello\")
+    #+end_src
+
+* H2
+" jupyter-org-test-session))
+   (org-babel-previous-src-block)
+   (org-babel-execute-src-block)
+   (with-current-buffer (org-babel-initiate-session)
+     (jupyter-wait-until-idle (jupyter-last-sent-request jupyter-current-client)))
+   (org-back-to-heading)
+   (org-down-element)
+   (should (eq (org-element-type (org-element-context)) 'plain-list))
+   (org-babel-next-src-block)
+   (should (eq (org-element-type (org-element-context)) 'src-block))
+   (should (org-babel-where-is-src-block-result))
+   (goto-char (org-babel-where-is-src-block-result))
+   (let ((result (org-element-context)))
+     (should (eq (org-element-type result) 'fixed-width))
+     (should (equal (org-element-property :value result) "Hello")))))
+
 (ert-deftest jupyter-org-font-lock-ansi-escapes ()
   :tags '(org)
   (jupyter-org-test-src-block
