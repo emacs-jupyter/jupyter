@@ -114,11 +114,18 @@ Used in, e.g. a `jupyter-server-kernel-list-mode' buffer.")
     :documentation "Kernelspecs for the kernels available behind this gateway.
 Access should be done through `jupyter-available-kernelspecs'.")))
 
-;; TODO: When to `delete-instance'? Or define a function so that the user can
-;; do so.
 (defun jupyter-servers ()
   "Return a list of all `jupyter-server's."
   jupyter--servers)
+
+(defun jupyter-gc-servers ()
+  "Forget `jupyter-servers' that are no longer accessible at their hosts."
+  (dolist (server (jupyter-servers))
+    (condition-case nil
+        (jupyter-api-get-kernelspec server)
+      (file-error
+       (jupyter-comm-stop server)
+       (delete-instance server)))))
 
 ;; TODO: Add the server as a slot
 (defclass jupyter-server-kernel (jupyter-meta-kernel)
@@ -429,8 +436,12 @@ a URL."
            ;;                         (mapcar (lambda (x) (cons (oref x url) x))
            ;;                            jupyter--servers)))))
            ;;   )
+           (jupyter-gc-servers)
            (let* ((url (read-string "Server URL: " "http://localhost:8888"))
-                  (ws-url (read-string "Websocket URL: " "ws://localhost:8888")))
+                  (ws-url (read-string "Websocket URL: "
+                                       (let ((u (url-generic-parse-url url)))
+                                         (setf (url-type u) "ws")
+                                         (url-recreate-url u)))))
              (or (jupyter-find-server url ws-url)
                  (jupyter-server :url url :ws-url ws-url))))))
     (let ((server
