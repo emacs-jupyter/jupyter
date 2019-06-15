@@ -621,11 +621,18 @@ request."
 ID identifies the kernel to connect to, PLIST will be passed to
 the call to `websocket-open' to initialize the websocket.
 
-Note, ID is also stored as the `websocket-client-data' slot of
-the returned websocket."
-  (let ((ws (apply #'jupyter-api/kernels client "WS" id "channels" plist)))
+Note the `websocket-client-data' of the returned websocket will
+be a plist containing ID as the value of the :id key and the
+value of the :session key will be `jupyter-session' with its
+`jupyter-session-id' slot set to the session ID associated with
+the websocket."
+  (let* ((session (jupyter-session))
+         (ws (apply #'jupyter-api/kernels client "WS" id
+                    (concat "channels?session_id=" (jupyter-session-id session))
+                    plist)))
     (prog1 ws
-      (setf (websocket-client-data ws) id))))
+      (setf (websocket-client-data ws)
+            (list :id id :session session)))))
 
 ;;; Kernelspec API
 
