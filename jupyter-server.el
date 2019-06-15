@@ -320,7 +320,14 @@ ID of the kernel associated with COMM."
 (cl-defmethod jupyter-start-kernel ((manager jupyter-server-kernel-manager) &rest _ignore)
   "Ensure that the gateway can receive events from its kernel."
   (with-slots (server kernel) manager
-    (jupyter-start-kernel kernel server)))
+    (unless (jupyter-kernel-alive-p kernel)
+      (jupyter-start-kernel kernel server))
+    (unless (and (slot-boundp manager 'comm)
+                 (jupyter-comm-alive-p (oref manager comm)))
+      (oset manager comm (jupyter-server-kernel-comm
+                          :kernel kernel
+                          :server server))
+      (jupyter-comm-start (oref manager comm)))))
 
 (cl-defmethod jupyter-interrupt-kernel ((manager jupyter-server-kernel-manager))
   (with-slots (server kernel) manager
