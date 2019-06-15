@@ -194,9 +194,7 @@ kernel has a matching ID."
         ;; don't need to do any filtering based off of a `jupyter-session-id',
         ;; but maybe should? The `jupyter-handle-message' method will only
         ;; handle messages that have a parent ID of a previous request so there
-        ;; already is filtering at the kernel client level. I wonder if there
-        ;; is any issue with having an empty session ID in the messages sent by
-        ;; the `jupyter-server-ioloop', see `jupyter-server--dummy-session'.
+        ;; already is filtering at the kernel client level.
         (jupyter-event-handler client event)))))
 
 ;;;; `jupyter-server' methods
@@ -331,7 +329,6 @@ ID of the kernel associated with COMM."
 (cl-defmethod jupyter-kill-kernel ((manager jupyter-server-kernel-manager))
   (jupyter-shutdown-kernel manager))
 
-;; TODO: Figure out if restarting a kernel keeps the kernel ID
 (cl-defmethod jupyter-shutdown-kernel ((manager jupyter-server-kernel-manager) &optional restart _timeout)
   (with-slots (server kernel comm) manager
     (if restart (jupyter-api-restart-kernel server (oref kernel id))

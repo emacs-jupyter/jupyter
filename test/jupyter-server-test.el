@@ -125,7 +125,7 @@
             (unwind-protect
                 (progn
                   (should (websocket-openp ws))
-                  (should (equal (websocket-client-data ws) id)))
+                  (should (equal (plist-get (websocket-client-data ws) :id) id)))
               (websocket-close ws)))
         (jupyter-api-shutdown-kernel client id)))))
 

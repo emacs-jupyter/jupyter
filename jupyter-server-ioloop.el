@@ -141,8 +141,7 @@ websocket.")
            ;; Convert into keyword since that is what is expected
            (plist-put msg :msg_type msg-type)
            (plist-put parent-header :msg_type msg-type)
-           ;; websocket-client-data = kernel-id
-           (push (cons (websocket-client-data ws)
+           (push (cons (plist-get (websocket-client-data ws) :id)
                        ;; NOTE: The nil is the identity field expected by a
                        ;; `jupyter-channel-ioloop', it is mimicked here.
                        (cons channel (cons nil msg)))
@@ -170,12 +169,10 @@ websocket.")
 
 (defun jupyter-server-ioloop--kernel-ws (kernel-id)
   (cl-find-if
-   (lambda (ws) (equal kernel-id (websocket-client-data ws)))
+   (lambda (ws) (equal kernel-id (plist-get (websocket-client-data ws) :id)))
    jupyter-server-connected-kernels))
 
 ;;; IOLoop events
-
-(defvar jupyter-server--dummy-session (jupyter-session :id ""))
 
 (defun jupyter-server-ioloop-add-send-event (ioloop)
   (jupyter-ioloop-add-event
@@ -185,7 +182,7 @@ websocket.")
         (error "Kernel with ID (%s) not connected" kernel-id))
       (websocket-send-text
        ws (jupyter-encode-raw-message
-              jupyter-server--dummy-session msg-type
+              (plist-get (websocket-client-data ws) :session) msg-type
             :channel (substring (symbol-name channel) 1)
             :msg-id msg-id
             :content msg))
