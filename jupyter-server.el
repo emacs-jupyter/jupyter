@@ -165,9 +165,6 @@ Access should be done through `jupyter-available-kernelspecs'.")))
 (cl-defmethod jupyter-event-handler ((comm jupyter-server)
                                      (event (head disconnect-channels)))
   (let ((kernel-id (cadr event)))
-    (jupyter-comm-client-loop comm client
-      (when (equal kernel-id (oref (oref client kernel) id))
-        (jupyter-comm-stop client)))
     (with-slots (ioloop) comm
       (cl-callf2 remove kernel-id
                  (process-get (oref ioloop process) :kernel-ids)))))
@@ -217,12 +214,23 @@ kernel has a matching ID."
 
 (cl-defmethod jupyter-connect-client ((comm jupyter-server)
                                       (kcomm jupyter-server-kernel-comm))
+  (cl-call-next-method)
   (with-slots (id) (oref kcomm kernel)
-    (cl-call-next-method)
-    (jupyter-send comm 'connect-channels id)
-    (unless (jupyter-ioloop-wait-until (oref comm ioloop)
-                'connect-channels #'identity)
-      (error "Timeout when connecting websocket to kernel id %s" id))))
+    (unless (jupyter-server-kernel-connected-p comm id)
+      (jupyter-send comm 'connect-channels id)
+      (unless (jupyter-ioloop-wait-until (oref comm ioloop)
+                  'connect-channels #'identity)
+        (error "Timeout when connecting websocket to kernel id %s" id)))))
+
+(cl-defmethod jupyter-disconnect-client ((comm jupyter-server)
+                                         (kcomm jupyter-server-kernel-comm))
+  (with-slots (id) (oref kcomm kernel)
+    (when (jupyter-server-kernel-connected-p comm id)
+      (jupyter-send comm 'disconnect-channels id)
+      (unless (jupyter-ioloop-wait-until (oref comm ioloop)
+                  'disconnect-channels #'identity)
+        (error "Timeout when disconnecting websocket for kernel id %s" id))))
+  (cl-call-next-method))
 
 (cl-defmethod jupyter-server-kernel-connected-p ((comm jupyter-server) id)
   "Return non-nil if COMM has a WebSocket connection to a kernel with ID."
@@ -339,10 +347,7 @@ ID of the kernel associated with COMM."
 (cl-defmethod jupyter-shutdown-kernel ((manager jupyter-server-kernel-manager) &optional restart _timeout)
   (with-slots (server kernel comm) manager
     (if restart (jupyter-api-restart-kernel server (oref kernel id))
-      (when (jupyter-comm-alive-p server)
-        ;; Stop the communication of a `jupyter-server' with
-        ;; `jupyter-server-kernel-comm's that have the associated kernel ID.
-        (jupyter-send server 'disconnect-channels (oref kernel id)))
+      (jupyter-comm-stop comm)
       (when (jupyter-kernel-alive-p manager)
         (jupyter-api-shutdown-kernel server (oref kernel id))))))
 
