@@ -62,6 +62,7 @@
 (require 'websocket)
 
 (defvar jupyter-server-recvd-messages nil)
+(defvar jupyter-server-timeout nil)
 (defvar jupyter-server-connected-kernels nil)
 (defvar jupyter-server-rest-client nil)
 
@@ -106,6 +107,14 @@ websocket.")
     `((jupyter-api-with-subprocess-setup
        (require 'jupyter-server-ioloop)
        (push 'jupyter-server-ioloop--recv-messages jupyter-ioloop-pre-hook)
+       ;; Waiting is done using `accept-process-output' instead of
+       ;; `zmq-poller-wait-all' since the latter doesn't allow Emacs to process
+       ;; websocket events.
+       (setq jupyter-server-timeout jupyter-ioloop-timeout
+             jupyter-ioloop-timeout 0)
+       (push
+        (lambda () (accept-process-output nil (/ jupyter-server-timeout 1000.0)))
+        jupyter-ioloop-pre-hook)
        (setq jupyter-server-rest-client (jupyter-rest-client
                                          :url ,(oref ioloop url)
                                          :ws-url ,(oref ioloop ws-url)
