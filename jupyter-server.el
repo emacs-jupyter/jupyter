@@ -320,6 +320,26 @@ ID of the kernel associated with COMM."
    (kernel :type jupyter-server-kernel :initarg :kernel)
    (comm :type jupyter-server-kernel-comm)))
 
+(cl-defmethod jupyter-comm-start ((manager jupyter-server-kernel-manager))
+  "Start a websocket connection to MANAGER's kernel.
+MANAGER's COMM slot will be set to the `jupyter-comm-layer'
+receiving events on the websocket when this method returns."
+  (with-slots (kernel server) manager
+    (unless (slot-boundp manager 'comm)
+      (oset manager comm (jupyter-server-kernel-comm
+                          :kernel kernel
+                          :server server)))
+    (with-slots (comm) manager
+      (unless (jupyter-comm-alive-p comm)
+        (jupyter-comm-start comm)))))
+
+(cl-defmethod jupyter-comm-stop ((manager jupyter-server-kernel-manager))
+  "Stop a websocket connection to MANAGER's kernel."
+  (when (slot-boundp manager 'comm)
+    (with-slots (comm) manager
+      (when (jupyter-comm-alive-p comm)
+        (jupyter-comm-stop comm)))))
+
 (cl-defmethod jupyter-kernel-alive-p ((manager jupyter-server-kernel-manager))
   (with-slots (server kernel) manager
     (and (jupyter-kernel-alive-p kernel)
@@ -330,12 +350,7 @@ ID of the kernel associated with COMM."
   (with-slots (server kernel) manager
     (unless (jupyter-kernel-alive-p kernel)
       (jupyter-start-kernel kernel server))
-    (unless (and (slot-boundp manager 'comm)
-                 (jupyter-comm-alive-p (oref manager comm)))
-      (oset manager comm (jupyter-server-kernel-comm
-                          :kernel kernel
-                          :server server))
-      (jupyter-comm-start (oref manager comm)))))
+    (jupyter-comm-start manager)))
 
 (cl-defmethod jupyter-interrupt-kernel ((manager jupyter-server-kernel-manager))
   (with-slots (server kernel) manager
@@ -347,18 +362,14 @@ ID of the kernel associated with COMM."
 (cl-defmethod jupyter-shutdown-kernel ((manager jupyter-server-kernel-manager) &optional restart _timeout)
   (with-slots (server kernel comm) manager
     (if restart (jupyter-api-restart-kernel server (oref kernel id))
-      (jupyter-comm-stop comm)
+      (jupyter-comm-stop manager)
       (when (jupyter-kernel-alive-p manager)
         (jupyter-api-shutdown-kernel server (oref kernel id))))))
 
 (cl-defmethod jupyter-make-client ((manager jupyter-server-kernel-manager) _class &rest _slots)
   (let ((client (cl-call-next-method)))
     (prog1 client
-      (unless (slot-boundp manager 'comm)
-        (oset manager comm (jupyter-server-kernel-comm
-                            :kernel (oref manager kernel)
-                            :server (oref manager server)))
-        (jupyter-comm-start (oref manager comm)))
+      (jupyter-comm-start manager)
       (oset client kcomm (oref manager comm)))))
 
 ;;; Finding exisisting kernel managers and servers
