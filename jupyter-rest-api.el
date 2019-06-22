@@ -227,15 +227,29 @@ request data."
 ;; and
 ;; http://www.tornadoweb.org/en/stable/guide/security.html#cross-site-request-forgery-protection
 
+(defun jupyter-api-request-xsrf-cookie (client)
+  "Send a request using CLIENT to retrieve the _xsrf cookie."
+  (let ((url-request-method "GET")
+        url-request-extra-headers
+        url-request-data)
+    (jupyter-api--url-request (concat (oref client url) "/login"))))
+
+(defun jupyter-api-url-cookies (url)
+  "Return the list of cookies for URL."
+  (or (url-p url) (setq url (url-generic-parse-url url)))
+  (url-cookie-retrieve
+   (url-host url) (concat (url-filename url) "/")
+   (equal (url-type url) "https")))
+
 (defun jupyter-api-xsrf-header-from-cookies (url)
   "Return an alist containing an X-XSRFTOKEN header or nil.
 Searches the cookies of URL for an _xsrf token, if found, sets
 the value of the cookie as the value of the X-XSRFTOKEN header
 returned."
-  (let ((url (if (url-p url) url (url-generic-parse-url url))))
-    (cl-loop for cookie in (url-cookie-retrieve (url-host url) "/" nil)
-             if (equal (url-cookie-name cookie) "_xsrf")
-             return (list (cons "X-XSRFTOKEN" (url-cookie-value cookie))))))
+  (cl-loop
+   for cookie in (jupyter-api-url-cookies url)
+   if (equal (url-cookie-name cookie) "_xsrf")
+   return (list (cons "X-XSRFTOKEN" (url-cookie-value cookie)))))
 
 (defun jupyter-api-copy-cookies-for-websocket (url)
   "Copy URL cookies so that those under HOST are accessible under HOST:PORT.
@@ -251,7 +265,7 @@ see RFC 6265."
               (port (url-port-if-non-default url))
               (host-port (format "%s:%s" host port)))
     (cl-loop
-     for cookie in (url-cookie-retrieve host "/")
+     for cookie in (jupyter-api-url-cookies url)
      do (pcase-let (((cl-struct url-cookie name value expires
                                 localpart secure)
                      cookie))
