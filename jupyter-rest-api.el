@@ -55,9 +55,6 @@
                  (const :tag "Ask" ask))
   :group 'jupyter-rest-api)
 
-(defvar jupyter-api-url nil
-  "The URL used for requests by `jupyter-api--request'.")
-
 (defvar jupyter-api-max-authentication-attempts 3
   "Maximum number of retries used for authentication.
 When attempting to authenticate a request, try this many times
@@ -188,15 +185,19 @@ If the maximum number of redirects are reached a
             (signal (car err) (cdr err)))))
        (t resp)))))
 
-(defun jupyter-api--url-request (url &optional async &rest async-args)
+(defun jupyter-api-url-request (url &optional async &rest async-args)
   "Retrieve URL and return its JSON response.
 ASYNC and ASYNC-ARGS have the same meaning as CALLBACK and CBARGS
 of `url-retrieve'.
 
 If ASYNC is nil, retrieve URL synchronously and return its JSON
-response or signal a `jupyter-api-http-error' when something went
-wrong with the request. If the response obtained by URL is not
-JSON, return nil.
+response or signal an error when something went wrong with the
+request. On success, if the response obtained by URL is not JSON,
+return nil otherwise the parsed JSON is returned as a plist. On
+error, either an `jupyter-api-http-error' (when
+`url-http-response-status' >= 400),
+`jupyter-api-http-redirect-limit' (when `url-max-redirections' is
+reached), or `error' (on any other kind of URL error) is signaled.
 
 When ASYNC is a callback function, this function does the same
 thing as `url-retrieve' with its SILENT argument set to t and
@@ -218,19 +219,18 @@ INHIBIT-COOKIES set to nil."
 ;; response codes.
 (defun jupyter-api-http-request (url endpoint method &rest data)
   "Send request to URL/ENDPOINT using HTTP METHOD.
-DATA is encoded into a JSON string using `json-encode' and sent
-as the HTTP request data. If DATA is nil, don't send any
+DATA is encoded into a JSON string using `json-encode-plist' and
+sent as the HTTP request data. If DATA is nil, don't send any
 request data."
   (declare (indent 3))
-  (let* ((url-request-method method)
-         (url-request-data (or (and data (json-encode-plist data))
-                               url-request-data))
-         (url-request-extra-headers
-          (append (when data
-                    (list (cons "Content-Type" "application/json")))
-                  url-request-extra-headers)))
-    (jupyter-api--url-request
-     (mapconcat #'identity (list url endpoint) "/"))))
+  (let ((url-request-method method)
+        (url-request-data (or (and data (json-encode-plist data))
+                              url-request-data))
+        (url-request-extra-headers
+         (append (when data
+                   (list (cons "Content-Type" "application/json")))
+                 url-request-extra-headers)))
+    (jupyter-api-url-request (concat url "/" endpoint))))
 
 ;;; Authentication
 
@@ -245,10 +245,7 @@ request data."
 
 (defun jupyter-api-request-xsrf-cookie (client)
   "Send a request using CLIENT to retrieve the _xsrf cookie."
-  (let ((url-request-method "GET")
-        url-request-extra-headers
-        url-request-data)
-    (jupyter-api--url-request (concat (oref client url) "/login"))))
+  (jupyter-api-request client "GET" "login"))
 
 (defun jupyter-api-url-cookies (url)
   "Return the list of cookies for URL."
@@ -286,6 +283,27 @@ see RFC 6265."
                                 localpart secure)
                      cookie))
           (url-cookie-store name value expires host-port localpart secure)))))
+
+(defun jupyter-api-add-websocket-headers (plist)
+  "Destructively modify PLIST to add a `:custom-header-alist' key.
+Appends the value of `url-request-extra-headers' to the
+`:custom-header-alist' key of PLIST, creating the key if
+necessary. Before doing so, move past any non-keyword elements of
+PLIST so as to only modify what looks like a property list.
+
+Return the modified PLIST."
+  (or plist (setq plist (list :custom-header-alist nil)))
+  (let ((head plist))
+    (while (and head (not (keywordp (car head))))
+      (pop head))
+    (setq head (or (plist-member head :custom-header-alist)
+                   (setcdr (last plist)
+                           (list :custom-header-alist nil))))
+    (prog1 plist
+      (plist-put head :custom-header-alist
+                 (append
+                  (plist-get head :custom-header-alist)
+                  url-request-extra-headers)))))
 
 (defun jupyter-api-auth-headers (client)
   "Return the HTTP headers CLIENT is using for authentication or nil."
@@ -345,7 +363,7 @@ error with the data being the error received by `url-retrieve'."
          (status nil)
          (done nil)
          (cb (lambda (s &rest _) (setq status s done t)))
-         (buffer (jupyter-api--url-request (concat url "/login") cb)))
+         (buffer (jupyter-api-url-request (concat url "/login") cb)))
     (unwind-protect
         (progn
           (jupyter-with-timeout
@@ -458,45 +476,53 @@ Raise an error on failure."
 
 ;;; Calling the REST API
 
-(defun jupyter-api--request (method &rest plist)
-  "Send an HTTP request to `jupyter-api-url'.
-METHOD is the HTTP request method and PLIST contains the request.
-The elements of PLIST before the first keyword form the REST api
-endpoint and the rest of the PLIST after will be encoded into a
-JSON object and sent as the request data if METHOD is POST. So a
-call like
+(defun jupyter-api-construct-endpoint (plist)
+  "Return a cons cell (ENDPOINT . REST) based on PLIST.
+ENDPOINT is the API endpoint constructed from the elements at the
+beginning of PLIST that are strings. REST will contain the
+remainder of PLIST.
 
-    \(let ((jupyter-api-url \"http://localhost:8888\"))
-       (jupyter-api--request \"POST\" \"kernels\" :name \"python\"))
+So if PLIST looks like
 
-will create an http POST request to the url
-http://localhost:8888/api/kernels using the JSON encoded from the
-plist (:name \"python\") as the POST data.
+    '(\"api\" \"kernels\" :k1 ...)
 
-As a special case, if METHOD is \"WS\", a websocket will be
-opened using the REST api url and PLIST will be used in a call to
-`websocket-open'."
+ENDPOINT will be \"api/kernels\" and REST will be '(:k1 ...).
+
+If there is an alist after the strings of PLIST that make up the
+ENDPOINT, the alist is interpreted as the query component of
+ENDPOINT. So if PLIST looks like
+
+    '(\"api\" \"contents\" ((\"content\" . \"1\")) :k1 ...)
+
+The returned ENDPOINT will be \"api/contents?content=1\" and REST
+will be '(:k1 ...)."
   (let (endpoint)
-    (while (and plist (not (keywordp (car plist))))
+    (while (and plist (or (null (car plist))
+                          (stringp (car plist))))
       ;; Remove any trailing empty strings or nil values so that something like
       ;; ("contents?content=0" "") doesn't get turned into
       ;; "api/contents?contents=0/" below.
       (if (memq (car plist) '(nil "")) (pop plist)
+        (cl-check-type (car plist) string
+                       "Endpoint can only be constructed from strings")
         (push (pop plist) endpoint)))
-    (setq endpoint (nreverse endpoint))
-    (cl-assert (not (null endpoint)))
-    (cl-assert (not (null jupyter-api-url)))
-    (setq endpoint (mapconcat #'identity (cons "api" endpoint) "/"))
-    (pcase method
-      ("WS"
-       (jupyter-api-copy-cookies-for-websocket jupyter-api-url)
-       (apply #'websocket-open
-              (concat jupyter-api-url "/" endpoint)
-              plist))
-      (_
-       (apply #'jupyter-api-http-request
-              jupyter-api-url endpoint method
-              plist)))))
+    (setq endpoint
+          ;; Allow the list of endpoint strings to contain sub-paths.
+          (let ((url-unreserved-chars (cons ?/ url-unreserved-chars)))
+            (mapconcat #'url-hexify-string
+                       (or (nreverse endpoint) (list "")) "/")))
+    (when (consp (car plist))
+      (setq endpoint (concat endpoint "?"
+                             (mapconcat
+                              (lambda (x)
+                                (cl-check-type x cons)
+                                (cl-check-type (car x) string)
+                                (cl-check-type (cdr x) string)
+                                (concat (url-hexify-string (car x)) "="
+                                        (url-hexify-string (cdr x))))
+                              (pop plist)
+                              "&"))))
+    (cons endpoint plist)))
 
 (cl-defgeneric jupyter-api-request ((client jupyter-rest-client) method &rest plist)
   (declare (indent 2)))
@@ -504,11 +530,11 @@ opened using the REST api url and PLIST will be used in a call to
 (cl-defmethod jupyter-api-request ((client jupyter-rest-client) method &rest plist)
   "Send an HTTP request using CLIENT.
 METHOD is the HTTP request method and PLIST contains the request.
-The elements of PLIST before the first keyword form the REST api
-endpoint and the rest of the PLIST after will be encoded into a
-JSON object and sent as the request data. So a call like
+The elements of PLIST before the first non-string form the REST
+API endpoint and the rest of the PLIST after will be encoded into
+a JSON object and sent as the request data. So a call like
 
-   \(jupyter-api-request client \"POST\" \"kernels\" :name \"python\")
+   \(jupyter-api-request client \"POST\" \"api\" \"kernels\" :name \"python\")
 
 where the url slot of client is http://localhost:8888 will create
 an http POST request to the url http://localhost:8888/api/kernels
@@ -518,30 +544,37 @@ POST data.
 Note an empty plist (after forming the endpoint) is interpreted
 as no request data at all and NOT as an empty JSON dictionary.
 
-As a special case, if METHOD is \"WS\", a websocket will be
-opened using the REST api url and PLIST will be used in a call to
-`websocket-open'."
+A call to this method can also look like
+
+   \(jupyter-api-request client \"GET\"
+      \"api\" \"contents\" '((\"content\" . \"1\"))
+
+In this case, the alist after the strings that make up the base
+endpoint, but before the rest of the non-strings elements of
+PLIST, will be interpreted as the query component of the
+resulting endpoint. So for the above example, the resulting url
+will be http://localhost:8888/api/contents?content=1.
+
+If METHOD is \"WS\", a websocket will be opened using the REST api
+url and PLIST will be used in a call to `websocket-open'."
   (jupyter-api--ensure-authenticated client)
-  (let* ((url-request-extra-headers
-          (append (jupyter-api-auth-headers client)
-                  (jupyter-api-xsrf-header-from-cookies (oref client url))
-                  url-request-extra-headers))
-         (jupyter-api-url (if (equal method "WS")
-                              (oref client ws-url)
-                            (oref client url))))
-    (when (equal method "WS")
-      (let ((head plist))
-        (while (and head (not (keywordp (car head))))
-          (pop head))
-        (setq head (or (plist-member head :custom-header-alist)
-                       (setcdr (last plist)
-                               (list :custom-header-alist nil))))
-        (plist-put head :custom-header-alist
-                   (append
-                    (plist-get head :custom-header-alist)
-                    url-request-extra-headers))))
+  (let ((url-request-extra-headers
+         (append (jupyter-api-auth-headers client)
+                 (jupyter-api-xsrf-header-from-cookies (oref client url))
+                 url-request-extra-headers)))
     (condition-case err
-        (apply #'jupyter-api--request method plist)
+        (cl-destructuring-bind (endpoint . rest)
+            (jupyter-api-construct-endpoint plist)
+          (pcase method
+            ("WS"
+             (jupyter-api-copy-cookies-for-websocket (oref client url))
+             (apply #'websocket-open
+                    (concat (oref client ws-url) "/" endpoint)
+                    (jupyter-api-add-websocket-headers rest)))
+            (_
+             (apply #'jupyter-api-http-request
+                    (oref client url) endpoint method
+                    rest))))
       (jupyter-api-http-error
        ;; Reset the `auth' state when un-authorized so that we ask again.
        (when (and (= (cadr err) 403)
@@ -558,7 +591,7 @@ opened using the REST api url and PLIST will be used in a call to
   "Send an HTTP request to the api/kernels endpoint to CLIENT's url.
 METHOD is the HTTP method to use. PLIST has the same meaning as
 in `jupyter-api-request'."
-  (apply #'jupyter-api-request client method "kernels" plist))
+  (apply #'jupyter-api-request client method "api" "kernels" plist))
 
 (cl-defgeneric jupyter-api/kernelspecs ((client jupyter-rest-client) method &rest plist)
   (declare (indent 2)))
@@ -567,7 +600,7 @@ in `jupyter-api-request'."
   "Send an HTTP request to the api/kernelspecs endpoint of CLIENT.
 METHOD is the HTTP method to use. PLIST has the same meaning as
 in `jupyter-api-request'."
-  (apply #'jupyter-api-request client method "kernelspecs" plist))
+  (apply #'jupyter-api-request client method "api" "kernelspecs" plist))
 
 (cl-defgeneric jupyter-api/contents ((client jupyter-rest-client) method &rest plist)
   (declare (indent 2)))
@@ -576,7 +609,7 @@ in `jupyter-api-request'."
   "Send an HTTP request to the api/contents endpoint of CLIENT.
 METHOD is the HTTP method to use. PLIST has the same meaning as
 in `jupyter-api-request'."
-  (apply #'jupyter-api-request client method "contents" plist))
+  (apply #'jupyter-api-request client method "api" "contents" plist))
 
 (cl-defgeneric jupyter-api/config ((client jupyter-rest-client) method &rest plist)
   (declare (indent 2)))
@@ -585,7 +618,7 @@ in `jupyter-api-request'."
   "Send an HTTP request to the api/config endpoint of CLIENT.
 METHOD is the HTTP method to use. PLIST has the same meaning as
 in `jupyter-api-request'."
-  (apply #'jupyter-api-request client method "config" plist))
+  (apply #'jupyter-api-request client method "api" "config" plist))
 
 ;;; Config
 
@@ -657,8 +690,8 @@ value of the :session key will be `jupyter-session' with its
 `jupyter-session-id' slot set to the session ID associated with
 the websocket."
   (let* ((session (jupyter-session))
-         (ws (apply #'jupyter-api/kernels client "WS" id
-                    (concat "channels?session_id=" (jupyter-session-id session))
+         (ws (apply #'jupyter-api/kernels client "WS" id "channels"
+                    `(("session_id" . ,(jupyter-session-id session)))
                     plist)))
     (prog1 ws
       (setf (websocket-client-data ws)
@@ -717,10 +750,9 @@ A file model is a plist that contains the following keys:
   :type - Either \"directory\" or \"file\""
   (declare (indent 1))
   (jupyter-api/contents client "GET"
-    (concat
-     (jupyter-api-content-path file)
-     "?content=" (if no-content "0" "1")
-     (and type (concat "&type=" type)))))
+    (jupyter-api-content-path file)
+    (nconc (list (cons "content" (if no-content "0" "1")))
+           (when type (cons "type" type)))))
 
 (defun jupyter-api-delete-file (client file-or-dir)
   "Send a request using CLIENT to delete FILE-OR-DIR from the server.

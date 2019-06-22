@@ -38,6 +38,44 @@
 
 ;;; REST API
 
+(ert-deftest jupyter-api-construct-endpoint ()
+  :tags '(rest)
+  (let (plist)
+    (ert-info ("Basic")
+      (should (equal (jupyter-api-construct-endpoint plist) '("")))
+      (setq plist '("foo"))
+      (should (equal (jupyter-api-construct-endpoint plist) '("foo")))
+      (setq plist '("foo" "bar"))
+      (should (equal (jupyter-api-construct-endpoint plist) '("foo/bar")))
+      (setq plist '("foo" "bar" :))
+      (should (equal (jupyter-api-construct-endpoint plist) '("foo/bar" :)))
+      (setq plist '("foo" "bar" 1))
+      (should (equal (jupyter-api-construct-endpoint plist) '("foo/bar" 1)))
+      (setq plist '("foo" "" "bar" ?1))
+      (should (equal (jupyter-api-construct-endpoint plist) '("foo/bar" ?1)))
+      (setq plist '("foo" "bar" "" nil))
+      (should (equal (jupyter-api-construct-endpoint plist) '("foo/bar")))
+      (setq plist '("fo%o" "bar" 1))
+      (should (equal (jupyter-api-construct-endpoint plist) '("fo%25o/bar" 1)))
+      (setq plist '("foo/bar" "baz"))
+      (should (equal (jupyter-api-construct-endpoint plist) '("foo/bar/baz"))))
+    (ert-info ("Query parameters")
+      (setq plist '("foo" "bar" ("content")))
+      (should-error (jupyter-api-construct-endpoint plist))
+      (setq plist '("foo" "bar" (("content" "1"))))
+      (should-error (jupyter-api-construct-endpoint plist))
+      (setq plist '("foo" "bar" (("content" . "1") ("fo%" . "2"))))
+      (should (equal (jupyter-api-construct-endpoint plist) '("foo/bar?content=1&fo%25=2")))
+      (setq plist '("foo" "bar" ((:contents . "1"))))
+      (should-error (jupyter-api-construct-endpoint plist))
+      (setq plist '("foo" "bar" (("content" . 1))))
+      (should-error (jupyter-api-construct-endpoint plist)))
+    (ert-info ("Rest of plist")
+      (setq plist '("foo" "bar" :token 1))
+      (should (equal (jupyter-api-construct-endpoint plist) '("foo/bar" :token 1)))
+      (setq plist '("foo" "bar" (("content" . "1")) :token 1))
+      (should (equal (jupyter-api-construct-endpoint plist) '("foo/bar?content=1" :token 1))))))
+
 (ert-deftest jupyter-rest-api ()
   :tags '(rest)
   (let ((client (jupyter-rest-client
@@ -45,13 +83,13 @@
                  :ws-url "ws://foo"
                  :auth t)))
     (jupyter-test-rest-api
-     (jupyter-api-request client "GET" "kernels")
+     (jupyter-api-request client "GET" "api" "kernels")
      (should (equal url "http://foo/api/kernels"))
      (should (equal url-request-method "GET"))
      (should (equal url-request-data nil))
      (should (equal url-request-extra-headers nil)))
     (jupyter-test-rest-api
-     (jupyter-api-request client "POST" "kernels" "ID" :name "bar")
+     (jupyter-api-request client "POST" "api" "kernels" "ID" :name "bar")
      (should (equal url "http://foo/api/kernels/ID"))
      (should (equal url-request-method "POST"))
      (should (equal url-request-data (json-encode '(:name "bar"))))
@@ -61,7 +99,26 @@
                (lambda (url &rest plist)
                  (should (equal url "ws://foo/api/kernels"))
                  (should (equal (plist-get plist :on-open) 'identity)))))
-      (jupyter-api-request client "WS" "kernels" :on-open 'identity))))
+      (jupyter-api-request client "WS" "api" "kernels" :on-open 'identity))))
+
+(ert-deftest jupyter-api-add-websocket-headers ()
+  :tags '(rest)
+  (let ((url-request-extra-headers
+         (list (cons "Authorization" "token 111"))))
+    (should (equal (jupyter-api-add-websocket-headers nil)
+                   (list :custom-header-alist
+                         url-request-extra-headers)))
+    (should (equal (jupyter-api-add-websocket-headers
+                    '("foo" ?a "bar" ((a . b)) aple :foo 1))
+                   (list "foo" ?a "bar" '((a . b)) 'aple :foo 1
+                         :custom-header-alist
+                         url-request-extra-headers)))
+    (should (equal (jupyter-api-add-websocket-headers
+                    '("foo" "bar" :foo 1 :custom-header-alist (("a" . "b"))))
+                   (list "foo" "bar" :foo 1
+                         :custom-header-alist
+                         (append '(("a" . "b"))
+                                 url-request-extra-headers))))))
 
 (ert-deftest jupyter-api-copy-cookies-for-websocket ()
   :tags '(rest)
