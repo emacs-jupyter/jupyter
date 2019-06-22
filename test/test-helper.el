@@ -528,10 +528,16 @@ Result:
 PROC is the notebook process and PORT is the port it is connected
 to.")
 
-(defun jupyter-test-ensure-notebook-server ()
+(defun jupyter-test-ensure-notebook-server (&optional authentication)
   "Ensure there is a notebook process available.
 Return the port it was started on. The starting directory of the
-process will be in the `jupyter-test-temporary-directory'."
+process will be in the `jupyter-test-temporary-directory'.
+
+If AUTHENTICATION is nil, start a notebook server without any
+authentication. If AUTHENTICATION is t start with token
+authentication. Finally, if AUTHENTICATION is a string it should
+be the hashed password to use for authentication to the server,
+see the documentation on the --NotebookApp.password argument."
   (if (process-live-p (car jupyter-test-notebook))
       (cdr jupyter-test-notebook)
     (unless noninteractive
@@ -560,13 +566,8 @@ process will be in the `jupyter-test-temporary-directory'."
                         "--NotebookApp.token=''"
                         "--NotebookApp.password=''"))))))
           (setq jupyter-test-notebook
-                (cons (start-process
-                       "jupyter-notebook" (generate-new-buffer "*jupyter-notebook*")
-                       "jupyter" "notebook"
-                       "--no-browser"
-                       "--NotebookApp.token=''"
-                       "--NotebookApp.password=''"
-                       (format "--NotebookApp.port=%s" port))
+                (cons (apply #'start-process
+                             "jupyter-notebook" buffer "jupyter" args)
                       port))
           (sleep-for 5))))))
 
