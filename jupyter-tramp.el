@@ -58,6 +58,10 @@
 ;;
 ;; TODO: How can checkpoints be used with: `auto-save-mode',
 ;; `diff-latest-backup-file', ...
+;;
+;; TODO: How can JupyterHub's named servers be supported? Currently JupyterHub
+;; is supported by considering a filename with a user component as having the
+;; corresponding API URL be at /user/<username>.
 
 ;;; Code:
 
@@ -267,23 +271,30 @@ defaults to \"Password:\"."
 (defun jupyter-tramp-file-name-from-url (url)
   "Return a Jupyter TRAMP filename for the root directory of a kernel server.
 The filename is based off of URL's host and port if any."
-  (let ((url (if (url-p url) url
-               (url-generic-parse-url url))))
-    (format "/jpy%s:%s%s:/"
+  (let* ((url (if (url-p url) url
+                (url-generic-parse-url url)))
+         (port (url-port-if-non-default url))
+         (user (save-match-data
+                 (when (string-match "^/user/\\([^/]+\\)$" (url-filename url))
+                   (match-string 1 (url-filename url))))))
+    (format "/jpy%s:%s%s%s:/"
             (if (equal (url-type url) "https") "s" "")
+            (if user (concat user "@") "")
             (url-host url)
-            (let ((port (url-port-if-non-default url)))
-              (if port (format "#%d" port) "")))))
+            (if port (format "#%d" port) ""))))
 
 ;;;###autoload
 (defun jupyter-tramp-url-from-file-name (filename)
   "Return a URL string based off the method, host, and port of FILENAME."
   (with-parsed-tramp-file-name filename nil
-    (unless port (setq port (when (functionp 'tramp-file-name-port-or-default)
-                              ;; This function was introduced in Emacs 26.1
-                              (tramp-file-name-port-or-default v))))
-    (format "%s://%s%s" (if (equal method "jpys") "https" "http")
-            host (if port (format ":%s" port) ""))))
+    (unless port
+      (setq port (when (functionp 'tramp-file-name-port-or-default)
+                   ;; This function was introduced in Emacs 26.1
+                   (tramp-file-name-port-or-default v))))
+    (format "%s://%s%s%s" (if (equal method "jpys") "https" "http")
+            host (if port (format ":%s" port) "")
+            ;; Is USER is specified assume a JupyterHub endpoint
+            (if user (concat "/user/" user) ""))))
 
 ;;;###autoload
 (defun jupyter-tramp-server-from-file-name (filename)
