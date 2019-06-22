@@ -398,6 +398,11 @@ example you can put the following in your configuration:
 (setq ob-async-no-async-languages-alist '("jupyter-python" "jupyter-julia"))
 #+END_SRC
 
+*** Issues with =ob-ipython=
+If you already have =ob-ipython= installed, you /may/ experience issues with it conflicting with =emacs-jupyter= (e.g. [[https://github.com/dzop/emacs-jupyter/issues/133#issuecomment-502444999][this issue]). This is still not clearly investigated, but worth to keep in mind. 
+
+If you have issues with =ob-jupyter= source block result is not inserted, and =error in process sentinel: Search failed:...= message is displayed in minibuffer, then try disable =ob-ipython= and see, is it help. Usually, it is enough to remove =ipython= from =(org-babel-do-load-languages ...)= list, and restart your Emacs.
+
 *** Overriding built-in src-block languages
 
 You may find having to specify the names of Jupyter source blocks using
