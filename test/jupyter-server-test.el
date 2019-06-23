@@ -103,22 +103,22 @@
 
 (ert-deftest jupyter-api-add-websocket-headers ()
   :tags '(rest)
-  (let ((url-request-extra-headers
+  (let ((jupyter-api-request-headers
          (list (cons "Authorization" "token 111"))))
     (should (equal (jupyter-api-add-websocket-headers nil)
                    (list :custom-header-alist
-                         url-request-extra-headers)))
+                         jupyter-api-request-headers)))
     (should (equal (jupyter-api-add-websocket-headers
                     '("foo" ?a "bar" ((a . b)) aple :foo 1))
                    (list "foo" ?a "bar" '((a . b)) 'aple :foo 1
                          :custom-header-alist
-                         url-request-extra-headers)))
+                         jupyter-api-request-headers)))
     (should (equal (jupyter-api-add-websocket-headers
                     '("foo" "bar" :foo 1 :custom-header-alist (("a" . "b"))))
                    (list "foo" "bar" :foo 1
                          :custom-header-alist
                          (append '(("a" . "b"))
-                                 url-request-extra-headers))))))
+                                 jupyter-api-request-headers))))))
 
 (ert-deftest jupyter-api-copy-cookies-for-websocket ()
   :tags '(rest)
