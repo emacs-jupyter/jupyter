@@ -42,6 +42,8 @@ install:
   - mkdir -p $(jupyter --runtime-dir)
   - jupyter --runtime-dir
   - jupyter --paths
+  - jupyter --version
+  - jupyter notebook --version
   - jupyter kernelspec list
 before_script:
   - ulimit -c unlimited -S
