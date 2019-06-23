@@ -1,5 +1,6 @@
 # https://github.com/travis-ci/travis-ci/issues/9061
 sudo: required
+dist: trusty
 matrix:
   # Report build failure/success before allowed failures complete
   fast_finish: true
