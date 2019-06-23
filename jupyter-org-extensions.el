@@ -40,6 +40,7 @@
 (declare-function org-element-context "org-element" (&optional element))
 (declare-function org-element-property "org-element" (property element))
 (declare-function org-element-interpret-data "org-element" (data))
+(declare-function org-element-at-point "org-element" ())
 (declare-function org-element-put-property "org-element" (element property value))
 (declare-function outline-show-entry "outline" ())
 (declare-function avy-jump "ext:avy")
@@ -150,6 +151,21 @@ language based on the src-block's near `point'."
     (let* ((lang (jupyter-org-closest-jupyter-language query))
            (src-block (jupyter-org-src-block lang nil "\n")))
       (beginning-of-line)
+      (unless (looking-at-p "^[\t ]*$")
+        ;; Move past the current element first
+        (let ((elem (org-element-at-point)) parent)
+          (while (setq parent (org-element-property :parent elem))
+            (setq elem parent))
+          (when elem
+            (goto-char (org-element-property
+                        (if below :end :begin) elem))))
+        (cond
+         (below
+          (skip-chars-backward " \n\t")
+          (insert "\n"))
+         (t
+          (insert "\n")
+          (forward-line -1))))
       (unless (or (bobp) (org-previous-line-empty-p))
         (insert "\n"))
       (insert (string-trim-right (org-element-interpret-data src-block)))
