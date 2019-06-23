@@ -745,12 +745,16 @@ available via CLIENT."
     (replace-regexp-in-string "^/+" "")
     (replace-regexp-in-string "/+$" "")))
 
+(autoload 'tramp-drop-volume-letter "tramp")
+
 ;; See https://jupyter-notebook.readthedocs.io/en/stable/extending/contents.html#api-paths
 (defsubst jupyter-api-content-path (file)
   "Return a sanitized path for locating FILE on a Jupyter REST server.
 Note, if FILE is not an absolute file name, it is expanded into
 one as if the `default-directory' where /."
-  (jupyter-api--strip-slashes (expand-file-name (file-local-name file) "/")))
+  (jupyter-api--strip-slashes
+   (tramp-drop-volume-letter
+    (expand-file-name (file-local-name file) "/"))))
 
 (defun jupyter-api-get-file-model (client file &optional no-content type)
   "Send a request using CLIENT to get a model of FILE.
