@@ -29,6 +29,7 @@
 ;;; Code:
 
 (require 'jupyter-org-client)
+(eval-when-compile (require 'subr-x))
 
 (declare-function org-babel-jupyter-initiate-session "ob-jupyter" (&optional session params))
 (declare-function org-babel-jupyter-src-block-session "ob-jupyter" ())
@@ -599,4 +600,5 @@ _S-M-<return>_: Restart/buffer        ^ ^              _s_: split
 (define-key jupyter-org-interaction-mode-map (kbd "C-c h") #'jupyter-org-hydra/body)
 
 (provide 'jupyter-org-extensions)
+
 ;;; jupyter-org-extensions.el ends here
