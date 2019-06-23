@@ -71,8 +71,9 @@ The hook is called with no arguments.")
 (defvar jupyter-ioloop-post-hook nil
   "A hook called at the end of every polling loop.
 The hook is called with a single argument, the list of polling
-events that occurred for this iteration, see
-the return value of `zmq-poller-wait-all'.")
+events that occurred for this iteration or nil. The polling
+events have the same value as the return value of
+`zmq-poller-wait-all'.")
 
 (defvar jupyter-ioloop-timers nil)
 
@@ -414,8 +415,7 @@ polling the STDIN file handle."
                      (when stdin-event
                        (setq events (delq stdin-event events))
                        (funcall dispatcher)))
-                   (when events
-                     (run-hook-with-args 'jupyter-ioloop-post-hook events)))))
+                   (run-hook-with-args 'jupyter-ioloop-post-hook events))))
            (quit
             ,@(oref ioloop teardown)
             (zmq-prin1 '(quit))))))))
