@@ -171,18 +171,6 @@ while waiting using PROGRESS-MSG as the message."
   (and (oref ioloop process)
        (process-get (oref ioloop process) :last-event)))
 
-(cl-defmethod jupyter-ioloop-handler :before ((ioloop jupyter-ioloop) _obj event)
-  "Set the :last-event property of IOLOOP's process.
-Additionally set the :start and :quit properties of the process
-to t when they occur. See also `jupyter-ioloop-wait-until'."
-  (with-slots (process) ioloop
-    (cond
-     ((eq (car-safe event) 'start)
-      (process-put process :start t))
-     ((eq (car-safe event) 'quit)
-      (process-put process :quit t)))
-    (process-put process :last-event event)))
-
 (defmacro jupyter-ioloop-add-setup (ioloop &rest body)
   "Set IOLOOP's `jupyter-ioloop-setup' slot to BODY.
 BODY is the code that will be evaluated before the IOLOOP sends a
@@ -428,6 +416,13 @@ polling the STDIN file handle."
 
 (defun jupyter-ioloop--make-filter (ioloop ref)
   (lambda (event)
+    (with-slots (process) ioloop
+      (cond
+       ((eq (car-safe event) 'start)
+        (process-put process :start t))
+       ((eq (car-safe event) 'quit)
+        (process-put process :quit t)))
+      (process-put process :last-event event))
     (let ((obj (jupyter-weak-ref-resolve ref)))
       (if obj (jupyter-ioloop-handler ioloop obj event)
         (jupyter-ioloop--delete-process (oref ioloop process))))))
