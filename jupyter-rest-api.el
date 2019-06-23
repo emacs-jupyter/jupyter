@@ -131,6 +131,13 @@ respectively."
 (define-error 'jupyter-api-http-redirect-limit
   "Redirect limit reached" 'jupyter-api-http-error)
 
+;; Same as their corresponding `url-request' counterparts. We define our own
+;; variables here so that it will be easier to transition away from
+;; `url-retrieve' if necessary.
+(defvar jupyter-api-request-headers nil)
+(defvar jupyter-api-request-method nil)
+(defvar jupyter-api-request-data nil)
+
 (defvar url-http-codes)
 (defvar url-http-content-type)
 (defvar url-http-end-of-headers)
@@ -205,6 +212,9 @@ thing as `url-retrieve' with its SILENT argument set to t and
 INHIBIT-COOKIES set to nil."
   (let ((url-package-name "jupyter")
         (url-package-version jupyter-version)
+        (url-request-method jupyter-api-request-method)
+        (url-request-data jupyter-api-request-data)
+        (url-request-extra-headers jupyter-api-request-headers)
         ;; Prevent the connection if security checks fail
         (gnutls-verify-error t)
         ;; Avoid errors when `default-directory' is a remote
@@ -224,13 +234,14 @@ DATA is encoded into a JSON string using `json-encode-plist' and
 sent as the HTTP request data. If DATA is nil, don't send any
 request data."
   (declare (indent 3))
-  (let ((url-request-method method)
-        (url-request-data (or (and data (json-encode-plist data))
-                              url-request-data))
-        (url-request-extra-headers
+  (let ((jupyter-api-request-method method)
+        (jupyter-api-request-data
+         (or (and data (json-encode-plist data))
+             jupyter-api-request-data))
+        (jupyter-api-request-headers
          (append (when data
                    (list (cons "Content-Type" "application/json")))
-                 url-request-extra-headers)))
+                 jupyter-api-request-headers)))
     (jupyter-api-url-request (concat url "/" endpoint))))
 
 ;;; Cookies and headers
@@ -244,8 +255,7 @@ request data."
   "Send a request using CLIENT to retrieve the _xsrf cookie."
   ;; Don't use `jupyter-api-request' here to avoid an infinite authentication
   ;; loop since this function is used during authentication.
-  (let (url-request-extra-headers
-        url-request-data)
+  (let (jupyter-api-request-headers jupyter-api-request-data)
     (jupyter-api-http-request (oref client url) "login" "GET")))
 
 (defun jupyter-api-url-cookies (url)
@@ -287,7 +297,7 @@ see RFC 6265."
 
 (defun jupyter-api-add-websocket-headers (plist)
   "Destructively modify PLIST to add a `:custom-header-alist' key.
-Appends the value of `url-request-extra-headers' to the
+Appends the value of `jupyter-api-request-headers' to the
 `:custom-header-alist' key of PLIST, creating the key if
 necessary. Before doing so, move past any non-keyword elements of
 PLIST so as to only modify what looks like a property list.
@@ -304,7 +314,7 @@ Return the modified PLIST."
       (plist-put head :custom-header-alist
                  (append
                   (plist-get head :custom-header-alist)
-                  url-request-extra-headers)))))
+                  jupyter-api-request-headers)))))
 
 ;;; Authentication
 
@@ -355,8 +365,8 @@ Return the modified PLIST."
   "Attempt to login to the server using CLIENT.
 Login is attempted by sending a GET request to CLIENT's login
 endpoint using `url-retrieve'. To change the login information,
-set `url-request-method', `url-request-data', and
-`url-request-extra-headers'.
+set `jupyter-api-request-method', `jupyter-api-request-data', and
+`jupyter-api-request-headers'.
 
 On success, write the URL cookies to file so that they can be
 used by other Emacs processes and return non-nil.
@@ -391,7 +401,8 @@ error with the data being the error received by `url-retrieve'."
   (ignore-errors
     (prog1 t
       (let ((jupyter-api-authentication-in-progress-p t)
-            url-request-data url-request-extra-headers)
+            jupyter-api-request-data
+            jupyter-api-request-headers)
         (jupyter-api-get-kernelspec client)))))
 
 (cl-defgeneric jupyter-api-authenticate ((client jupyter-rest-client) &rest args)
@@ -411,7 +422,7 @@ slot of CLIENT and restore the AUTH slot on failure."
         (max-tries jupyter-api-max-authentication-attempts))
     (let ((auth (oref client auth)))
       (jupyter-api-request-xsrf-cookie client)
-      (let ((url-request-extra-headers
+      (let ((jupyter-api-request-headers
              (nconc (jupyter-api-xsrf-header-from-cookies (oref client url))
                     (jupyter-api-auth-headers client))))
         (while (and (not (progn
@@ -440,12 +451,12 @@ If CLIENT could not be authenticated raise an error."
     ;; to cause issues on Windows even when the sources are compiled.
     (apply-partially
      (lambda ()
-       (let ((url-request-method "POST")
-             (url-request-extra-headers
+       (let ((jupyter-api-request-method "POST")
+             (jupyter-api-request-headers
               (nconc (list (cons "Content-Type"
                                  "application/x-www-form-urlencoded"))
-                     url-request-extra-headers))
-             (url-request-data
+                     jupyter-api-request-headers))
+             (jupyter-api-request-data
               (concat "password=" (url-hexify-string (funcall passwd)))))
          (jupyter-api-login client)))))
   (oset client auth t))
@@ -583,10 +594,10 @@ will be http://localhost:8888/api/contents?content=1.
 If METHOD is \"WS\", a websocket will be opened using the REST api
 url and PLIST will be used in a call to `websocket-open'."
   (jupyter-api-ensure-authenticated client)
-  (let ((url-request-extra-headers
+  (let ((jupyter-api-request-headers
          (append (jupyter-api-auth-headers client)
                  (jupyter-api-xsrf-header-from-cookies (oref client url))
-                 url-request-extra-headers)))
+                 jupyter-api-request-headers)))
     (condition-case err
         (cl-destructuring-bind (endpoint . rest)
             (jupyter-api-construct-endpoint plist)
