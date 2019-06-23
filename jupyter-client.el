@@ -531,6 +531,8 @@ multiple callbacks you would do
 
 ;;; Waiting for messages
 
+(defvar jupyter--already-waiting-p nil)
+
 (defun jupyter-wait-until (req msg-type cb &optional timeout progress-msg)
   "Wait until conditions for a request are satisfied.
 REQ, MSG-TYPE, and CB have the same meaning as in
@@ -545,9 +547,15 @@ display for reporting progress to the user while waiting."
   (let (msg)
     (jupyter-add-callback req
       msg-type (lambda (m) (setq msg (when (funcall cb m) m))))
-    (jupyter-with-timeout
-        (progress-msg (or timeout jupyter-default-timeout))
-      msg)))
+    (let* ((timeout-spec (when jupyter--already-waiting-p
+                           (with-timeout-suspend)))
+           (jupyter--already-waiting-p t))
+      (unwind-protect
+          (jupyter-with-timeout
+              (progress-msg (or timeout jupyter-default-timeout))
+            msg)
+        (when timeout-spec
+          (with-timeout-unsuspend timeout-spec))))))
 
 (defun jupyter-wait-until-startup (client &optional timeout progress-msg)
   "Wait for CLIENT to receive a status: startup message.
