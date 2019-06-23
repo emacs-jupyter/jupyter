@@ -191,7 +191,12 @@ seconds has elapsed without the kernel sending a ping back."
 
 (defun jupyter-hb--send-ping (channel &optional failed-count)
   (when (jupyter-hb--pingable-p channel)
-    (zmq-send (oref channel socket) "ping")
+    (condition-case nil
+        (zmq-send (oref channel socket) "ping")
+      ;; FIXME: Should be a part of `jupyter-hb--pingable-p'
+      (zmq-ENOTSOCK
+       (jupyter-hb-pause channel)
+       (oset channel socket nil)))
     (run-with-timer
      (oref channel time-to-dead) nil
      (lambda (channel-ref)
