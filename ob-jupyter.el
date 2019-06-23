@@ -309,20 +309,14 @@ These parameters are handled internally."
   "Execute BODY according to PARAMS.
 BODY is the code to execute for the current Jupyter `:session' in
 the PARAMS alist."
-  (let* ((jupyter-current-client (with-current-buffer
-                                     (org-babel-jupyter-initiate-session
-                                      (alist-get :session params) params)
-                                   jupyter-current-client))
+  (let* ((jupyter-current-client
+          (thread-first (alist-get :session params)
+            (org-babel-jupyter-initiate-session params)
+            (thread-last (buffer-local-value 'jupyter-current-client))))
          (kernel-lang (jupyter-kernel-language jupyter-current-client))
          (vars (org-babel-variable-assignments:jupyter params kernel-lang))
          (code (org-babel-expand-body:jupyter body params vars kernel-lang))
-         (req (progn
-                ;; This needs to be set to the same parameter object used
-                ;; internally by org-babel since insertion of results will
-                ;; manipulate it.
-                (oset jupyter-current-client block-params params)
-                (jupyter-send-execute-request jupyter-current-client
-                  :code code))))
+         (req (jupyter-send-execute-request jupyter-current-client :code code)))
     (when (member "replace" (assq :result-params params))
       (org-babel-jupyter-cleanup-file-links))
     (cond

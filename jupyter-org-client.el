@@ -81,10 +81,7 @@ automatically be shown if this is non-nil."
   "MIME types handled by Jupyter Org.")
 
 (defclass jupyter-org-client (jupyter-repl-client)
-  ((block-params
-    :initform nil
-    :documentation "The parameters of the most recently executed
-source code block. Set by `org-babel-execute:jupyter'.")))
+  ())
 
 (cl-defstruct (jupyter-org-request
                (:include jupyter-request)
@@ -104,28 +101,29 @@ source code block. Set by `org-babel-execute:jupyter'.")))
 
 ;;;; `jupyter-request' interface
 
-(cl-defmethod jupyter-generate-request ((client jupyter-org-client) _msg
+(cl-defmethod jupyter-generate-request ((_client jupyter-org-client) _msg
                                         &context (major-mode (eql org-mode)))
   "Return a `jupyter-org-request' for the current source code block."
   (if org-babel-current-src-block-location
       ;; Only use a `jupyter-org-request' when executing code blocks, setting
       ;; the `major-mode' context isn't enough, consider when a client is
       ;; started due to sending a completion request.
-      (let* ((block-params (oref client block-params))
-             (result-params (alist-get :result-params block-params)))
-        (jupyter-org-request
-         :marker (copy-marker org-babel-current-src-block-location)
-         :inline-block-p (save-excursion
-                           (goto-char org-babel-current-src-block-location)
-                           (and (memq (org-element-type (org-element-context))
+      (save-excursion
+        (goto-char org-babel-current-src-block-location)
+        (let* ((context (org-element-context))
+               (block-params (nth 2 (org-babel-get-src-block-info nil context)))
+               (result-params (alist-get :result-params block-params)))
+          (jupyter-org-request
+           :marker (copy-marker org-babel-current-src-block-location)
+           :inline-block-p (and (memq (org-element-type context)
                                       '(inline-babel-call inline-src-block))
-                                t))
-         :result-type (alist-get :result-type block-params)
-         :file (alist-get :file block-params)
-         :block-params block-params
-         :async-p (equal (alist-get :async block-params) "yes")
-         :silent-p (car (or (member "none" result-params)
-                            (member "silent" result-params)))))
+                                t)
+           :result-type (alist-get :result-type block-params)
+           :file (alist-get :file block-params)
+           :block-params block-params
+           :async-p (equal (alist-get :async block-params) "yes")
+           :silent-p (car (or (member "none" result-params)
+                              (member "silent" result-params))))))
     (cl-call-next-method)))
 
 (cl-defmethod jupyter-drop-request ((_client jupyter-org-client)
