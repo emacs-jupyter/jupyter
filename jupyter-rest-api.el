@@ -598,25 +598,18 @@ url and PLIST will be used in a call to `websocket-open'."
          (append (jupyter-api-auth-headers client)
                  (jupyter-api-xsrf-header-from-cookies (oref client url))
                  jupyter-api-request-headers)))
-    (condition-case err
-        (cl-destructuring-bind (endpoint . rest)
-            (jupyter-api-construct-endpoint plist)
-          (pcase method
-            ("WS"
-             (jupyter-api-copy-cookies-for-websocket (oref client url))
-             (apply #'websocket-open
-                    (concat (oref client ws-url) "/" endpoint)
-                    (jupyter-api-add-websocket-headers rest)))
-            (_
-             (apply #'jupyter-api-http-request
-                    (oref client url) endpoint method
-                    rest))))
-      (jupyter-api-http-error
-       ;; Reset the `auth' state when un-authenticated so that we ask again.
-       (when (and (= (cadr err) 403)
-                  (equal (caddr err) "Forbidden"))
-         (oset client auth 'ask))
-       (signal (car err) (cdr err))))))
+    (cl-destructuring-bind (endpoint . rest)
+        (jupyter-api-construct-endpoint plist)
+      (pcase method
+        ("WS"
+         (jupyter-api-copy-cookies-for-websocket (oref client url))
+         (apply #'websocket-open
+                (concat (oref client ws-url) "/" endpoint)
+                (jupyter-api-add-websocket-headers rest)))
+        (_
+         (apply #'jupyter-api-http-request
+                (oref client url) endpoint method
+                rest))))))
 
 ;;;; Endpoints
 
