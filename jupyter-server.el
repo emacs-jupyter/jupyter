@@ -726,7 +726,7 @@ the same meaning as in `jupyter-connect-repl'."
                (when same (setq name (format "%s<%d>" name (length same))))
                (push name names)
                (propertize name 'face 'font-lock-constant-face)))
-            (activity (propertize (format-time-string "%F %T" time)
+            (activity (propertize (jupyter-format-time-low-res time)
                                   'face 'font-lock-doc-face))
             (conns (propertize (number-to-string connections)
                                'face 'shadow))

@@ -631,6 +631,53 @@ no :metadata key can be found, then META will be METADATA."
    (format "^\\(?:[^\n]*\n\\)\\{%d,\\}" (1+ n))
    str))
 
+(defun jupyter-format-time-low-res (time)
+  "Return a description string describing TIME.
+If TIME is nil return \"Never\", otherwise return strings like
+
+    \"1 day ago\", \"an hour ago\", \"in 10 minutes\", ...
+
+depending on the relative value of TIME from the `current-time'.
+TIME is assumed to have the same form as the return value of
+`current-time'."
+  (if (null time) "Never"
+    (let* ((seconds (- (float-time time)
+                       (float-time (current-time))))
+           (past (< seconds 0))
+           (seconds (abs seconds))
+           (minutes (floor (/ seconds 60.0)))
+           (hours (floor (/ seconds 3600.0)))
+           (days (floor (/ seconds 86400.0))))
+      (cond
+       ((< seconds 60)
+        (if (or past
+                ;; Account for discrepancies between time resolution
+                (< seconds 0.1))
+            "a few seconds ago"
+          "in a few seconds"))
+       ((not (zerop days))
+        (format "%s%d day%s%s"
+                (if past "" "in ")
+                days
+                (if (= days 1) "" "s")
+                (if past " ago" "")))
+       ((not (zerop hours))
+        (if (= hours 1)
+            (if past "an hour ago"
+              "in one hour")
+          (format "%s%d hours%s"
+                  (if past "" "in ")
+                  hours
+                  (if hours " ago" ""))))
+       ((not (zerop minutes))
+        (if (= minutes 1)
+            (if past "a minute ago"
+              "in one minute")
+          (format "%s%d minutes%s"
+                  (if past "" "in ")
+                  minutes
+                  (if past " ago" ""))))))))
+
 ;;; Simple weak references
 ;; Thanks to Chris Wellon https://nullprogram.com/blog/2014/01/27/
 
