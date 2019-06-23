@@ -82,13 +82,13 @@
                  :url "http://foo"
                  :ws-url "ws://foo"
                  :auth t)))
-    (jupyter-test-rest-api
+    (jupyter-test-rest-api-request
      (jupyter-api-request client "GET" "api" "kernels")
      (should (equal url "http://foo/api/kernels"))
      (should (equal url-request-method "GET"))
      (should (equal url-request-data nil))
      (should (equal url-request-extra-headers nil)))
-    (jupyter-test-rest-api
+    (jupyter-test-rest-api-request
      (jupyter-api-request client "POST" "api" "kernels" "ID" :name "bar")
      (should (equal url "http://foo/api/kernels/ID"))
      (should (equal url-request-method "POST"))
@@ -157,7 +157,7 @@
                (lambda (&rest _)
                  (should cookies-copied-before-write)
                  (setq cookies-written t))))
-      (jupyter-test-rest-api
+      (jupyter-test-rest-api-request
        (jupyter-api-login
         (jupyter-rest-client
          :url (format "http://%s" host)))
@@ -167,130 +167,114 @@
 
 (ert-deftest jupyter-api-get-kernel-ws ()
   :tags '(rest)
-  (let* ((host (format "localhost:%s" (jupyter-test-ensure-notebook-server)))
-         (client (jupyter-rest-client :url (format "http://%s" host))))
+  (jupyter-test-rest-api-with-notebook client
     (cl-destructuring-bind (&key id &allow-other-keys)
         (jupyter-api-start-kernel client)
       (unwind-protect
-          (let ((ws (jupyter-api-get-kernel-ws client id)))
+          (let ((kernel-id id)
+                (ws (jupyter-api-get-kernel-ws client id)))
             (unwind-protect
-                (progn
+                (cl-destructuring-bind (&key id session &allow-other-keys)
+                    (websocket-client-data ws)
                   (should (websocket-openp ws))
-                  (should (equal (plist-get (websocket-client-data ws) :id) id)))
+                  (should (equal id kernel-id))
+                  (should (jupyter-session-p session)))
               (websocket-close ws)))
         (jupyter-api-shutdown-kernel client id)))))
 
 (ert-deftest jupyter-api-server-accessible-p ()
   :tags '(rest)
-  (let* ((host (format "localhost:%s" (jupyter-test-ensure-notebook-server)))
-         (client (jupyter-rest-client :url (format "http://%s" host)))
-         (url-cookie-storage nil))
+  (jupyter-test-rest-api-with-notebook client
     (should (jupyter-api-server-accessible-p client))))
 
 (ert-deftest jupyter-api-request-xsrf-cookie ()
   :tags '(rest)
-  (let* ((host (format "localhost:%s" (jupyter-test-ensure-notebook-server)))
-         (client (jupyter-rest-client :url (format "http://%s" host)))
-         (url (oref client url))
-         (url-cookie-storage nil))
-    (should-not (jupyter-api-xsrf-header-from-cookies url))
-    (jupyter-api-request-xsrf-cookie client)
-    (should (jupyter-api-xsrf-header-from-cookies url))))
+  (jupyter-test-rest-api-with-notebook client
+    (let ((url (oref client url)))
+      (should-not (jupyter-api-xsrf-header-from-cookies url))
+      (jupyter-api-request-xsrf-cookie client)
+      (should (jupyter-api-xsrf-header-from-cookies url)))))
 
 (ert-deftest jupyter-api-authenticate ()
   :tags '(rest)
-  (ert-info ("Password authentication")
-    (let* ((jupyter-test-notebook nil)
-           (url-cookie-storage nil)
-           (port (jupyter-test-ensure-notebook-server
-                  ;; foobar
-                  "sha1:84cbf6913f79:5df10a65c1f36cdf691bb93b089f7cae0582b20e")))
-      (cl-letf (((symbol-function #'url-cookie-write-file) #'ignore))
-        (unwind-protect
-            (with-current-buffer (process-buffer (car jupyter-test-notebook))
-              (let* ((host (format "localhost:%s" port))
-                     (client (jupyter-rest-client
-                              :auth 'password
-                              :url (format "http://%s" host))))
+  (cl-letf (((symbol-function #'url-cookie-write-file) #'ignore))
+    (ert-info ("Password authentication")
+      (let ((jupyter-test-notebook nil)
+            ;; foobar
+            (password "sha1:84cbf6913f79:5df10a65c1f36cdf691bb93b089f7cae0582b20e"))
+        (jupyter-test-ensure-notebook-server password)
+        (jupyter-test-rest-api-with-notebook client
+          (oset client auth 'password)
+          (unwind-protect
+              (progn
                 (should-not (jupyter-api-server-accessible-p client))
                 (jupyter-api-authenticate client 'password (lambda () "foobar"))
                 (should (eq (oref client auth) t))
-                (should (jupyter-api-server-accessible-p client))))
-          (when (process-live-p (car jupyter-test-notebook))
-            (delete-process (car jupyter-test-notebook)))))))
-  (ert-info ("Token authentication")
-    (let* ((jupyter-test-notebook nil)
-           (url-cookie-storage nil)
-           (port (jupyter-test-ensure-notebook-server t)))
-      (cl-letf (((symbol-function #'url-cookie-write-file) #'ignore))
-        (unwind-protect
-            (with-current-buffer (process-buffer (car jupyter-test-notebook))
-              (while (not (re-search-forward "\\?token=\\([a-zA-Z0-9]+\\)" nil t))
-                (goto-char (point-min))
-                (sleep-for 0.02))
-              (let* ((token (match-string 1))
-                     (host (format "localhost:%s" port))
-                     (client (jupyter-rest-client
-                              :auth 'token
-                              :url (format "http://%s" host))))
-                (cl-letf (((symbol-function #'read-string)
-                           (lambda (&rest _) token)))
-                  (should-not (jupyter-api-server-accessible-p client))
-                  (jupyter-api-authenticate client 'token)
-                  (should (jupyter-api-server-accessible-p client))
-                  (should (equal (list (cons "Authorization" (concat "token " token)))
-                                 (oref client auth)))
-                  (should (equal (list (cons "Authorization" (concat "token " token)))
-                                 (jupyter-api-auth-headers client))))))
-          (when (process-live-p (car jupyter-test-notebook))
-            (delete-process (car jupyter-test-notebook))))))))
+                (should (jupyter-api-server-accessible-p client)))
+            (when (process-live-p (car jupyter-test-notebook))
+              (delete-process (car jupyter-test-notebook)))))))
+    (ert-info ("Token authentication")
+      (let ((jupyter-test-notebook nil) token)
+        (jupyter-test-ensure-notebook-server t)
+        (with-current-buffer (process-buffer (car jupyter-test-notebook))
+          (while (not (re-search-forward "\\?token=\\([a-zA-Z0-9]+\\)" nil t))
+            (goto-char (point-min))
+            (sleep-for 0.02))
+          (setq token (match-string 1)))
+        (jupyter-test-rest-api-with-notebook client
+          (oset client auth 'token)
+          (unwind-protect
+              (cl-letf (((symbol-function #'read-string)
+                         (lambda (&rest _) token)))
+                (should-not (jupyter-api-server-accessible-p client))
+                (jupyter-api-authenticate client 'token)
+                (should (jupyter-api-server-accessible-p client))
+                (should (equal (list (cons "Authorization" (concat "token " token)))
+                               (oref client auth)))
+                (should (equal (list (cons "Authorization" (concat "token " token)))
+                               (jupyter-api-auth-headers client))))
+            (when (process-live-p (car jupyter-test-notebook))
+              (delete-process (car jupyter-test-notebook)))))))))
 
 ;;; Server
 
 ;; And `jupyter-server-kernel-comm'
 (ert-deftest jupyter-server ()
   :tags '(server)
-  (let* ((host (format "localhost:%s" (jupyter-test-ensure-notebook-server)))
-         (server (jupyter-server-test-server (format "http://%s" host)))
-         (kernel (jupyter-server-kernel
-                  :spec (jupyter-guess-kernelspec
-                         "python" (jupyter-server-kernelspecs server)))))
-    (let ((id (jupyter-start-kernel kernel server)))
-      (unwind-protect
-          (progn
-            (when (jupyter-comm-alive-p server)
-              (jupyter-comm-stop server))
+  (jupyter-test-with-notebook server
+    (ert-info ("`jupyter-comm-layer' methods")
+      (when (jupyter-comm-alive-p server)
+        (jupyter-comm-stop server))
+      (should-not (jupyter-comm-alive-p server))
+      (jupyter-comm-start server)
+      (should (jupyter-comm-alive-p server)))
+    (jupyter-test-with-server-kernel server "python" kernel
+      (should (oref kernel id))
+      (let ((id (oref kernel id)))
+        (should (jupyter-api-get-kernel server id))
+        (ert-info ("Connecting kernel comm to server")
+          (let ((kcomm (jupyter-server-kernel-comm
+                        :server server
+                        :kernel kernel)))
+            (should-not (jupyter-server-kernel-connected-p server id))
+            (jupyter-connect-client server kcomm)
+            (should (jupyter-server-kernel-connected-p server id))
+            (should (jupyter-comm-alive-p kcomm))
+            (jupyter-comm-stop kcomm)
+            (should-not (jupyter-comm-alive-p kcomm))
+            (should (jupyter-comm-alive-p server))))
+        (ert-info ("Connecting kernel comm starts server comm if necessary")
+          (let ((kcomm (jupyter-server-kernel-comm
+                        :server server
+                        :kernel kernel)))
+            (jupyter-comm-stop server)
             (should-not (jupyter-comm-alive-p server))
-            (jupyter-comm-start server)
+            (should-not (jupyter-server-kernel-connected-p server id))
+            (jupyter-comm-start kcomm)
             (should (jupyter-comm-alive-p server))
-            (unwind-protect
-                (progn
-                  (should (jupyter-api-get-kernel server id))
-                  (ert-info ("Connecting kernel comm to server")
-                    (let ((kcomm (jupyter-server-kernel-comm
-                                  :server server
-                                  :kernel kernel)))
-                      (should-not (jupyter-server-kernel-connected-p server id))
-                      (jupyter-connect-client server kcomm)
-                      (should (jupyter-server-kernel-connected-p server id))
-                      (should (jupyter-comm-alive-p kcomm))
-                      (jupyter-comm-stop kcomm)
-                      (should-not (jupyter-comm-alive-p kcomm))
-                      (should (jupyter-comm-alive-p server))))
-                  (ert-info ("Connecting kernel comm starts server comm if necessary")
-                    (let ((kcomm (jupyter-server-kernel-comm
-                                  :server server
-                                  :kernel kernel)))
-                      (jupyter-comm-stop server)
-                      (should-not (jupyter-comm-alive-p server))
-                      (should-not (jupyter-server-kernel-connected-p server id))
-                      (jupyter-comm-start kcomm)
-                      (should (jupyter-comm-alive-p server))
-                      (should (jupyter-server-kernel-connected-p server id))
-                      (should (jupyter-comm-alive-p kcomm))
-                      (jupyter-comm-stop kcomm))))
-              (jupyter-comm-stop server)))
-        (jupyter-api-shutdown-kernel server id)))))
+            (should (jupyter-server-kernel-connected-p server id))
+            (should (jupyter-comm-alive-p kcomm))
+            (jupyter-comm-stop kcomm)))))))
 
 (ert-deftest jupyter-server-kernel ()
   :tags '(kernel server)
@@ -312,27 +296,25 @@
 
 (ert-deftest jupyter-server-kernel-manager ()
   :tags '(server)
-  (let* ((host (format "localhost:%s" (jupyter-test-ensure-notebook-server)))
-         (server (jupyter-server-test-server (format "http://%s" host)))
-         (kernel (jupyter-server-kernel
-                  :spec (jupyter-guess-kernelspec
-                         "python" (jupyter-server-kernelspecs server))))
-         (manager (jupyter-server-kernel-manager
-                   :server server
-                   :kernel kernel)))
-    (should-not (jupyter-kernel-alive-p manager))
-    (jupyter-start-kernel manager)
-    (unwind-protect
-        (progn
-          (should (jupyter-kernel-alive-p (oref manager kernel)))
-          (should (jupyter-comm-alive-p (oref manager comm)))
-          (should (jupyter-kernel-alive-p manager)))
-      (jupyter-shutdown-kernel manager))))
+  (jupyter-test-with-notebook server
+    (let* ((kernel (jupyter-server-kernel
+                    :spec (jupyter-guess-kernelspec
+                           "python" (jupyter-server-kernelspecs server))))
+           (manager (jupyter-server-kernel-manager
+                     :server server
+                     :kernel kernel)))
+      (should-not (jupyter-kernel-alive-p manager))
+      (jupyter-start-kernel manager)
+      (unwind-protect
+          (progn
+            (should (jupyter-kernel-alive-p (oref manager kernel)))
+            (should (jupyter-comm-alive-p (oref manager comm)))
+            (should (jupyter-kernel-alive-p manager)))
+        (jupyter-shutdown-kernel manager)))))
 
 (ert-deftest jupyter-server-start-new-kernel ()
   :tags '(server)
-  (let* ((host (format "localhost:%s" (jupyter-test-ensure-notebook-server)))
-         (server (jupyter-server-test-server (format "http://%s" host))))
+  (jupyter-test-with-notebook server
     (cl-destructuring-bind (manager client)
         (jupyter-server-start-new-kernel server "python")
       (unwind-protect
@@ -354,8 +336,7 @@
 
 (ert-deftest jupyter-run-server-repl ()
   :tags '(server)
-  (let* ((host (format "localhost:%s" (jupyter-test-ensure-notebook-server)))
-         (server (jupyter-server-test-server (format "http://%s" host))))
+  (jupyter-test-with-notebook server
     (with-current-buffer
         (oref (jupyter-run-server-repl server "python") buffer)
       (unwind-protect
@@ -366,80 +347,57 @@
                        (oref kernel))))
             (should (jupyter-comm-alive-p (oref jupyter-current-client kcomm)))
             (should (equal (jupyter-eval "1 + 1") "2")))
-        (cl-letf (((symbol-function 'yes-or-no-p)
-                   (lambda (_prompt) t))
-                  ((symbol-function 'y-or-n-p)
-                   (lambda (_prompt) t)))
-          (kill-buffer (current-buffer)))))))
+        (jupyter-test-kill-buffer (current-buffer))))))
 
 (ert-deftest jupyter-connect-server-repl ()
   :tags '(server)
-  (let* ((host (format "localhost:%s" (jupyter-test-ensure-notebook-server)))
-         (server (jupyter-server-test-server (format "http://%s" host)))
-         (id (plist-get (jupyter-api-start-kernel server) :id)))
-    (with-current-buffer
-        (oref (jupyter-connect-server-repl server id) buffer)
-      (unwind-protect
-          (progn
-            (should (jupyter-kernel-alive-p
-                     (thread-first jupyter-current-client
-                       (oref manager)
-                       (oref kernel))))
-            (should (jupyter-comm-alive-p (oref jupyter-current-client kcomm)))
-            (should (equal (jupyter-eval "1 + 1") "2")))
-        (cl-letf (((symbol-function 'yes-or-no-p)
-                   (lambda (_prompt) t))
-                  ((symbol-function 'y-or-n-p)
-                   (lambda (_prompt) t)))
-          (kill-buffer (current-buffer)))))))
+  (jupyter-test-with-notebook server
+    (let ((id (plist-get (jupyter-api-start-kernel server) :id)))
+      (sleep-for 1)
+      (with-current-buffer
+          (oref (jupyter-connect-server-repl server id) buffer)
+        (unwind-protect
+            (progn
+              (should (jupyter-kernel-alive-p
+                       (thread-first jupyter-current-client
+                         (oref manager)
+                         (oref kernel))))
+              (should (jupyter-comm-alive-p (oref jupyter-current-client kcomm)))
+              (should (equal (jupyter-eval "1 + 1") "2")))
+          (jupyter-test-kill-buffer (current-buffer)))))))
 
 (ert-deftest org-babel-jupyter-server-session ()
   :tags '(server org)
   (require 'ob-jupyter)
-  (let* ((url (format "http://localhost:%s" (jupyter-test-ensure-notebook-server)))
-         (remote (file-remote-p (jupyter-tramp-file-name-from-url url)))
-         (initiate-session
-          (lambda (session &optional args)
-            (erase-buffer)
-            (insert (format "\
+  (jupyter-test-with-notebook server
+    (let* ((remote (file-remote-p (jupyter-tramp-file-name-from-url (oref server url))))
+           (initiate-session
+            (lambda (session &optional args)
+              (erase-buffer)
+              (insert (format "\
 #+BEGIN_SRC jupyter-python :session %s %s
 1 + 1
 #+END_SRC" session (or args "")))
-            (goto-char (point-min))
-            (let ((params (nth 2 (org-babel-get-src-block-info))))
-              (org-babel-jupyter-initiate-session
-               (alist-get :session params) params)))))
-    (with-temp-buffer
-      (org-mode)
-      (ert-info ("No session name")
-        (should-error (funcall initiate-session remote)))
-      (let ((server (jupyter-server-test-server url)))
+              (goto-char (point-min))
+              (let ((params (nth 2 (org-babel-get-src-block-info))))
+                (org-babel-jupyter-initiate-session
+                 (alist-get :session params) params)))))
+      (with-temp-buffer
+        (org-mode)
+        (ert-info ("No session name")
+          (should-error (funcall initiate-session remote)))
         (ert-info ("Non-existent kernel")
-          (should-error (funcall initiate-session (concat remote "py")
-                                 ":kernel foo")))
+          (should-error (funcall initiate-session (concat remote "py") ":kernel foo")))
         (ert-info ("Connect to an existing kernel")
           (let* ((id (plist-get (jupyter-api-start-kernel server) :id))
-                 (session
-                  (progn (sleep-for 1)
-                         (funcall initiate-session
-                                  (concat remote id)))))
+                 (session (funcall initiate-session (concat remote id))))
             (unwind-protect
                 (should (not (null session)))
-              (cl-letf (((symbol-function 'yes-or-no-p)
-                         (lambda (_prompt) t))
-                        ((symbol-function 'y-or-n-p)
-                         (lambda (_prompt) t)))
-                (kill-buffer session)))))
+              (jupyter-test-kill-buffer session))))
         (ert-info ("Start a new kernel")
-          (let ((session (funcall initiate-session
-                                  (concat remote "py"))))
+          (let ((session (funcall initiate-session (concat remote "py"))))
             (unwind-protect
                 (should (not (null session)))
-              (cl-letf (((symbol-function 'yes-or-no-p)
-                         (lambda (_prompt) t))
-                        ((symbol-function 'y-or-n-p)
-                         (lambda (_prompt) t)))
-                (kill-buffer session)))))))))
-
+              (jupyter-test-kill-buffer session))))))))
 
 ;;; jupyter-server-test.el ends here
