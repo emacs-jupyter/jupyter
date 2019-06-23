@@ -100,6 +100,12 @@ called if needed. This means that a call to
 By default, on the last OBJ removed, `jupyter-comm-stop' is
 called if needed.")
 
+(cl-defgeneric jupyter-comm-id ((comm jupyter-comm-layer))
+  "Return an identification string for COMM.
+Can be used to identify this communication channel. For example,
+used in `jupyter-repl-scratch-buffer' to name the scratch
+buffer.")
+
 (cl-defgeneric jupyter-event-handler (_obj _event)
   "Handle EVENT using OBJ."
   nil)
@@ -217,6 +223,11 @@ called if needed.")
   (unless (functionp 'make-thread)
     (error "Need threading support"))
   (cl-call-next-method))
+
+(cl-defmethod jupyter-comm-id ((comm jupyter-sync-channel-comm))
+  (format "session=%s" (truncate-string-to-width
+                        (jupyter-session-id (oref comm session))
+                        9 nil nil "…")))
 
 (defun jupyter-sync-channel-comm--check (comm)
   (condition-case err
@@ -356,6 +367,11 @@ called if needed.")
 (cl-defmethod initialize-instance ((comm jupyter-channel-ioloop-comm) &optional _slots)
   (cl-call-next-method)
   (oset comm ioloop (jupyter-channel-ioloop)))
+
+(cl-defmethod jupyter-comm-id ((comm jupyter-channel-ioloop-comm))
+  (format "session=%s" (truncate-string-to-width
+                        (jupyter-session-id (oref comm session))
+                        9 nil nil "…")))
 
 (cl-defmethod jupyter-initialize-connection ((comm jupyter-channel-ioloop-comm)
                                              (session jupyter-session))
