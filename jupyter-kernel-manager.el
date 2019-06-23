@@ -393,7 +393,7 @@ subprocess."
              (jupyter-send control-channel :interrupt-request
                            (jupyter-message-interrupt-request))
              (jupyter-with-timeout
-                 ((format "Interruptin %s kernel"
+                 ((format "Interrupting %s kernel"
                           (jupyter-kernel-name kernel))
                   (or timeout jupyter-default-timeout)
                   (message "No interrupt reply from kernel (%s)"
