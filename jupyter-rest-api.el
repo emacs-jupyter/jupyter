@@ -130,10 +130,14 @@ respectively."
 (define-error 'jupyter-api-http-error
   "Jupyter REST API error")
 
+(define-error 'jupyter-api-http-redirect-limit
+  "Redirect limit reached" 'jupyter-api-http-error)
+
 (defvar url-http-codes)
 (defvar url-http-content-type)
 (defvar url-http-end-of-headers)
 (defvar url-http-response-status)
+(defvar url-callback-arguments)
 (defvar gnutls-verify-error)
 
 (defun jupyter-api-parse-response (buffer)
@@ -144,7 +148,10 @@ content.
 
 If the response indicates an error, signal a
 `jupyter-api-http-error' otherwise return the parsed JSON or nil
-if the content is not JSON."
+if the content is not JSON.
+
+If the maximum number of redirects are reached a
+`jupyter-api-http-redirect-limit' error is raised instead."
   (with-current-buffer buffer
     (goto-char url-http-end-of-headers)
     (skip-syntax-forward "->")
@@ -170,6 +177,15 @@ if the content is not JSON."
                                          message))
                             (nth 2 (assoc url-http-response-status
                                           url-http-codes)))))))
+       ;; Handle other kinds of errors, e.g. max redirects
+       ((and (boundp 'url-callback-arguments)
+             (plist-get (car url-callback-arguments) :error))
+        (let ((err (plist-get (car url-callback-arguments) :error)))
+          (if (eq (nth 1 err) 'http-redirect-limit)
+              (signal 'jupyter-api-http-redirect-limit
+                      (cons url-http-response-status
+                            (cddr err)))
+            (signal (car err) (cdr err)))))
        (t resp)))))
 
 (defun jupyter-api--url-request (url &optional async &rest async-args)
