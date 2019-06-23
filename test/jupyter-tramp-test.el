@@ -30,13 +30,6 @@
 
 (require 'jupyter-tramp)
 
-(let ((port (jupyter-test-ensure-notebook-server)))
-  (dolist (method '("jpys" "jpy"))
-    (setf
-     (alist-get 'tramp-default-port
-                (alist-get method tramp-methods nil nil #'equal))
-     (list port))))
-
 (ert-deftest jupyter-tramp-file-directory-p ()
   :tags '(tramp)
   (jupyter-test-at-temporary-directory
