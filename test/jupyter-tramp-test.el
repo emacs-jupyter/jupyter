@@ -77,7 +77,7 @@
     (let* ((tfile (make-temp-file "file-local-copy"))
            (jpyfile (expand-file-name (file-name-nondirectory tfile) "/jpy::/")))
       (unwind-protect
-          (let ((contents (jupyter-new-uuid)))
+          (let ((contents (concat "αβ" (jupyter-new-uuid) "λ")))
             (with-temp-file tfile
               (insert contents))
             (let ((lfile (file-local-copy jpyfile)))
@@ -293,6 +293,8 @@
             (ert-info ("Basic write")
               (write-region "foo" nil jpyfile)
               (should (equal (file-contents) "foo"))
+              (write-region "foλo" nil jpyfile)
+              (should (equal (file-contents) "foλo"))
               (with-temp-buffer
                 (insert "foo")
                 (write-region nil nil jpyfile)
