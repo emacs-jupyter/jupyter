@@ -121,7 +121,12 @@ respectively."
   (unless (slot-boundp client 'ws-url)
     (let ((url (url-generic-parse-url (oref client url))))
       (setf (url-type url) (if (equal (url-type url) "https") "wss" "ws"))
-      (oset client ws-url (url-recreate-url url)))))
+      (oset client ws-url (url-recreate-url url))))
+  (unless (gnutls-available-p)
+    (let ((url (url-generic-parse-url (oref client url)))
+          (ws-url (url-generic-parse-url (oref client ws-url))))
+      (when (or (equal (url-type url) "https") (equal (url-type ws-url) "wss"))
+        (user-error "GnuTLS not available for HTTPS (SSL/TSL) connections")))))
 
 ;;; Making HTTP requests
 
