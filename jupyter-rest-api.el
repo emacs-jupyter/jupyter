@@ -1012,6 +1012,32 @@ otherwise nil."
   "Return non-nil if MODEL corresponds to Jupyter notebook JSON."
   (equal (plist-get model :type) "notebook"))
 
+;; TODO: Replace the :content key with the buffer? It is redundant to have both
+;; a string and a buffer holding the contents.
+(defun jupyter-api-content-buffer (model)
+  "Return a buffer holding MODEL's content.
+If MODEL's content is binary, the returned buffer will hold the
+decoded content.
+
+The returned buffer will be a single-byte buffer, i.e. will not
+contain any multibyte characters.
+
+Note, the returned buffer will be killed when MODEL is garbage
+collected."
+  (cl-assert (member (plist-get model :format) '("text" "base64")))
+  (unless (bufferp (plist-get model :_buffer))
+    (let ((buffer (generate-new-buffer " *jupyter-api-model-content*")))
+      (with-current-buffer buffer
+        ;; NOTE: Order of insertion matters here
+        (insert (or (plist-get model :content) ""))
+        (set-buffer-multibyte nil)
+        (plist-put model :_buffer (current-buffer))
+        (plist-put model :_finalizer (make-finalizer
+                                      (lambda () (kill-buffer buffer))))
+        (when (jupyter-api-binary-content-p model)
+          (base64-decode-region (point-min) (point-max))))))
+  (plist-get model :_buffer))
+
 (defun jupyter-api-insert-model-content (model &optional replace beg end)
   "Insert the content of MODEL into the current buffer.
 If REPLACE is non-nil, replace the contents of the current buffer
@@ -1019,21 +1045,13 @@ using `replace-buffer-contents'. BEG and END are byte offsets
 into the content of MODEL, only insert the portion of MODEL's
 contents bounded by BEG and END. BEG and END default to
 `point-min' and `point-max' respectively."
-  (cl-assert (not (equal (plist-get model :type) "directory")))
-  (let ((source (generate-new-buffer " *temp*")))
-    (unwind-protect
-        (progn
-          (with-current-buffer source
-            (set-buffer-multibyte nil)
-            (insert (or (plist-get model :content) ""))
-            (when (jupyter-api-binary-content-p model)
-              ;; TODO: Cache the result of decoding?
-              (base64-decode-region (point-min) (point-max)))
-            (when (or beg end)
-              (narrow-to-region (or beg (point-min)) (or end (point-max)))))
-          (if replace (replace-buffer-contents source)
-            (insert-buffer-substring source)))
-      (and (buffer-live-p source) (kill-buffer source)))))
+  (let ((source (jupyter-api-content-buffer model)))
+    (with-current-buffer source
+      (widen)
+      (when (or beg end)
+        (narrow-to-region (or beg (point-min)) (or end (point-max)))))
+    (if replace (replace-buffer-contents source)
+      (insert-buffer-substring source))))
 
 (provide 'jupyter-rest-api)
 

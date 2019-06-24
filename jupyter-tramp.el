@@ -748,17 +748,18 @@ the server. For any other file, call ORIG, which is the function
     ;; Ensure we grab a fresh model since the cached version may be out of
     ;; sync with the server.
     (jupyter-tramp-flush-file-properties v localname)
-    (let* ((model (jupyter-tramp-get-file-model filename))
-           (content (plist-get model :content)))
-      (tramp-run-real-handler
-       'make-temp-file
-       (list "jupyter-tramp." nil (file-name-extension filename t)
-             (cond
-              ((jupyter-api-binary-content-p model)
-               (base64-decode-string content))
-              ((jupyter-api-notebook-p model)
-               (error "Notebooks not supported yet"))
-              (t content)))))))
+    (let ((model (jupyter-tramp-get-file-model filename)))
+      (when (jupyter-api-notebook-p model)
+        (error "Notebooks not supported yet"))
+      (let ((coding-system-for-write
+             (if (jupyter-api-binary-content-p model)
+                 'no-conversion
+               'utf-8-auto)))
+        (tramp-run-real-handler
+         'make-temp-file
+         (list "jupyter-tramp." nil (file-name-extension filename t)
+               (with-current-buffer (jupyter-api-content-buffer model)
+                 (buffer-string))))))))
 
 ;;; File/directory attributes
 
