@@ -648,8 +648,6 @@ the server. For any other file, call ORIG, which is the function
 ;; TODO: What to do about reading and writing large files? See
 ;; `jupyter-api-upload-large-file'. Also the out of band functions of TRAMP.
 ;;
-;; TODO Consider encoding
-;;
 ;; Adapted from `tramp-sh-handle-write-region'
 (defun jupyter-tramp-write-region (start end filename &optional append visit lockname mustbenew)
   (setq filename (expand-file-name filename))
@@ -663,7 +661,11 @@ the server. For any other file, call ORIG, which is the function
     ;; Ensure we don't use stale model contents
     (jupyter-tramp-flush-file-and-directory-properties filename)
     (if (and append (file-exists-p filename))
-        (let ((tmpfile (file-local-copy filename)))
+        (let* ((tmpfile (file-local-copy filename))
+               (model (jupyter-tramp-get-file-model filename))
+               (binary (jupyter-api-binary-content-p model))
+               (coding-system-for-read (if binary 'no-conversion 'utf-8))
+               (coding-system-for-write (if binary 'no-conversion 'utf-8)))
           (condition-case err
               (tramp-run-real-handler
                'write-region
@@ -672,25 +674,22 @@ the server. For any other file, call ORIG, which is the function
              (delete-file tmpfile)
              (signal (car err) (cdr err))))
           (unwind-protect
-              (jupyter-api-write-file-content jupyter-current-server
-                ;; TODO: How should we handle binary vs text?
-                filename (with-temp-buffer
-                           (insert-file-contents-literally tmpfile)
-                           (buffer-string))
-                'binary)
+              (with-temp-buffer
+                (insert-file-contents-literally tmpfile)
+                (jupyter-api-write-file-content
+                    jupyter-current-server
+                  filename (buffer-string) binary))
             (delete-file tmpfile)))
-      (let* ((source (if (stringp start) start
-                       (if (null start) (buffer-string)
-                         (buffer-substring-no-properties start end))))
-             (binary (multibyte-string-p source)))
-        (when binary
-          (setq source (encode-coding-string source 'utf-8)))
-        ;; TODO: Think more about this. See
-        ;; https://github.com/ipython/ipython/pull/3158
-        ;; (when (file-exists-p filename)
-        ;;   (jupyter-api-make-checkpoint jupyter-current-server
-        ;;     filename))
-        (jupyter-api-write-file-content jupyter-current-server
+      (let ((source (if (stringp start) start
+                      (if (null start) (buffer-string)
+                        (buffer-substring-no-properties start end))))
+            (binary (coding-system-equal
+                     (or coding-system-for-write
+                         (if enable-multibyte-characters 'utf-8
+                           'binary))
+                     'binary)))
+        (jupyter-api-write-file-content
+            jupyter-current-server
           filename source binary)
         ;; Adapted from `tramp-sh-handle-write-region'
         (when (or (eq visit t) (stringp visit))

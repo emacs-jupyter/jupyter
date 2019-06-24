@@ -79,13 +79,15 @@
       (unwind-protect
           (let ((contents (concat "αβ" (jupyter-new-uuid) "λ")))
             (with-temp-file tfile
+              (setq buffer-file-coding-system 'utf-8-auto)
               (insert contents))
             (let ((lfile (file-local-copy jpyfile)))
               (unwind-protect
                   (with-temp-buffer
                     (should-not (file-remote-p lfile))
                     (should-not (equal lfile tfile))
-                    (insert-file-contents lfile)
+                    (let ((coding-system-for-read 'utf-8-auto))
+                      (insert-file-contents lfile))
                     (should (equal (buffer-string) contents)))
                 (delete-file lfile))))
         (delete-file tfile)))))
@@ -287,14 +289,15 @@
       (unwind-protect
           (cl-macrolet ((file-contents
                          () `(with-temp-buffer
-                               (insert-file-contents file)
+                               (insert-file-contents-literally file)
                                (buffer-string))))
             (should-error (write-region "foo" nil jpyfile nil nil nil 'excl))
             (ert-info ("Basic write")
               (write-region "foo" nil jpyfile)
               (should (equal (file-contents) "foo"))
               (write-region "foλo" nil jpyfile)
-              (should (equal (file-contents) "foλo"))
+              (should (equal (encode-coding-string (file-contents) 'utf-8)
+                             (encode-coding-string "foλo" 'utf-8)))
               (with-temp-buffer
                 (insert "foo")
                 (write-region nil nil jpyfile)
@@ -322,8 +325,9 @@
               (should (equal (file-contents) "xyz"))
               (write-region "a" nil jpyfile 1)
               (should (equal (file-contents) "xaz"))
-              (write-region "b" nil jpyfile 6)
-              (should (equal (file-contents) "xaz\0\0\0b")))
+              (write-region "β" nil jpyfile 6)
+              (should (equal (encode-coding-string (file-contents) 'utf-8)
+                             (encode-coding-string "xaz\0\0\0β" 'utf-8))))
             (ert-info ("File visiting")
               (with-temp-buffer
                 (insert "foo")
