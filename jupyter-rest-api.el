@@ -239,17 +239,36 @@ DATA is encoded into a JSON string using `json-encode-plist' and
 sent as the HTTP request data. If DATA is nil, don't send any
 request data."
   (declare (indent 3))
+  (when data
+    (setq data (json-encode-plist data))
+    (when (multibyte-string-p data)
+      (setq data (encode-coding-string data 'utf-8))))
   (let ((jupyter-api-request-method method)
-        (jupyter-api-request-data
-         (or (and data (json-encode-plist data))
-             jupyter-api-request-data))
+        (jupyter-api-request-data (or data jupyter-api-request-data))
         (jupyter-api-request-headers
-         (append (when data
-                   (list (cons "Content-Type" "application/json")))
+         (append (when data (list (cons "Content-Type" "application/json")))
                  jupyter-api-request-headers)))
     (jupyter-api-url-request (concat url "/" endpoint))))
 
 ;;; Cookies and headers
+
+(defmacro jupyter-api--ensure-unibyte (place)
+  "Ensure PLACE does not hold a multibyte string.
+If the value of PLACE is a multibyte string, encode it using the
+us-ascii coding system.
+
+This is necessary when the contents of an API request contains
+unicode characters. The HTTP request constructed in
+`url-http-create-request' concatenates various string components
+to make up the full request. If the contents are encoded, but
+some other component is multibyte, the resulting string after
+concatenating all elements will contain multibyte characters and
+this will cause errors in the URL library."
+  (gv-letplace (getter setter) place
+    (macroexp-let2 nil old getter
+      `(if (multibyte-string-p ,old)
+           ,(funcall setter `(encode-coding-string ,old 'us-ascii))
+         ,old))))
 
 ;; For more info on the XSRF header see
 ;; https://blog.jupyter.org/security-release-jupyter-notebook-4-3-1-808e1f3bb5e2
@@ -278,7 +297,9 @@ returned."
   (cl-loop
    for cookie in (jupyter-api-url-cookies url)
    if (equal (url-cookie-name cookie) "_xsrf")
-   return (list (cons "X-XSRFTOKEN" (url-cookie-value cookie)))))
+   return `(("X-XSRFTOKEN" .
+             ,(jupyter-api--ensure-unibyte
+               (url-cookie-value cookie))))))
 
 (defun jupyter-api-copy-cookies-for-websocket (url)
   "Copy URL cookies so that those under HOST are accessible under HOST:PORT.
@@ -477,7 +498,8 @@ Raise an error on failure."
      (lambda ()
        (let ((token (read-string (format "Token [%s]: " (oref client url)))))
          (oset client auth
-               (list (cons "Authorization" (concat "token " token)))))))))
+               `(("Authorization" .
+                  ,(concat "token " (jupyter-api--ensure-unibyte token))))))))))
 
 ;;; `jupyter-rest-client' methods
 
@@ -827,17 +849,20 @@ considered."
 (defun jupyter-api-write-file-content (client filename content &optional binary)
   "Send a request using CLIENT to write CONTENT to FILENAME.
 
-If CONTENT is a string, the format of the written file will be
-\"text\". If CONTENT is a list, it is encoded as JSON and be sent
-to the server using \"json\" as the format. If BINARY is non-nil,
-as a final step encode CONTENT as a base64 string and set the
-file's format to \"base64\".
+If BINARY is non-nil, as a final step encode CONTENT as a base64
+string and set the file's format to \"base64\". Otherwise CONTENT
+is encoded as UTF-8 and file's format is set to \"text\".
 
 Note, only the `file-local-name' of FILENAME is considered."
   (declare (indent 1))
+  (cl-check-type content string)
   (jupyter-api/contents client "PUT"
     (jupyter-api-content-path filename)
-    :content (if binary (base64-encode-string content) content)
+    :content (if binary (thread-first content
+                          (encode-coding-string 'no-conversion 'nocopy)
+                          (base64-encode-string))
+               ;; Encoded in `jupyter-api-http-request'
+               content)
     :type "file"
     :format (if binary "base64" "text")))
 
@@ -851,10 +876,9 @@ Note, only the `file-local-name' of FILENAME is considered."
   (declare (indent 1))
   (let* ((model (jupyter-api-get-file-model client file nil "file"))
          (content (plist-get model :content)))
-    (cond
-     ((jupyter-api-binary-content-p model)
-      (base64-decode-string content))
-     (t content))))
+    (if (jupyter-api-binary-content-p model)
+        (base64-decode-string content)
+      (decode-coding-string content 'utf-8 'nocopy))))
 
 (defun jupyter-api-make-directory (client directory)
   "Send a request using CLIENT to create DIRECTORY.
