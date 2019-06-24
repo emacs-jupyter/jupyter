@@ -323,6 +323,40 @@ fails."
       'tramp-flush-file-properties
     'tramp-flush-file-property))
 
+(defun jupyter-tramp--get-directory-or-file-model (file localname path no-content)
+  (cond
+   (no-content
+    (jupyter-tramp-get-file-model (file-name-directory file)))
+   (t
+    (condition-case err
+        (jupyter-api-get-file-model jupyter-current-server localname)
+      (jupyter-api-http-error
+       (cl-destructuring-bind (_ code msg) err
+         (if (and (eq code 404)
+                  (string-match-p "No such file or directory" msg))
+             (list :path path :name nil
+                   ;; If a file doesn't exist we need to check if the
+                   ;; containing directory is writable to determine if
+                   ;; FILE is.
+                   :writable (plist-get
+                              (jupyter-tramp-get-file-model
+                               (file-name-directory
+                                (directory-file-name file))
+                               'no-content)
+                              :writable))
+           (signal (car err) (cdr err)))))))))
+
+(defun jupyter-tramp--get-file-model (file localname no-content)
+  (let* ((path (jupyter-api-content-path localname))
+         (model (jupyter-tramp--get-directory-or-file-model
+                 file localname path no-content)))
+    (or (jupyter-api-find-model path model)
+        ;; We reach here when MODEL is a directory that does
+        ;; not contain PATH. PATH is writable if the
+        ;; directory is.
+        (list :path path :name nil
+              :writable (plist-get model :writable)))))
+
 (defun jupyter-tramp-get-file-model (file &optional no-content)
   "Return a model of FILE or raise an error.
 For non-existent files the model
@@ -346,36 +380,7 @@ See `jupyter-tramp-get-file-model' for details on what a file model is."
                      (when no-content
                        (tramp-get-file-property v localname "nc-model" nil)))))
       (unless value
-        (let ((path (jupyter-api-content-path localname)) model)
-          (setq
-           model
-           (cond
-            (no-content
-             (jupyter-tramp-get-file-model (file-name-directory file)))
-            (t
-             (condition-case err
-                 (jupyter-api-get-file-model jupyter-current-server localname)
-               (jupyter-api-http-error
-                (cl-destructuring-bind (_ code msg) err
-                  (if (and (eq code 404)
-                           (string-match-p "No such file or directory" msg))
-                      (list :path path :name nil
-                            ;; If a file doesn't exist we need to check if the
-                            ;; containing directory is writable to determine if
-                            ;; FILE is.
-                            :writable (plist-get
-                                       (jupyter-tramp-get-file-model
-                                        (file-name-directory
-                                         (directory-file-name file))
-                                        'no-content)
-                                       :writable))
-                    (signal (car err) (cdr err)))))))))
-          (setq value (or (jupyter-api-find-model path model)
-                          ;; We reach here when MODEL is a directory that does
-                          ;; not contain PATH. PATH is writable if the
-                          ;; directory is.
-                          (list :path path :name nil
-                                :writable (plist-get model :writable)))))
+        (setq value (jupyter-tramp--get-file-model file localname no-content))
         (tramp-set-file-property
          v localname (if no-content "nc-model" "model") value))
       value)))
