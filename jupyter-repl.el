@@ -1707,15 +1707,8 @@ Return the buffer switched to."
     ;; ring.
     (ring-insert jupyter-repl-history 'jupyter-repl-history)
     (let ((jupyter-inhibit-handlers '(:status)))
-      ;; Wait until we get an idle response since the call to
-      ;; `jupyter-repl-sync-execution-state' below will be considered the last
-      ;; request the client made. If an idle message for this history request
-      ;; is received before the reply, the reply message won't ever be
-      ;; received since the idle message will cause the request to be dropped
-      ;; if the request isn't the last request the client made.
-      (jupyter-wait-until-idle
-       (jupyter-send-history-request jupyter-current-client
-         :n jupyter-repl-history-maximum-length :raw nil :unique t)))
+      (jupyter-send-history-request jupyter-current-client
+        :n jupyter-repl-history-maximum-length :raw nil :unique t))
     (erase-buffer)
     ;; Add local hooks
     (add-hook 'kill-buffer-query-functions #'jupyter-repl-kill-buffer-query-function nil t)

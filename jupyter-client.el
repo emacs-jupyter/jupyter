@@ -697,8 +697,12 @@ are taken:
                       ;; consider REQ as having received an idle message in
                       ;; this case.
                       (eq (jupyter-message-type msg) :shutdown-reply))
-              (setf (jupyter-request-idle-received-p req) t))
-            (jupyter--drop-idle-requests client)))))))
+              ;; Order matters here. We want to remove idle requests *before*
+              ;; setting another request idle to account for idle messages
+              ;; coming in out of order, e.g. before their respective reply
+              ;; messages.
+              (jupyter--drop-idle-requests client)
+              (setf (jupyter-request-idle-received-p req) t))))))))
 
 ;;; Channel handler macros
 
