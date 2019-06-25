@@ -194,7 +194,7 @@ passed as the argument has a language of LANG."
         (jupyter-stop-channels client)))))
 
 (defun jupyter-clients ()
-  "Return a list of all `jupyter-kernel-clients'."
+  "Return a list of all `jupyter-kernel-client' objects."
   (jupyter-all-objects 'jupyter--clients))
 
 (defun jupyter-find-client-for-session (session-id)

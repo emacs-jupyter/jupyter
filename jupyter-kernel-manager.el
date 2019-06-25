@@ -258,7 +258,17 @@ argument of the process."
         (unless (memq system-type '(ms-dos windows-nt cygwin))
           (jupyter--block-until-conn-file-access atime kernel conn-file))))))
 
-(defclass jupyter-kernel-manager (jupyter-kernel-lifetime)
+(defvar jupyter--kernel-managers nil)
+
+;; TODO: Move to generalize the kernel manager even more so it is independent
+;; of a control channel and only relies mainly on the kernel and possibly some
+;; other general object that can also be a control channel. This way we can
+;; avoid this class.
+(defclass jupyter-kernel-manager-base (jupyter-kernel-lifetime
+                                       jupyter-instance-tracker)
+  ((tracking-symbol :initform 'jupyter--kernel-managers)))
+
+(defclass jupyter-kernel-manager (jupyter-kernel-manager-base)
   ((kernel
     :type jupyter-meta-kernel
     :initarg :kernel
@@ -267,6 +277,10 @@ argument of the process."
     :type (or null jupyter-sync-channel)
     :initform nil
     :documentation "The kernel's control channel.")))
+
+(defun jupyter-kernel-managers ()
+  "Return a list of all `jupyter-kernel-manager' objects."
+  (jupyter-all-objects 'jupyter--kernel-managers))
 
 (cl-defgeneric jupyter-make-client ((manager jupyter-kernel-manager) class &rest slots)
   "Make a new client from CLASS connected to MANAGER's kernel.
