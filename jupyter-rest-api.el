@@ -569,11 +569,8 @@ will be '(:k1 ...)."
         (cl-check-type (car plist) string
                        "Endpoint can only be constructed from strings")
         (push (pop plist) endpoint)))
-    (setq endpoint
-          ;; Allow the list of endpoint strings to contain sub-paths.
-          (let ((url-unreserved-chars (cons ?/ url-unreserved-chars)))
-            (mapconcat #'url-hexify-string
-                       (or (nreverse endpoint) (list "")) "/")))
+    (setq endpoint (mapconcat #'identity
+                              (or (nreverse endpoint) (list "")) "/"))
     (when (consp (car plist))
       (setq endpoint (concat endpoint "?"
                              (mapconcat
@@ -581,8 +578,7 @@ will be '(:k1 ...)."
                                 (cl-check-type x cons)
                                 (cl-check-type (car x) string)
                                 (cl-check-type (cdr x) string)
-                                (concat (url-hexify-string (car x)) "="
-                                        (url-hexify-string (cdr x))))
+                                (concat (car x) "=" (cdr x)))
                               (pop plist)
                               "&"))))
     (cons endpoint plist)))
