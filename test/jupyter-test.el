@@ -1584,17 +1584,58 @@ last element being the newest element added to the history."
 
 (ert-deftest jupyter-repl-undo ()
   :tags '(repl yank undo)
-  (jupyter-test-with-python-repl client
-    (jupyter-ert-info ("Undo after yank undoes all the yanked text")
-      (kill-new  "import IPython\ndef foo(x)\n\treturn x")
-      (undo-boundary)
-      (yank)
-      (should (equal (jupyter-repl-cell-code) "import IPython\ndef foo(x)\n\treturn x"))
-      (let ((beg (jupyter-repl-cell-beginning-position)))
+  (let ((ensure-field-property
+         (lambda ()
+           (should-not
+            (text-property-not-all
+             (jupyter-repl-cell-code-beginning-position)
+             (jupyter-repl-cell-code-end-position)
+             'field 'cell-code)))))
+    (jupyter-test-with-python-repl client
+      (jupyter-ert-info ("Undo after yank undoes all the yanked text")
+        (kill-new  "import IPython\ndef foo(x)\n\treturn x")
+        (undo-boundary)
+        (yank)
+        (should (equal (jupyter-repl-cell-code) "import IPython\ndef foo(x)\n\treturn x"))
+        (funcall ensure-field-property)
+        (let ((beg (jupyter-repl-cell-beginning-position)))
+          (undo)
+          (should (get-text-property beg 'jupyter-cell))
+          (goto-char (point-max))
+          (should (equal (jupyter-repl-cell-code) ""))))
+      (jupyter-ert-info ("Correct undo after inserting continuation prompt")
+        ;; See #139
+        (insert "\
+for item in range(10):
+    print(item)")
+        (backward-char)
+        (undo-boundary)
+        (jupyter-test-repl-ret-sync)
+        (undo-boundary)
+        (should (equal (jupyter-repl-cell-code) "\
+for item in range(10):
+    print(item
+    )"))
+        (funcall ensure-field-property)
         (undo)
-        (should (get-text-property beg 'jupyter-cell))
-        (goto-char (point-max))
-        (should (equal (jupyter-repl-cell-code) ""))))))
+        (should (equal (jupyter-repl-cell-code) "\
+for item in range(10):
+    print(item)")))
+      (jupyter-ert-info ("Passing through `jupyter-repl-indent-line'")
+        (insert "\
+next(x")
+        (undo-boundary)
+        (jupyter-test-repl-ret-sync)
+        (undo-boundary)
+        (should (equal (jupyter-repl-cell-code)
+                       "\
+next(x
+     "))
+        (funcall ensure-field-property)
+        (undo)
+        (should (equal (jupyter-repl-cell-code)
+                       "\
+next(x"))))))
 
 (ert-deftest jupyter-repl-after-change ()
   :tags '(repl)
@@ -2603,7 +2644,7 @@ publish_display_data({'text/plain': \"foo\", 'text/latex': \"$\\alpha$\"});"
    :display "plain"))
 
 ;; Local Variables:
-;; byte-compile-warnings: (not free-vars)
+;; byte-compile-warnings: (unresolved obsolete lexical)
 ;; eval: (and (functionp 'aggressive-indent-mode) (aggressive-indent-mode -1))
 ;; End:
 ;;; jupyter-test.el ends here
