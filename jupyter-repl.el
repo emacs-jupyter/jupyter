@@ -786,7 +786,8 @@ lines, truncate it to something less than
        (when (get-text-property (point) 'jupyter-banner)
          (goto-char (next-single-property-change (point) 'jupyter-banner)))
        (delete-region (point) (point-max))
-       (jupyter-repl-insert-prompt 'in)))))
+       (jupyter-repl-insert-prompt 'in))))
+  (goto-char (point-max)))
 
 ;;; Handlers
 
