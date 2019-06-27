@@ -895,10 +895,7 @@ Methods that extend this generic function should
           (jupyter-display-current-buffer-reuse-window)))
        (res
         (setq res (ansi-color-apply res))
-        (if (cl-loop
-             with nlines = 0
-             for c across res when (eq c ?\n) do (cl-incf nlines)
-             thereis (> nlines jupyter-eval-short-result-max-lines))
+        (if (jupyter-line-count-greater-p res jupyter-eval-short-result-max-lines)
             (jupyter-with-display-buffer "result" 'reset
               (insert res)
               (goto-char (point-min))

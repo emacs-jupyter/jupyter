@@ -768,6 +768,12 @@ no :metadata key can be found, then META will be METADATA."
        (plist-get plist :metadata)
        metadata)))
 
+(defun jupyter-line-count-greater-p (str n)
+  "Return non-nil if STR has more than N lines."
+  (string-match-p
+   (format "^\\(?:[^\n]*\n\\)\\{%d,\\}" (1+ n))
+   str))
+
 ;;; Simple weak references
 ;; Thanks to Chris Wellon https://nullprogram.com/blog/2014/01/27/
 

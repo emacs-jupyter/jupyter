@@ -811,6 +811,19 @@
     (let ((jupyter-current-client client))
       (should (equal (jupyter-eval "1 + 1") "2")))))
 
+(ert-deftest jupyter-line-count-greater-p ()
+  :tags '(client)
+  (should (jupyter-line-count-greater-p "\n\n" 1))
+  (should (jupyter-line-count-greater-p "a\n\n" 1))
+  (should (jupyter-line-count-greater-p "\na\n" 1))
+  (should (jupyter-line-count-greater-p "a\na\n" 1))
+  (should (jupyter-line-count-greater-p "\n\na" 1))
+  (should (jupyter-line-count-greater-p "a\n\na" 1))
+  (should (jupyter-line-count-greater-p "\na\na" 1))
+  (should (jupyter-line-count-greater-p "a\na\na" 1))
+  (should-not (jupyter-line-count-greater-p "\n\n" 2))
+  (should-not (jupyter-line-count-greater-p "\n\n" 3)))
+
 ;;; IOloop
 
 (ert-deftest jupyter-ioloop-lifetime ()
