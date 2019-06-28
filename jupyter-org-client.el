@@ -963,6 +963,8 @@ passed to Jupyter org-mode source blocks."
 
 (cl-defmethod jupyter-org-result ((_mime (eql :text/org)) _params data
                                   &optional _metadata)
+  (when (string-match-p org-table-line-regexp data)
+    (put-text-property 0 1 'org-table t data))
   (jupyter-org-raw-string data))
 
 (cl-defmethod jupyter-org-result ((mime (eql :image/png)) params data
