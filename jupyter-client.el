@@ -58,6 +58,59 @@ forwarded to a separate buffer."
   :group 'jupyter-client
   :type 'integer)
 
+(defcustom jupyter-include-other-output nil
+  "Whether or not to handle IOPub messages from other clients.
+A Jupyter client can receive messages from other clients
+connected to the same kernel on the IOPub channel. You can choose
+to ignore these messages by setting
+`jupyter-include-other-output' to nil. If
+`jupyter-include-other-output' is non-nil, then any messages that
+are not associated with a request from a client are sent to the
+client's handler methods with a nil value for the request
+argument. To change the value of this variable for a particular
+client use `jupyter-set'."
+  :group 'jupyter
+  :type 'boolean)
+
+(defcustom jupyter-iopub-message-hook nil
+  "Hook run when a message is received on the IOPub channel.
+The hook is called with two arguments, the Jupyter client and the
+message it received.
+
+Do not add to this hook variable directly, use
+`jupyter-add-hook'. If any of the message hooks return a non-nil
+value, the client handlers will be prevented from running for the
+message."
+  :group 'jupyter
+  :type 'hook)
+(put 'jupyter-iopub-message-hook 'permanent-local t)
+
+(defcustom jupyter-shell-message-hook nil
+  "Hook run when a message is received on the SHELL channel.
+The hook is called with two arguments, the Jupyter client and the
+message it received.
+
+Do not add to this hook variable directly, use
+`jupyter-add-hook'. If any of the message hooks return a non-nil
+value, the client handlers will be prevented from running for the
+message."
+  :group 'jupyter
+  :type 'hook)
+(put 'jupyter-shell-message-hook 'permanent-local t)
+
+(defcustom jupyter-stdin-message-hook nil
+  "Hook run when a message is received on the STDIN channel.
+The hook is called with two arguments, the Jupyter client and the
+message it received.
+
+Do not add to this hook variable directly,
+use `jupyter-add-hook'. If any of the message hooks return a
+non-nil value, the client handlers will be prevented from running
+for the message."
+  :group 'jupyter
+  :type 'hook)
+(put 'jupyter-stdin-message-hook 'permanent-local t)
+
 (declare-function company-begin-backend "ext:company" (backend &optional callback))
 (declare-function company-doc-buffer "ext:company" (&optional string))
 (declare-function company-idle-begin "ext:company")

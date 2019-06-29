@@ -59,6 +59,7 @@
 (require 'jupyter-base)
 (require 'jupyter-mime)
 (require 'jupyter-client)
+(require 'jupyter-kernelspec)
 (require 'jupyter-widget-client)
 (require 'jupyter-kernel-manager)
 (require 'ring)

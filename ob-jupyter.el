@@ -31,6 +31,8 @@
   "Jupyter integration with org-mode"
   :group 'org-babel)
 
+(require 'jupyter-env)
+(require 'jupyter-kernelspec)
 (require 'jupyter-org-client)
 (require 'jupyter-org-extensions)
 (eval-when-compile

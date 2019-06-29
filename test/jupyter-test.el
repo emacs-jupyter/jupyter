@@ -28,6 +28,7 @@
 ;;; Code:
 
 (require 'zmq)
+(require 'jupyter-env)
 (require 'jupyter-client)
 (require 'jupyter-repl)
 (require 'jupyter-org-client)

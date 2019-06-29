@@ -84,6 +84,28 @@ send/receive messages.")
   "Start a Jupyter CHANNEL using IDENTITY as the routing ID.
 If CHANNEL is already alive, do nothing.")
 
+(defun jupyter-connect-endpoint (type endpoint &optional identity)
+  "Create socket with TYPE and connect to ENDPOINT.
+If IDENTITY is non-nil, it will be set as the ROUTING-ID of the
+socket. Return the created socket."
+  (let ((sock (zmq-socket (zmq-current-context) type)))
+    (prog1 sock
+      (zmq-socket-set sock zmq-LINGER 1000)
+      (when identity
+        (zmq-socket-set sock zmq-ROUTING-ID identity))
+      (zmq-connect sock endpoint))))
+
+(defun jupyter-connect-channel (ctype endpoint &optional identity)
+  "Create a socket based on a Jupyter channel type.
+CTYPE is one of the symbols `:hb', `:stdin', `:shell',
+`:control', or `:iopub' and represents the type of channel to
+connect to ENDPOINT. If IDENTITY is non-nil, it will be set as
+the ROUTING-ID of the socket. Return the created socket."
+  (let ((sock-type (plist-get jupyter-socket-types ctype)))
+    (unless sock-type
+      (error "Invalid channel type (%s)" ctype))
+    (jupyter-connect-endpoint sock-type endpoint identity)))
+
 (cl-defmethod jupyter-start-channel ((channel jupyter-sync-channel)
                                      &key (identity (jupyter-session-id
                                                      (oref channel session))))

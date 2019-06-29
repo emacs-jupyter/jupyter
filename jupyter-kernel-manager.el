@@ -28,8 +28,10 @@
 ;;; Code:
 
 (require 'jupyter-base)
+(require 'jupyter-env)
 (require 'jupyter-messages)
 (require 'jupyter-client)
+(require 'jupyter-kernelspec)
 (eval-when-compile (require 'subr-x))
 
 (declare-function ansi-color-apply "ansi-color" (string))
@@ -228,6 +230,31 @@ argument of the process."
         ;; any messages we send it.
         (or (null attribs)
             (not (equal atime (nth 4 attribs))))))))
+
+(defun jupyter-write-connection-file (session obj)
+  "Write a connection file based on SESSION to `jupyter-runtime-directory'.
+Return the path to the connection file.
+
+Also register a finalizer on OBJ to delete the file when OBJ is
+garbage collected. The file is also deleted when Emacs exits if
+it hasn't been already."
+  (cl-check-type session jupyter-session)
+  (cl-check-type obj jupyter-finalized-object)
+  (make-directory jupyter-runtime-directory 'parents)
+  (let* ((temporary-file-directory jupyter-runtime-directory)
+         (json-encoding-pretty-print t)
+         (file (make-temp-file "emacs-kernel-" nil ".json"))
+         (kill-hook (lambda () (when (and file (file-exists-p file))
+                            (delete-file file)))))
+    (add-hook 'kill-emacs-hook kill-hook)
+    (jupyter-add-finalizer obj
+      (lambda ()
+        (funcall kill-hook)
+        (remove-hook 'kill-emacs-hook kill-hook)))
+    (prog1 file
+      (with-temp-file file
+        (insert (json-encode-plist
+                 (jupyter-session-conn-info session)))))))
 
 (cl-defmethod jupyter-start-kernel ((kernel jupyter-spec-kernel) &rest _args)
   (cl-destructuring-bind (_name . (resource-dir . spec)) (oref kernel spec)
@@ -428,6 +455,48 @@ subprocess."
 
 (defun jupyter--error-if-no-kernel-info (client)
   (jupyter-kernel-info client))
+
+(cl-defun jupyter-create-connection-info (&key
+                                          (kernel-name "python")
+                                          (transport "tcp")
+                                          (ip "127.0.0.1")
+                                          (signature-scheme "hmac-sha256")
+                                          (key (jupyter-new-uuid))
+                                          (hb-port 0)
+                                          (stdin-port 0)
+                                          (control-port 0)
+                                          (shell-port 0)
+                                          (iopub-port 0))
+  "Create a connection info plist used to connect to a kernel.
+
+The plist has the standard keys found in the jupyter spec. See
+http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files.
+A port number of 0 for a channel means to use a randomly assigned
+port for that channel."
+  (unless (or (= (length key) 0)
+              (equal signature-scheme "hmac-sha256"))
+    (error "Only hmac-sha256 signing is currently supported"))
+  (append
+   (list :kernel_name kernel-name
+         :transport transport
+         :ip ip)
+   (when (> (length key) 0)
+     (list :signature_scheme signature-scheme
+           :key key))
+   (cl-loop
+    with sock = (zmq-socket (zmq-current-context) zmq-REP)
+    with addr = (concat transport "://" ip)
+    for (channel . port) in `((:hb_port . ,hb-port)
+                              (:stdin_port . ,stdin-port)
+                              (:control_port . ,control-port)
+                              (:shell_port . ,shell-port)
+                              (:iopub_port . ,iopub-port))
+    collect channel and
+    if (= port 0) do (setq port (zmq-bind-to-random-port sock addr))
+    and collect port else collect port
+    finally
+    (zmq-socket-set sock zmq-LINGER 0)
+    (zmq-close sock))))
 
 (defun jupyter-start-new-kernel (kernel-name &optional client-class)
   "Start a managed Jupyter kernel.

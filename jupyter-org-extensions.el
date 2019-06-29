@@ -28,6 +28,7 @@
 
 ;;; Code:
 
+(require 'jupyter-kernelspec)
 (require 'jupyter-org-client)
 (eval-when-compile (require 'subr-x))
 
