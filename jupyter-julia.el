@@ -64,7 +64,9 @@
               (setcar prefix (concat "\\" (car prefix))))
              ;; Also include : to complete symbols when used as dictionary keys
              ((and (eq (char-before beg) ?:)
-                   (not (eq (char-before (1- beg)) ?:)))
+                   (not (eq (char-before (1- beg)) ?:))
+                   ;; Except for when it is part of range expressions like 1:len
+                   (not (memq (char-syntax (char-before (1- beg))) '(?w ?_))))
               (setcar prefix (concat ":" (car prefix))))))))))))
 
 (cl-defmethod jupyter-completion-post-completion (candidate
