@@ -301,7 +301,7 @@ it hasn't been already."
     :initarg :kernel
     :documentation "The name of the kernel that is being managed.")
    (control-channel
-    :type (or null jupyter-sync-channel)
+    :type (or null jupyter-zmq-channel)
     :initform nil
     :documentation "The kernel's control channel.")))
 
@@ -363,7 +363,7 @@ connect to MANAGER's kernel."
       (cl-destructuring-bind (&key transport ip control_port &allow-other-keys)
           (jupyter-session-conn-info (oref kernel session))
         (oset manager control-channel
-              (jupyter-sync-channel
+              (jupyter-zmq-channel
                :type :control
                :session (oref kernel session)
                :endpoint (format "%s://%s:%d" transport ip control_port)))

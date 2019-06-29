@@ -76,6 +76,16 @@
          (when-let* ((,client (jupyter-weak-ref-resolve (pop ,clients))))
            ,@body)))))
 
+;; FIXME: This is needed since the `jupyter-kernel-client' and
+;; `jupyter-channel-ioloop' use keywords whereas you can only access slots
+;; using symbols.
+(defsubst jupyter-comm--channel (c)
+  (cl-case c
+    (:hb 'hb)
+    (:iopub 'iopub)
+    (:shell 'shell)
+    (:stdin 'stdin)))
+
 ;;; `jupyter-comm-layer'
 
 (cl-defgeneric jupyter-comm-start ((comm jupyter-comm-layer) &rest _ignore)

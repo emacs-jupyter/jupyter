@@ -43,7 +43,7 @@
 
 (require 'jupyter-base)
 (require 'jupyter-ioloop)
-(require 'jupyter-channels)
+(require 'jupyter-zmq-channel)
 
 ;;; Variables used in the ioloop
 
@@ -171,7 +171,7 @@ is returned to the parent process."
     (cl-assert (memq type jupyter-socket-types))
     (let ((channel (object-assoc type :type jupyter-ioloop-channels)))
       (unless channel
-        (setq channel (jupyter-sync-channel
+        (setq channel (jupyter-zmq-channel
                        :session jupyter-ioloop-session
                        :type type :endpoint endpoint))
         (push channel jupyter-ioloop-channels))

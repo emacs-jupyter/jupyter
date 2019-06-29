@@ -28,6 +28,7 @@
 ;;; Code:
 
 (require 'zmq)
+(require 'jupyter-zmq-channel-comm)
 (require 'jupyter-env)
 (require 'jupyter-client)
 (require 'jupyter-repl)
@@ -500,9 +501,9 @@
 
 ;;; Channels
 
-(ert-deftest jupyter-sync-channel ()
+(ert-deftest jupyter-zmq-channel ()
   :tags '(channels)
-  (let ((channel (jupyter-sync-channel
+  (let ((channel (jupyter-zmq-channel
                   :type :shell
                   :endpoint "tcp://127.0.0.1:5555")))
     (ert-info ("Starting the channel")
@@ -637,7 +638,7 @@
         (jupyter-start-kernel manager)
         (setq process (oref kernel process))
         (setq control-channel (oref manager control-channel))
-        (should (jupyter-sync-channel-p control-channel))
+        (should (jupyter-zmq-channel-p control-channel))
         (should (jupyter-kernel-alive-p manager))
         (should (jupyter-kernel-alive-p kernel))
         (jupyter-shutdown-kernel manager)
@@ -647,7 +648,7 @@
           (should-not (jupyter-kernel-alive-p manager))
           (should-not (jupyter-kernel-alive-p kernel)))
         (setq control-channel (oref manager control-channel))
-        (should-not (jupyter-sync-channel-p control-channel))))))
+        (should-not (jupyter-zmq-channel-p control-channel))))))
 
 (ert-deftest jupyter-command-kernel ()
   :tags '(kernel)
@@ -684,7 +685,7 @@
   ;; The default comm is a jupyter-channel-ioloop-comm
   (let ((conn-info (jupyter-test-conn-info-plist))
         (client (jupyter-kernel-client)))
-    (oset client kcomm (jupyter-sync-channel-comm))
+    (oset client kcomm (jupyter-zmq-channel-comm))
     (jupyter-initialize-connection client conn-info)
     ;; kcomm by default is a `jupyter-channel-ioloop-comm'
     (with-slots (session kcomm) client
@@ -749,7 +750,7 @@
   (ert-info ("Starting/stopping channels")
     (let ((conn-info (jupyter-test-conn-info-plist))
           (client (jupyter-kernel-client)))
-      (oset client kcomm (jupyter-sync-channel-comm))
+      (oset client kcomm (jupyter-zmq-channel-comm))
       (jupyter-initialize-connection client conn-info)
       (cl-loop
        for channel in '(:hb :shell :iopub :stdin)
@@ -931,7 +932,7 @@
   (with-temp-buffer
     (cl-letf ((ioloop (jupyter-channel-ioloop))
               (standard-output (current-buffer))
-              (jupyter-ioloop-channels (list (jupyter-sync-channel :type :shell)))
+              (jupyter-ioloop-channels (list (jupyter-zmq-channel :type :shell)))
               ((symbol-function #'jupyter-send)
                (lambda (_channel _msg-type _msg msg-id) msg-id)))
       (let ((msg-id (jupyter-new-uuid)))
@@ -954,7 +955,7 @@
       (jupyter-ioloop-test-eval-ioloop
        ioloop `(list 'start-channel :shell ,channel-endpoint))
       (should (not (null jupyter-ioloop-channels)))
-      (should (jupyter-sync-channel-p (car jupyter-ioloop-channels)))
+      (should (jupyter-zmq-channel-p (car jupyter-ioloop-channels)))
       (let ((channel (car jupyter-ioloop-channels)))
         (with-slots (type socket endpoint) channel
           (ert-info ("Verify the requested channel was started")
@@ -978,7 +979,7 @@
   (with-temp-buffer
     (let* ((ioloop (jupyter-channel-ioloop))
            (standard-output (current-buffer))
-           (channel (jupyter-sync-channel
+           (channel (jupyter-zmq-channel
                      :type :shell
                      :endpoint "tcp://127.0.0.1:5555"))
            (jupyter-ioloop-channels (list channel))
