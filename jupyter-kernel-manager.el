@@ -461,18 +461,19 @@ subprocess."
 (defun jupyter--error-if-no-kernel-info (client)
   (jupyter-kernel-info client))
 
-(cl-defun jupyter-create-connection-info (&key
-                                          (kernel-name "python")
-                                          (transport "tcp")
-                                          (ip "127.0.0.1")
-                                          (signature-scheme "hmac-sha256")
-                                          (key (jupyter-new-uuid))
-                                          (hb-port 0)
-                                          (stdin-port 0)
-                                          (control-port 0)
-                                          (shell-port 0)
-                                          (iopub-port 0))
-  "Create a connection info plist used to connect to a kernel.
+(cl-defun jupyter-local-tcp-conn-info (&key
+                                       (kernel-name "python")
+                                       (signature-scheme "hmac-sha256")
+                                       (key (jupyter-new-uuid))
+                                       (hb-port 0)
+                                       (stdin-port 0)
+                                       (control-port 0)
+                                       (shell-port 0)
+                                       (iopub-port 0))
+  "Return a connection info plist used to connect to a kernel.
+
+The :transport key is set to \"tcp\" and the :ip key will be
+\"127.0.0.1\".
 
 The plist has the standard keys found in the jupyter spec. See
 http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files.
@@ -483,25 +484,27 @@ port for that channel."
     (error "Only hmac-sha256 signing is currently supported"))
   (append
    (list :kernel_name kernel-name
-         :transport transport
-         :ip ip)
+         :transport "tcp"
+         :ip "127.0.0.1")
    (when (> (length key) 0)
      (list :signature_scheme signature-scheme
            :key key))
-   (cl-loop
-    with sock = (zmq-socket (zmq-current-context) zmq-REP)
-    with addr = (concat transport "://" ip)
-    for (channel . port) in `((:hb_port . ,hb-port)
-                              (:stdin_port . ,stdin-port)
-                              (:control_port . ,control-port)
-                              (:shell_port . ,shell-port)
-                              (:iopub_port . ,iopub-port))
-    collect channel and
-    if (= port 0) do (setq port (zmq-bind-to-random-port sock addr))
-    and collect port else collect port
-    finally
-    (zmq-socket-set sock zmq-LINGER 0)
-    (zmq-close sock))))
+   (let ((ports (jupyter-available-local-ports
+                 (cl-loop
+                  with nports = 0
+                  for p in (list hb-port stdin-port
+                                 control-port shell-port
+                                 iopub-port)
+                  when (zerop p) do (cl-incf nports)
+                  finally return nports))))
+     (cl-loop
+      for (channel . port) in `((:hb_port . ,hb-port)
+                                (:stdin_port . ,stdin-port)
+                                (:control_port . ,control-port)
+                                (:shell_port . ,shell-port)
+                                (:iopub_port . ,iopub-port))
+      collect channel and if (= port 0)
+      collect (pop ports) else collect port))))
 
 (defun jupyter-start-new-kernel (kernel-name &optional client-class)
   "Start a managed Jupyter kernel.
@@ -531,17 +534,16 @@ command on the host."
   (let* ((spec (jupyter-guess-kernelspec kernel-name))
          (kernel (if (file-remote-p default-directory)
                      (jupyter-command-kernel :spec spec)
-                   (let* ((key (jupyter-new-uuid))
-                          (conn-info (jupyter-create-connection-info
-                                      :kernel-name kernel-name
-                                      :key key)))
+                   (let ((key (jupyter-new-uuid)))
                      (jupyter-spec-kernel
                       :spec spec
                       ;; TODO: Convert `jupyter-session' into an object and
                       ;; only require `conn-info'.
                       :session (jupyter-session
                                 :key key
-                                :conn-info conn-info)))))
+                                :conn-info (jupyter-local-tcp-conn-info
+                                            :kernel-name kernel-name
+                                            :key key))))))
          (manager (jupyter-kernel-manager :kernel kernel)))
     (jupyter-start-kernel manager)
     (let ((client (jupyter-make-client manager client-class)))

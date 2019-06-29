@@ -621,7 +621,7 @@
 
 (ert-deftest jupyter-kernel-lifetime ()
   :tags '(kernel)
-  (let* ((conn-info (jupyter-create-connection-info))
+  (let* ((conn-info (jupyter-local-tcp-conn-info))
          (kernel (jupyter-spec-kernel
                   :spec (jupyter-guess-kernelspec "python")
                   :session (jupyter-session
@@ -632,7 +632,7 @@
     (should (jupyter-kernel-alive-p kernel))
     (jupyter-kill-kernel kernel)
     (should-not (jupyter-kernel-alive-p kernel))
-    (setq conn-info (jupyter-create-connection-info))
+    (setq conn-info (jupyter-local-tcp-conn-info))
     (ert-info ("`jupyter-kernel-manager'")
       ;; TODO: Should the manager create a session if one isn't present?
       (oset kernel session (jupyter-session
@@ -733,7 +733,7 @@
   (skip-unless (not (memq system-type '(ms-dos windows-nt cygwin))))
   (let (file fun)
     (let* ((session (jupyter-session
-                     :conn-info (jupyter-create-connection-info)))
+                     :conn-info (jupyter-local-tcp-conn-info)))
            (client (jupyter-kernel-client))
            (hook (copy-sequence kill-emacs-hook)))
       (setq file (jupyter-write-connection-file session client))
