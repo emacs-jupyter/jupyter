@@ -334,13 +334,17 @@ sending closures to the IOLOOP. An example:
 
 (defun jupyter-ioloop-poller-add (socket events)
   "Add SOCKET to be polled using the `jupyter-ioloop-poller'.
-EVENTS are the polling events that should be listened for on SOCKET."
+EVENTS are the polling events that should be listened for on
+SOCKET. If `jupyter-ioloop-poller' is not a `zmq-poller' object
+do nothing."
   (when (zmq-poller-p jupyter-ioloop-poller)
     (zmq-poller-add jupyter-ioloop-poller socket events)
     (cl-incf jupyter-ioloop-nsockets)))
 
 (defun jupyter-ioloop-poller-remove (socket)
-  "Remove SOCKET from the `jupyter-ioloop-poller'."
+  "Remove SOCKET from the `jupyter-ioloop-poller'.
+If `jupyter-ioloop-poller' is not a `zmq-poller' object do
+nothing."
   (when (zmq-poller-p jupyter-ioloop-poller)
     (zmq-poller-remove jupyter-ioloop-poller socket)
     (cl-decf jupyter-ioloop-nsockets)))
