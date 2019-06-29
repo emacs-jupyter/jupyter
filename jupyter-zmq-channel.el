@@ -40,6 +40,9 @@
 (require 'jupyter-channel)
 (eval-when-compile (require 'subr-x))
 
+(declare-function jupyter-ioloop-poller-remove "jupyter-ioloop")
+(declare-function jupyter-ioloop-poller-add "jupyter-ioloop")
+
 (defconst jupyter-socket-types
   (list :hb zmq-REQ
         :shell zmq-DEALER
@@ -85,12 +88,18 @@ the ROUTING-ID of the socket. Return the created socket."
       (oset channel socket socket)
       (cl-case (oref channel type)
         (:iopub
-         (zmq-socket-set socket zmq-SUBSCRIBE ""))))))
+         (zmq-socket-set socket zmq-SUBSCRIBE ""))))
+    (when (and (functionp 'jupyter-ioloop-environment-p)
+               (jupyter-ioloop-environment-p))
+      (jupyter-ioloop-poller-add (oref channel socket) zmq-POLLIN))))
 
 (cl-defmethod jupyter-stop-channel ((channel jupyter-zmq-channel))
   (when (jupyter-channel-alive-p channel)
-    (zmq-socket-set (oref channel socket) zmq-LINGER 0)
-    (zmq-close (oref channel socket))
+    (when (and (functionp 'jupyter-ioloop-environment-p)
+               (jupyter-ioloop-environment-p))
+      (jupyter-ioloop-poller-remove (oref channel socket)))
+    (with-slots (socket) channel
+      (zmq-disconnect socket (zmq-socket-get socket zmq-LAST-ENDPOINT)))
     (oset channel socket nil)))
 
 (cl-defmethod jupyter-channel-alive-p ((channel jupyter-zmq-channel))
@@ -99,8 +108,11 @@ the ROUTING-ID of the socket. Return the created socket."
 (cl-defmethod jupyter-send ((channel jupyter-zmq-channel) type message &optional msg-id)
   (jupyter-send (oref channel session) (oref channel socket) type message msg-id))
 
-(cl-defmethod jupyter-recv ((channel jupyter-zmq-channel))
-  (jupyter-recv (oref channel session) (oref channel socket)))
+(cl-defmethod jupyter-recv ((channel jupyter-zmq-channel) &optional dont-wait)
+  (condition-case nil
+      (jupyter-recv (oref channel session) (oref channel socket)
+                    (when dont-wait zmq-DONTWAIT))
+    (zmq-EAGAIN nil)))
 
 (cl-defmethod jupyter-send ((session jupyter-session)
                             socket

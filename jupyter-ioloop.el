@@ -83,6 +83,10 @@ events have the same value as the return value of
 (defvar jupyter-ioloop--argument-types nil
   "Argument types added via `jupyter-ioloop-add-arg-type'.")
 
+(defun jupyter-ioloop-environment-p ()
+  "Return non-nil if this Emacs instance is an IOLoop subprocess."
+  (and noninteractive jupyter-ioloop-stdin jupyter-ioloop-poller))
+
 (defclass jupyter-ioloop (jupyter-finalized-object)
   ((process :type (or null process) :initform nil)
    (callbacks :type list :initform nil)
@@ -184,11 +188,7 @@ start event to the parent process."
 (defmacro jupyter-ioloop-add-teardown (ioloop &rest body)
   "Set IOLOOP's `jupyter-ioloop-teardown' slot to BODY.
 BODY is the code that will be evaluated just before the IOLOOP
-sends a quit event to the parent process.
-
-After BODY is evaluated in the IOLOOP environment, the channels
-in `jupyter-ioloop-channels' will be stopped before sending the
-quit event."
+sends a quit event to the parent process."
   (declare (indent 1))
   `(setf (oref ,ioloop teardown)
          (append (oref ,ioloop teardown)
@@ -205,7 +205,7 @@ For example suppose we define an argument type, jupyter-channel:
 
     (jupyter-ioloop-add-arg-type jupyter-channel
       (lambda (arg)
-        `(or (object-assoc ,arg :type jupyter-ioloop-channels)
+        `(or (object-assoc ,arg :type jupyter-channel-ioloop-channels)
              (error \"Channel not alive (%s)\" ,arg))))
 
 and define an event like

@@ -479,7 +479,11 @@
                    (jupyter-send-shutdown-request client))))
         (should-not (null res))
         (should (json-plist-p res))
-        (should (eq (jupyter-message-type res) :shutdown-reply))))))
+        (should (eq (jupyter-message-type res) :shutdown-reply))
+        ;; Ensure we give the kernel process time to die off
+        (when (oref client manager)
+          (jupyter-with-timeout (nil jupyter-long-timeout)
+            (not (jupyter-kernel-alive-p (oref client manager)))))))))
 
 (ert-deftest jupyter-message-lambda ()
   :tags '(messages)
@@ -502,10 +506,11 @@
 ;;; Channels
 
 (ert-deftest jupyter-zmq-channel ()
-  :tags '(channels)
-  (let ((channel (jupyter-zmq-channel
-                  :type :shell
-                  :endpoint "tcp://127.0.0.1:5555")))
+  :tags '(channels zmq)
+  (let* ((port (car (jupyter-available-local-ports 1)))
+         (channel (jupyter-zmq-channel
+                   :type :shell
+                   :endpoint (format "tcp://127.0.0.1:%s" port))))
     (ert-info ("Starting the channel")
       (should-not (jupyter-channel-alive-p channel))
       (jupyter-start-channel channel :identity "foo")
@@ -516,16 +521,19 @@
     (ert-info ("Stopping the channel")
       (let ((sock (oref channel socket)))
         (jupyter-stop-channel channel)
-        (should-error (zmq-send sock "foo") :type 'zmq-ENOTSOCK)))))
+        (should-not (jupyter-channel-alive-p channel))
+        ;; Ensure the socket was disconnected
+        (should-error (zmq-send sock "foo" zmq-NOBLOCK) :type 'zmq-EAGAIN)))))
 
 (ert-deftest jupyter-hb-channel ()
   :tags '(channels)
   (should (eq (oref (jupyter-hb-channel) type) :hb))
-  (let ((channel (jupyter-hb-channel
-                  :endpoint "tcp://127.0.0.1:5556"
-                  :session (jupyter-session)))
-        (died-cb-called nil)
-        (jupyter-hb-max-failures 1))
+  (let* ((port (car (jupyter-available-local-ports 1)))
+         (channel (jupyter-hb-channel
+                   :endpoint (format "tcp://127.0.0.1:%s" port)
+                   :session (jupyter-session)))
+         (died-cb-called nil)
+         (jupyter-hb-max-failures 1))
     (oset channel time-to-dead 0.1)
     (should-not (jupyter-channel-alive-p channel))
     (should-not (jupyter-hb-beating-p channel))
@@ -921,42 +929,35 @@
     (jupyter-ioloop-stop ioloop)
     (should jupyter-ioloop-test-handler-called)))
 
-(defun jupyter-ioloop-test-eval-ioloop (ioloop ex)
-  (eval
-   `(progn
-      ,@(oref ioloop setup)
-      ,(jupyter-ioloop--event-dispatcher ioloop ex))))
-
 (ert-deftest jupyter-channel-ioloop-send-event ()
   :tags '(ioloop)
-  (with-temp-buffer
-    (cl-letf ((ioloop (jupyter-channel-ioloop))
-              (standard-output (current-buffer))
-              (jupyter-ioloop-channels (list (jupyter-zmq-channel :type :shell)))
-              ((symbol-function #'jupyter-send)
+  (jupyter-test-channel-ioloop
+      (ioloop (jupyter-zmq-channel-ioloop))
+    (cl-letf (((symbol-function #'jupyter-send)
                (lambda (_channel _msg-type _msg msg-id) msg-id)))
-      (let ((msg-id (jupyter-new-uuid)))
-        (jupyter-ioloop-test-eval-ioloop
-         ioloop `(list 'send :shell :execute-request '(msg) ,msg-id))
+      (setq jupyter-channel-ioloop-session (jupyter-session :key "foo"))
+      (push (jupyter-zmq-channel :type :shell) jupyter-channel-ioloop-channels)
+      (let* ((msg-id (jupyter-new-uuid))
+             (event `(list 'send :shell :execute-request '(msg) ,msg-id)))
+        (jupyter-test-ioloop-eval-event ioloop event)
         (ert-info ("Return value to parent process")
           (let ((result (read (buffer-string))))
             (should (equal result `(sent :shell ,msg-id)))))))))
 
 (ert-deftest jupyter-channel-ioloop-start-channel-event ()
   :tags '(ioloop)
-  (with-temp-buffer
-    (let* ((ioloop (jupyter-channel-ioloop))
-           (standard-output (current-buffer))
-           (jupyter-ioloop-channels nil)
-           (jupyter-ioloop-session nil)
-           (jupyter-ioloop-poller (zmq-poller))
-           (channel-endpoint "tcp://127.0.0.1:5555"))
-      (jupyter-channel-ioloop--set-session ioloop (jupyter-session :key "foo"))
-      (jupyter-ioloop-test-eval-ioloop
-       ioloop `(list 'start-channel :shell ,channel-endpoint))
-      (should (not (null jupyter-ioloop-channels)))
-      (should (jupyter-zmq-channel-p (car jupyter-ioloop-channels)))
-      (let ((channel (car jupyter-ioloop-channels)))
+  (jupyter-test-channel-ioloop
+      (ioloop (jupyter-zmq-channel-ioloop))
+    (setq jupyter-channel-ioloop-session (jupyter-session :key "foo"))
+    (let ((channel-endpoint "tcp://127.0.0.1:5555"))
+      (ert-info ("start-channel event creates channel")
+        (should (null jupyter-channel-ioloop-channels))
+        (let ((event `(list 'start-channel :shell ,channel-endpoint)))
+          (jupyter-test-ioloop-eval-event ioloop event))
+        (should-not (null jupyter-channel-ioloop-channels))
+        (let ((channel (object-assoc :shell :type jupyter-channel-ioloop-channels)))
+          (should (jupyter-zmq-channel-p channel))))
+      (let ((channel (object-assoc :shell :type jupyter-channel-ioloop-channels)))
         (with-slots (type socket endpoint) channel
           (ert-info ("Verify the requested channel was started")
             (should (eq type :shell))
@@ -965,34 +966,40 @@
             (should (equal (zmq-socket-get socket zmq-LAST-ENDPOINT) channel-endpoint))
             (ert-info ("Identity of socket matches session")
               (should (equal (zmq-socket-get socket zmq-IDENTITY)
-                             (jupyter-session-id jupyter-ioloop-session)))))
+                             (jupyter-session-id jupyter-channel-ioloop-session)))))
           (ert-info ("Ensure the channel was added to the poller")
-            ;; Raises an error if the socket wasn't added to the poller.
-            (zmq-poller-modify
-             jupyter-ioloop-poller socket (list zmq-POLLIN zmq-POLLOUT))))
+            ;; FIXME: Does it make sense to have this side effect as part of starting
+            ;; a channel? It makes it so that we don't reference any `zmq' functions
+            ;; in `jupyter-channel-ioloop'.
+            (should-error
+             (zmq-poller-add jupyter-ioloop-poller socket (list zmq-POLLIN))
+             :type 'zmq-EINVAL)))
         (ert-info ("Return value to parent process")
           (let ((result (read (buffer-string))))
             (should (equal result `(start-channel :shell)))))))))
 
 (ert-deftest jupyter-channel-ioloop-stop-channel-event ()
   :tags '(ioloop)
-  (with-temp-buffer
-    (let* ((ioloop (jupyter-channel-ioloop))
-           (standard-output (current-buffer))
-           (channel (jupyter-zmq-channel
-                     :type :shell
-                     :endpoint "tcp://127.0.0.1:5555"))
-           (jupyter-ioloop-channels (list channel))
-           (jupyter-ioloop-session (jupyter-session))
-           (jupyter-ioloop-poller (zmq-poller)))
-      (jupyter-start-channel channel :identity (jupyter-session-id jupyter-ioloop-session))
+  (jupyter-test-channel-ioloop
+      (ioloop (jupyter-zmq-channel-ioloop))
+    (setq jupyter-channel-ioloop-session (jupyter-session :key "foo"))
+    (let ((event `(list 'start-channel :shell "tcp://127.0.0.1:5556")))
+      (jupyter-test-ioloop-eval-event ioloop event)
+      (erase-buffer))
+    (let* ((channel (object-assoc :shell :type jupyter-channel-ioloop-channels))
+           (socket (oref channel socket)))
       (ert-info ("Verify the requested channel stops")
         (should (jupyter-channel-alive-p channel))
-        (zmq-poller-add jupyter-ioloop-poller (oref channel socket) zmq-POLLIN)
-        (jupyter-ioloop-test-eval-ioloop ioloop `(list 'stop-channel :shell))
+        (should (progn (zmq-poller-modify
+                        jupyter-ioloop-poller
+                        (oref channel socket) (list zmq-POLLIN zmq-POLLOUT))
+                       t))
+        (jupyter-test-ioloop-eval-event ioloop `(list 'stop-channel :shell))
         (should-not (jupyter-channel-alive-p channel)))
       (ert-info ("Ensure the channel was removed from the poller")
-        (should-error (zmq-poller-modify (oref channel socket) (list zmq-POLLIN zmq-POLLOUT))))
+        (should-error
+         (zmq-poller-modify jupyter-ioloop-poller socket (list zmq-POLLIN))
+         :type 'zmq-EINVAL))
       (ert-info ("Return value to parent process")
         (let ((result (read (buffer-string))))
           (should (equal result `(stop-channel :shell))))))))

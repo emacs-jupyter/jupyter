@@ -2214,7 +2214,10 @@ interactively, DISPLAY the new REPL buffer as well."
   (let ((client (make-instance client-class)))
     ;; FIXME: See note in `jupyter-make-client'
     (require 'jupyter-channel-ioloop-comm)
-    (oset client kcomm (make-instance 'jupyter-channel-ioloop-comm))
+    (require 'jupyter-zmq-channel-ioloop)
+    (oset client kcomm (make-instance
+                        'jupyter-channel-ioloop-comm
+                        :ioloop-class 'jupyter-zmq-channel-ioloop))
     (jupyter-initialize-connection client file-or-plist)
     (jupyter-start-channels client)
     (jupyter-hb-unpause client)

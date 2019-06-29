@@ -32,6 +32,7 @@
 (require 'jupyter-messages)
 (require 'jupyter-client)
 (require 'jupyter-kernelspec)
+(require 'jupyter-channel)
 (eval-when-compile (require 'subr-x))
 
 (declare-function ansi-color-apply "ansi-color" (string))
@@ -334,12 +335,15 @@ connect to MANAGER's kernel."
     (with-slots (kernel) manager
       (prog1 client
         (require 'jupyter-channel-ioloop-comm)
+        (require 'jupyter-zmq-channel-ioloop)
         ;; TODO: We can also have the manager hold the kcomm object and just
         ;; pass a single kcomm object to all clients using this manager since the
         ;; kcomm broadcasts event to all connected clients. This is more
         ;; efficient as it only uses one subprocess for every client connected to
         ;; a kernel.
-        (oset client kcomm (make-instance 'jupyter-channel-ioloop-comm))
+        (oset client kcomm (make-instance
+                            'jupyter-channel-ioloop-comm
+                            :ioloop-class 'jupyter-zmq-channel-ioloop))
         (jupyter-initialize-connection client (oref kernel session))))))
 
 (cl-defmethod jupyter-start-kernel ((manager jupyter-kernel-manager) &rest args)
@@ -362,8 +366,10 @@ connect to MANAGER's kernel."
     (if control-channel (jupyter-start-channel control-channel)
       (cl-destructuring-bind (&key transport ip control_port &allow-other-keys)
           (jupyter-session-conn-info (oref kernel session))
+        (require 'jupyter-zmq-channel)
         (oset manager control-channel
-              (jupyter-zmq-channel
+              (make-instance
+               'jupyter-zmq-channel
                :type :control
                :session (oref kernel session)
                :endpoint (format "%s://%s:%d" transport ip control_port)))
@@ -441,10 +447,7 @@ subprocess."
                   (or timeout jupyter-default-timeout)
                   (message "No interrupt reply from kernel (%s)"
                            (jupyter-kernel-name kernel)))
-               (condition-case nil
-                   (with-slots (session socket) control-channel
-                     (jupyter-recv session socket zmq-DONTWAIT))
-                 (zmq-EAGAIN nil)))))
+               (jupyter-recv control-channel 'dont-wait))))
           (_
            (if (object-of-class-p kernel 'jupyter-kernel-process)
                (interrupt-process (oref kernel process) t)

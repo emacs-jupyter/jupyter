@@ -23,11 +23,29 @@
 
 ;;; Commentary:
 
-;; Implement the `jupyter-comm-layer' interface on-top of a
-;; `jupyter-channel-ioloop'.
+;; Implements the `jupyter-comm-layer' interface on-top of a `jupyter-ioloop'
+;; subclass that implements the `jupyter-channel' interface through events sent
+;; to the ioloop. The `jupyter-ioloop' must implement a start-channel,
+;; stop-channel, and a send event. For the start-channel and stop-channel
+;; events the `jupyter-ioloop' must send back a list like
+;;
+;;     (start-channel :hb) or (stop-channel :shell)
+;;
+;; for confirmation that the corresponding channel was indeed started or
+;; stopped. The start-channel event should accept two arguments, (CHANNEL
+;; ENDPOINT), used to start CHANNEL. The stop-channel event should accept a
+;; single argument, CHANNEL, and stop the channel in the `jupyter-ioloop'
+;; environment.
+;;
+;; Initializing the connection
+;;
+;; The `jupyter-initialize-connection' method should be called before calling
+;; `jupyter-comm-start' and should be passed a `jupyter-session' object used to
+;; initialize the `jupyter-channel-ioloop' object.
 
 ;;; Code:
 
+(require 'jupyter-base)
 (require 'jupyter-ioloop-comm)
 (require 'jupyter-channel-ioloop)
 
@@ -36,14 +54,19 @@
 (defclass jupyter-channel-ioloop-comm (jupyter-ioloop-comm
                                        jupyter-hb-comm
                                        jupyter-comm-autostop)
-  ((session :type jupyter-session)
+  ((ioloop-class :type class :initarg :ioloop-class)
+   (session :type jupyter-session)
    (iopub :type jupyter-proxy-channel)
    (shell :type jupyter-proxy-channel)
    (stdin :type jupyter-proxy-channel)))
 
 (cl-defmethod initialize-instance ((comm jupyter-channel-ioloop-comm) &optional _slots)
   (cl-call-next-method)
-  (oset comm ioloop (jupyter-channel-ioloop)))
+  (unless (slot-boundp comm 'ioloop-class)
+    (oset comm ioloop-class 'jupyter-channel-ioloop))
+  (with-slots (ioloop-class) comm
+    (jupyter-error-if-not-client-class-p ioloop-class 'jupyter-channel-ioloop)
+    (oset comm ioloop (make-instance ioloop-class))))
 
 (cl-defmethod jupyter-comm-id ((comm jupyter-channel-ioloop-comm))
   (format "session=%s" (truncate-string-to-width
