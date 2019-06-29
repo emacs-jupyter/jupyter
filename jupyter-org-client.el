@@ -656,6 +656,14 @@ inserted without modification as the result of a code block."
   (prog1 str
     (put-text-property 0 1 'jupyter-org t str)))
 
+(defun jupyter-org-table-string (str)
+  "Return STR, ensuring that it is flagged as containing an `org' table.
+We need a way to distinguish a table string that is easily
+removed from the code block vs a regular string that will need to
+be wrapped in a drawer. Used in `jupyter-org-babel-result-p'."
+  (prog1 (jupyter-org-raw-string str)
+    (put-text-property 0 1 'org-table t str)))
+
 (defun jupyter-org-comment (value)
   "Return a comment `org-element' with VALUE."
   (list 'comment (list :value value)))
@@ -769,12 +777,7 @@ Otherwise, return VALUE formated as a fixed-width `org-element'."
     value)
    ((and (listp value)
          (jupyter-org-tabulablep value))
-    (let ((table (jupyter-org-raw-string (jupyter-org-table-to-orgtbl value))))
-      (prog1 table
-        ;; We need a way to distinguish a table string that is easily removed
-        ;; from the code block vs a regular string that will need to be
-        ;; wrapped in a drawer. See `jupyter-org--append-result'.
-        (put-text-property 0 1 'org-table t table))))
+    (jupyter-org-table-string (jupyter-org-table-to-orgtbl value)))
    (t
     (list 'fixed-width (list :value (format "%S" value))))))
 
@@ -961,11 +964,13 @@ passed to Jupyter org-mode source blocks."
   ;; TODO: Clickable text to open up a browser
   (jupyter-org-scalar "Widget"))
 
+(defvar org-table-line-regexp)
+
 (cl-defmethod jupyter-org-result ((_mime (eql :text/org)) _params data
                                   &optional _metadata)
-  (when (string-match-p org-table-line-regexp data)
-    (put-text-property 0 1 'org-table t data))
-  (jupyter-org-raw-string data))
+  (if (string-match-p org-table-line-regexp data)
+      (jupyter-org-table-string data)
+    (jupyter-org-raw-string data)))
 
 (cl-defmethod jupyter-org-result ((mime (eql :image/png)) params data
                                   &optional metadata)
