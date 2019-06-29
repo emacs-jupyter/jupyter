@@ -825,6 +825,15 @@
   (should-not (jupyter-line-count-greater-p "\n\n" 2))
   (should-not (jupyter-line-count-greater-p "\n\n" 3)))
 
+(ert-deftest jupyter-available-local-ports ()
+  :tags '(client)
+  (let ((ports (jupyter-available-local-ports 5)))
+    (should (= (length ports) 5))
+    (dolist (p ports) (should (integerp p)))
+    (dolist (proc (process-list))
+      (should-not (string-match-p "jupyter-available-local-ports"
+                                  (process-name proc))))))
+
 ;;; IOloop
 
 (ert-deftest jupyter-ioloop-lifetime ()

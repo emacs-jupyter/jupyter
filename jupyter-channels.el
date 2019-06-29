@@ -32,12 +32,18 @@
 ;; In order for communication to occur on the other channels, one of
 ;; `jupyter-send' or `jupyter-recv' must be called after starting the channel
 ;; with `jupyter-start-channel'.
+;;
+;; Also implemented is a `jupyter-comm-layer' using `jupyter-sync-channel' comm
+;; objects (`jupyter-sync-channel-comm') defined in this file. It is more of a
+;; reference implementation to show how it could be done and required that
+;; Emacs was built with threading support enabled.
 
 ;;; Code:
 
 (eval-when-compile (require 'subr-x))
 (require 'jupyter-base)
-(require 'jupyter-messages)             ; For `jupyter-send'
+(require 'jupyter-comm-layer)
+(require 'zmq)
 (require 'ring)
 
 (defgroup jupyter-channels nil
@@ -53,6 +59,14 @@ back. If the kernel doesn't send a ping back after
 heartbeat channel is called. See `jupyter-hb-on-kernel-dead'."
   :type 'integer
   :group 'jupyter-channels)
+
+(defconst jupyter-socket-types
+  (list :hb zmq-REQ
+        :shell zmq-DEALER
+        :iopub zmq-SUB
+        :stdin zmq-DEALER
+        :control zmq-DEALER)
+  "The socket types for the various channels used by `jupyter'.")
 
 ;;; Basic channel types
 
@@ -127,17 +141,55 @@ If CHANNEL is already stopped, do nothing.")
     (zmq-close (oref channel socket))
     (oset channel socket nil)))
 
-(cl-defmethod jupyter-send ((channel jupyter-sync-channel) type message &optional msg-id)
-  (jupyter-send (oref channel session) (oref channel socket) type message msg-id))
-
-(cl-defmethod jupyter-recv ((channel jupyter-sync-channel))
-  (jupyter-recv (oref channel session) (oref channel socket)))
-
 (cl-defgeneric jupyter-channel-alive-p ((channel jupyter-channel))
   "Determine if a CHANNEL is alive.")
 
 (cl-defmethod jupyter-channel-alive-p ((channel jupyter-sync-channel))
   (not (null (oref channel socket))))
+
+;;; Sending/receiving
+
+(cl-defmethod jupyter-send ((session jupyter-session)
+                            socket
+                            type
+                            message
+                            &optional
+                            msg-id
+                            flags)
+  "For SESSION, send a message on SOCKET.
+TYPE is message type of MESSAGE, one of the keys in
+`jupyter-message-types'. MESSAGE is the message content.
+Optionally supply a MSG-ID to the message, if this is nil a new
+message ID will be generated. FLAGS has the same meaning as in
+`zmq-send'. Return the message ID of the sent message."
+  (declare (indent 1))
+  (cl-destructuring-bind (id . msg)
+      (jupyter-encode-message session type
+        :msg-id msg-id :content message)
+    (prog1 id
+      (zmq-send-multipart socket msg flags))))
+
+(cl-defmethod jupyter-recv ((session jupyter-session) socket &optional flags)
+  "For SESSION, receive a message on SOCKET with FLAGS.
+FLAGS is passed to SOCKET according to `zmq-recv'. Return a cons cell
+
+    (IDENTS . MSG)
+
+where IDENTS are the ZMQ identities associated with MSG and MSG
+is the message property list whose fields can be accessed through
+calls to `jupyter-message-content', `jupyter-message-parent-id',
+and other such functions."
+  (let ((msg (zmq-recv-multipart socket flags)))
+    (when msg
+      (cl-destructuring-bind (idents . parts)
+          (jupyter--split-identities msg)
+        (cons idents (jupyter-decode-message session parts))))))
+
+(cl-defmethod jupyter-send ((channel jupyter-sync-channel) type message &optional msg-id)
+  (jupyter-send (oref channel session) (oref channel socket) type message msg-id))
+
+(cl-defmethod jupyter-recv ((channel jupyter-sync-channel))
+  (jupyter-recv (oref channel session) (oref channel socket)))
 
 ;;; Heartbeat channel
 
@@ -241,6 +293,139 @@ seconds has elapsed without the kernel sending a ping back."
              (when (functionp (oref channel dead-cb))
                (funcall (oref channel dead-cb)))))))
      (jupyter-weak-ref channel))))
+
+;;; `jupyter-channel-comm'
+;; A communication layer using `jupyter-sync-channel' objects for communicating
+;; with a kernel. This communication layer is mainly meant for speed comparison
+;; with the `jupyter-channel-ioloop-comm' layer. It implements communication in
+;; the current Emacs instance and comparing it with the
+;; `jupyter-channel-ioloop-comm' shows how much of a slow down there is when
+;; all the processing of messages happens in the current Emacs instance.
+;;
+;; Running the test suit using `jupyter-channel-comm' vs
+;; `jupyter-channel-ioloop-comm' shows, very roughly, around a 2x speed up
+;; using `jupyter-channel-ioloop-comm'.
+
+;; FIXME: This is needed since the `jupyter-kernel-client' and
+;; `jupyter-channel-ioloop' use keywords whereas you can only access slots
+;; using symbols.
+(defsubst jupyter-comm--channel (c)
+  (cl-case c
+    (:hb 'hb)
+    (:iopub 'iopub)
+    (:shell 'shell)
+    (:stdin 'stdin)))
+
+(defclass jupyter-sync-channel-comm (jupyter-comm-layer
+                                     jupyter-hb-comm
+                                     jupyter-comm-autostop)
+  ((session :type jupyter-session)
+   (iopub :type jupyter-sync-channel)
+   (shell :type jupyter-sync-channel)
+   (stdin :type jupyter-sync-channel)
+   (thread)))
+
+(cl-defmethod initialize-instance ((_comm jupyter-sync-channel-comm) &optional _slots)
+  (unless (functionp 'make-thread)
+    (error "Need threading support"))
+  (cl-call-next-method))
+
+(cl-defmethod jupyter-comm-id ((comm jupyter-sync-channel-comm))
+  (format "session=%s" (truncate-string-to-width
+                        (jupyter-session-id (oref comm session))
+                        9 nil nil "…")))
+
+(defun jupyter-sync-channel-comm--check (comm)
+  (condition-case err
+      (cl-loop
+       for channel-type in '(:iopub :shell :stdin)
+       for channel = (slot-value comm (jupyter-comm--channel channel-type))
+       for msg = (and (jupyter-channel-alive-p channel)
+                      (with-slots (session socket) channel
+                        (condition-case nil
+                            (jupyter-recv session socket zmq-DONTWAIT)
+                          ((zmq-EINTR zmq-EAGAIN) nil))))
+       when msg do (jupyter-event-handler
+                    comm (cl-list* 'message channel-type msg)))
+    (error
+     (thread-signal (car (all-threads)) (car err)
+                    (cons 'jupyter-sync-channel-comm--check (cdr err)))
+     (signal (car err) (cdr err)))))
+
+(cl-defmethod jupyter-comm-start ((comm jupyter-sync-channel-comm))
+  (cl-loop
+   for channel in '(hb shell iopub stdin)
+   do (jupyter-start-channel (slot-value comm channel)))
+  (oset comm thread
+        (make-thread
+         (let ((comm-ref (jupyter-weak-ref comm)))
+           (lambda ()
+             (while (when-let* ((comm (jupyter-weak-ref-resolve comm-ref)))
+                      (prog1 comm
+                        (jupyter-sync-channel-comm--check comm)))
+               (thread-yield)
+               (thread-yield)))))))
+
+(cl-defmethod jupyter-comm-stop ((comm jupyter-sync-channel-comm))
+  (when (and (slot-boundp comm 'thread)
+             (thread-alive-p (oref comm thread)))
+    (thread-signal (oref comm thread) 'quit nil)
+    (slot-makeunbound comm 'thread))
+  (cl-loop
+   for channel in '(hb shell iopub stdin)
+   do (jupyter-stop-channel (slot-value comm channel))))
+
+(cl-defmethod jupyter-comm-alive-p ((comm jupyter-sync-channel-comm))
+  (jupyter-channels-running-p comm))
+
+(cl-defmethod jupyter-channel-alive-p ((comm jupyter-sync-channel-comm) channel)
+  (and (slot-boundp comm (jupyter-comm--channel channel))
+       (jupyter-channel-alive-p (slot-value comm (jupyter-comm--channel channel)))))
+
+(cl-defmethod jupyter-channels-running-p ((comm jupyter-sync-channel-comm))
+  (cl-loop
+   for channel in '(:shell :iopub :stdin :hb)
+   thereis (jupyter-channel-alive-p comm channel)))
+
+;;;; Channel start/stop methods
+
+(cl-defmethod jupyter-stop-channel ((comm jupyter-sync-channel-comm) channel)
+  (when (jupyter-channel-alive-p comm channel)
+    (jupyter-stop-channel
+     (slot-value comm (jupyter-comm--channel channel)))))
+
+(cl-defmethod jupyter-start-channel ((comm jupyter-sync-channel-comm) channel)
+  (unless (jupyter-channel-alive-p comm channel)
+    (jupyter-start-channel
+     (slot-value comm (jupyter-comm--channel channel)))))
+
+(cl-defmethod jupyter-initialize-connection ((comm jupyter-sync-channel-comm)
+                                             (session jupyter-session))
+  (cl-call-next-method)
+  (let ((endpoints (jupyter-session-endpoints session)))
+    (oset comm session (copy-sequence session))
+    (oset comm hb (make-instance
+                   'jupyter-hb-channel
+                   :session (oref comm session)
+                   :endpoint (plist-get endpoints :hb)))
+    (cl-loop
+     for channel in `(:stdin :shell :iopub)
+     do (setf (slot-value comm (jupyter-comm--channel channel))
+              (jupyter-sync-channel
+               :type channel
+               :session (oref comm session)
+               :endpoint (plist-get endpoints channel))))))
+
+(cl-defmethod jupyter-send ((comm jupyter-sync-channel-comm)
+                            _ channel-type msg-type msg msg-id)
+  (let ((channel (slot-value comm (jupyter-comm--channel channel-type))))
+    ;; Run the event handler on the next command loop since the expectation is
+    ;; the client is that sending is asynchronous. There may be some code that
+    ;; makes assumptions based on this.
+    (run-at-time
+     0 nil (lambda (id)
+             (jupyter-event-handler comm (list 'sent channel-type id)))
+     (jupyter-send channel msg-type msg msg-id))))
 
 (provide 'jupyter-channels)
 

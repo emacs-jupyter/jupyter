@@ -30,7 +30,7 @@
 (require 'zmq)
 (require 'jupyter-client)
 (require 'jupyter-repl)
-(require 'jupyter-comm-layer)
+(require 'jupyter-channel-ioloop-comm)
 (require 'jupyter-org-client)
 (require 'jupyter-kernel-manager)
 (require 'cl-lib)

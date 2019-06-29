@@ -34,7 +34,6 @@
 (require 'eieio)
 (require 'eieio-base)
 (require 'json)
-(require 'zmq)
 
 (declare-function tramp-dissect-file-name "tramp" (name &optional nodefault))
 (declare-function tramp-file-name-user "tramp")
@@ -70,14 +69,6 @@ messages consider this variable."
 
 (defconst jupyter-protocol-version "5.3"
   "The jupyter protocol version that is implemented.")
-
-(defconst jupyter-socket-types
-  (list :hb zmq-REQ
-        :shell zmq-DEALER
-        :iopub zmq-SUB
-        :stdin zmq-DEALER
-        :control zmq-DEALER)
-  "The socket types for the various channels used by `jupyter'.")
 
 (defconst jupyter-message-types
   (list :execute-result "execute_result"
@@ -400,8 +391,7 @@ fields:
 - CONN-INFO :: The connection info. property list of the kernel
   this session is used to sign messages for.
 
-- ID :: A string of bytes used as the `zmq-ROUTING-ID' for every
-  `jupyter-channel' that utilizes the session object.
+- ID :: A string of bytes that uniquely identifies this session.
 
 - KEY :: The key used when signing messages. If KEY is nil,
   message signing is not performed."
@@ -469,6 +459,37 @@ following fields:
 
 (eval-when-compile (require 'tramp))
 
+(defun jupyter-available-local-ports (n)
+  "Return a list of N ports available on the localhost."
+  (let (servers)
+    (unwind-protect
+        (cl-loop
+         repeat n
+         do (push (make-network-process
+                   :name "jupyter-available-local-ports"
+                   :server t
+                   :host "127.0.0.1"
+                   :service t)
+                  servers)
+         finally return (mapcar (lambda (p) (cadr (process-contact p))) servers))
+      (mapc #'delete-process servers))))
+
+(defun jupyter-make-ssh-tunnel (lport rport server remoteip)
+  (or remoteip (setq remoteip "127.0.0.1"))
+  (start-process
+   "jupyter-ssh-tunnel" nil
+   "ssh"
+   ;; Run in background
+   "-f"
+   ;; Wait until the tunnel is open
+   "-o ExitOnForwardFailure=yes"
+   ;; Local forward
+   "-L" (format "127.0.0.1:%d:%s:%d" lport remoteip rport)
+   server
+   ;; Close the tunnel if no other connections are made within 60
+   ;; seconds
+   "sleep 60"))
+
 (defun jupyter-tunnel-connection (conn-file &optional server)
   "Forward local ports to the remote ports in CONN-FILE.
 CONN-FILE is the path to a Jupyter connection file, SERVER is the
@@ -480,7 +501,7 @@ If CONN-FILE is a `tramp' file name, the SERVER argument will be
 ignored and the host will be extracted from the information
 contained in the file name.
 
-Note that `zmq-make-tunnel' is used to create the tunnels."
+Note only SSH tunnels are currently supported."
   (catch 'no-tunnels
     (let ((conn-info (jupyter-read-plist conn-file)))
       (when (and (file-remote-p conn-file)
@@ -498,20 +519,17 @@ Note that `zmq-make-tunnel' is used to create the tunnels."
             (_
              (setq server (if user (concat user "@" host)
                             host))))))
-      (let ((sock (zmq-socket (zmq-current-context) zmq-REP)))
-        (unwind-protect
-            (cl-loop
-             with remoteip = (plist-get conn-info :ip)
-             for (key maybe-rport) on conn-info by #'cddr
-             collect key and if (memq key '(:hb_port :shell_port :control_port
-                                                     :stdin_port :iopub_port))
-             collect (let ((lport (zmq-bind-to-random-port sock "tcp://127.0.0.1")))
-                       (zmq-unbind sock (zmq-socket-get sock zmq-LAST-ENDPOINT))
-                       (prog1 lport
-                         (zmq-make-tunnel lport maybe-rport server remoteip)))
-             else collect maybe-rport)
-          (zmq-socket-set sock zmq-LINGER 0)
-          (zmq-close sock))))))
+      (let* ((keys '(:hb_port :shell_port :control_port
+                              :stdin_port :iopub_port))
+             (lports (jupyter-available-local-ports (length keys))))
+        (cl-loop
+         with remoteip = (plist-get conn-info :ip)
+         for (key maybe-rport) on conn-info by #'cddr
+         collect key and if (memq key keys)
+         collect (let ((lport (pop lports)))
+                   (prog1 lport
+                     (jupyter-make-ssh-tunnel lport maybe-rport server remoteip)))
+         else collect maybe-rport)))))
 
 ;;; Helper functions
 

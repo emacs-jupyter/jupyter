@@ -53,6 +53,7 @@
 ;;; Code:
 
 (require 'jupyter-base)
+(require 'zmq)
 (eval-when-compile (require 'subr-x))
 
 (defvar jupyter-ioloop-poller nil

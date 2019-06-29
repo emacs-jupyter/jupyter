@@ -324,6 +324,7 @@ SLOTS are the slots used to initialize the client with.")
     (prog1 client
       (oset client manager manager))))
 
+;; FIXME: Do not hard-code the communication layer
 (cl-defmethod jupyter-make-client ((manager jupyter-kernel-manager) _class &rest _slots)
   "Make a new client from CLASS connected to MANAGER's kernel.
 CLASS should be a subclass of `jupyter-kernel-client', a new
@@ -332,12 +333,13 @@ connect to MANAGER's kernel."
   (let ((client (cl-call-next-method)))
     (with-slots (kernel) manager
       (prog1 client
+        (require 'jupyter-channel-ioloop-comm)
         ;; TODO: We can also have the manager hold the kcomm object and just
         ;; pass a single kcomm object to all clients using this manager since the
         ;; kcomm broadcasts event to all connected clients. This is more
         ;; efficient as it only uses one subprocess for every client connected to
         ;; a kernel.
-        (oset client kcomm (jupyter-channel-ioloop-comm))
+        (oset client kcomm (make-instance 'jupyter-channel-ioloop-comm))
         (jupyter-initialize-connection client (oref kernel session))))))
 
 (cl-defmethod jupyter-start-kernel ((manager jupyter-kernel-manager) &rest args)

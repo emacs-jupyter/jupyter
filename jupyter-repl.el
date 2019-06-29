@@ -2212,7 +2212,9 @@ interactively, DISPLAY the new REPL buffer as well."
   (or client-class (setq client-class 'jupyter-repl-client))
   (jupyter-error-if-not-client-class-p client-class 'jupyter-repl-client)
   (let ((client (make-instance client-class)))
-    (oset client kcomm (jupyter-channel-ioloop-comm))
+    ;; FIXME: See note in `jupyter-make-client'
+    (require 'jupyter-channel-ioloop-comm)
+    (oset client kcomm (make-instance 'jupyter-channel-ioloop-comm))
     (jupyter-initialize-connection client file-or-plist)
     (jupyter-start-channels client)
     (jupyter-hb-unpause client)
