@@ -28,7 +28,7 @@ An interface to communicate with Jupyter kernels in Emacs.
   - [[#jupyter-widget-client][=jupyter-widget-client=]]
   - [[#jupyter-repl-client][=jupyter-repl-client=]]
   - [[#jupyter-ioloop][=jupyter-ioloop=]]
-  - [[#jupyter-channel-ioloop][=jupyter-channel-ioloop=]]
+  - [[#jupyter-zmq-channel-ioloop][=jupyter-zmq-channel-ioloop=]]
   - [[#jupyter-comm-layer][=jupyter-comm-layer=]]
   - [[#callbacks-and-hooks][Callbacks and hooks]]
   - [[#waiting-for-messages][Waiting for messages]]
@@ -677,7 +677,7 @@ Methods that require a message type as an argument such as
      using =jupyter-ioloop-add-event= can potentially send an event back to the
      parent process. In the parent, events are handled by extending the
      =jupyter-ioloop-handler= method.
-- =jupyter-channel-ioloop= :: A subclass of =jupyter-ioloop= configured to
+- =jupyter-zmq-channel-ioloop= :: A subclass of =jupyter-ioloop= configured to
      start a subprocess that handles messages being passed on Jupyter channels
      between a kernel and the parent Emacs process. This is what
      =jupyter-kernel-client= uses to communicate with a kernel.
@@ -701,7 +701,7 @@ Once a connection is initialized, messages can be sent to the kernel using the
 =jupyter-send-<msg-type>= family of methods, where =<msg-type>= is any valid
 request message type (see =jupyter-message-types=). These methods
 asynchronously send a message to the kernel using a subprocess associated with
-each client, see help:jupyter-channel-ioloop, and they each return a
+each client, see help:jupyter-zmq-channel-ioloop, and they each return a
 =jupyter-request= object which encapsulates the information necessary for
 handling reply messages associated with the request in the future.
 **** Receiving messages
@@ -1038,6 +1038,7 @@ interact with an [[https://github.com/jupyter-widgets/ipyleaflet][ipyleaflet]] m
 ** TODO =jupyter-repl-client=
 ** TODO =jupyter-ioloop=
 ** TODO =jupyter-channel-ioloop=
+** TODO =jupyter-zmq-channel-ioloop=
 ** TODO =jupyter-comm-layer=
 ** Callbacks and hooks
 :PROPERTIES:
