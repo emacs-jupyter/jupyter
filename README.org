@@ -263,7 +263,7 @@ You can navigate through the REPL history using =C-n= and =C-p= or =M-n= and
 You can also search through the history using =isearch=. To search through
 history, use the standard =isearch= keybindings: =C-s= to search forward
 through history and =C-s C-r= to search backward.
-*** Associating other buffers with a REPL
+*** Associating other buffers with a REPL (=jupyter-repl-interaction-mode=)
 :PROPERTIES:
 :ID:       DA597E05-E9A9-4DCE-BBD7-6D25238638C5
 :END:
@@ -278,16 +278,17 @@ associate with the =current-buffer= and enable the minor mode
 =jupyter-repl-interaction-mode=. This minor mode populates the following
 keybindings for interacting with the REPL:
 
-| Key binding | Command                            |
-|-------------+------------------------------------|
-| =C-M-x=     | =jupyter-eval-defun=               |
-| =M-i=       | =jupyter-inspect-at-point=         |
-| =C-c C-b=   | =jupyter-eval-buffer=              |
-| =C-c C-c=   | =jupyter-eval-line-or-region=      |
-| =C-c C-i=   | =jupyter-repl-interrupt-kernel=    |
-| =C-c C-r=   | =jupyter-repl-restart-kernel=      |
-| =C-c C-s=   | =jupyter-repl-scratch-buffer=      |
-| =C-c M-:=   | =jupyter-eval-string=              |
+| Key binding | Command                       |
+|-------------+-------------------------------|
+| =C-M-x=       | =jupyter-eval-defun=            |
+| =M-i=         | =jupyter-inspect-at-point=      |
+| =C-c C-b=     | =jupyter-eval-buffer=           |
+| =C-c C-c=     | =jupyter-eval-line-or-region=   |
+| =C-c C-i=     | =jupyter-repl-interrupt-kernel= |
+| =C-c C-r=     | =jupyter-repl-restart-kernel=   |
+| =C-c C-s=     | =jupyter-repl-scratch-buffer=   |
+| =C-c C-o=     | =jupyter-eval-remove-overlays=  |
+| =C-c M-:=     | =jupyter-eval-string=           |
 
 **** Integration with =emacsclient=
 
@@ -751,6 +752,28 @@ authentication you can change this variable to avoid being asked on every new
 connection.
 
 ** Customizable variables available for all frontends
+
+*** =jupyter-eval-use-overlays=
+
+The variable =jupyter-eval-use-overlays= controls whether or not the results of
+evaluations, e.g. results obtained by pressing =C-c C-c=
+(=jupyter-eval-line-or-region=) or similar, should be displayed as overlays in
+the current buffer. If non-nil, then the results of evaluation are displayed
+at the end of the line or region being evaluated using an overlay. Only
+the =text/plain= representation of a result is displayed inline, images and
+non-text results are still displayed in pop-up buffers.
+
+You can control how the overlay looks by modifying the =jupyter-eval-overlay=
+face. You can also change the prefix string added before the evaluation result,
+see =jupyter-eval-overlay-prefix=.
+
+All evaluation result overlays can be cleared from the buffer by
+calling =jupyter-eval-remove-overlays= (=C-c C-o=). Individual overlays are removed
+whenever the text in the region that was evaluated is modified.
+
+For multi-line overlays you can fold/unfold the overlay by pressing =S-RET=
+when =point= is inside the region of code that caused the overlay to be created.
+See =jupyter-eval-overlay-keymap=.
 
 *** =jupyter-eval-short-result-max-lines=
 

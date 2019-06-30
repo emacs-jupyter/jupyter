@@ -1490,29 +1490,32 @@ value."
       (prog1 ex
         (jupyter-repl-history-add ex)))))
 
-(cl-defmethod jupyter-eval-string (str
-                                   &context (jupyter-current-client jupyter-repl-client)
-                                   &optional cb)
-  (jupyter-with-repl-buffer jupyter-current-client
-    (when jupyter-repl-echo-eval-p
-      (goto-char (point-max))
-      (jupyter-repl-replace-cell-code str)
-      (setq str nil))
-    (let* ((jupyter-inhibit-handlers
-            ;; When copying the input to the REPL we need the handlers to
-            ;; update the REPL state
-            (unless jupyter-repl-echo-eval-p
-              '(not :input-request)))
-           (req (jupyter-send-execute-request jupyter-current-client
-                  :code str
-                  :store-history jupyter-repl-echo-eval-p)))
-      (prog1 req
-        ;; Add callbacks to display evaluation output in pop-up buffers either
-        ;; when we aren't copying the input to a REPL cell or, if we are, when
-        ;; the REPL buffer isn't visible
-        (unless (and jupyter-repl-echo-eval-p
-                     (get-buffer-window nil 'visible))
-          (jupyter-eval-add-callbacks req cb))))))
+(cl-defmethod jupyter-eval-string (str &context (jupyter-current-client jupyter-repl-client)
+                                       &optional beg end)
+  (let (req)
+    (jupyter-with-repl-buffer jupyter-current-client
+      (when jupyter-repl-echo-eval-p
+        (goto-char (point-max))
+        (jupyter-repl-replace-cell-code str)
+        (setq str nil))
+      (let* ((jupyter-inhibit-handlers
+              ;; When copying the input to the REPL we need the handlers to
+              ;; update the REPL state
+              (unless jupyter-repl-echo-eval-p
+                '(not :input-request))))
+        (setq req (jupyter-send-execute-request jupyter-current-client
+                    :code str
+                    :store-history jupyter-repl-echo-eval-p))))
+    ;; Add callbacks to display evaluation output in pop-up buffers either when
+    ;; we aren't copying the input to a REPL cell or, if we are, when the REPL
+    ;; buffer isn't visible.
+    ;;
+    ;; Make sure we do this in the original buffer where STR originated from
+    ;; when BEG and END are non-nil.
+    (prog1 req
+      (unless (and jupyter-repl-echo-eval-p
+                   (get-buffer-window nil 'visible))
+        (jupyter-eval-add-callbacks req beg end)))))
 
 ;;; Kernel management
 
@@ -1921,6 +1924,7 @@ the updated state."
     (define-key map (kbd "C-x C-e") #'jupyter-eval-line-or-region)
     (define-key map (kbd "C-c C-c") #'jupyter-eval-line-or-region)
     (define-key map (kbd "C-M-x") #'jupyter-eval-defun)
+    (define-key map (kbd "C-c C-o") #'jupyter-eval-remove-overlays)
     (define-key map (kbd "C-c C-s") #'jupyter-repl-scratch-buffer)
     (define-key map (kbd "C-c C-b") #'jupyter-eval-buffer)
     (define-key map (kbd "C-c C-l") #'jupyter-load-file)
