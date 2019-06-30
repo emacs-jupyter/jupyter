@@ -37,6 +37,28 @@
 (require 'jupyter-mime)
 (require 'jupyter-messages)
 
+(defface jupyter-eval-overlay
+  '((((class color) (min-colors 88) (background light))
+     :foreground "navy"
+     :weight bold)
+    (((class color) (min-colors 88) (background dark))
+     :foreground "dodger blue"
+     :weight bold))
+  "Face used for the input prompt."
+  :group 'jupyter-client)
+
+(defcustom jupyter-eval-use-overlays nil
+  "Display evaluation results as overlays in the `current-buffer'.
+If this variable is non-nil, evaluation results are displayed as
+overlays at the end of the line if possible."
+  :group 'jupyter-client
+  :type 'boolean)
+
+(defcustom jupyter-eval-overlay-prefix "=>"
+  "Evaluation result overlays will be prefixed with this string."
+  :group 'jupyter-client
+  :type 'string)
+
 (defcustom jupyter-eval-short-result-display-function
   (lambda (result) (message "%s" result))
   "Function for displaying short evaluation results.
@@ -963,30 +985,6 @@ Methods that extend this generic function should
         (jupyter-set client 'jupyter-eval-expression-history
                      jupyter--read-expression-history)))))
 
-(defun jupyter--display-eval-result (msg)
-  (jupyter-with-message-data msg
-      ((res text/plain)
-       ;; Prefer to display the markdown representation if available. The
-       ;; IJulia kernel will return both plain text and markdown.
-       (md text/markdown))
-    (let ((jupyter-pop-up-frame (jupyter-pop-up-frame-p :execute-result)))
-      (cond
-       ((or md (null res))
-        (jupyter-with-display-buffer "result" 'reset
-          (jupyter-with-message-content msg (data metadata)
-            (jupyter-insert data metadata))
-          (goto-char (point-min))
-          (jupyter-display-current-buffer-reuse-window)))
-       (res
-        (setq res (ansi-color-apply res))
-        (if (jupyter-line-count-greater-p res jupyter-eval-short-result-max-lines)
-            (jupyter-with-display-buffer "result" 'reset
-              (insert res)
-              (goto-char (point-min))
-              (jupyter-display-current-buffer-reuse-window))
-          (funcall jupyter-eval-short-result-display-function
-                   (format "%s" res))))))))
-
 (defun jupyter-eval (code &optional mime)
   "Send an execute request for CODE, wait for the execute result.
 The `jupyter-current-client' is used to send the execute request.
@@ -995,12 +993,8 @@ the history of the request is not stored. Return the MIME
 representation of the result. If MIME is nil, return the
 text/plain representation."
   (interactive (list (jupyter-read-expression) nil))
-  (cl-check-type jupyter-current-client jupyter-kernel-client
-                 "Need a client to evaluate code")
   (let ((msg (jupyter-wait-until-received :execute-result
-               (let* ((jupyter-inhibit-handlers t)
-                      (req (jupyter-send-execute-request jupyter-current-client
-                             :code code :store-history nil)))
+               (let ((req (jupyter-eval-string code)))
                  (prog1 req
                    (jupyter-add-callback req
                      :execute-reply
@@ -1010,103 +1004,178 @@ text/plain representation."
     (when msg
       (jupyter-message-data msg (or mime :text/plain)))))
 
-(defun jupyter-eval-add-callbacks (req &optional result-cb)
+(defun jupyter-eval-result-callbacks (req beg end)
+  "Return a plist containing callbacks used to display evaluation results.
+The plist contains default callbacks for the :execute-reply,
+:execute-result, and :display-data messages that may be used for
+the messages received in response to REQ.
+
+BEG and END are positions in the current buffer marking the
+region of code evaluated.
+
+The callbacks are designed to either display evaluation results
+using overlays in the current buffer over the region between BEG
+and END or in pop-up buffers/frames. See
+`jupyter-eval-use-overlays'."
+  (let ((buffer (current-buffer))
+        (use-overlays-p (and beg end (jupyter-eval-display-with-overlay-p))))
+    (when use-overlays-p
+      ;; NOTE: It would make sense to set these markers to nil, e.g. at the end
+      ;; of the execute-result or idle messages, but there is no guarantee on
+      ;; message order so it may be the case that those message types are
+      ;; received before the callbacks that use these markers have fired.
+      ;;
+      ;; TODO: Do something with finalizers?
+      (setq beg (set-marker (make-marker) beg))
+      (setq end (set-marker (make-marker) end)))
+    (let ((display-overlay
+           (if use-overlays-p
+               (lambda (val)
+                 (when (buffer-live-p buffer)
+                   (prog1 t
+                     (with-current-buffer buffer
+                       (jupyter-eval-display-overlay beg end val)))))
+             #'ignore))
+          had-result)
+      (list
+       :execute-reply
+       (jupyter-message-lambda (status ename evalue)
+         (cond
+          ((equal status "ok")
+           (unless had-result
+             (unless (funcall display-overlay "✔")
+               (message "jupyter: eval done"))))
+          (t
+           (setq ename (ansi-color-apply ename))
+           (setq evalue (ansi-color-apply evalue))
+           (unless
+               ;; Happens in IJulia
+               (> (+ (length ename) (length evalue)) 250)
+             (if (string-prefix-p ename evalue)
+                 ;; Also happens in IJulia
+                 (message evalue)
+               (message "%s: %s" ename evalue))))))
+       :execute-result
+       (lambda (msg)
+         (setq had-result t)
+         (jupyter-with-message-data msg
+             ((res text/plain)
+              ;; Prefer to display the markdown representation if available. The
+              ;; IJulia kernel will return both plain text and markdown.
+              (md text/markdown))
+           (let ((jupyter-pop-up-frame (jupyter-pop-up-frame-p :execute-result)))
+             (cond
+              ((or md (null res))
+               (jupyter-with-display-buffer "result" 'reset
+                 (jupyter-with-message-content msg (data metadata)
+                   (jupyter-insert data metadata))
+                 (goto-char (point-min))
+                 (jupyter-display-current-buffer-reuse-window)))
+              (res
+               (setq res (ansi-color-apply res))
+               (cond
+                ((funcall display-overlay res))
+                ((jupyter-line-count-greater-p
+                  res jupyter-eval-short-result-max-lines)
+                 (jupyter-with-display-buffer "result" 'reset
+                   (insert res)
+                   (goto-char (point-min))
+                   (jupyter-display-current-buffer-reuse-window)))
+                (t
+                 (funcall jupyter-eval-short-result-display-function
+                          (format "%s" res)))))))))
+       :display-data
+       (jupyter-message-lambda (data metadata)
+         (setq had-result t)
+         (jupyter-with-display-buffer "display" req
+           (jupyter-insert data metadata)
+           ;; Don't pop-up the display when it's empty (e.g. jupyter-R
+           ;; will open some HTML results in an external browser)
+           (when (and (/= (point-min) (point-max)))
+             (jupyter-display-current-buffer-guess-where :display-data)))
+         ;; TODO: Also inline images?
+         (funcall display-overlay "✔"))))))
+
+(defun jupyter-eval-add-callbacks (req &optional beg end)
   "Add evaluation callbacks for REQ.
+
 The callbacks are designed to handle the various message types
-that can be generated by an execute-request by displaying their
-content in buffers.
+that can be generated by an execute-request to, e.g. display the
+results of evaluation in a popup buffer or indicate that an error
+occurred during evaluation.
 
-If RESULT-CB is non-nil, it is a callback function that will be
-passed the `:execute-result' message of REQ. When RESULT-CB is
-nil, the callback for the `:execute-result' message will display
-the text/plain representation of the result while obeying
-`jupyter-eval-short-result-max-lines'."
-  (let (had-result)
-    (jupyter-add-callback req
-      :execute-reply
-      (jupyter-message-lambda (status ename evalue)
-        (if (equal status "ok")
-            (unless had-result
-              (message "jupyter: eval done"))
-          (setq ename (ansi-color-apply ename))
-          (setq evalue (ansi-color-apply evalue))
-          (unless
-              ;; Happens in IJulia
-              (> (+ (length ename) (length evalue)) 250)
-            (if (string-prefix-p ename evalue)
-                ;; Also happens in IJulia
-                (message evalue)
-              (message "%s: %s" ename evalue)))))
-      :execute-result
-      (or (and (functionp result-cb) result-cb)
-          (lambda (msg)
-            (setq had-result t)
-            (jupyter--display-eval-result msg)))
-      :display-data
-      (jupyter-message-lambda (data metadata)
-        (setq had-result t)
-        (jupyter-with-display-buffer "display" req
-          (jupyter-insert data metadata)
-          ;; Don't pop-up the display when it's empty (e.g. jupyter-R
-          ;; will open some HTML results in an external browser)
-          (when (/= (point-min) (point-max))
-            (jupyter-display-current-buffer-guess-where :display-data))))
-      :error
-      (jupyter-message-lambda (traceback)
-        ;; FIXME: Assumes the error in the
-        ;; execute-reply is good enough
-        (when (> (apply #'+ (mapcar #'length traceback)) 250)
-          (jupyter-display-traceback traceback)))
-      :stream
-      (jupyter-message-lambda (name text)
-        (jupyter-with-display-buffer (pcase name
-                                       ("stderr" "error")
-                                       (_ "output"))
-            req
-          (jupyter-insert-ansi-coded-text text)
-          (jupyter-display-current-buffer-guess-where :stream))))))
+The message types that will have callbacks added are
+:execute-reply, :execute-result, :display-data, :error, :stream.
 
-(cl-defgeneric jupyter-eval-string (str &optional cb)
+BEG and END are positions that mark the region of the current
+buffer corresponding to the evaluated code.
+
+See `jupyter-eval-short-result-max-lines' and
+`jupyter-eval-use-overlays'."
+  (let* ((eval-callbacks (jupyter-eval-result-callbacks req beg end)))
+    (apply
+     #'jupyter-add-callback req
+     (nconc
+      eval-callbacks
+      (list
+       :error
+       (jupyter-message-lambda (traceback)
+         ;; FIXME: Assumes the error in the
+         ;; execute-reply is good enough
+         (when (> (apply #'+ (mapcar #'length traceback)) 250)
+           (jupyter-display-traceback traceback)))
+       :stream
+       (jupyter-message-lambda (name text)
+         (jupyter-with-display-buffer (pcase name
+                                        ("stderr" "error")
+                                        (_ "output"))
+             req
+           (jupyter-insert-ansi-coded-text text)
+           (jupyter-display-current-buffer-guess-where :stream))))))
+    req))
+
+(cl-defgeneric jupyter-eval-string (str &optional beg end)
   "Evaluate STR using the `jupyter-current-client'.
 Return the `jupyter-request' object for the evaluation.
 
-CB is a function to call with the `:execute-result' message when
-the evaluation is successful. If nil, behavior is dependent on
-the particular method.")
+If BEG and END are non-nil they correspond to the region of the
+current buffer that STR was extracted from.")
 
-(cl-defmethod jupyter-eval-string (str &optional cb)
-  "Evaluate STR using the `jupyter-current-client'.
-Callbacks are added to the returned `jupyter-request' object
-using `jupyter-eval-add-callbacks', passing CB as the second
-argument."
+(cl-defmethod jupyter-eval-string (str &optional beg end)
+  "Evaluate STR using the `jupyter-current-client'."
   (cl-check-type jupyter-current-client jupyter-kernel-client
                  "Not a valid client")
-  (let* ((jupyter-inhibit-handlers '(not :input-request))
-         (req (jupyter-send-execute-request jupyter-current-client
-                :code str :store-history nil)))
+  (let ((jupyter-inhibit-handlers '(not :input-request))
+        (req (jupyter-send-execute-request jupyter-current-client
+               :code str :store-history nil)))
     (prog1 req
-      (jupyter-eval-add-callbacks req cb))))
+      (jupyter-eval-add-callbacks req beg end))))
 
-(defun jupyter-eval-string-command (str &optional cb)
+(defun jupyter-eval-string-command (str)
   "Evaluate STR using the `jupyter-current-client'.
 If the result of evaluation is more than
-`jupyter-eval-short-result-max-lines' long, a buffer
-displaying the results is shown. For less lines, the result is
-displayed with `jupyter-eval-short-result-display-function'.
+`jupyter-eval-short-result-max-lines' long, a buffer displaying
+the results is shown. For less lines, the result is displayed
+with `jupyter-eval-short-result-display-function'.
 
-CB is a function to call with the `:execute-result' message when
-the evaluation is successful. When CB is nil, its behavior
-defaults to the above explanation."
+If `jupyter-eval-use-overlays' is non-nil, evaluation results
+are displayed in the current buffer instead."
   (interactive (list (jupyter-read-expression) nil))
-  (jupyter-eval-string str cb))
+  (jupyter-eval-string str))
 
-(defun jupyter-eval-region (beg end &optional cb)
+(defun jupyter-eval-region (beg end)
   "Evaluate a region with the `jupyter-current-client'.
 BEG and END are the beginning and end of the region to evaluate.
-CB has the same meaning as in `jupyter-eval-string'. CB is
-ignored when called interactively."
+
+If the result of evaluation is more than
+`jupyter-eval-short-result-max-lines' long, a buffer displaying
+the results is shown. For less lines, the result is displayed
+with `jupyter-eval-short-result-display-function'.
+
+If `jupyter-eval-use-overlays' is non-nil, evaluation results
+are displayed in the current buffer instead."
   (interactive "r")
-  (jupyter-eval-string (buffer-substring-no-properties beg end) cb))
+  (jupyter-eval-string (buffer-substring-no-properties beg end) beg end))
 
 (defun jupyter-eval-line-or-region (insert)
   "Evaluate the current line or region with the `jupyter-current-client'.
@@ -1116,29 +1185,31 @@ If the current region is active send it using
 With a prefix argument, evaluate and INSERT the text/plain
 representation of the results in the current buffer."
   (interactive "P")
-  (let ((region (when (use-region-p)
-                  (car (region-bounds)))))
-    (funcall #'jupyter-eval-region
-             (or (car region) (line-beginning-position))
-             (or (cdr region) (line-end-position))
-             (when insert
-               (let ((pos (point-marker)))
-                 (jupyter-message-lambda ((res text/plain))
-                   (when res
-                     (setq res (ansi-color-apply res))
-                     (with-current-buffer (marker-buffer pos)
-                       (save-excursion
-                         (cond
-                          (region
-                           (goto-char (car region))
-                           (delete-region (car region) (cdr region)))
-                          (t
-                           (goto-char pos)
-                           (end-of-line)
-                           (insert "\n")))
-                         (set-marker pos nil)
-                         (insert res)
-                         (when region (push-mark)))))))))))
+  (let* ((region (when (use-region-p)
+                   (car (region-bounds))))
+         (req (jupyter-eval-region
+               (or (car region) (line-beginning-position))
+               (or (cdr region) (line-end-position)))))
+    (prog1 req
+      (when insert
+        (setf (alist-get :execute-result (jupyter-request-callbacks req))
+              (let ((pos (point-marker)))
+                (jupyter-message-lambda ((res text/plain))
+                  (when res
+                    (setq res (ansi-color-apply res))
+                    (with-current-buffer (marker-buffer pos)
+                      (save-excursion
+                        (cond
+                         (region
+                          (goto-char (car region))
+                          (delete-region (car region) (cdr region)))
+                         (t
+                          (goto-char pos)
+                          (end-of-line)
+                          (insert "\n")))
+                        (set-marker pos nil)
+                        (insert res)
+                        (when region (push-mark))))))))))))
 
 (defun jupyter-load-file (file)
   "Send the contents of FILE using `jupyter-current-client'."
@@ -1163,6 +1234,131 @@ representation of the results in the current buffer."
   (when-let* ((bounds (bounds-of-thing-at-point 'defun)))
     (cl-destructuring-bind (beg . end) bounds
       (jupyter-eval-region beg end))))
+
+;;;;;; Evaluation overlays
+
+(defvar jupyter-eval-overlay-keymap
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "S-RET") 'jupyter-eval-toggle-overlay)
+    (define-key map (kbd "S-<return>") 'jupyter-eval-toggle-overlay)
+    map))
+
+(defun jupyter-eval-ov--delete (ov &rest _)
+  (delete-overlay ov))
+
+(defun jupyter-eval-ov--remove-all (beg end)
+  (dolist (ov (overlays-in beg end))
+    (when (overlay-get ov 'jupyter-eval)
+      (jupyter-eval-ov--delete ov))))
+
+(defun jupyter-eval-ov--propertize (text &optional newline)
+  ;; Display properties can't be nested so use the one on TEXT if available
+  (if (get-text-property 0 'display text) text
+    (let ((display (concat
+                    ;; Add a space before a newline so that `point' stays on
+                    ;; the same line when moving to the beginning of the
+                    ;; overlay.
+                    (if newline " \n" " ")
+                    (propertize
+                     (concat jupyter-eval-overlay-prefix " " text)
+                     'face 'jupyter-eval-overlay))))
+      ;; Ensure `point' doesn't move past the beginning or end of the overlay
+      ;; on motion commands.
+      (put-text-property 0 1 'cursor t display)
+      (put-text-property (1- (length display)) (length display) 'cursor t display)
+      (propertize " " 'display display))))
+
+(defun jupyter-eval-ov--fold-boundary (text)
+  (string-match-p "\n" text))
+
+(defun jupyter-eval-ov--fold-string (text)
+  (when (eq buffer-invisibility-spec t)
+    (setq buffer-invisibility-spec '(t)))
+  (unless (assoc 'jupyter-eval buffer-invisibility-spec)
+    (push (cons 'jupyter-eval t) buffer-invisibility-spec))
+  (when-let* ((pos (jupyter-eval-ov--fold-boundary text)))
+    (put-text-property pos (length text) 'invisible 'jupyter-eval text)
+    text))
+
+(defun jupyter-eval-ov--expand-string (text)
+  (prog1 text
+    (put-text-property 0 (length text) 'invisible nil text)))
+
+(defun jupyter-eval-ov--make (beg end text)
+  (setq text (replace-regexp-in-string "\n+$" "" text))
+  (setq text (replace-regexp-in-string "^\n+" "" text))
+  (let ((ov (make-overlay beg end nil t)))
+    (prog1 ov
+      (overlay-put ov 'evaporate t)
+      (overlay-put ov 'modification-hooks '(jupyter-eval-ov--delete))
+      (overlay-put ov 'insert-in-front-hooks '(jupyter-eval-ov--delete))
+      (overlay-put ov 'insert-behind-hooks '(jupyter-eval-ov--delete))
+      (overlay-put ov 'keymap jupyter-eval-overlay-keymap)
+      (let ((folded (jupyter-eval-ov--fold-string text)))
+        (overlay-put ov 'jupyter-eval
+                     (list (if folded 'folded 'expanded) text))
+        (overlay-put ov 'after-string (jupyter-eval-ov--propertize text))))))
+
+(defun jupyter-eval-ov--expand (ov)
+  (when-let* ((eval-props (overlay-get ov 'jupyter-eval)))
+    (cl-destructuring-bind (fold text) eval-props
+      (when (eq fold 'folded)
+        (setf (car (overlay-get ov 'jupyter-eval)) 'expanded)
+        (when (jupyter-eval-ov--fold-boundary text)
+          (setf (overlay-get ov 'after-string)
+                (jupyter-eval-ov--propertize
+                 ;; Newline added so that background extends across entire line
+                 ;; of the last line in TEXT.
+                 (concat (jupyter-eval-ov--expand-string text) "\n")
+                 t)))))))
+
+(defun jupyter-eval-ov--fold (ov)
+  (when-let* ((eval-props (overlay-get ov 'jupyter-eval)))
+    (cl-destructuring-bind (fold text) eval-props
+      (when (eq fold 'expanded)
+        (setf (car (overlay-get ov 'jupyter-eval)) 'folded)
+        (jupyter-eval-ov--fold-string text)
+        (setf (overlay-get ov 'after-string)
+              (jupyter-eval-ov--propertize text))))))
+
+(defun jupyter-eval-toggle-overlay ()
+  "Expand or contract the display of evaluation results around `point'."
+  (interactive)
+  (let (nearest)
+    (dolist (ov (overlays-at (point)))
+      (when (and (or (null nearest)
+                     (and (> (overlay-start ov) (overlay-start nearest))
+                          (< (overlay-end ov) (overlay-end nearest))))
+                 (overlay-get ov 'jupyter-eval))
+        (setq nearest ov)))
+    (when-let* ((props (and nearest (overlay-get nearest 'jupyter-eval))))
+      (cl-destructuring-bind (fold _) props
+        (if (eq fold 'folded)
+            (jupyter-eval-ov--expand nearest)
+          (jupyter-eval-ov--fold nearest))))))
+
+(defun jupyter-eval-remove-overlays ()
+  "Remove all evaluation result overlays in the buffer."
+  (interactive)
+  (jupyter-eval-ov--remove-all (point-min) (point-max)))
+
+(defun jupyter-eval-display-overlay (beg end str)
+  "Overlay (BEG . END) using STR as an evaluation result.
+STR is displayed after the region."
+  (save-excursion
+    (goto-char end)
+    (setq end (if (get-text-property 0 'display str)
+                  (min (point-max) (1+ (line-end-position)))
+                (skip-syntax-backward "->")
+                (point)))
+    (jupyter-eval-ov--remove-all (1- end) end)
+    (jupyter-eval-ov--make beg end str)))
+
+(defun jupyter-eval-display-with-overlay-p ()
+  "Return non-nil if evaluation results should be displayed with overlays."
+  (and jupyter-eval-use-overlays
+       jupyter-current-client
+       (derived-mode-p (jupyter-kernel-language-mode jupyter-current-client))))
 
 ;;;;; Handlers
 
