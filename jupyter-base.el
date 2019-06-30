@@ -175,7 +175,7 @@ returned."
   (declare (indent 3) (debug (symbolp symbolp form body)))
   `(let ((,beg (point-marker))
          (,end (point-marker)))
-     (set-marker-insertion-type end t)
+     (set-marker-insertion-type ,end t)
      (unwind-protect
          (prog1 ,bodyform ,@afterforms)
        (set-marker ,beg nil)
