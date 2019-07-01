@@ -1845,7 +1845,7 @@ dispatching based on the kernel language."
       (let* ((jupyter-inhibit-handlers t)
              (req (jupyter-send-kernel-info-request client))
              (msg (jupyter-wait-until-received :kernel-info-reply
-                    req jupyter-long-timeout "Requesting kernel info...")))
+                    req (* 3 jupyter-long-timeout) "Requesting kernel info...")))
         (unless msg
           (error "Kernel did not respond to kernel-info request"))
         (prog1 (oset client kernel-info (jupyter-message-content msg))
