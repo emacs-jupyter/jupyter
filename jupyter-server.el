@@ -129,17 +129,27 @@ Access should be done through `jupyter-available-kernelspecs'.")))
 
 ;; TODO: Add the server as a slot
 (defclass jupyter-server-kernel (jupyter-meta-kernel)
-  ((id
+  ((server
+    :type jupyter-server
+    :initarg :server
+    :documentation "The kernel server.")
+   (id
     :type string
     :initarg :id
     :documentation "The kernel ID.")))
 
 (cl-defmethod jupyter-kernel-alive-p ((kernel jupyter-server-kernel))
-  (slot-boundp kernel 'id))
+  (and (slot-boundp kernel 'id)
+       (slot-boundp kernel 'server)
+       ;; TODO: Cache this call
+       (condition-case err
+           (jupyter-api-get-kernel (oref kernel server) (oref kernel id))
+         (jupyter-api-http-error
+          (unless (= (cadr err) 404)    ; Not Found
+            (signal (car err) (cdr err)))))))
 
-(cl-defmethod jupyter-start-kernel ((kernel jupyter-server-kernel) server &rest _ignore)
-  (cl-check-type server jupyter-server)
-  (with-slots (spec) kernel
+(cl-defmethod jupyter-start-kernel ((kernel jupyter-server-kernel) &rest _ignore)
+  (with-slots (server spec) kernel
     (jupyter-server--verify-kernelspec server spec)
     (cl-destructuring-bind (&key id &allow-other-keys)
         (jupyter-api-start-kernel server (car spec))
@@ -150,8 +160,7 @@ Access should be done through `jupyter-available-kernelspecs'.")))
   (ignore))
 
 (defclass jupyter-server-kernel-comm (jupyter-comm-layer)
-  ((server :type jupyter-server :initarg :server)
-   (kernel :type jupyter-server-kernel :initarg :kernel)))
+  ((kernel :type jupyter-server-kernel :initarg :kernel)))
 
 (cl-defmethod jupyter-comm-id ((comm jupyter-server-kernel-comm))
   (format "kid=%s" (truncate-string-to-width
@@ -280,30 +289,33 @@ The kernelspecs are returned in the same form as returned by
 If SERVER receives events that have the same kernel ID as the
 kernel associated with COMM, then COMM's `jupyter-event-handler'
 will receive those events."
-  (with-slots (server) comm
+  (with-slots (server) (oref comm kernel)
     (jupyter-comm-start server)
     (jupyter-connect-client server comm)))
 
 (cl-defmethod jupyter-comm-stop ((comm jupyter-server-kernel-comm) &rest _ignore)
   "Disconnect COMM from receiving server events."
-  (jupyter-disconnect-client (oref comm server) comm))
+  (jupyter-disconnect-client (oref (oref comm kernel) server) comm))
 
 (cl-defmethod jupyter-send ((comm jupyter-server-kernel-comm) event-type &rest event)
   "Use COMM to send an EVENT to the server with type, EVENT-TYPE.
 SERVER will direct EVENT to the right kernel based on the kernel
 ID of the kernel associated with COMM."
-  (with-slots (server kernel) comm
-    (apply #'jupyter-send server event-type (oref kernel id) event)))
+  (with-slots (kernel) comm
+    (unless (jupyter-comm-alive-p comm)
+      (jupyter-comm-start comm))
+    (apply #'jupyter-send (oref kernel server) event-type (oref kernel id) event)))
 
 (cl-defmethod jupyter-comm-alive-p ((comm jupyter-server-kernel-comm))
   "Return non-nil if COMM can receive server events for its associated kernel."
-  (and (jupyter-server-kernel-connected-p
-        (oref comm server)
-        (oref (oref comm kernel) id))
-       (catch 'member
-         (jupyter-comm-client-loop (oref comm server) client
-           (when (eq client comm)
-             (throw 'member t))))))
+  (with-slots (kernel) comm
+    (and (jupyter-server-kernel-connected-p
+          (oref kernel server)
+          (oref kernel id))
+         (catch 'member
+           (jupyter-comm-client-loop (oref kernel server) client
+             (when (eq client comm)
+               (throw 'member t)))))))
 
 ;; TODO: Remove the need for these methods, they are remnants from an older
 ;; implementation. They will need to be removed from `jupyter-kernel-client'.
@@ -316,22 +328,18 @@ ID of the kernel associated with COMM."
 ;;;; `jupyter-server-kernel-manager'
 
 (defclass jupyter-server-kernel-manager (jupyter-kernel-manager-base)
-  ((server :type jupyter-server :initarg :server)
-   (kernel :type jupyter-server-kernel :initarg :kernel)
+  ((kernel :type jupyter-server-kernel :initarg :kernel)
    (comm :type jupyter-server-kernel-comm)))
 
 (cl-defmethod jupyter-comm-start ((manager jupyter-server-kernel-manager))
   "Start a websocket connection to MANAGER's kernel.
 MANAGER's COMM slot will be set to the `jupyter-comm-layer'
 receiving events on the websocket when this method returns."
-  (with-slots (kernel server) manager
+  (with-slots (kernel comm) manager
     (unless (slot-boundp manager 'comm)
-      (oset manager comm (jupyter-server-kernel-comm
-                          :kernel kernel
-                          :server server)))
-    (with-slots (comm) manager
-      (unless (jupyter-comm-alive-p comm)
-        (jupyter-comm-start comm)))))
+      (oset manager comm (jupyter-server-kernel-comm :kernel kernel)))
+    (unless (jupyter-comm-alive-p comm)
+      (jupyter-comm-start comm))))
 
 (cl-defmethod jupyter-comm-stop ((manager jupyter-server-kernel-manager))
   "Stop a websocket connection to MANAGER's kernel."
@@ -341,30 +349,29 @@ receiving events on the websocket when this method returns."
         (jupyter-comm-stop comm)))))
 
 (cl-defmethod jupyter-kernel-alive-p ((manager jupyter-server-kernel-manager))
-  (with-slots (server kernel) manager
-    (and (jupyter-kernel-alive-p kernel)
-         (ignore-errors (jupyter-api-get-kernel server (oref kernel id))))))
+  (jupyter-kernel-alive-p (oref manager kernel)))
 
 (cl-defmethod jupyter-start-kernel ((manager jupyter-server-kernel-manager) &rest _ignore)
   "Ensure that the gateway can receive events from its kernel."
-  (with-slots (server kernel) manager
+  (with-slots (kernel) manager
     (unless (jupyter-kernel-alive-p kernel)
-      (jupyter-start-kernel kernel server))
+      (jupyter-start-kernel kernel))
     (jupyter-comm-start manager)))
 
 (cl-defmethod jupyter-interrupt-kernel ((manager jupyter-server-kernel-manager))
-  (with-slots (server kernel) manager
-    (jupyter-api-interrupt-kernel server (oref kernel id))))
+  (with-slots (kernel) manager
+    (jupyter-api-interrupt-kernel (oref kernel server) (oref kernel id))))
 
 (cl-defmethod jupyter-kill-kernel ((manager jupyter-server-kernel-manager))
   (jupyter-shutdown-kernel manager))
 
 (cl-defmethod jupyter-shutdown-kernel ((manager jupyter-server-kernel-manager) &optional restart _timeout)
-  (with-slots (server kernel comm) manager
-    (if restart (jupyter-api-restart-kernel server (oref kernel id))
-      (jupyter-comm-stop manager)
-      (when (jupyter-kernel-alive-p manager)
-        (jupyter-api-shutdown-kernel server (oref kernel id))))))
+  (with-slots (kernel) manager
+    (let ((server (oref kernel server)))
+      (if restart (jupyter-api-restart-kernel server (oref kernel id))
+        (jupyter-comm-stop manager)
+        (when (jupyter-kernel-alive-p manager)
+          (jupyter-api-shutdown-kernel server (oref kernel id)))))))
 
 (cl-defmethod jupyter-make-client ((manager jupyter-server-kernel-manager) _class &rest _slots)
   (let ((client (cl-call-next-method)))
@@ -380,9 +387,10 @@ Return nil if none could be found."
   (cl-loop
    for manager in (jupyter-kernel-managers)
    thereis (and (cl-typep manager 'jupyter-server-kernel-manager)
-                (eq (oref manager server) server)
                 (jupyter-kernel-alive-p manager)
-                (equal (oref (oref manager kernel) id) id)
+                (with-slots (kernel) manager
+                  (and (eq (oref kernel server) server)
+                       (equal (oref kernel id) id)))
                 manager)))
 
 (defun jupyter-find-server (url &optional ws-url)
@@ -475,6 +483,7 @@ a URL."
                      'jupyter-server-kernel-comm)
                     (thread-first jupyter-current-client
                       (oref kcomm)
+                      (oref kernel)
                       (oref server))))
               ;; Server of the current TRAMP remote context
               ((and (file-remote-p default-directory)
@@ -531,10 +540,9 @@ see ‘jupyter-make-client’."
   (or client-class (setq client-class 'jupyter-kernel-client))
   (let* ((specs (jupyter-server-kernelspecs server))
          (kernel (jupyter-server-kernel
+                  :server server
                   :spec (jupyter-guess-kernelspec kernel-name specs)))
-         (manager (jupyter-server-kernel-manager
-                   :server server
-                   :kernel kernel)))
+         (manager (jupyter-server-kernel-manager :kernel kernel)))
     ;; Needs to be started before calling `jupyter-make-client' since that
     ;; method will send a request to start a websocket channel to the kernel.
     ;; FIXME: This should be done in a `jupyter-initialize-connection' method,
@@ -599,13 +607,12 @@ the same meaning as in `jupyter-connect-repl'."
   (let* ((specs (jupyter-server-kernelspecs server))
          (manager
           (or (jupyter-server-find-manager server kernel-id)
-              (let* ((model (jupyter-api-get-kernel server kernel-id))
-                     (kernel (jupyter-server-kernel
-                              :id kernel-id
-                              :spec (assoc (plist-get model :name) specs))))
+              (let ((model (jupyter-api-get-kernel server kernel-id)))
                 (jupyter-server-kernel-manager
-                 :server server
-                 :kernel kernel))))
+                 :kernel (jupyter-server-kernel
+                          :id kernel-id
+                          :server server
+                          :spec (assoc (plist-get model :name) specs))))))
          (client (jupyter-make-client manager client-class)))
     (jupyter-start-channels client)
     (jupyter-bootstrap-repl client repl-name associate-buffer display)))

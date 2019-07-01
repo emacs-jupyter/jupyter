@@ -350,9 +350,10 @@ For `url-retrieve', the callback will be called with a nil status."
   (declare (indent 3))
   (let ((id (make-symbol "id")))
     `(let ((,kernel (jupyter-server-kernel
+                     :server server
                      :spec (jupyter-guess-kernelspec
                             ,name (jupyter-server-kernelspecs ,server)))))
-       (let ((,id (jupyter-start-kernel kernel server)))
+       (let ((,id (jupyter-start-kernel kernel)))
          (unwind-protect
              (progn ,@body)
            (jupyter-api-shutdown-kernel ,server ,id))))))
