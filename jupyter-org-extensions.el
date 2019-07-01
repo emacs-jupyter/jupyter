@@ -135,6 +135,8 @@ language based on the src-block's near `point'."
                   (goto-char end)
                 (goto-char location)
                 (goto-char (org-element-property :end (org-element-context))))
+              (unless (org-previous-line-empty-p)
+                (insert "\n"))
               (insert
                (org-element-interpret-data
                 (org-element-put-property
@@ -143,6 +145,8 @@ language based on the src-block's near `point'."
               (forward-line -3))
           ;; after current block
           (goto-char (org-element-property :begin src))
+          (unless (org-previous-line-empty-p)
+            (insert "\n"))
           (insert
            (org-element-interpret-data
             (org-element-put-property
