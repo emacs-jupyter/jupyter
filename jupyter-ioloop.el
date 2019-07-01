@@ -367,7 +367,7 @@ the local host, otherwise events are expected to be received on
 STDIN. This is useful on Windows systems which don't allow
 polling the STDIN file handle."
   (let ((stdin-form
-         (if port `(let ((sock (zmq-socket ctx zmq-PULL)))
+         (if port `(let ((sock (zmq-socket ctx zmq-PAIR)))
                      (prog1 sock
                        (zmq-connect sock (format "tcp://127.0.0.1:%s" ,port))))
            '0))
@@ -446,8 +446,20 @@ If BUFFER is non-nil it should be a buffer that will be used as
 the IOLOOP subprocess buffer, see `zmq-start-process'."
   (jupyter-ioloop-stop ioloop)
   (let (stdin port)
-    (when (memq system-type '(windows-nt ms-dos cygwin))
-      (setq stdin (zmq-socket (zmq-current-context) zmq-PUSH))
+    ;; NOTE: A socket is used to read input from the parent process to avoid
+    ;; the stdin buffering done when using `read-from-minibuffer' in the
+    ;; subprocess. When `noninteractive', `read-from-minibuffer' uses
+    ;; `getc_unlocked' internally and `getc_unlocked' reads from the stdin FILE
+    ;; object as opposed to reading directly from STDIN_FILENO. The problem is
+    ;; that FILE objects are buffered streams which means that every message
+    ;; the parent process sends does not necessarily correspond to a POLLIN
+    ;; event on STDIN_FILENO in the subprocess. Since we only call
+    ;; `read-from-minibuffer' when there is a POLLIN event on STDIN_FILENO
+    ;; there is the potential that a message is waiting to be handled in the
+    ;; buffer used by stdin which will only get handled if we send more
+    ;; messages to the subprocess thereby creating more POLLIN events.
+    (when (or t (memq system-type '(windows-nt ms-dos cygwin)))
+      (setq stdin (zmq-socket (zmq-current-context) zmq-PAIR))
       (setq port (zmq-bind-to-random-port stdin "tcp://127.0.0.1")))
     (let ((process (zmq-start-process
                     (jupyter-ioloop--function ioloop (when stdin port))

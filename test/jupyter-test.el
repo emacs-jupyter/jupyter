@@ -1021,6 +1021,22 @@
         (let ((result (read (buffer-string))))
           (should (equal result `(stop-channel :shell))))))))
 
+(ert-deftest jupyter-zmq-channel-ioloop-send-fast ()
+  :tags '(ioloop queue)
+  ;; :expected-result :failed
+  (jupyter-test-with-python-client client
+    (let ((jupyter-current-client client))
+      (jupyter-send-execute-request client :code "1 + 1")
+      (jupyter-send-execute-request client :code "1 + 1")
+      (jupyter-send-execute-request client :code "1 + 1")
+      (let ((req (jupyter-send-execute-request client :code "1 + 1")))
+        (should
+         (equal
+          (jupyter-message-data
+           (jupyter-wait-until-received :execute-result req jupyter-long-timeout)
+           :text/plain)
+          "2"))))))
+
 ;;; Completion
 
 (ert-deftest jupyter-completion-number-p ()
