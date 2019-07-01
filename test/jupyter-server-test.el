@@ -250,7 +250,6 @@
         (should (jupyter-api-get-kernel server id))
         (ert-info ("Connecting kernel comm to server")
           (let ((kcomm (jupyter-server-kernel-comm
-                        :server server
                         :kernel kernel)))
             (should-not (jupyter-server-kernel-connected-p server id))
             (jupyter-connect-client server kcomm)
@@ -261,7 +260,6 @@
             (should (jupyter-comm-alive-p server))))
         (ert-info ("Connecting kernel comm starts server comm if necessary")
           (let ((kcomm (jupyter-server-kernel-comm
-                        :server server
                         :kernel kernel)))
             (jupyter-comm-stop server)
             (should-not (jupyter-comm-alive-p server))
@@ -274,30 +272,32 @@
 
 (ert-deftest jupyter-server-kernel ()
   :tags '(kernel server)
-  (let ((kernel (jupyter-server-kernel)))
-    (should-not (slot-boundp kernel 'id))
-    (should-not (jupyter-kernel-alive-p kernel))
-    ;; TODO: How should this work? Pass the server as an argument?
-    (should-error (jupyter-start-kernel kernel))
-    (ert-info ("ID slot as a proxy for kernel liveness")
+  (jupyter-test-with-notebook server
+    (let ((kernel (jupyter-server-kernel
+                   :server server
+                   :spec (jupyter-guess-kernelspec
+                          "python" (jupyter-server-kernelspecs server)))))
+      (should (slot-boundp kernel 'server))
+      (should (eq (oref kernel server) server))
+      (should-not (slot-boundp kernel 'id))
       (should-not (jupyter-kernel-alive-p kernel))
-      (oset kernel id "foobar")
-      ;; FIXME: There is actually nowhere in the code where the ID slot is made
-      ;; unbound since the event handler of the server relies on the ID slot,
-      ;; but if the kernel is shutdown the necessary communication layer
-      ;; connections are removed.
-      (should (jupyter-kernel-alive-p kernel)))
-    (ert-info ("Force killing a server kernel isn't possible")
-      (should-error (jupyter-kill-kernel kernel)))))
+      (jupyter-start-kernel kernel)
+      (should (slot-boundp kernel 'id))
+      (let ((id (oref kernel id)))
+        (unwind-protect
+            (progn
+              (should (jupyter-api-get-kernel server id))
+              (should (jupyter-kernel-alive-p kernel)))
+         (jupyter-api-shutdown-kernel server id))))))
 
 (ert-deftest jupyter-server-kernel-manager ()
   :tags '(server)
   (jupyter-test-with-notebook server
     (let* ((kernel (jupyter-server-kernel
+                    :server server
                     :spec (jupyter-guess-kernelspec
                            "python" (jupyter-server-kernelspecs server))))
            (manager (jupyter-server-kernel-manager
-                     :server server
                      :kernel kernel)))
       (should-not (jupyter-kernel-alive-p manager))
       (jupyter-start-kernel manager)
