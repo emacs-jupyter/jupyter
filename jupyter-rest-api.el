@@ -313,9 +313,11 @@ see RFC 6265."
   (when-let* ((url (url-generic-parse-url url))
               (host (url-host url))
               (port (url-port-if-non-default url))
-              (host-port (format "%s:%s" host port)))
+              (host-port (format "%s:%s" host port))
+              (cookies (jupyter-api-url-cookies url)))
+    (setq url-cookies-changed-since-last-save t)
     (cl-loop
-     for cookie in (jupyter-api-url-cookies url)
+     for cookie in cookies
      do (pcase-let (((cl-struct url-cookie name value expires
                                 localpart secure)
                      cookie))
