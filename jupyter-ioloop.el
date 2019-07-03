@@ -491,6 +491,18 @@ returning."
                   (socket-p (zmq-socket-p stdin)))
         (zmq-unbind stdin (zmq-get-option stdin zmq-LAST-ENDPOINT))))))
 
+(defvar jupyter-ioloop--send-buffer nil)
+
+(defun jupyter-ioloop--dump-message (plist)
+  (with-current-buffer
+      (if (buffer-live-p jupyter-ioloop--send-buffer)
+          jupyter-ioloop--send-buffer
+        (setq jupyter-ioloop--send-buffer
+              (get-buffer-create " *jupyter-ioloop-send*")))
+    (erase-buffer)
+    (prin1 plist (current-buffer))
+    (buffer-string)))
+
 (cl-defmethod jupyter-send ((ioloop jupyter-ioloop) &rest args)
   "Using IOLOOP, send ARGS to its process.
 
@@ -500,9 +512,13 @@ serializable."
   (with-slots (process) ioloop
     (cl-assert (process-live-p process))
     (let ((stdin (process-get process :stdin)))
-      (if stdin (zmq-send-encoded stdin (with-temp-buffer
-                                          (prin1 args (current-buffer))
-                                          (buffer-string)))
+      (if stdin
+          (let ((msg (jupyter-ioloop--dump-message args)) sent)
+            (while (not sent)
+              (condition-case nil
+                  (zmq-send-encoded stdin msg nil zmq-DONTWAIT)
+                (zmq-EAGAIN (accept-process-output nil 0)))
+              (setq sent t)))
         (zmq-subprocess-send process args)))))
 
 (provide 'jupyter-ioloop)
