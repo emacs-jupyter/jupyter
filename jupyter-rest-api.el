@@ -321,6 +321,22 @@ see RFC 6265."
      do (pcase-let (((cl-struct url-cookie name value expires
                                 localpart secure)
                      cookie))
+          ;; Set the expiration date if it does not have one already since
+          ;; `url-cookie-clean-up' (called by `url-cookie-write-file') will
+          ;; correctly drop any cookies that don't have an expiration date
+          ;; since cookies are required to have them.
+          ;;
+          ;; FIXME: This is mainly for the _xsrf cookie which does not have an
+          ;; expiration date which I believe is to be interpreted as meaning
+          ;; the cookie is session based. We go through `url-cookie-write-file'
+          ;; so that the subprocess which starts websockets can read the
+          ;; required cookies. An alternative solution would be to pass the
+          ;; cookies directly to the subprocess.
+          (unless expires
+            (setq expires (setf (url-cookie-expires cookie)
+                                (format-time-string "%a, %d %b %Y %T %z"
+                                                    (time-add (current-time)
+                                                              (days-to-time 1))))))
           (url-cookie-store name value expires host-port localpart secure)))))
 
 (defun jupyter-api-add-websocket-headers (plist)
