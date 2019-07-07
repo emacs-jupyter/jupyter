@@ -242,6 +242,9 @@ variables in PARAMS."
                        (jupyter-server :url url)))
            (specs (jupyter-server-kernelspecs server))
            (kmodel (ignore-errors (jupyter-api-get-kernel server name-or-id))))
+      ;; Language aliases may not exist for the kernels that are accessible on
+      ;; the server.
+      (org-babel-jupyter-aliases-from-kernelspecs nil specs)
       (unless (jupyter-guess-kernelspec kernel specs)
         (error "No kernelspec matching \"%s\" exists at %s" kernel url))
       (if kmodel
@@ -508,33 +511,34 @@ name jupyter-LANG will be aliased to the Jupyter functions."
     ;; wants to set directly so make sure its defined in the header args.
     (setq var (intern var))
     (unless (alist-get :kernel (symbol-value var))
-      (setf (alist-get :kernel (symbol-value var)) kernel))))
+      (setf (alist-get :kernel (symbol-value var)) kernel)))
+  (when (assoc lang org-babel-tangle-lang-exts)
+    (add-to-list 'org-babel-tangle-lang-exts
+                 (cons (concat "jupyter-" lang)
+                       (cdr (assoc lang org-babel-tangle-lang-exts)))))
+  (add-to-list 'org-src-lang-modes
+               (cons (concat "jupyter-" lang)
+                     (or (cdr (assoc lang org-src-lang-modes))
+                         (intern (downcase (replace-regexp-in-string
+                                            "[0-9]*" "" lang)))))))
 
-(defun org-babel-jupyter-aliases-from-kernelspecs (&optional refresh)
+(defun org-babel-jupyter-aliases-from-kernelspecs (&optional refresh specs)
   "Make language aliases based on the available kernelspecs.
-For all kernelspecs returned by `jupyter-available-kernelspecs',
-make a language alias for the kernel language if one does not
-already exist. The alias is created with
+For all kernel SPECS, make a language alias for the kernel
+language if one does not already exist. The alias is created with
 `org-babel-jupyter-make-language-alias'.
 
-Optional argument REFRESH has the same meaning as in
+SPECS defaults to `jupyter-available-kernelspecs'. Optional
+argument REFRESH has the same meaning as in
 `jupyter-available-kernelspecs'."
   (cl-loop
-   with specs = (with-demoted-errors "Error retrieving kernelspecs: %S"
-                  (jupyter-available-kernelspecs refresh))
+   with specs = (or specs
+                    (with-demoted-errors "Error retrieving kernelspecs: %S"
+                      (jupyter-available-kernelspecs refresh)))
    for (kernel . (_dir . spec)) in specs
    for lang = (plist-get spec :language)
    unless (member lang languages) collect lang into languages and
-   do (org-babel-jupyter-make-language-alias kernel lang)
-   (when (assoc lang org-babel-tangle-lang-exts)
-     (add-to-list 'org-babel-tangle-lang-exts
-                  (cons (concat "jupyter-" lang)
-                        (cdr (assoc lang org-babel-tangle-lang-exts)))))
-   (add-to-list 'org-src-lang-modes
-                (cons (concat "jupyter-" lang)
-                      (or (cdr (assoc lang org-src-lang-modes))
-                          (intern (downcase (replace-regexp-in-string
-                                             "[0-9]*" "" lang))))))))
+   do (org-babel-jupyter-make-language-alias kernel lang)))
 
 ;;; `ox' integration
 
