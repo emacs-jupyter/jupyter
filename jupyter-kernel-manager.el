@@ -241,8 +241,7 @@ garbage collected. The file is also deleted when Emacs exits if
 it hasn't been already."
   (cl-check-type session jupyter-session)
   (cl-check-type obj jupyter-finalized-object)
-  (make-directory jupyter-runtime-directory 'parents)
-  (let* ((temporary-file-directory jupyter-runtime-directory)
+  (let* ((temporary-file-directory (jupyter-runtime-directory))
          (json-encoding-pretty-print t)
          (file (make-temp-file "emacs-kernel-" nil ".json"))
          (kill-hook (lambda () (when (and file (file-exists-p file))

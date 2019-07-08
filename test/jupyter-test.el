@@ -683,6 +683,27 @@
                 (jupyter-stop-channels jupyter-current-client)))
           (jupyter-shutdown-kernel manager))))))
 
+;;; Environment
+
+(ert-deftest jupyter-runtime-directory ()
+  :tags '(env)
+  (let (dir-created jupyter-runtime-directory)
+    (cl-letf (((symbol-function #'jupyter-command)
+               (lambda (&rest _) "foo"))
+              ((symbol-function #'make-directory)
+               (lambda (&rest _)
+                 (setq dir-created t))))
+      (jupyter-runtime-directory)
+      (should dir-created)
+      (setq dir-created nil)
+      (should (equal jupyter-runtime-directory "foo"))
+      (let ((default-directory "/ssh:foo:~"))
+        (should (equal (jupyter-runtime-directory) "/ssh:foo:foo"))
+        (ert-info ("Variable definition is always local")
+          (setq jupyter-runtime-directory nil)
+          (jupyter-runtime-directory)
+          (should (equal jupyter-runtime-directory "foo")))))))
+
 ;;; Client
 
 ;; TODO: Different values of the session argument
