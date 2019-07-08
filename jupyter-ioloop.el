@@ -516,9 +516,10 @@ serializable."
           (let ((msg (jupyter-ioloop--dump-message args)) sent)
             (while (not sent)
               (condition-case nil
-                  (zmq-send-encoded stdin msg nil zmq-DONTWAIT)
-                (zmq-EAGAIN (accept-process-output nil 0)))
-              (setq sent t)))
+                  (progn
+                    (zmq-send-encoded stdin msg nil zmq-DONTWAIT)
+                    (setq sent t))
+                (zmq-EAGAIN (accept-process-output nil 0)))))
         (zmq-subprocess-send process args)))))
 
 (provide 'jupyter-ioloop)
