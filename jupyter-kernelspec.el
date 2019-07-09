@@ -72,7 +72,8 @@ information of the host as a prefix."
     (or (and (not refresh) (gethash host jupyter--kernelspecs))
         (let ((specs (plist-get
                       (jupyter-read-plist-from-string
-                       (jupyter-command "kernelspec" "list" "--json"))
+                       (or (jupyter-command "kernelspec" "list" "--json")
+                           (error "Can't obtain kernelspecs from jupyter shell command")))
                       :kernelspecs)))
           (puthash
            host (cl-loop
