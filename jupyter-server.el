@@ -746,7 +746,10 @@ the same meaning as in `jupyter-connect-repl'."
 
 ;;;###autoload
 (defun jupyter-server-list-kernels (server)
-  "Display a list of live kernels on SERVER."
+  "Display a list of live kernels on SERVER.
+When called interactively, ask to select a SERVER when given a
+prefix argument otherwise the `jupyter-current-server' will be
+used."
   (interactive (list (jupyter-current-server current-prefix-arg)))
   (if (zerop (length (jupyter-api-get-kernel server)))
       (when (yes-or-no-p (format "No kernels at %s; launch one? "
