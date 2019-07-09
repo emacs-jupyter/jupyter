@@ -387,7 +387,6 @@ Return nil if none could be found."
   (cl-loop
    for manager in (jupyter-kernel-managers)
    thereis (and (cl-typep manager 'jupyter-server-kernel-manager)
-                (jupyter-kernel-alive-p manager)
                 (with-slots (kernel) manager
                   (and (eq (oref kernel server) server)
                        (equal (oref kernel id) id)))
