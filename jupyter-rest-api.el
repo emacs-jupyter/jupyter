@@ -250,6 +250,13 @@ request data."
                  jupyter-api-request-headers)))
     (jupyter-api-url-request (concat url "/" endpoint))))
 
+(cl-defmethod jupyter-api-server-exists-p ((client jupyter-rest-client))
+  "Return non-nil when the server at CLIENT's URL exists."
+  (condition-case nil
+      (prog1 t (jupyter-api-url-request (oref client url)))
+    ;; A `file-error' is raised when a server no longer exists
+    (file-error nil)))
+
 ;;; Cookies and headers
 
 (defmacro jupyter-api--ensure-unibyte (place)
