@@ -121,11 +121,9 @@ Access should be done through `jupyter-available-kernelspecs'.")))
 (defun jupyter-gc-servers ()
   "Forget `jupyter-servers' that are no longer accessible at their hosts."
   (dolist (server (jupyter-servers))
-    (condition-case nil
-        (jupyter-api-get-kernelspec server)
-      (file-error
-       (jupyter-comm-stop server)
-       (delete-instance server)))))
+    (unless (jupyter-api-server-exists-p server)
+      (jupyter-comm-stop server)
+      (delete-instance server))))
 
 ;; TODO: Add the server as a slot
 (defclass jupyter-server-kernel (jupyter-meta-kernel)
