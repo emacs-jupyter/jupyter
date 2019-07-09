@@ -207,6 +207,8 @@ variables in PARAMS."
     (when (and remote (zerop (length (file-local-name session))))
       (error "No remote session name"))
     (let ((default-directory (or remote default-directory)))
+      (when remote
+        (org-babel-jupyter-aliases-from-kernelspecs))
       (jupyter-run-repl kernel nil nil 'jupyter-org-client))))
 
 (defun org-babel-jupyter-initiate-session-by-key (session params)
