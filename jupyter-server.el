@@ -142,6 +142,7 @@ Access should be done through `jupyter-available-kernelspecs'.")))
        ;; TODO: Cache this call
        (condition-case err
            (jupyter-api-get-kernel (oref kernel server) (oref kernel id))
+         (file-error nil)               ; Non-existent server
          (jupyter-api-http-error
           (unless (= (cadr err) 404)    ; Not Found
             (signal (car err) (cdr err)))))))
