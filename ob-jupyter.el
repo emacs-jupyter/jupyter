@@ -449,15 +449,21 @@ name jupyter-LANG will be aliased to the Jupyter functions."
 
 (defun org-babel-jupyter-aliases-from-kernelspecs (&optional refresh)
   "Make language aliases based on the available kernelspecs.
-For all kernels returned by `jupyter-available-kernelspecs', make
-a language alias for the kernel language if one does not already
-exist. The alias is created with
+For all kernelspecs returned by `jupyter-available-kernelspecs',
+make a language alias for the kernel language if one does not
+already exist. The alias is created with
 `org-babel-jupyter-make-language-alias'.
 
 Optional argument REFRESH has the same meaning as in
 `jupyter-available-kernelspecs'."
+  (unless (file-remote-p default-directory)
+    ;; Keep this function on `org-mode-hook' until we know for sure that at
+    ;; least the local kernelspecs have language aliases.
+    (remove-hook 'org-mode-hook #'org-babel-jupyter-aliases-from-kernelspecs))
   (cl-loop
-   for (kernel . (_dir . spec)) in (jupyter-available-kernelspecs refresh)
+   with specs = (with-demoted-errors "Error retrieving kernelspecs: %S"
+                  (jupyter-available-kernelspecs refresh))
+   for (kernel . (_dir . spec)) in specs
    for lang = (plist-get spec :language)
    unless (member lang languages) collect lang into languages and
    do (org-babel-jupyter-make-language-alias kernel lang)
@@ -503,7 +509,7 @@ mapped to their appropriate minted language in
 
 ;;; Hook into `org'
 
-(org-babel-jupyter-aliases-from-kernelspecs)
+(add-hook 'org-mode-hook #'org-babel-jupyter-aliases-from-kernelspecs)
 (add-hook 'org-export-before-processing-hook #'org-babel-jupyter-setup-export)
 (add-hook 'org-export-before-parsing-hook #'org-babel-jupyter-strip-ansi-escapes)
 
