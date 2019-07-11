@@ -183,7 +183,9 @@ language based on the src-block's near `point'."
       (unless (looking-at-p "^[\t ]*$")
         ;; Move past the current element first
         (let ((elem (org-element-at-point)) parent)
-          (while (setq parent (org-element-property :parent elem))
+          (while (and (setq parent (org-element-property :parent elem))
+                      (not (memq (org-element-type parent)
+                                 '(inlinetask))))
             (setq elem parent))
           (when elem
             (goto-char (org-element-property
