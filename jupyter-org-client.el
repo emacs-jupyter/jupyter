@@ -1040,6 +1040,8 @@ new \"scalar\" result with the result of calling
     (jupyter-org-scalar
      (cond
       ((and (stringp result)
+            ;; Don't assume non-empty string, see #144
+            (not (zerop (length result)))
             ;; Don't attempt to create a table when we just want scalar results
             ;; FIXME: `jupyter-org-scalar' also considers a table a scalar, but
             ;; `org-mode' doesn't.
@@ -1174,7 +1176,7 @@ newline or not before inserting subsequent stream results.
 
 Assumes `point' is at the end of the last source block result."
   (or (stringp result) (setq result (org-element-property :value result)))
-  (when (and result
+  (when (and result (not (zerop (length result)))
              (eq (aref result (1- (length result))) ?\n))
     (when (looking-back "#\\+END_EXAMPLE\n"
                         (line-beginning-position 0))
