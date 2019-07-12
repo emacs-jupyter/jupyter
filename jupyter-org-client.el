@@ -979,13 +979,14 @@ passed to Jupyter org-mode source blocks."
       (push (cons :file (jupyter-org-request-file req)) params))
     (cl-destructuring-bind (data metadata)
         (jupyter-normalize-data plist metadata)
-      (or (jupyter-loop-over-mime
-              (or display-mime-types jupyter-org-mime-types)
-              mime data metadata
-            (jupyter-org-result mime params data metadata))
-          (prog1 nil
-            (warn "No valid mimetype found %s"
-                  (cl-loop for (k _v) on data by #'cddr collect k)))))))
+      (cond
+       ((jupyter-loop-over-mime
+            (or display-mime-types jupyter-org-mime-types)
+            mime data metadata
+          (jupyter-org-result mime params data metadata)))
+       (t
+        (warn "Requested mimetype(s) not returned by kernel: %s"
+              (or display-mime-types jupyter-org-mime-types)))))))
 
 (cl-defmethod jupyter-org-result ((_mime (eql :application/vnd.jupyter.widget-view+json))
                                   _params _data &optional _metadata)
