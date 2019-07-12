@@ -1518,7 +1518,7 @@ A kernel can be interrupted if it was started using a kernel
 manager. See `jupyter-start-new-kernel'."
   (interactive)
   (if (not (jupyter-repl-client-has-manager-p))
-      (user-error "Cannot interrupt non-subprocess kernels")
+      (user-error "Can only interrupt managed kernels")
     (message "Interrupting kernel")
     (jupyter-interrupt-kernel
      (oref jupyter-current-client manager))))

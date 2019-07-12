@@ -575,6 +575,15 @@ If BELOW is non-nil, move the block down, otherwise move it up."
     (while (org-babel-next-src-block)
       (org-babel-remove-result))))
 
+;;;###autoload
+(defun jupyter-org-interrupt-kernel ()
+  "Interrupt the kernel."
+  (interactive)
+  (unless (org-in-src-block-p)
+    (error "Not in a source block"))
+  (jupyter-org-with-src-block-client
+   (jupyter-repl-interrupt-kernel)))
+
 (defun jupyter-org-hydra/body ()
   "Hack to bind a hydra only if the hydra package exists."
   (interactive)
@@ -589,7 +598,7 @@ If BELOW is non-nil, move the block down, otherwise move it up."
     _<return>_: current               _p_: previous  _C-p_: move up     _/_: inspect
   _C-<return>_: current to next       _n_: next      _C-n_: move down   _l_: clear result
   _M-<return>_: to point              _g_: visible     _x_: kill        _L_: clear all
-_C-M-<return>_: subtree to point      _G_: any         _c_: copy
+_C-M-<return>_: subtree to point      _G_: any         _c_: copy        _i_: interrupt
   _S-<return>_: Restart/block     _<tab>_: (un)fold    _o_: clone
 _S-C-<return>_: Restart/to point      ^ ^              _m_: merge
 _S-M-<return>_: Restart/buffer        ^ ^              _s_: split
@@ -624,7 +633,8 @@ _S-M-<return>_: Restart/buffer        ^ ^              _s_: split
            ("L" jupyter-org-clear-all-results)
            ("h" jupyter-org-edit-header)
 
-           ("/" jupyter-org-inspect-src-block)))
+           ("/" jupyter-org-inspect-src-block)
+           ("i" jupyter-org-interrupt-kernel)))
   (call-interactively #'jupyter-org-hydra/body))
 
 (define-key jupyter-org-interaction-mode-map (kbd "C-c h") #'jupyter-org-hydra/body)
