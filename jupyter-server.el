@@ -122,7 +122,8 @@ Access should be done through `jupyter-available-kernelspecs'.")))
   "Forget `jupyter-servers' that are no longer accessible at their hosts."
   (dolist (server (jupyter-servers))
     (unless (jupyter-api-server-exists-p server)
-      (jupyter-comm-stop server)
+      (when (jupyter-comm-alive-p server)
+        (jupyter-comm-stop server))
       (delete-instance server))))
 
 ;; TODO: Add the server as a slot
