@@ -432,7 +432,9 @@ error with the data being the error received by `url-retrieve'."
         (let (status done)
           (jupyter-api-url-request
            (concat (oref client url) "/login")
-           (lambda (s &rest _) (setq status s done t)))
+           (lambda (s &rest _)
+             (url-mark-buffer-as-dead (current-buffer))
+             (setq status s done t)))
           (jupyter-with-timeout
               (nil jupyter-long-timeout
                    (error "Timeout reached during login"))
