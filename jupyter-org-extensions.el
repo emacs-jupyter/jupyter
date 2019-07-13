@@ -322,6 +322,33 @@ of the ANY argument."
     (jupyter-org-execute-to-point any)))
 
 ;;;###autoload
+(defun jupyter-org-next-busy-src-block (arg &optional backward)
+  "Jump to the next busy source block.
+
+With a prefix argument ARG, jump forward ARG many blocks.
+
+When BACKWARD is non-nil, jump to the previous block."
+  (interactive "p")
+  (cl-loop
+   with count = (abs (or arg 1))
+   with origin = (point)
+   while (ignore-errors
+           (if backward (org-babel-previous-src-block)
+             (org-babel-next-src-block)))
+   thereis (when (jupyter-org-request-at-point)
+             (zerop (cl-decf count)))
+   finally (goto-char origin)
+   (user-error "No %s busy code blocks" (if backward "previous" "further"))))
+
+;;;###autoload
+(defun jupyter-org-previous-busy-src-block (arg)
+  "Jump to the previous busy source block.
+
+With a prefix argument ARG, jump backward ARG many source blocks."
+  (interactive "p")
+  (jupyter-org-next-busy-src-block arg 'backward))
+
+;;;###autoload
 (defun jupyter-org-inspect-src-block ()
   "Inspect the symbol under point when in a source block."
   (interactive)
@@ -593,18 +620,18 @@ If BELOW is non-nil, move the block down, otherwise move it up."
   (fmakunbound 'jupyter-org-hydra/body)
   (eval `(defhydra jupyter-org-hydra (:color blue :hint nil)
            "
-          Execute                     Navigate       Edit             Misc
-------------------------------------------------------------------------------
-    _<return>_: current               _p_: previous  _C-p_: move up     _/_: inspect
-  _C-<return>_: current to next       _n_: next      _C-n_: move down   _l_: clear result
-  _M-<return>_: to point              _g_: visible     _x_: kill        _L_: clear all
-_C-M-<return>_: subtree to point      _G_: any         _c_: copy        _i_: interrupt
-  _S-<return>_: Restart/block     _<tab>_: (un)fold    _o_: clone
-_S-C-<return>_: Restart/to point      ^ ^              _m_: merge
-_S-M-<return>_: Restart/buffer        ^ ^              _s_: split
-           _r_: Goto repl             ^ ^              _+_: insert above
-           ^ ^                        ^ ^              _=_: insert below
-           ^ ^                        ^ ^              _h_: header"
+          Execute                     Navigate            Edit              Misc
+-------------------------------------------------------------------------------------------
+    _<return>_: current               _p_: previous       _C-p_: move up    _/_: inspect
+  _C-<return>_: current to next       _P_: previous busy  _C-n_: move down  _l_: clear result
+  _M-<return>_: to point              _n_: next           _x_: kill         _L_: clear all
+_C-M-<return>_: subtree to point      _N_: next busy      _c_: copy         _i_: interrupt
+  _S-<return>_: Restart/block         _g_: visible        _o_: clone
+_S-C-<return>_: Restart/to point      _G_: any            _m_: merge
+_S-M-<return>_: Restart/buffer    _<tab>_: (un)fold       _s_: split
+           _r_: Goto repl             ^ ^                 _+_: insert above
+           ^ ^                        ^ ^                 _=_: insert below
+           ^ ^                        ^ ^                 _h_: header"
            ("<return>" org-ctrl-c-ctrl-c :color red)
            ("C-<return>" jupyter-org-execute-and-next-block :color red)
            ("M-<return>" jupyter-org-execute-to-point)
@@ -615,7 +642,9 @@ _S-M-<return>_: Restart/buffer        ^ ^              _s_: split
            ("r" org-babel-switch-to-session)
 
            ("p" org-babel-previous-src-block :color red)
+           ("P" jupyter-org-previous-busy-src-block :color red)
            ("n" org-babel-next-src-block :color red)
+           ("N" jupyter-org-next-busy-src-block :color red)
            ("g" jupyter-org-jump-to-visible-block)
            ("G" jupyter-org-jump-to-block)
            ("<tab>" org-cycle :color red)
