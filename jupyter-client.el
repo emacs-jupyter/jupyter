@@ -335,9 +335,13 @@ subprocess buffer."
     (set (make-local-variable symbol) newval)))
 
 (defun jupyter-get (client symbol)
-  "Get CLIENT's local value of SYMBOL."
-  (jupyter-with-client-buffer client
-    (symbol-value symbol)))
+  "Get CLIENT's local value of SYMBOL.
+Return nil if SYMBOL is not bound for CLIENT."
+  (condition-case nil
+      (buffer-local-value symbol (oref client -buffer))
+    (void-variable nil)))
+
+(gv-define-simple-setter jupyter-get jupyter-set)
 
 ;;; Hooks
 
