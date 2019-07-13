@@ -73,6 +73,19 @@ automatically be shown if this is non-nil."
   :group 'ob-jupyter
   :type '(repeat string))
 
+(defcustom jupyter-org-adjust-image-size
+  t
+  "Try to best fit image output in the result block.
+
+If non-nil, and `org-image-actual-width' is set to a list, the
+image will not be stretched if its width is small than (car
+`org-image-actual-width'). This is done by inserting #+ATTR_ORG
+keyword above the file path.
+
+See the docstring of `org-image-actual-width' for more details."
+  :group 'ob-jupyter
+  :type 'boolean)
+
 (defconst jupyter-org-mime-types '(:text/org
                                    ;; Prioritize images over html
                                    :image/svg+xml :image/jpeg :image/png
@@ -868,6 +881,12 @@ the width or height of the image."
             (base64-decode-region (point-min) (point-max))))))
     (cl-destructuring-bind (&key width height &allow-other-keys)
         metadata
+      (if (and (null width)
+               jupyter-org-adjust-image-size
+               (listp org-image-actual-width))
+          (let ((image-width (car (image-size (create-image file) 'pixels))))
+            (if (< image-width (car org-image-actual-width))
+                (setq width image-width))))
       (jupyter-org-image-link file width height))))
 
 (cl-defgeneric jupyter-org-result (_mime _params _data &optional _metadata)
