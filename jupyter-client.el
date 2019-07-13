@@ -443,6 +443,16 @@ back."
   "Return the most recent `jupyter-request' made by CLIENT."
   (gethash "last-sent" (oref client requests)))
 
+(defun jupyter-map-pending-requests (client function)
+  "Call FUNCTION for all pending requests of CLIENT."
+  (declare (indent 1))
+  (cl-check-type client jupyter-kernel-client)
+  (maphash (lambda (k v)
+             (unless (or (equal k "last-sent")
+                         (jupyter-request-idle-received-p v))
+               (funcall function v)))
+           (oref client requests)))
+
 ;;; Event handlers
 
 ;;;; Sending/receiving

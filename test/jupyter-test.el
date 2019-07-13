@@ -881,6 +881,33 @@
         (sleep-for 0.02)
         (should-not jupyter-current-client)))))
 
+(ert-deftest jupyter-map-pending-requests ()
+  :tags '(client)
+  (let ((err (should-error
+              (jupyter-map-pending-requests nil #'identity)
+              :type 'wrong-type-argument)))
+    (should (equal (nth 1 err) 'jupyter-kernel-client)))
+  (jupyter-with-echo-client client
+    (let ((r1 (jupyter-request :id "id1"))
+          (r2 (jupyter-request :id "id2"))
+          (mapped nil))
+      (puthash "last-sent" r1 (oref client requests))
+      (puthash "id1" r1 (oref client requests))
+      (puthash "id2" r2 (oref client requests))
+      (jupyter-map-pending-requests client
+        (lambda (req) (push req mapped)))
+      (should (= (length mapped) 2))
+      (should (memq r1 mapped))
+      (should (memq r2 mapped))
+
+      (setq mapped nil)
+      (setf (jupyter-request-idle-received-p r2) t)
+      (jupyter-map-pending-requests client
+        (lambda (req) (push req mapped)))
+      (should (= (length mapped) 1))
+      (should (memq r1 mapped))
+      (should-not (memq r2 mapped)))))
+
 ;;; IOloop
 
 (ert-deftest jupyter-ioloop-lifetime ()
