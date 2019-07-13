@@ -53,7 +53,9 @@
   'jupyter-org-resource-directory)
 
 (defvar org-babel-jupyter-session-clients (make-hash-table :test #'equal)
-  "A hash table mapping session names to Jupyter clients.")
+  "A hash table mapping session names to Jupyter clients.
+A key into this table can be constructed for the src-block at
+`point' using `org-babel-jupyter-src-block-session'.")
 
 (defvar org-babel-header-args:jupyter '((kernel . :any)
                                         (async . ((yes no))))

@@ -1998,6 +1998,21 @@ Image(filename='%s', width=300)" file)
     (should (equal (jupyter-org-result req (list :text/plain "[1, 2, 3] Foo"))
                    '(fixed-width (:value "[1, 2, 3] Foo"))))))
 
+(ert-deftest jupyter-org-request-at-point ()
+  :tags '(org)
+  (jupyter-org-test
+   (insert (format "\
+#+begin_src jupyter-python :session %s :async yes
+1 + 1;
+#+end_src" jupyter-org-test-session))
+   (goto-char (point-min))
+   (org-babel-execute-src-block)
+   (let ((req (jupyter-org-request-at-point)))
+     (should req)
+     (should (jupyter-org-request-p req))
+     (jupyter-wait-until-idle req)
+     (should-not (jupyter-org-request-at-point)))))
+
 (ert-deftest jupyter-org-result-python ()
   :tags '(org)
   ;; Test that the python language specialized method calls

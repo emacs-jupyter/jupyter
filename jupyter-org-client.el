@@ -34,6 +34,7 @@
 
 (declare-function org-babel-python-table-or-string "ob-python" (results))
 (declare-function org-babel-jupyter-initiate-session "ob-jupyter" (&optional session params))
+(declare-function org-babel-jupyter-src-block-session "ob-jupyter" ())
 (declare-function org-babel-jupyter-language-p "ob-jupyter" (lang))
 (declare-function org-element-context "org-element" (&optional element))
 (declare-function org-element-type "org-element" (element))
@@ -152,6 +153,21 @@ See also the docstring of `org-image-actual-width' for more details."
                                     (req jupyter-org-request))
   (when (markerp (jupyter-org-request-marker req))
     (set-marker (jupyter-org-request-marker req) nil)))
+
+(defvar org-babel-jupyter-session-clients) ; in ob-jupyter.el
+
+(defun jupyter-org-request-at-point ()
+  "Return the `jupyter-org-request' associated with `point' or nil."
+  (when-let* ((session (org-babel-jupyter-src-block-session))
+              (client (gethash session org-babel-jupyter-session-clients)))
+    (catch 'req
+      (jupyter-map-pending-requests client
+        (lambda (req)
+          (when (jupyter-org-request-p req)
+            (let ((marker (jupyter-org-request-marker req)))
+              (and (equal (marker-position marker) (point))
+                   (equal (marker-buffer marker) (current-buffer))
+                   (throw 'req req)))))))))
 
 ;;;; Stream
 
