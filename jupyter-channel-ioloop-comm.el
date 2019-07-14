@@ -142,9 +142,10 @@
       (with-slots (ioloop) comm
         (jupyter-send ioloop 'stop-channel channel)
         ;; Verify that the channel stops
-        (or (jupyter-ioloop-wait-until ioloop 'stop-channel
-              (lambda (_) (not (jupyter-channel-alive-p comm channel))))
-            (error "Channel not stopped in ioloop subprocess (%s)" channel))))))
+        (jupyter-with-timeout
+            (nil jupyter-default-timeout
+                 (error "Channel not stopped in ioloop subprocess (%s)" channel))
+          (not (jupyter-channel-alive-p comm channel)))))))
 
 (cl-defmethod jupyter-start-channel ((comm jupyter-channel-ioloop-comm) channel)
   (unless (jupyter-channel-alive-p comm channel)
@@ -154,9 +155,10 @@
         (with-slots (ioloop) comm
           (jupyter-send ioloop 'start-channel channel endpoint)
           ;; Verify that the channel starts
-          (or (jupyter-ioloop-wait-until ioloop 'start-channel
-                (lambda (_) (jupyter-channel-alive-p comm channel)))
-              (error "Channel not started in ioloop subprocess (%s)" channel)))))))
+          (jupyter-with-timeout
+              (nil jupyter-default-timeout
+                   (error "Channel not started in ioloop subprocess (%s)" channel))
+            (jupyter-channel-alive-p comm channel)))))))
 
 (provide 'jupyter-channel-ioloop-comm)
 
