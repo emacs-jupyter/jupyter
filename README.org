@@ -694,12 +694,12 @@ The main entry point for working working with a kernel server is the
 =jupyter-server-list-kernels= command which shows a list of all live kernels
 from the server URL that you provide when first calling the command. Any
 subsequent calls to the command will use the same URL as the first call. To
-change URLs give a prefix argument, =C-u M-x jupyter-server-list-kernels=. This
+change server URLs give a prefix argument, =C-u M-x jupyter-server-list-kernels=. This
 will then set the current server URL for future calls to the one you provide.
 See the =jupyter-current-server= command for more details.
 
 From the buffer shown by =jupyter-server-list-kernels= you can launch new
-kernels, connect a REPL to an existing kernel, interrupt a kernel, etc. See the
+kernels (=C-RET=), connect a REPL to an existing kernel (=RET=), interrupt a kernel (=C-c TAB=), kill a kernel (=C-c C-d= or =d=), refresh the list of kernels (=g=) etc. See the
 =jupyter-server-kernel-list-mode= for all the available key bindings.
 
 Note, the =default-directory= of the =jupyter-server-kernel-list-mode= buffer
