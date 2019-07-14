@@ -903,8 +903,10 @@ the image may still be added, see
         metadata
       (if (and (null width)
                jupyter-org-adjust-image-size
-               (listp org-image-actual-width))
-          (let ((image-width (car (image-size (create-image file) 'pixels))))
+               (numberp (car-safe org-image-actual-width)))
+          (let ((image-width (car (image-size
+                                   (create-image (expand-file-name file))
+                                   'pixels))))
             (if (< image-width (car org-image-actual-width))
                 (setq width image-width))))
       (jupyter-org-image-link file width height))))
