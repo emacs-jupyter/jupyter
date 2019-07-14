@@ -334,11 +334,11 @@ see RFC 6265."
           ;; since cookies are required to have them.
           ;;
           ;; FIXME: This is mainly for the _xsrf cookie which does not have an
-          ;; expiration date which I believe is to be interpreted as meaning
-          ;; the cookie is session based. We go through `url-cookie-write-file'
-          ;; so that the subprocess which starts websockets can read the
-          ;; required cookies. An alternative solution would be to pass the
-          ;; cookies directly to the subprocess.
+          ;; expiration date. I believe this is to be interpreted as meaning
+          ;; the cookie should only be valid for the current session. We go
+          ;; through `url-cookie-write-file' so that the subprocess which
+          ;; starts websockets can read the required cookies. An alternative
+          ;; solution would be to pass the cookies directly to the subprocess.
           (unless expires
             (setq expires (setf (url-cookie-expires cookie)
                                 (format-time-string "%a, %d %b %Y %T %z"
@@ -374,8 +374,15 @@ Return the modified PLIST."
 (define-error 'jupyter-api-login-failed
   "Login attempt failed")
 
+;; FIXME: Make the DATA this error signals consistent.
 (define-error 'jupyter-api-authentication-failed
   "Authentication failed")
+
+;; Signaled when `jupyter-api-request' receives a 403 response from the server.
+;; The DATA of the signaled error will be the arguments of the
+;; `jupyter-api-request' call.
+(define-error 'jupyter-api-unauthenticated
+  "An API request returned an \"Access Forbidden\" response")
 
 ;;;; Logging in
 
@@ -642,7 +649,15 @@ resulting endpoint. So for the above example, the resulting url
 will be http://localhost:8888/api/contents?content=1.
 
 If METHOD is \"WS\", a websocket will be opened using the REST api
-url and PLIST will be used in a call to `websocket-open'."
+url and PLIST will be used in a call to `websocket-open'.
+
+If the request receives a 403 \"Access Forbidden\" response,
+signal a `jupyter-api-unauthenticated' error with the error data
+being the arguments passed to this method. Otherwise for any
+other kind of HTTP error, signal a `jupyter-api-http-error' with
+error data being a list of two elements, the first being the HTTP
+response code and the second being a error message returned from
+the server."
   (jupyter-api-ensure-authenticated client)
   (let ((jupyter-api-request-headers
          (append (jupyter-api-auth-headers client)
@@ -657,9 +672,17 @@ url and PLIST will be used in a call to `websocket-open'."
                 (concat (oref client ws-url) "/" endpoint)
                 (jupyter-api-add-websocket-headers rest)))
         (_
-         (apply #'jupyter-api-http-request
-                (oref client url) endpoint method
-                rest))))))
+         (condition-case err
+             (apply #'jupyter-api-http-request
+                    (oref client url) endpoint method
+                    rest)
+           (jupyter-api-http-error
+            (if (or jupyter-api-authentication-in-progress-p
+                    ;; Access Forbidden
+                    (not (= (nth 1 err) 403)))
+                (signal (car err) (cdr err))
+              (signal 'jupyter-api-unauthenticated
+                      (cons client (cons method plist)))))))))))
 
 ;;;; Endpoints
 

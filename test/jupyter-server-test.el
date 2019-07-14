@@ -25,6 +25,8 @@
 ;;; Commentary:
 
 ;; Test `jupyter-rest-api' and `jupyter-server' related functionality.
+;; XXX: BEWARE THESE TESTS WILL OVERWRITE YOUR `url-cookie-file'!!!!!!
+;; TODO: Avoid this by using a custom  `url-cookie-file'?
 
 ;;; Code:
 
@@ -269,6 +271,42 @@
             (should (jupyter-server-kernel-connected-p server id))
             (should (jupyter-comm-alive-p kcomm))
             (jupyter-comm-stop kcomm)))))))
+
+(ert-deftest jupyter-server-reauthentication ()
+  :tags '(server)
+  (let ((jupyter-test-notebook nil)
+        (jupyter-api-authentication-method 'password)
+        ;; foobar
+        (password "sha1:84cbf6913f79:5df10a65c1f36cdf691bb93b089f7cae0582b20e"))
+    (jupyter-test-ensure-notebook-server password)
+    (unwind-protect
+        (jupyter-test-with-notebook server
+          (cl-letf (((symbol-function #'read-passwd)
+                     (lambda (&rest _) "foobar")))
+            (jupyter-api-ensure-authenticated server))
+          (cl-destructuring-bind (manager client)
+              (jupyter-server-start-new-kernel server "python")
+            (unwind-protect
+                (let ((id (oref (oref manager kernel) id))
+                      (jupyter-current-client client))
+                  (should (equal (jupyter-eval "1 + 1") "2"))
+                  (let (url-cookie-storage)
+                    (should-not (jupyter-api-server-accessible-p server))
+                    (ert-info ("Can't attempt re-authentication")
+                      (let ((jupyter-api-authentication-method 'none))
+                        (should-error (jupyter-api-get-kernel server))))
+                    (should-not (jupyter-api-server-accessible-p server))
+                    (ert-info ("Do re-authentication")
+                      (cl-letf (((symbol-function #'read-passwd)
+                                 (lambda (&rest _) "foobar")))
+                        (should (jupyter-api-get-kernel server)))
+                      (should (jupyter-api-server-accessible-p server))
+                      (should (jupyter-server-kernel-connected-p server id)))
+                    (ert-info ("Verify clients still work after re-authentication")
+                      (should (equal (jupyter-eval "1 + 1") "2")))))
+              (jupyter-shutdown-kernel manager))))
+      (when (process-live-p (car jupyter-test-notebook))
+        (delete-process (car jupyter-test-notebook))))))
 
 (ert-deftest jupyter-server-kernel ()
   :tags '(kernel server)
