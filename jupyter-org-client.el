@@ -78,7 +78,7 @@ automatically be shown if this is non-nil."
   "Try to best fit image output in the result block.
 
 If non-nil, and `org-image-actual-width' is set to a list, the
-image will not be stretched if its width is small than (car
+image will not be stretched if its width is smaller than (car
 `org-image-actual-width'). This is done by inserting #+ATTR_ORG
 keyword above the file path.
 
