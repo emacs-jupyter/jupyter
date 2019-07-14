@@ -79,7 +79,7 @@ automatically be shown if this is non-nil."
 
 If non-nil, and `org-image-actual-width' is set to a list, the
 image will not be stretched if its width is smaller than (car
-`org-image-actual-width'). This is done by inserting #+ATTR_ORG
+`org-image-actual-width'). This is done by inserting an #+ATTR_ORG
 keyword above the file path.
 
 See the docstring of `org-image-actual-width' for more details."
