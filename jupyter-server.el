@@ -205,6 +205,33 @@ kernel has a matching ID."
 
 ;;;; `jupyter-server' methods
 
+(defun jupyter-server--connect-channels (server id)
+  (jupyter-send server 'connect-channels id)
+  (jupyter-with-timeout
+      (nil jupyter-default-timeout
+           (error "Timeout when connecting websocket to kernel id %s" id))
+    (jupyter-server-kernel-connected-p server id)))
+
+(cl-defmethod jupyter-api-request :around ((server jupyter-server) _method &rest _plist)
+  (condition-case nil
+      (cl-call-next-method)
+    (jupyter-api-unauthenticated
+     (if (memq jupyter-api-authentication-method '(ask token password))
+         (oset server auth jupyter-api-authentication-method)
+       (error "Unauthenticated request, can't attempt re-authentication \
+with default `jupyter-api-authentication-method'"))
+     (prog1 (cl-call-next-method)
+       ;; Re-start websocket connections after re-authenticating
+       (when (jupyter-comm-alive-p server)
+         (let ((connected (cl-remove-if-not
+                           (apply-partially #'jupyter-server-kernel-connected-p server)
+                           (mapcar (lambda (kernel) (plist-get kernel :id))
+                              (jupyter-api-get-kernel server)))))
+           (jupyter-comm-stop server)
+           (jupyter-comm-start server)
+           (while connected
+             (jupyter-server--connect-channels server (pop connected)))))))))
+
 (cl-defmethod jupyter-comm-start ((comm jupyter-server))
   (unless (and (slot-boundp comm 'ioloop)
                (jupyter-ioloop-alive-p (oref comm ioloop)))
@@ -226,10 +253,7 @@ kernel has a matching ID."
   (cl-call-next-method)
   (with-slots (id) (oref kcomm kernel)
     (unless (jupyter-server-kernel-connected-p comm id)
-      (jupyter-send comm 'connect-channels id)
-      (unless (jupyter-ioloop-wait-until (oref comm ioloop)
-                  'connect-channels #'identity)
-        (error "Timeout when connecting websocket to kernel id %s" id)))))
+      (jupyter-server--connect-channels comm id))))
 
 (cl-defmethod jupyter-disconnect-client ((comm jupyter-server)
                                          (kcomm jupyter-server-kernel-comm))
