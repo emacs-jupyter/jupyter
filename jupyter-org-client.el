@@ -74,23 +74,13 @@ automatically be shown if this is non-nil."
   :group 'ob-jupyter
   :type '(repeat string))
 
-(defcustom jupyter-org-adjust-image-size
-  t
+(defcustom jupyter-org-adjust-image-size t
   "Try to best fit image output in the result block.
 
 If non-nil, and `org-image-actual-width' is set to a list, the
-image will not be stretched if its width is smaller than (car
-`org-image-actual-width'). This is done by inserting an #+ATTR_ORG
-keyword above the file path.
-
-The metadata of the returned image by the kernel maybe
-missing. In this case, setting `jupyter-org-adjust-image-size' to
-non-nil value means try to get the actual size of the image, i.e.
-
-(if (and (null width)                   ; no width info in metadata
-         jupyter-org-adjust-image-size
-         (listp org-image-actual-width))
-     ...)                               ; fetch image size
+image will not be stretched if its width is smaller than \(car
+`org-image-actual-width'\). This is done by inserting an
+#+ATTR_ORG keyword above the file path.
 
 See also the docstring of `org-image-actual-width' for more details."
   :group 'ob-jupyter
@@ -869,6 +859,8 @@ EXT is used as the extension."
                (concat "." ext))))
     (concat (file-name-as-directory dir) (sha1 data) ext)))
 
+(defvar org-image-actual-width)
+
 (defun jupyter-org--image-result (mime params b64-encoded data &optional metadata)
   "Return an org-element suitable for inserting an image.
 MIME is the image mimetype, PARAMS is the
@@ -887,7 +879,10 @@ is created.
 
 If METADATA contains a :width or :height key, then the returned
 org-element will have an ATTR_ORG affiliated keyword containing
-the width or height of the image."
+the width or height of the image. When there is no :width or
+:height key an ATTR_ORG keyword may containing the true size of
+the image may still be added, see
+`jupyter-org-adjust-image-size'."
   (let* ((overwrite (not (null (alist-get :file params))))
          (file (or (alist-get :file params)
                    (jupyter-org-image-file-name
