@@ -82,7 +82,16 @@ image will not be stretched if its width is smaller than (car
 `org-image-actual-width'). This is done by inserting an #+ATTR_ORG
 keyword above the file path.
 
-See the docstring of `org-image-actual-width' for more details."
+The metadata of the returned image by the kernel maybe
+missing. In this case, setting `jupyter-org-adjust-image-size' to
+non-nil value means try to get the actual size of the image, i.e.
+
+(if (and (null width)                   ; no width info in metadata
+         jupyter-org-adjust-image-size
+         (listp org-image-actual-width))
+     ...)                               ; fetch image size
+
+See also the docstring of `org-image-actual-width' for more details."
   :group 'ob-jupyter
   :type 'boolean)
 
