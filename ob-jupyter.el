@@ -452,7 +452,8 @@ name jupyter-LANG will be aliased to the Jupyter functions."
     (put (intern var) 'variable-documentation
          (get 'org-babel-header-args:jupyter 'variable-documentation))
     (setq var (concat "org-babel-default-header-args:jupyter-" lang))
-    (unless (intern-soft var)
+    (unless (and (intern-soft var)
+                 (boundp (intern var)))
       (set (intern var) `((:async . "no"))))
     (put (intern var) 'variable-documentation
          (format "Default header arguments for Jupyter %s src-blocks" lang))
