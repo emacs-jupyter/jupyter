@@ -473,10 +473,6 @@ already exist. The alias is created with
 
 Optional argument REFRESH has the same meaning as in
 `jupyter-available-kernelspecs'."
-  (unless (file-remote-p default-directory)
-    ;; Keep this function on `org-mode-hook' until we know for sure that at
-    ;; least the local kernelspecs have language aliases.
-    (remove-hook 'org-mode-hook #'org-babel-jupyter-aliases-from-kernelspecs))
   (cl-loop
    with specs = (with-demoted-errors "Error retrieving kernelspecs: %S"
                   (jupyter-available-kernelspecs refresh))
@@ -526,7 +522,7 @@ mapped to their appropriate minted language in
 
 ;;; Hook into `org'
 
-(add-hook 'org-mode-hook #'org-babel-jupyter-aliases-from-kernelspecs)
+(org-babel-jupyter-aliases-from-kernelspecs)
 (add-hook 'org-export-before-processing-hook #'org-babel-jupyter-setup-export)
 (add-hook 'org-export-before-parsing-hook #'org-babel-jupyter-strip-ansi-escapes)
 
