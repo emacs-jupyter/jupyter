@@ -445,11 +445,24 @@ name jupyter-LANG will be aliased to the Jupyter functions."
         (defalias (intern (concat "org-babel-" fn ":jupyter-" lang)) sym))))
   (defalias (intern (concat "org-babel-jupyter-" lang "-initiate-session"))
     'org-babel-jupyter-initiate-session)
-  (set (intern (concat "org-babel-header-args:jupyter-" lang))
-       org-babel-header-args:jupyter)
-  (set (intern (concat "org-babel-default-header-args:jupyter-" lang))
-       `((:kernel . ,kernel)
-         (:async . "no"))))
+  (let (var)
+    (setq var (concat "org-babel-header-args:jupyter-" lang))
+    (unless (intern-soft var)
+      (set (intern var) org-babel-header-args:jupyter))
+    (put (intern var) 'variable-documentation
+         (get 'org-babel-header-args:jupyter 'variable-documentation))
+    (setq var (concat "org-babel-default-header-args:jupyter-" lang))
+    (unless (intern-soft var)
+      (set (intern var) `((:async . "no"))))
+    (put (intern var) 'variable-documentation
+         (format "Default header arguments for Jupyter %s src-blocks" lang))
+    ;; Always set the kernel if there isn't one. Typically the default header
+    ;; args for a language are set by the user in their configurations by
+    ;; calling `setq', but the :kernel is typically not something the user
+    ;; wants to set directly so make sure its defined in the header args.
+    (setq var (intern var))
+    (unless (alist-get :kernel (symbol-value var))
+      (setf (alist-get :kernel (symbol-value var)) kernel))))
 
 (defun org-babel-jupyter-aliases-from-kernelspecs (&optional refresh)
   "Make language aliases based on the available kernelspecs.
