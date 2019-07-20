@@ -71,11 +71,6 @@
 ;;`jupyter-server' that does not have any websockets open, clients connected,
 ;; or HTTP connections open, or is not bound to `jupyter-current-server' in any
 ;; buffer.
-;;
-;; TODO: Naming kernels in `jupyter-server-list-kernels' instead of using their
-;; ID. The kernel ID is not very useful to quickly identify which kernel does
-;; what, it would be more useful to be able to associate a name with a kernel
-;; ID.
 
 ;;; Code:
 
@@ -100,7 +95,7 @@ Used in, e.g. a `jupyter-server-kernel-list-mode' buffer.")
 
 (put 'jupyter-current-server 'permanent-local t)
 
-;;; Plumbing
+;;; `jupyter-server'
 
 (defvar jupyter--servers nil)
 
@@ -125,6 +120,8 @@ Access should be done through `jupyter-available-kernelspecs'.")))
       (when (jupyter-comm-alive-p server)
         (jupyter-comm-stop server))
       (delete-instance server))))
+
+;;; `jupyter-server-kernel'
 
 ;; TODO: Add the server as a slot
 (defclass jupyter-server-kernel (jupyter-meta-kernel)
@@ -168,6 +165,88 @@ Access should be done through `jupyter-available-kernelspecs'.")))
                       (oref kernel)
                       (oref id))
                     9 nil nil "…")))
+
+;;; Assigning names to kernel IDs
+
+(defvar jupyter-server-kernel-names nil
+  "An alist mapping URLs to alists mapping kernel IDs to human friendly names.
+For example
+
+    \((\"http://localhost:8888\"
+      (\"72d92ded-1275-440a-852f-90f655197305\" . \"thermo\"))\)
+
+You can persist this alist across Emacs sessions using `desktop',
+`savehist', or any other session persistence package. For
+example, when using `savehist' you can add the following to your
+init file to persist the server names across Emacs sessions.
+
+    \(savehist-mode\)
+    \(add-to-list 'savehist-additional-variables 'jupyter-server-kernel-names\).")
+
+(defun jupyter-server-cull-kernel-names (&optional server)
+  "Ensure all names in `jupyter-server-kernel-names' map to existing kernels.
+If SERVER is non-nil only check the kernels on SERVER, otherwise
+check all kernels on all existing servers."
+  (let ((servers (if server (list server)
+                   (jupyter-gc-servers)
+                   (jupyter-servers))))
+    (unless server
+      ;; Only remove non-existing servers when culling all kernels on all
+      ;; servers.
+      (let ((urls (mapcar (lambda (x) (oref x url)) servers)))
+        (cl-callf2 cl-remove-if-not (lambda (x) (member (car x) urls))
+                   jupyter-server-kernel-names)))
+    (dolist (server servers)
+      (when-let* ((names (assoc (oref server url) jupyter-server-kernel-names)))
+        (setf (alist-get (oref server url)
+                         jupyter-server-kernel-names nil nil #'equal)
+              (cl-loop
+               for kernel across (jupyter-api-get-kernel server)
+               for name = (assoc (plist-get kernel :id) names)
+               when name collect name))))))
+
+(defun jupyter-server-kernel-name (server id)
+  "Return the associated name of the kernel with ID on SERVER.
+If there is no name associated, return nil. See
+`jupyter-server-kernel-names'."
+  (cl-check-type server jupyter-server)
+  (let ((kernel-names (assoc (oref server url) jupyter-server-kernel-names)))
+    (cdr (assoc id kernel-names))))
+
+(defun jupyter-server-kernel-id-from-name (server name)
+  "Return the ID of the kernel that has NAME on SERVER.
+If NAME does not have a kernel associated, return nil. See
+`jupyter-server-kernel-names'."
+  (cl-check-type server jupyter-server)
+  (jupyter-server-cull-kernel-names server)
+  (let ((kernel-names (assoc (oref server url) jupyter-server-kernel-names)))
+    (car (rassoc name kernel-names))))
+
+(defun jupyter-server-name-kernel (server id name)
+  "NAME the kernel with ID on SERVER.
+See `jupyter-server-kernel-names'."
+  (cl-check-type server jupyter-server)
+  (setf (alist-get id
+                   (alist-get (oref server url)
+                              jupyter-server-kernel-names
+                              nil nil #'equal)
+                   nil nil #'equal)
+        name))
+
+(defun jupyter-server-name-client-kernel (client name)
+  "For the kernel connected to CLIENT associate NAME.
+CLIENT must be communicating with a `jupyter-server-kernel', the
+ID of the kernel will be associated with NAME, see
+`jupyter-server-kernel-names'."
+  (cl-check-type client jupyter-kernel-client)
+  (cl-check-type (oref client kcomm) jupyter-server-kernel-comm)
+  (let* ((kernel (thread-first client
+                   (oref kcomm)
+                   (oref kernel)))
+         (id (oref kernel id)))
+    (jupyter-server-name-kernel (oref kernel server) id name)))
+
+;;; Plumbing
 
 ;;;; `jupyter-server' events
 
@@ -686,6 +765,20 @@ the same meaning as in `jupyter-connect-repl'."
   (jupyter-server-launch-kernel jupyter-current-server)
   (revert-buffer))
 
+(defun jupyter-server-kernel-list-name-kernel ()
+  "Name the kernel under `point'."
+  (interactive)
+  (when-let* ((id (tabulated-list-get-id))
+              (name (read-string
+                     (let ((cname (jupyter-server-kernel-name
+                                   jupyter-current-server id)))
+                       (if cname (format "Rename %s to: " cname)
+                         (format "Name kernel [%s]: " id))))))
+    (when (zerop (length name))
+      (jupyter-server-kernel-list-name-kernel))
+    (jupyter-server-name-kernel jupyter-current-server id name)
+    (revert-buffer)))
+
 (defvar jupyter-server-kernel-list-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "C-c C-i") #'jupyter-server-kernel-list-do-interrupt)
@@ -696,8 +789,9 @@ the same meaning as in `jupyter-connect-repl'."
     (define-key map [mouse-1] #'jupyter-server-kernel-list-new-repl)
     (define-key map (kbd "RET") #'jupyter-server-kernel-list-new-repl)
     (define-key map (kbd "C-RET") #'jupyter-server-kernel-list-launch-kernel)
-    (define-key map (kbd "<return>") #'jupyter-server-kernel-list-new-repl)
     (define-key map (kbd "C-<return>") #'jupyter-server-kernel-list-launch-kernel)
+    (define-key map (kbd "<return>") #'jupyter-server-kernel-list-new-repl)
+    (define-key map "R" #'jupyter-server-kernel-list-name-kernel)
     (define-key map "r" #'revert-buffer)
     (define-key map "g" #'revert-buffer)
     map))
@@ -750,12 +844,14 @@ the same meaning as in `jupyter-connect-repl'."
              connections &allow-other-keys)
        kernel
      (let* ((time (jupyter-decode-time last_activity))
-            (name
-             (let ((same (cl-remove-if-not
-                          (lambda (x) (string-prefix-p name x)) names)))
-               (when same (setq name (format "%s<%d>" name (length same))))
-               (push name names)
-               (propertize name 'face 'font-lock-constant-face)))
+            (name (propertize
+                   (or (jupyter-server-kernel-name jupyter-current-server id)
+                       (let ((same (cl-remove-if-not
+                                    (lambda (x) (string-prefix-p name x)) names)))
+                         (when same (setq name (format "%s<%d>" name (length same))))
+                         (push name names)
+                         name))
+                   'face 'font-lock-constant-face))
             (activity (propertize (jupyter-format-time-low-res time)
                                   'face 'font-lock-doc-face))
             (conns (propertize (number-to-string connections)
