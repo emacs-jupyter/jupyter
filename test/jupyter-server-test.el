@@ -434,4 +434,95 @@
                 (should (not (null session)))
               (jupyter-test-kill-buffer session))))))))
 
+;;; Naming kernels
+
+(ert-deftest jupyter-server-cull-kernel-names ()
+  :tags '(server)
+  (cl-letf* ((jupyter-server-kernel-names
+              '(("http://localhost:89812"
+                 ("id1" . "name1")
+                 ("id2" . "name2"))
+                ("http://localhost:89813"
+                 ("id3" . "name3"))
+                ("http://localhost:89814"
+                 ("id4" . "name4"))))
+             (servers (list (jupyter-server :url "http://localhost:89812")
+                            (jupyter-server :url "http://localhost:89813")))
+             ((symbol-function #'jupyter-gc-servers) #'ignore)
+             ((symbol-function #'jupyter-servers) (lambda () servers))
+             ((symbol-function #'jupyter-api-get-kernel)
+              (lambda (server &rest _)
+                (cond
+                 ((equal (oref server url) "http://localhost:89812")
+                  (vector '(:id "id1")))
+                 ((equal (oref server url) "http://localhost:89813")
+                  nil)))))
+    (jupyter-server-cull-kernel-names (car servers))
+    (should (equal jupyter-server-kernel-names
+                   '(("http://localhost:89812"
+                      ("id1" . "name1"))
+                     ("http://localhost:89813"
+                      ("id3" . "name3"))
+                     ("http://localhost:89814"
+                      ("id4" . "name4")))))
+    (jupyter-server-cull-kernel-names)
+    (should (equal jupyter-server-kernel-names
+                   '(("http://localhost:89812"
+                      ("id1" . "name1"))
+                     ("http://localhost:89813"))))))
+
+(ert-deftest jupyter-server-kernel-name ()
+  :tags '(server)
+  (let ((jupyter-server-kernel-names
+         '(("http://localhost:8882"
+            ("id1" . "name1"))))
+        (server (jupyter-server :url "http://localhost:8882")))
+    (should (equal (jupyter-server-kernel-name server "id1")
+                   "name1"))
+    (should (null (jupyter-server-kernel-name server "id2")))))
+
+(ert-deftest jupyter-server-kernel-id-from-name ()
+  :tags '(server)
+  (cl-letf (((symbol-function #'jupyter-server-cull-kernel-names) #'ignore)
+            (jupyter-server-kernel-names
+             '(("http://localhost:8882"
+                ("id1" . "name1"))))
+            (server (jupyter-server :url "http://localhost:8882")))
+    (should (equal (jupyter-server-kernel-id-from-name server "name1")
+                   "id1"))
+    (should (null (jupyter-server-kernel-id-from-name server "name2")))))
+
+(ert-deftest jupyter-server-name-kernel ()
+  :tags '(server)
+  (let ((jupyter-server-kernel-names
+         '(("http://localhost:8882"
+            ("id1" . "name1"))))
+        (server (jupyter-server :url "http://localhost:8882")))
+    (jupyter-server-name-kernel server "id2" "name2")
+    (should (equal jupyter-server-kernel-names
+                   '(("http://localhost:8882"
+                      ("id2" . "name2")
+                      ("id1" . "name1")))))
+    (jupyter-server-name-kernel server "id2" "name3")
+    (should (equal jupyter-server-kernel-names
+                   '(("http://localhost:8882"
+                      ("id2" . "name3")
+                      ("id1" . "name1")))))))
+
+(ert-deftest jupyter-server-name-client-kernel ()
+  :tags '(server)
+  (let* ((jupyter-server-kernel-names
+          '(("http://localhost:8882"
+             ("id1" . "name1"))))
+         (server (jupyter-server :url "http://localhost:8882"))
+         (client (jupyter-kernel-client)))
+    (oset client kcomm (jupyter-server-kernel-comm
+                        :kernel (jupyter-server-kernel
+                                 :id "id1"
+                                 :server server)))
+    (jupyter-server-name-client-kernel client "foo")
+    (should (equal jupyter-server-kernel-names
+                   '(("http://localhost:8882"
+                      ("id1" . "foo")))))))
+
 ;;; jupyter-server-test.el ends here
