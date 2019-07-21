@@ -632,17 +632,23 @@ serves to distinguish different remote sessions on the same host.
 
 If =:session= is a TRAMP file name like =/jpy:localhost#8888:NAME= it is
 interpreted as corresponding to a connection to a kernel through a Jupyter
-notebook server located at =http://localhost:8888=. If =NAME= is a kernel ID
-corresponding to an existing kernel on a server, e.g.
-=/jpy::161b2318-180c-497a-b4bf-de76176061d9=, then a connection to an existing
-kernel with the corresponding ID will be made. Otherwise, a new kernel will be
-launched on the server and =NAME= will be used as an identifier for the
+notebook server located at =http://localhost:8888=.
+
+If =NAME= is a kernel ID corresponding to an existing kernel on a server,
+e.g. =/jpy::161b2318-180c-497a-b4bf-de76176061d9=, then a connection to an
+existing kernel with the corresponding ID will be made. Otherwise, a new kernel
+will be launched on the server and =NAME= will be used as an identifier for the
 session.
 
-Note, the =:kernel= header argument must match the name of the kernelspec of
-the kernel being connected to when =NAME= is a kernel ID of an existing kernel.
+When a new kernel is launched, =NAME= will also be associated with the kernel's
+ID, see =jupyter-server-kernel-names=. This is useful to distinguish Org
+mode =:session= kernels from other ones in the buffer shown
+by =jupyter-server-list-kernels=.
 
-To connect to a kernel behind an =HTTPS= connection use a TRAMP file name that
+When connecting to an existing kernel, i.e. when =NAME= is the ID of a kernel,
+the =:kernel= header argument must match the name of the kernel's kernelspec.
+
+To connect to a kernel behind an =HTTPS= connection, use a TRAMP file name that
 looks like =/jpys:...= instead.
 
 *** TODO Standard output, displayed data, and code block results
@@ -698,14 +704,23 @@ change server URLs give a prefix argument, =C-u M-x jupyter-server-list-kernels=
 will then set the current server URL for future calls to the one you provide.
 See the =jupyter-current-server= command for more details.
 
-From the buffer shown by =jupyter-server-list-kernels= you can launch new
-kernels (=C-RET=), connect a REPL to an existing kernel (=RET=), interrupt a kernel (=C-c TAB=), kill a kernel (=C-c C-d= or =d=), refresh the list of kernels (=g=) etc. See the
-=jupyter-server-kernel-list-mode= for all the available key bindings.
+From the buffer shown by =jupyter-server-list-kernels= you can launch new kernels
+(=C-RET=), connect a REPL to an existing kernel (=RET=), interrupt a kernel
+(=C-c TAB=), kill a kernel (=C-c C-d= or =d=), refresh the list of kernels (=g=) etc.
+See the =jupyter-server-kernel-list-mode= for all the available key bindings.
 
 Note, the =default-directory= of the =jupyter-server-kernel-list-mode= buffer
 will be the root directory of the kernel server (so that =dired-jump= will show
 a =dired= listing of the directory). See the section on TRAMP integration
 below.
+
+*** Naming kernels
+
+From the =jupyter-server-list-kernels= buffer one can also name (or rename) a
+kernel (=R=) so that it has an identifier other than its ID. Naming a kernel adds
+the name to the =jupyter-server-kernel-names= global variable in a form suitable
+for persisting across Emacs sessions. See its documentation for more details
+about persisting its value.
 
 *** TRAMP integration
 
