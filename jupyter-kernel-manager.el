@@ -28,8 +28,11 @@
 ;;; Code:
 
 (require 'jupyter-base)
+(require 'jupyter-env)
 (require 'jupyter-messages)
 (require 'jupyter-client)
+(require 'jupyter-kernelspec)
+(require 'jupyter-channel)
 (eval-when-compile (require 'subr-x))
 
 (declare-function ansi-color-apply "ansi-color" (string))
@@ -229,6 +232,30 @@ argument of the process."
         (or (null attribs)
             (not (equal atime (nth 4 attribs))))))))
 
+(defun jupyter-write-connection-file (session obj)
+  "Write a connection file based on SESSION to `jupyter-runtime-directory'.
+Return the path to the connection file.
+
+Also register a finalizer on OBJ to delete the file when OBJ is
+garbage collected. The file is also deleted when Emacs exits if
+it hasn't been already."
+  (cl-check-type session jupyter-session)
+  (cl-check-type obj jupyter-finalized-object)
+  (let* ((temporary-file-directory (jupyter-runtime-directory))
+         (json-encoding-pretty-print t)
+         (file (make-temp-file "emacs-kernel-" nil ".json"))
+         (kill-hook (lambda () (when (and file (file-exists-p file))
+                            (delete-file file)))))
+    (add-hook 'kill-emacs-hook kill-hook)
+    (jupyter-add-finalizer obj
+      (lambda ()
+        (funcall kill-hook)
+        (remove-hook 'kill-emacs-hook kill-hook)))
+    (prog1 file
+      (with-temp-file file
+        (insert (json-encode-plist
+                 (jupyter-session-conn-info session)))))))
+
 (cl-defmethod jupyter-start-kernel ((kernel jupyter-spec-kernel) &rest _args)
   (cl-destructuring-bind (_name . (resource-dir . spec)) (oref kernel spec)
     (let ((conn-file (jupyter-write-connection-file
@@ -258,15 +285,29 @@ argument of the process."
         (unless (memq system-type '(ms-dos windows-nt cygwin))
           (jupyter--block-until-conn-file-access atime kernel conn-file))))))
 
-(defclass jupyter-kernel-manager (jupyter-kernel-lifetime)
+(defvar jupyter--kernel-managers nil)
+
+;; TODO: Move to generalize the kernel manager even more so it is independent
+;; of a control channel and only relies mainly on the kernel and possibly some
+;; other general object that can also be a control channel. This way we can
+;; avoid this class.
+(defclass jupyter-kernel-manager-base (jupyter-kernel-lifetime
+                                       jupyter-instance-tracker)
+  ((tracking-symbol :initform 'jupyter--kernel-managers)))
+
+(defclass jupyter-kernel-manager (jupyter-kernel-manager-base)
   ((kernel
     :type jupyter-meta-kernel
     :initarg :kernel
     :documentation "The name of the kernel that is being managed.")
    (control-channel
-    :type (or null jupyter-sync-channel)
+    :type (or null jupyter-zmq-channel)
     :initform nil
     :documentation "The kernel's control channel.")))
+
+(defun jupyter-kernel-managers ()
+  "Return a list of all `jupyter-kernel-manager' objects."
+  (jupyter-all-objects 'jupyter--kernel-managers))
 
 (cl-defgeneric jupyter-make-client ((manager jupyter-kernel-manager) class &rest slots)
   "Make a new client from CLASS connected to MANAGER's kernel.
@@ -283,6 +324,7 @@ SLOTS are the slots used to initialize the client with.")
     (prog1 client
       (oset client manager manager))))
 
+;; FIXME: Do not hard-code the communication layer
 (cl-defmethod jupyter-make-client ((manager jupyter-kernel-manager) _class &rest _slots)
   "Make a new client from CLASS connected to MANAGER's kernel.
 CLASS should be a subclass of `jupyter-kernel-client', a new
@@ -291,12 +333,16 @@ connect to MANAGER's kernel."
   (let ((client (cl-call-next-method)))
     (with-slots (kernel) manager
       (prog1 client
+        (require 'jupyter-channel-ioloop-comm)
+        (require 'jupyter-zmq-channel-ioloop)
         ;; TODO: We can also have the manager hold the kcomm object and just
         ;; pass a single kcomm object to all clients using this manager since the
         ;; kcomm broadcasts event to all connected clients. This is more
         ;; efficient as it only uses one subprocess for every client connected to
         ;; a kernel.
-        (oset client kcomm (jupyter-channel-ioloop-comm))
+        (oset client kcomm (make-instance
+                            'jupyter-channel-ioloop-comm
+                            :ioloop-class 'jupyter-zmq-channel-ioloop))
         (jupyter-initialize-connection client (oref kernel session))))))
 
 (cl-defmethod jupyter-start-kernel ((manager jupyter-kernel-manager) &rest args)
@@ -319,8 +365,10 @@ connect to MANAGER's kernel."
     (if control-channel (jupyter-start-channel control-channel)
       (cl-destructuring-bind (&key transport ip control_port &allow-other-keys)
           (jupyter-session-conn-info (oref kernel session))
+        (require 'jupyter-zmq-channel)
         (oset manager control-channel
-              (jupyter-sync-channel
+              (make-instance
+               'jupyter-zmq-channel
                :type :control
                :session (oref kernel session)
                :endpoint (format "%s://%s:%d" transport ip control_port)))
@@ -393,15 +441,12 @@ subprocess."
              (jupyter-send control-channel :interrupt-request
                            (jupyter-message-interrupt-request))
              (jupyter-with-timeout
-                 ((format "Interruptin %s kernel"
+                 ((format "Interrupting %s kernel"
                           (jupyter-kernel-name kernel))
                   (or timeout jupyter-default-timeout)
                   (message "No interrupt reply from kernel (%s)"
                            (jupyter-kernel-name kernel)))
-               (condition-case nil
-                   (with-slots (session socket) control-channel
-                     (jupyter-recv session socket zmq-DONTWAIT))
-                 (zmq-EAGAIN nil)))))
+               (jupyter-recv control-channel 'dont-wait))))
           (_
            (if (object-of-class-p kernel 'jupyter-kernel-process)
                (interrupt-process (oref kernel process) t)
@@ -414,6 +459,51 @@ subprocess."
 
 (defun jupyter--error-if-no-kernel-info (client)
   (jupyter-kernel-info client))
+
+(cl-defun jupyter-local-tcp-conn-info (&key
+                                       (kernel-name "python")
+                                       (signature-scheme "hmac-sha256")
+                                       (key (jupyter-new-uuid))
+                                       (hb-port 0)
+                                       (stdin-port 0)
+                                       (control-port 0)
+                                       (shell-port 0)
+                                       (iopub-port 0))
+  "Return a connection info plist used to connect to a kernel.
+
+The :transport key is set to \"tcp\" and the :ip key will be
+\"127.0.0.1\".
+
+The plist has the standard keys found in the jupyter spec. See
+http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files.
+A port number of 0 for a channel means to use a randomly assigned
+port for that channel."
+  (unless (or (= (length key) 0)
+              (equal signature-scheme "hmac-sha256"))
+    (error "Only hmac-sha256 signing is currently supported"))
+  (append
+   (list :kernel_name kernel-name
+         :transport "tcp"
+         :ip "127.0.0.1")
+   (when (> (length key) 0)
+     (list :signature_scheme signature-scheme
+           :key key))
+   (let ((ports (jupyter-available-local-ports
+                 (cl-loop
+                  with nports = 0
+                  for p in (list hb-port stdin-port
+                                 control-port shell-port
+                                 iopub-port)
+                  when (zerop p) do (cl-incf nports)
+                  finally return nports))))
+     (cl-loop
+      for (channel . port) in `((:hb_port . ,hb-port)
+                                (:stdin_port . ,stdin-port)
+                                (:control_port . ,control-port)
+                                (:shell_port . ,shell-port)
+                                (:iopub_port . ,iopub-port))
+      collect channel and if (= port 0)
+      collect (pop ports) else collect port))))
 
 (defun jupyter-start-new-kernel (kernel-name &optional client-class)
   "Start a managed Jupyter kernel.
@@ -443,17 +533,16 @@ command on the host."
   (let* ((spec (jupyter-guess-kernelspec kernel-name))
          (kernel (if (file-remote-p default-directory)
                      (jupyter-command-kernel :spec spec)
-                   (let* ((key (jupyter-new-uuid))
-                          (conn-info (jupyter-create-connection-info
-                                      :kernel-name kernel-name
-                                      :key key)))
+                   (let ((key (jupyter-new-uuid)))
                      (jupyter-spec-kernel
                       :spec spec
                       ;; TODO: Convert `jupyter-session' into an object and
                       ;; only require `conn-info'.
                       :session (jupyter-session
                                 :key key
-                                :conn-info conn-info)))))
+                                :conn-info (jupyter-local-tcp-conn-info
+                                            :kernel-name kernel-name
+                                            :key key))))))
          (manager (jupyter-kernel-manager :kernel kernel)))
     (jupyter-start-kernel manager)
     (let ((client (jupyter-make-client manager client-class)))

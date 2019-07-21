@@ -35,6 +35,8 @@ install:
   - conda install jupyter
   # Ensure Jupyter runtime dir can be written to
   - ps: mkdir -p (jupyter --runtime-dir)
+  - jupyter --version
+  - jupyter notebook --version
 build_script:
   - cd %APPVEYOR_BUILD_FOLDER%
   - make dev

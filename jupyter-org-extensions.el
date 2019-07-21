@@ -28,7 +28,9 @@
 
 ;;; Code:
 
+(require 'jupyter-kernelspec)
 (require 'jupyter-org-client)
+(eval-when-compile (require 'subr-x))
 
 (declare-function org-babel-jupyter-initiate-session "ob-jupyter" (&optional session params))
 (declare-function org-babel-jupyter-src-block-session "ob-jupyter" ())
@@ -38,8 +40,10 @@
 (declare-function org-previous-line-empty-p "org" ())
 (declare-function org-next-line-empty-p "org" ())
 (declare-function org-element-context "org-element" (&optional element))
+(declare-function org-element-type "org-element" (element))
 (declare-function org-element-property "org-element" (property element))
 (declare-function org-element-interpret-data "org-element" (data))
+(declare-function org-element-at-point "org-element" ())
 (declare-function org-element-put-property "org-element" (element property value))
 (declare-function outline-show-entry "outline" ())
 (declare-function avy-jump "ext:avy")
@@ -104,6 +108,27 @@ assumed to not be inside a source block."
           (if (org-babel-jupyter-language-p lang) lang
             (format "jupyter-%s" lang))))))
 
+(defun jupyter-org-between-block-end-and-result-p ()
+  "If `point' is between a src-block and its result, return the result end.
+`point' is considered between a src-block and its result when the
+result begins where the src-block ends, i.e. when only whitespace
+separates the two."
+  ;; Move after a src block's results first if `point' is between a src
+  ;; block and it's results. Don't do this if the results are not directly
+  ;; after a src block, e.g. for named results that appear somewhere else.
+  (save-excursion
+    (let ((start (point)))
+      (when-let* ((src (and (ignore-errors (org-babel-previous-src-block))
+                            (org-element-context)))
+                  (end (org-element-property :end src))
+                  (result-pos (org-babel-where-is-src-block-result)))
+        (goto-char end)
+        (skip-chars-backward " \n\t\r")
+        (when (and (= result-pos end)
+                   (< (point) start result-pos))
+          (goto-char result-pos)
+          (org-element-property :end (org-element-context)))))))
+
 ;;;###autoload
 (defun jupyter-org-insert-src-block (&optional below query)
   "Insert a src-block above `point'.
@@ -122,16 +147,17 @@ language based on the src-block's near `point'."
              (end (org-element-property :end src))
              (lang (org-element-property :language src))
              (switches (org-element-property :switches src))
-             (parameters (org-element-property :parameters src))
-             location)
+             (parameters (org-element-property :parameters src)))
         (if below
-            (progn
-              (goto-char start)
-              (setq location (org-babel-where-is-src-block-result))
+            (let ((location (progn
+                              (goto-char start)
+                              (org-babel-where-is-src-block-result))))
               (if (not location)
                   (goto-char end)
                 (goto-char location)
                 (goto-char (org-element-property :end (org-element-context))))
+              (unless (org-previous-line-empty-p)
+                (insert "\n"))
               (insert
                (org-element-interpret-data
                 (org-element-put-property
@@ -140,6 +166,8 @@ language based on the src-block's near `point'."
               (forward-line -3))
           ;; after current block
           (goto-char (org-element-property :begin src))
+          (unless (org-previous-line-empty-p)
+            (insert "\n"))
           (insert
            (org-element-interpret-data
             (org-element-put-property
@@ -147,9 +175,29 @@ language based on the src-block's near `point'."
              :post-blank 1)))
           (forward-line -3)))
     ;; not in a src block, insert a new block, query for jupyter kernel
+    (beginning-of-line)
     (let* ((lang (jupyter-org-closest-jupyter-language query))
            (src-block (jupyter-org-src-block lang nil "\n")))
-      (beginning-of-line)
+      (when-let* ((pos (jupyter-org-between-block-end-and-result-p)))
+        (goto-char pos)
+        (skip-chars-backward " \n\t\r"))
+      (unless (looking-at-p "^[\t ]*$")
+        ;; Move past the current element first
+        (let ((elem (org-element-at-point)) parent)
+          (while (and (setq parent (org-element-property :parent elem))
+                      (not (memq (org-element-type parent)
+                                 '(inlinetask))))
+            (setq elem parent))
+          (when elem
+            (goto-char (org-element-property
+                        (if below :end :begin) elem))))
+        (cond
+         (below
+          (skip-chars-backward " \n\t\r")
+          (insert "\n"))
+         (t
+          (insert "\n")
+          (forward-line -1))))
       (unless (or (bobp) (org-previous-line-empty-p))
         (insert "\n"))
       (insert (string-trim-right (org-element-interpret-data src-block)))
@@ -273,6 +321,33 @@ of the ANY argument."
   (save-restriction
     (org-narrow-to-subtree)
     (jupyter-org-execute-to-point any)))
+
+;;;###autoload
+(defun jupyter-org-next-busy-src-block (arg &optional backward)
+  "Jump to the next busy source block.
+
+With a prefix argument ARG, jump forward ARG many blocks.
+
+When BACKWARD is non-nil, jump to the previous block."
+  (interactive "p")
+  (cl-loop
+   with count = (abs (or arg 1))
+   with origin = (point)
+   while (ignore-errors
+           (if backward (org-babel-previous-src-block)
+             (org-babel-next-src-block)))
+   thereis (when (jupyter-org-request-at-point)
+             (zerop (cl-decf count)))
+   finally (goto-char origin)
+   (user-error "No %s busy code blocks" (if backward "previous" "further"))))
+
+;;;###autoload
+(defun jupyter-org-previous-busy-src-block (arg)
+  "Jump to the previous busy source block.
+
+With a prefix argument ARG, jump backward ARG many source blocks."
+  (interactive "p")
+  (jupyter-org-next-busy-src-block arg 'backward))
 
 ;;;###autoload
 (defun jupyter-org-inspect-src-block ()
@@ -528,6 +603,15 @@ If BELOW is non-nil, move the block down, otherwise move it up."
     (while (org-babel-next-src-block)
       (org-babel-remove-result))))
 
+;;;###autoload
+(defun jupyter-org-interrupt-kernel ()
+  "Interrupt the kernel."
+  (interactive)
+  (unless (org-in-src-block-p)
+    (error "Not in a source block"))
+  (jupyter-org-with-src-block-client
+   (jupyter-repl-interrupt-kernel)))
+
 (defun jupyter-org-hydra/body ()
   "Hack to bind a hydra only if the hydra package exists."
   (interactive)
@@ -537,18 +621,18 @@ If BELOW is non-nil, move the block down, otherwise move it up."
   (fmakunbound 'jupyter-org-hydra/body)
   (eval `(defhydra jupyter-org-hydra (:color blue :hint nil)
            "
-          Execute                     Navigate       Edit             Misc
-------------------------------------------------------------------------------
-    _<return>_: current               _p_: previous  _C-p_: move up     _/_: inspect
-  _C-<return>_: current to next       _n_: next      _C-n_: move down   _l_: clear result
-  _M-<return>_: to point              _g_: visible     _x_: kill        _L_: clear all
-_C-M-<return>_: subtree to point      _G_: any         _c_: copy
-  _S-<return>_: Restart/block     _<tab>_: (un)fold    _o_: clone
-_S-C-<return>_: Restart/to point      ^ ^              _m_: merge
-_S-M-<return>_: Restart/buffer        ^ ^              _s_: split
-           _r_: Goto repl             ^ ^              _+_: insert above
-           ^ ^                        ^ ^              _=_: insert below
-           ^ ^                        ^ ^              _h_: header"
+          Execute                     Navigate            Edit              Misc
+-------------------------------------------------------------------------------------------
+    _<return>_: current               _p_: previous       _C-p_: move up    _/_: inspect
+  _C-<return>_: current to next       _P_: previous busy  _C-n_: move down  _l_: clear result
+  _M-<return>_: to point              _n_: next           _x_: kill         _L_: clear all
+_C-M-<return>_: subtree to point      _N_: next busy      _c_: copy         _i_: interrupt
+  _S-<return>_: Restart/block         _g_: visible        _o_: clone
+_S-C-<return>_: Restart/to point      _G_: any            _m_: merge
+_S-M-<return>_: Restart/buffer    _<tab>_: (un)fold       _s_: split
+           _r_: Goto repl             ^ ^                 _+_: insert above
+           ^ ^                        ^ ^                 _=_: insert below
+           ^ ^                        ^ ^                 _h_: header"
            ("<return>" org-ctrl-c-ctrl-c :color red)
            ("C-<return>" jupyter-org-execute-and-next-block :color red)
            ("M-<return>" jupyter-org-execute-to-point)
@@ -559,7 +643,9 @@ _S-M-<return>_: Restart/buffer        ^ ^              _s_: split
            ("r" org-babel-switch-to-session)
 
            ("p" org-babel-previous-src-block :color red)
+           ("P" jupyter-org-previous-busy-src-block :color red)
            ("n" org-babel-next-src-block :color red)
+           ("N" jupyter-org-next-busy-src-block :color red)
            ("g" jupyter-org-jump-to-visible-block)
            ("G" jupyter-org-jump-to-block)
            ("<tab>" org-cycle :color red)
@@ -577,10 +663,12 @@ _S-M-<return>_: Restart/buffer        ^ ^              _s_: split
            ("L" jupyter-org-clear-all-results)
            ("h" jupyter-org-edit-header)
 
-           ("/" jupyter-org-inspect-src-block)))
+           ("/" jupyter-org-inspect-src-block)
+           ("i" jupyter-org-interrupt-kernel)))
   (call-interactively #'jupyter-org-hydra/body))
 
 (define-key jupyter-org-interaction-mode-map (kbd "C-c h") #'jupyter-org-hydra/body)
 
 (provide 'jupyter-org-extensions)
+
 ;;; jupyter-org-extensions.el ends here

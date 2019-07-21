@@ -30,7 +30,8 @@
 (require 'zmq)
 (require 'jupyter-client)
 (require 'jupyter-repl)
-(require 'jupyter-comm-layer)
+(require 'jupyter-zmq-channel-ioloop)
+(require 'jupyter-channel-ioloop-comm)
 (require 'jupyter-org-client)
 (require 'jupyter-kernel-manager)
 (require 'cl-lib)
@@ -59,7 +60,8 @@ handling a message is always
 (cl-defmethod initialize-instance ((client jupyter-echo-client) &optional _slots)
   (cl-call-next-method)
   (oset client messages (make-ring 10))
-  (oset client kcomm (jupyter-channel-ioloop-comm))
+  (oset client kcomm (jupyter-channel-ioloop-comm
+                      :ioloop-class 'jupyter-zmq-channel-ioloop))
   (with-slots (kcomm) client
     (oset kcomm hb (jupyter-hb-channel))
     (oset kcomm stdin (make-jupyter-proxy-channel))
@@ -238,6 +240,29 @@ running BODY."
   (declare (indent 1) (debug (symbolp &rest form)))
   `(jupyter-test-with-kernel-repl "python" ,client
      ,@body))
+
+(defmacro jupyter-test-channel-ioloop (ioloop &rest body)
+  (declare (indent 1))
+  (let ((var (car ioloop))
+        (val (cadr ioloop)))
+    (with-temp-buffer
+      `(let* ((,var ,val)
+              (standard-output (current-buffer))
+              (jupyter-channel-ioloop-channels nil)
+              (jupyter-channel-ioloop-session nil)
+              ;; Needed so that `jupyter-ioloop-environment-p' passes
+              (jupyter-ioloop-stdin t)
+              (jupyter-ioloop-poller (zmq-poller)))
+         (unwind-protect
+             (progn ,@body)
+           (zmq-poller-destroy jupyter-ioloop-poller)
+           (jupyter-ioloop-stop ,var))))))
+
+(defun jupyter-test-ioloop-eval-event (ioloop event)
+  (eval
+   `(progn
+      ,@(oref ioloop setup)
+      ,(jupyter-ioloop--event-dispatcher ioloop event))))
 
 ;;; Functions
 

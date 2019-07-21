@@ -28,7 +28,7 @@ An interface to communicate with Jupyter kernels in Emacs.
   - [[#jupyter-widget-client][=jupyter-widget-client=]]
   - [[#jupyter-repl-client][=jupyter-repl-client=]]
   - [[#jupyter-ioloop][=jupyter-ioloop=]]
-  - [[#jupyter-channel-ioloop][=jupyter-channel-ioloop=]]
+  - [[#jupyter-zmq-channel-ioloop][=jupyter-zmq-channel-ioloop=]]
   - [[#jupyter-comm-layer][=jupyter-comm-layer=]]
   - [[#callbacks-and-hooks][Callbacks and hooks]]
   - [[#waiting-for-messages][Waiting for messages]]
@@ -38,50 +38,35 @@ An interface to communicate with Jupyter kernels in Emacs.
 
 * What does this package do?
 
-** API for creating Jupyter frontends in Emacs
+- Provides an API for creating Jupyter kernel frontends in Emacs based on the
+  built-in =eieio= and =cl-generic= libraries.
 
-This package provides an API for communicating with a Jupyter kernel via =zmq=
-sockets (http://github.com/dzop/emacs-zmq). It utilizes Emacs' object
-implementation, =eieio=, to define Jupyter client and kernel manager classes
-that can be sub-classed to provide support for any kind of Jupyter frontend in
-Emacs. Currently, there is a built-in REPL frontend and =org-mode= source block
-frontend.
+  - Communication with a kernel is either done through =zmq= sockets using the
+    [[http://github.com/dzop/emacs-zmq][emacs-zmq]] library or (coming soon) through the Jupyter notebook REST API.
 
-The base Jupyter client provides default implementations for handling common
-message replies from a kernel that integrate well with Emacs' built-in
-features. Below is a partial list of how kernel messages are integrated with
-Emacs:
+    - All of this communication is abstracted so that a frontend developer
+      should only need to extend a few =cl-defmethod= definitions in order to
+      implement a frontend.
 
-- Sending an inspect request will display the inspect reply in the =*Help*=
-  buffer and previous inspect requests can be revisited by calling
-  =help-go-back= or =help-go-forward= while in the =*Help*= buffer.
+  - Make it easy to define kernel language specific behavior. See the files
+    =jupyter-python.el= and =jupyter-julia.el= for examples.
 
-- Making completion requests to a kernel is done through the
-  =completion-at-point= interface.
+- Provides REPL and =org-mode= source block based frontends.
 
-- If the kernel asks for input from the user, a prompt is displayed in the
-  minibuffer.
+- Jupyter kernel interactions are integrated with Emacs's built-in features.
+  For example
 
-- Search through REPL history using =isearch=.
-** Support differences between kernel languages
+  - Inspecting a piece of code under =point= will display the information for
+    that symbol in the =*Help*= buffer. You can re-visit inspection requests
+    made to the kernel by calling =help-go-back= or =help-go-forward= while in
+    the =*Help*= buffer.
 
-There are many methods that can be extended to take into account differences
-between kernel languages. This is achieved by providing a method specializer,
-=jupyter-lang=, that can be added to the =&context= section of a method
-definition. See =cl-generic-generalizers=.
+  - Code completion is done through the =completion-at-point= interface.
 
-For example, the Python kernel sends =text/plain= data in its inspect replies,
-but most of the time the documentation requested is written using
-reStructuredText (rST) markup, the officially supported markup language for
-documentation strings in Python. In =emacs-jupyter= all insertion of messages
-into a buffer is handled by the =jupyter-insert= method. This method is
-extended to properly highlight rST when an inspect reply message is being
-inserted and the message is from a Python kernel.
+  - If the kernel asks for input from the user, a prompt is displayed in the
+    minibuffer.
 
-See the files =jupyter-python.el= and =jupyter-julia.el= for how these
-languages are integrated into the =emacs-jupyter= framework. Note, you don't
-need to require these support files directly since they will be loaded
-automatically when needed.
+  - You can search through REPL history using =isearch=.
 
 * How do I install this package?
 
@@ -162,48 +147,67 @@ make widgets
 #+END_SRC
 * How does this package compare to other similar packages?
 
-There are two popular packages that implement similar functionality to this one
+** =ob-ipython=
 
-- ob-ipython :: https://github.com/gregsexton/ob-ipython
-  - Interacts with a Jupyter kernel via =org-mode= source blocks.
-- ob-ipython (scimax) :: https://github.com/jkitchin/scimax
-  - Scimax is an Emacs starterkit for scientists and engineers that extends
-    =ob-ipython=.
-- emacs-ipython-notebook (ein) :: https://github.com/millejoh/emacs-ipython-notebook
-  - A Jupyter notebook interface in Emacs.
+The =org-mode= source block frontend in =emacs-jupyter= is similar to what is
+offered by [[https://github.com/gregsexton/ob-ipython][ob-ipython]] (and also the [[https://github.com/jkitchin/scimax][scimax]] version), below are some of the
+differences between =emacs-jupyter= and =ob-ipython= (biased in favor of
+=emacs-jupyter=):
 
-=emacs-jupyter= extends the features of =ob-ipython= by integrating more with
-=org-mode= and providing a better REPL interface to the kernel. For example,
-=ob-ipython= currently does not provide a function for
-=org-babel-load-in-session=. =ob-ipython= also starts a new process for every
-request since it relies on calling a Python script to send and receive messages
-whereas =emacs-jupyter= directly uses =zmq= sockets via =emacs-zmq= for
-communication and only starts a process on every new client connection. This
-difference in how messages are passed between Emacs and a kernel is notable
-when making completion requests. =ob-ipython= will incur the overhead of
-starting up a new process /and/ new sockets on every completion request which
-can potentially be every keystroke if you type slow enough.
+- Faster than =ob-ipython=
 
-The =scimax= version of =ob-ipython= offers some useful extensions to the
-default =ob-ipython= experience such as custom keybindings when inside an
-=org-mode= source block, selective display of mimetypes, and jumping to source
-block error locations. Many of these features have also been implemented in
-=emacs-jupyter=.
+  - =ob-ipython= starts a new process for every request made to a kernel and
+    does not persist the connection it makes to the kernel. This means that for
+    every request made there is the overhead of both starting a new process and
+    establishing communication with the kernel.
 
-=ein= is more of a full featured solution for a Jupyter notebook interface in
-Emacs. The goals of =emacs-jupyter= and =ein= are different. =ein= aims to be a
-frontend to the Jupyter notebook server API
-(https://github.com/jupyter/jupyter/wiki/Jupyter-Notebook-Server-API) which is
-an extra layer between the user and a kernel
-(https://jupyter.readthedocs.io/en/latest/architecture/how_jupyter_ipython_work.html#notebooks).
-In addition to being notebook client, =ein= offers many more powerful features
-for Python kernels. =emacs-jupyter=, on the other hand, offers an API that
-implements the Jupyter messaging protocol for communication with a kernel via
-=zmq= sockets. The API tries to integrate the interaction between the user and
-a kernel with built-in Emacs features. The REPL support and =org-mode=
-integration are examples of how the API can be used. In the future, it would be
-nice to add some kind of notebook interface in =emacs-jupyter= or at least an
-efficient conversion process between notebook files and =org-mode=.
+    =emacs-jupyter= starts a process on every new kernel connection only and
+    the connection is persisted for the lifetime of the client (frontend)
+    connected to the kernel.
+
+    This difference is most notable when comparing the code completion features
+    of both packages. =ob-ipython= code completion is basically unusable for
+    quick completions while typing.
+
+- Better REPL interface
+
+  - =ob-ipython= uses =python-shell-make-comint= to create a REPL connected to
+    a kernel. There are to problems with this (1) no syntax highlighting for
+    kernel languages other than Python (2) =comint= only groks text based
+    output, but a Jupyter kernel can provide much richer representations of
+    data, e.g. HTML, markdown, or =png= images to name a few. The REPL frontend
+    experience of =emacs-jupyter= is much closer to what one would get when
+    using =jupyer qtconsole= (see https://qtconsole.readthedocs.io/en/stable/).
+
+- Better integration with =org-mode= source block =:session= features
+
+  - All of the extension points that =org-mode= offers for source block
+    languages like =org-babel-edit-prep=, =org-babel-load-in-session=, etc. are
+    all fully supported. =ob-ipython= does not provide some of these features,
+    e.g. =org-babel-load-in-session=.
+
+- Similar features to the =scimax= version of =ob-ipython=
+
+  - The =scimax= version has some really neat features like custom keybindings
+    when inside an =org-mode= source block, selective display of mimetypes,
+    jumping to source block error locations, and others. Many of these features
+    have also been implemented in =emacs-jupyter=, e.g. you can add language
+    specific keybindings using the =jupyter-org-define-key= function.
+
+** =emacs-ipython-notebook= (=ein=)
+
+[[https://github.com/millejoh/emacs-ipython-notebook][ein]] is a complete Jupyter notebook interface in Emacs with many powerful
+features for Python kernels. There is some overlap in the features provided by
+=emacs-jupyter= and =ein=, but I have never used =ein= so I cannot speak very
+much about their similarities/differences.
+
+I would say that =emacs-jupyter= aims to be a generic API for interacting with
+Jupyter kernels that just happens to have a built-in REPL and =org-mode= source
+block frontend whereas =ein= aims to be a fully featured Jupyter notebook
+frontend. Also =ein= can read and write =.ipynb= files, this feature is lacking
+in =emacs-jupyter= at the moment. In the future it would be nice to add some
+kind of notebook interface in =emacs-jupyter= or at least an efficient
+conversion process between notebook files and =org-mode=.
 * How do I use the built-in frontends?
 ** REPL
 
@@ -282,6 +286,28 @@ keybindings for interacting with the REPL:
 | =C-c C-r=   | =jupyter-repl-restart-kernel=      |
 | =C-c C-s=   | =jupyter-repl-scratch-buffer=      |
 | =C-c M-:=   | =jupyter-eval-string=              |
+
+**** Integration with =emacsclient=
+
+If code sent for evaluation causes a file to be opened via =emacsclient=, the
+opened file is associated with the corresponding REPL client if possible. This
+behavior is most useful, for example, when using the =edit= function in IJulia.
+
+To enable =server-mode= in Emacs you should have something like the following
+in your Emacs configuration before starting any kernels.
+
+#+BEGIN_SRC elisp
+(server-mode 1)
+(setenv "EDITOR" "emacsclient")
+#+END_SRC
+
+Note this probably wont work properly when there are multiple competing clients
+sending requests to their underlying kernels that want to open files. Or if the
+underlying kernel takes longer than =jupyter-long-timeout= seconds to open a
+file.
+
+See =jupyter-server-mode-set-client= for more details.
+
 *** =jupyter-repl-persistent-mode=
 
 A global minor mode that will persist a kernel connection to a buffer about to
@@ -690,7 +716,7 @@ Methods that require a message type as an argument such as
      using =jupyter-ioloop-add-event= can potentially send an event back to the
      parent process. In the parent, events are handled by extending the
      =jupyter-ioloop-handler= method.
-- =jupyter-channel-ioloop= :: A subclass of =jupyter-ioloop= configured to
+- =jupyter-zmq-channel-ioloop= :: A subclass of =jupyter-ioloop= configured to
      start a subprocess that handles messages being passed on Jupyter channels
      between a kernel and the parent Emacs process. This is what
      =jupyter-kernel-client= uses to communicate with a kernel.
@@ -714,7 +740,7 @@ Once a connection is initialized, messages can be sent to the kernel using the
 =jupyter-send-<msg-type>= family of methods, where =<msg-type>= is any valid
 request message type (see =jupyter-message-types=). These methods
 asynchronously send a message to the kernel using a subprocess associated with
-each client, see help:jupyter-channel-ioloop, and they each return a
+each client, see help:jupyter-zmq-channel-ioloop, and they each return a
 =jupyter-request= object which encapsulates the information necessary for
 handling reply messages associated with the request in the future.
 **** Receiving messages
@@ -1051,6 +1077,7 @@ interact with an [[https://github.com/jupyter-widgets/ipyleaflet][ipyleaflet]] m
 ** TODO =jupyter-repl-client=
 ** TODO =jupyter-ioloop=
 ** TODO =jupyter-channel-ioloop=
+** TODO =jupyter-zmq-channel-ioloop=
 ** TODO =jupyter-comm-layer=
 ** Callbacks and hooks
 :PROPERTIES:

@@ -59,6 +59,7 @@
 (require 'jupyter-base)
 (require 'jupyter-mime)
 (require 'jupyter-client)
+(require 'jupyter-kernelspec)
 (require 'jupyter-widget-client)
 (require 'jupyter-kernel-manager)
 (require 'ring)
@@ -297,6 +298,36 @@ BEG and END are within an input/output cell."
                      ,@output-forms))))
              (setq ,start ,next)))))))
 
+(defmacro jupyter-repl-inhibit-undo-when (cond &rest body)
+  "Evaluate BODY, disabling undo beforehand if COND is non-nil.
+Undo is re-enabled after BODY is evaluated.
+
+Note, any changes to `buffer-undo-list' during evaluation of BODY
+will not be present when undo is re-enabled if COND is non-nil."
+  (declare (indent 1) (debug ([&or symbolp form] &rest form)))
+  (let ((new-undo-list (make-symbol "new"))
+        (disable-undo (make-symbol "disable")))
+    `(let ((,disable-undo ,cond) ,new-undo-list)
+       (let ((buffer-undo-list (if ,disable-undo t buffer-undo-list)))
+         (unwind-protect
+             (progn ,@body)
+           (unless ,disable-undo
+             (setq ,new-undo-list buffer-undo-list))))
+       (when ,new-undo-list
+         (setq buffer-undo-list ,new-undo-list)))))
+
+(defmacro jupyter-repl-with-single-undo (&rest body)
+  "Evaluate BODY, remove all undo boundaries created during its evaluation."
+  (declare (indent 0) (debug (&rest form)))
+  (let ((handle (make-symbol "handle")))
+    `(let ((,handle (prepare-change-group)))
+       (unwind-protect
+           (progn
+             (activate-change-group ,handle)
+             ,@body)
+         (undo-amalgamate-change-group ,handle)
+         (accept-change-group ,handle)))))
+
 ;;; Text insertion
 
 (defun jupyter-repl-insert (&rest args)
@@ -319,8 +350,7 @@ can contain the following keywords along with their values:
   (let ((arg nil)
         (read-only t)
         (properties nil)
-        (insert-fun #'insert)
-        (buffer-undo-list t))
+        (insert-fun #'insert))
     (while (keywordp (setq arg (car args)))
       (cl-case arg
         (:read-only (setq read-only (cadr args)))
@@ -330,14 +360,14 @@ can contain the following keywords along with their values:
         (otherwise
          (error "Keyword not one of `:read-only', `:properties', `:inherit-' (`%s')" arg)))
       (setq args (cddr args)))
-    (setq properties (append (when read-only '(read-only t))
-                             properties))
-    (apply insert-fun (mapcar (lambda (s)
-                           (prog1 s
-                             (when properties
-                               (add-text-properties
-                                0 (length s) properties s))))
-                         args))))
+    (when read-only
+      (push t properties)
+      (push 'read-only properties))
+    (when properties
+      (dolist (s args)
+        (add-text-properties 0 (length s) properties s)))
+    (jupyter-repl-inhibit-undo-when read-only
+      (apply insert-fun args))))
 
 (defun jupyter-repl-newline ()
   "Insert a read-only newline into the `current-buffer'."
@@ -430,7 +460,7 @@ interpreted as `in'."
   (jupyter-repl-without-continuation-prompts
    (let ((inhibit-read-only t))
      ;; The newline that `jupyter-repl--make-prompt' will overlay.
-     (jupyter-repl-newline)
+     (jupyter-repl-insert :read-only (not (eq type 'continuation)) "\n")
      (cond
       ((eq type 'in)
        (let ((count (oref jupyter-current-client execution-count)))
@@ -760,10 +790,35 @@ Place `point' at `point-max'."
     (setq buffer-undo-list '((t . 0)))))
 
 (defun jupyter-repl-replace-cell-code (new-code)
-  "Replace the current cell code with NEW-CODE."
-  (goto-char (jupyter-repl-cell-code-beginning-position))
-  (delete-region (point) (jupyter-repl-cell-code-end-position))
-  (jupyter-repl-insert :inherit t :read-only nil new-code))
+  "Replace the current cell code with NEW-CODE.
+If NEW-CODE is a buffer use `replace-buffer-contents' to replace
+the cell code. Otherwise NEW-CODE should be a string, the current
+cell code will be erased and NEW-CODE inserted in its place."
+  (if (bufferp new-code)
+      (jupyter-with-repl-cell
+        (jupyter-repl-with-single-undo
+          ;; Need to create a single undo step here because
+          ;; `replace-buffer-contents' adds in unwanted undo boundaries.
+          ;;
+          ;; Tests failing on Appveyor due to `replace-buffer-contents' not
+          ;; supplying the right arguments to `after-change-functions' so call
+          ;; the change functions manually. Seen on Emacs 26.1.
+          ;;
+          ;; For reference see https://debbugs.gnu.org/cgi/bugreport.cgi?bug=32278
+          (let ((inhibit-modification-hooks t)
+                (beg (point-min))
+                (end (point-max))
+                (new-len (with-current-buffer new-code
+                           (- (point-max) (point-min)))))
+            (run-hook-with-args
+             'before-change-functions beg end)
+            (replace-buffer-contents new-code)
+            (run-hook-with-args
+             'after-change-functions
+             beg (+ beg new-len) (- end beg)))))
+    (goto-char (jupyter-repl-cell-code-beginning-position))
+    (delete-region (point) (jupyter-repl-cell-code-end-position))
+    (jupyter-repl-insert :inherit t :read-only nil new-code)))
 
 (defun jupyter-repl-truncate-buffer ()
   "Truncate the `current-buffer' based on `jupyter-repl-maximum-size'.
@@ -786,7 +841,8 @@ lines, truncate it to something less than
        (when (get-text-property (point) 'jupyter-banner)
          (goto-char (next-single-property-change (point) 'jupyter-banner)))
        (delete-region (point) (point-max))
-       (jupyter-repl-insert-prompt 'in)))))
+       (jupyter-repl-insert-prompt 'in))))
+  (goto-char (point-max)))
 
 ;;; Handlers
 
@@ -1120,7 +1176,7 @@ elements."
       ("complete"
        (jupyter-send-execute-request client))
       ("incomplete"
-       (jupyter-repl-newline)
+       (jupyter-repl-insert :read-only nil "\n")
        (if (= (length indent) 0) (jupyter-repl-indent-line)
          (jupyter-repl-insert :read-only nil indent)))
       ("invalid"
@@ -1236,7 +1292,7 @@ Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
                    (jupyter-indent-line)
                    (unless (eq tick (buffer-chars-modified-tick))
                      (setq pos (point))
-                     (buffer-string))))))
+                     (current-buffer))))))
     ;; Don't modify the buffer when unnecessary, this allows
     ;; `company-indent-or-complete-common' to work.
     (when replacement
@@ -1316,7 +1372,14 @@ meaning as in `after-change-functions'."
             (when (and (= len 1)
                        (get-text-property beg 'rear-nonsticky)
                        (= end (jupyter-repl-cell-end-position)))
-              (remove-text-properties beg end '(rear-nonsticky))))))))))
+              (remove-text-properties beg end '(rear-nonsticky))))
+           ;; Post change inserted text in the region
+           ((> (- end beg) len)
+            (jupyter-repl-after-change 'insert beg end))
+           ;; Post change deleted text
+           (t
+            ;; FIXME: This is probably wrong.
+            (jupyter-repl-after-change 'delete beg (- len (- end beg))))))))))
 
 (cl-defgeneric jupyter-repl-after-change (_type _beg _end-or-len)
   "Called from the `after-change-functions' of a REPL buffer.
@@ -1455,7 +1518,7 @@ A kernel can be interrupted if it was started using a kernel
 manager. See `jupyter-start-new-kernel'."
   (interactive)
   (if (not (jupyter-repl-client-has-manager-p))
-      (user-error "Cannot interrupt non-subprocess kernels")
+      (user-error "Can only interrupt managed kernels")
     (message "Interrupting kernel")
     (jupyter-interrupt-kernel
      (oref jupyter-current-client manager))))
@@ -1638,10 +1701,8 @@ Return the buffer switched to."
   (interactive)
   (if (jupyter-repl-connected-p)
       (let* ((client jupyter-current-client)
-             (name (format "*jupyter-scratch[session=%s]*"
-                           (truncate-string-to-width
-                            (jupyter-session-id (oref client session))
-                            9 nil nil "…"))))
+             (name (format "*jupyter-scratch[%s]*"
+                           (jupyter-comm-id (oref client kcomm)))))
         (unless (get-buffer name)
           (with-current-buffer (get-buffer-create name)
             (funcall (jupyter-kernel-language-mode client))
@@ -1709,15 +1770,8 @@ Return the buffer switched to."
     ;; ring.
     (ring-insert jupyter-repl-history 'jupyter-repl-history)
     (let ((jupyter-inhibit-handlers '(:status)))
-      ;; Wait until we get an idle response since the call to
-      ;; `jupyter-repl-sync-execution-state' below will be considered the last
-      ;; request the client made. If an idle message for this history request
-      ;; is received before the reply, the reply message won't ever be
-      ;; received since the idle message will cause the request to be dropped
-      ;; if the request isn't the last request the client made.
-      (jupyter-wait-until-idle
-       (jupyter-send-history-request jupyter-current-client
-         :n jupyter-repl-history-maximum-length :raw nil :unique t)))
+      (jupyter-send-history-request jupyter-current-client
+        :n jupyter-repl-history-maximum-length :raw nil :unique t))
     (erase-buffer)
     ;; Add local hooks
     (add-hook 'kill-buffer-query-functions #'jupyter-repl-kill-buffer-query-function nil t)
@@ -2158,7 +2212,12 @@ interactively, DISPLAY the new REPL buffer as well."
   (or client-class (setq client-class 'jupyter-repl-client))
   (jupyter-error-if-not-client-class-p client-class 'jupyter-repl-client)
   (let ((client (make-instance client-class)))
-    (oset client kcomm (jupyter-channel-ioloop-comm))
+    ;; FIXME: See note in `jupyter-make-client'
+    (require 'jupyter-channel-ioloop-comm)
+    (require 'jupyter-zmq-channel-ioloop)
+    (oset client kcomm (make-instance
+                        'jupyter-channel-ioloop-comm
+                        :ioloop-class 'jupyter-zmq-channel-ioloop))
     (jupyter-initialize-connection client file-or-plist)
     (jupyter-start-channels client)
     (jupyter-hb-unpause client)

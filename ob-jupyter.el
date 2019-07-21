@@ -31,6 +31,8 @@
   "Jupyter integration with org-mode"
   :group 'org-babel)
 
+(require 'jupyter-env)
+(require 'jupyter-kernelspec)
 (require 'jupyter-org-client)
 (require 'jupyter-org-extensions)
 (eval-when-compile
@@ -51,7 +53,9 @@
   'jupyter-org-resource-directory)
 
 (defvar org-babel-jupyter-session-clients (make-hash-table :test #'equal)
-  "A hash table mapping session names to Jupyter clients.")
+  "A hash table mapping session names to Jupyter clients.
+A key into this table can be constructed for the src-block at
+`point' using `org-babel-jupyter-src-block-session'.")
 
 (defvar org-babel-header-args:jupyter '((kernel . :any)
                                         (async . ((yes no))))
@@ -204,9 +208,9 @@ variables in PARAMS."
   (let ((remote (file-remote-p session)))
     (when (and remote (zerop (length (file-local-name session))))
       (error "No remote session name"))
-    (let* ((default-directory (or remote default-directory))
-           (runtime-directory (jupyter-command "--runtime-dir"))
-           (jupyter-runtime-directory (concat remote runtime-directory)))
+    (let ((default-directory (or remote default-directory)))
+      (when remote
+        (org-babel-jupyter-aliases-from-kernelspecs))
       (jupyter-run-repl kernel nil nil 'jupyter-org-client))))
 
 (defun org-babel-jupyter-initiate-session-by-key (session params)
@@ -309,20 +313,14 @@ These parameters are handled internally."
   "Execute BODY according to PARAMS.
 BODY is the code to execute for the current Jupyter `:session' in
 the PARAMS alist."
-  (let* ((jupyter-current-client (with-current-buffer
-                                     (org-babel-jupyter-initiate-session
-                                      (alist-get :session params) params)
-                                   jupyter-current-client))
+  (let* ((jupyter-current-client
+          (thread-first (alist-get :session params)
+            (org-babel-jupyter-initiate-session params)
+            (thread-last (buffer-local-value 'jupyter-current-client))))
          (kernel-lang (jupyter-kernel-language jupyter-current-client))
          (vars (org-babel-variable-assignments:jupyter params kernel-lang))
          (code (org-babel-expand-body:jupyter body params vars kernel-lang))
-         (req (progn
-                ;; This needs to be set to the same parameter object used
-                ;; internally by org-babel since insertion of results will
-                ;; manipulate it.
-                (oset jupyter-current-client block-params params)
-                (jupyter-send-execute-request jupyter-current-client
-                  :code code))))
+         (req (jupyter-send-execute-request jupyter-current-client :code code)))
     (when (member "replace" (assq :result-params params))
       (org-babel-jupyter-cleanup-file-links))
     (cond
@@ -447,23 +445,39 @@ name jupyter-LANG will be aliased to the Jupyter functions."
         (defalias (intern (concat "org-babel-" fn ":jupyter-" lang)) sym))))
   (defalias (intern (concat "org-babel-jupyter-" lang "-initiate-session"))
     'org-babel-jupyter-initiate-session)
-  (set (intern (concat "org-babel-header-args:jupyter-" lang))
-       org-babel-header-args:jupyter)
-  (set (intern (concat "org-babel-default-header-args:jupyter-" lang))
-       `((:kernel . ,kernel)
-         (:async . "no"))))
+  (let (var)
+    (setq var (concat "org-babel-header-args:jupyter-" lang))
+    (unless (intern-soft var)
+      (set (intern var) org-babel-header-args:jupyter))
+    (put (intern var) 'variable-documentation
+         (get 'org-babel-header-args:jupyter 'variable-documentation))
+    (setq var (concat "org-babel-default-header-args:jupyter-" lang))
+    (unless (and (intern-soft var)
+                 (boundp (intern var)))
+      (set (intern var) `((:async . "no"))))
+    (put (intern var) 'variable-documentation
+         (format "Default header arguments for Jupyter %s src-blocks" lang))
+    ;; Always set the kernel if there isn't one. Typically the default header
+    ;; args for a language are set by the user in their configurations by
+    ;; calling `setq', but the :kernel is typically not something the user
+    ;; wants to set directly so make sure its defined in the header args.
+    (setq var (intern var))
+    (unless (alist-get :kernel (symbol-value var))
+      (setf (alist-get :kernel (symbol-value var)) kernel))))
 
 (defun org-babel-jupyter-aliases-from-kernelspecs (&optional refresh)
   "Make language aliases based on the available kernelspecs.
-For all kernels returned by `jupyter-available-kernelspecs', make
-a language alias for the kernel language if one does not already
-exist. The alias is created with
+For all kernelspecs returned by `jupyter-available-kernelspecs',
+make a language alias for the kernel language if one does not
+already exist. The alias is created with
 `org-babel-jupyter-make-language-alias'.
 
 Optional argument REFRESH has the same meaning as in
 `jupyter-available-kernelspecs'."
   (cl-loop
-   for (kernel . (_dir . spec)) in (jupyter-available-kernelspecs refresh)
+   with specs = (with-demoted-errors "Error retrieving kernelspecs: %S"
+                  (jupyter-available-kernelspecs refresh))
+   for (kernel . (_dir . spec)) in specs
    for lang = (plist-get spec :language)
    unless (member lang languages) collect lang into languages and
    do (org-babel-jupyter-make-language-alias kernel lang)

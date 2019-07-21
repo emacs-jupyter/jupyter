@@ -1,5 +1,10 @@
 * master
 
+- If a file is opened via =emacsclient=, attempt to associate the opened buffer
+  with a REPL client. This is useful, e.g. when using the ~julia~ language's
+  ~edit~ function and the =EDITOR= environment variable is set to
+  =emacsclient=. See ~jupyter-server-mode-set-client~ for more details.
+
 - In =org-mode=, when inserting the results of an asynchronously evaluated
   src-block, indent the results to match the surrounding indentation level.
 

@@ -107,18 +107,17 @@ callbacks."
        (let* ((msg-id (jupyter-message-id msg))
               (msg-type (jupyter-message-type-as-keyword
                          (jupyter-message-type msg)))
-              (channel (slot-value
-                        client (pcase (plist-get msg :channel)
-                                 ("shell" 'shell-channel)
-                                 ("iopub" 'iopub-channel)
-                                 ("stdin" 'stdin-channel)
-                                 (_ (error "Invalid channel")))))
+              (channel (pcase (plist-get msg :channel)
+                         ("shell" :shell)
+                         ("iopub" :iopub)
+                         ("stdin" :stdin)
+                         (_ (error "Invalid channel"))))
               (content (jupyter-message-content msg))
               (jupyter-inhibit-handlers
                ;; Only let the browser handle these messages
-               (append '(:comm-msg)
-                       (when (memq msg-type '(:comm-info-request))
-                         '(:status :comm-info-reply))))
+               (cons :comm-msg
+                     (when (memq msg-type '(:comm-info-request))
+                       '(:status :comm-info-reply))))
               (req (jupyter-send client channel msg-type content msg-id)))
          (jupyter-add-callback req
            '(:comm-open :comm-close :comm-info-reply :comm-msg :status)

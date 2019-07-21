@@ -1,9 +1,9 @@
-;;; jupyter-channels.el --- Jupyter channels -*- lexical-binding: t -*-
+;;; jupyter-zmq-channel.el --- A Jupyter channel implementation using ZMQ sockets -*- lexical-binding: t -*-
 
-;; Copyright (C) 2018 Nathaniel Nicandro
+;; Copyright (C) 2019 Nathaniel Nicandro
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
-;; Created: 08 Jan 2018
+;; Created: 27 Jun 2019
 ;; Version: 0.8.0
 
 ;; This program is free software; you can redistribute it and/or
@@ -23,10 +23,10 @@
 
 ;;; Commentary:
 
-;; Implements synchronous channel types. Each channel is essentially a wrapper
-;; around a `zmq-socket' constrained to a socket type by the type of the
-;; channel and with an associated `zmq-IDENTITY' obtained from the
-;; `jupyter-session' that must be associated with the channel. A heartbeat
+;; Implements synchronous channel types using ZMQ sockets. Each channel is
+;; essentially a wrapper around a `zmq-socket' constrained to a socket type by
+;; the type of the channel and with an associated `zmq-IDENTITY' obtained from
+;; the `jupyter-session' that must be associated with the channel. A heartbeat
 ;; channel is distinct from the other channels in that it is implemented using
 ;; a timer which periodically pings the kernel depending on how its configured.
 ;; In order for communication to occur on the other channels, one of
@@ -35,56 +35,51 @@
 
 ;;; Code:
 
+(require 'jupyter-messages)
+(require 'zmq)
+(require 'jupyter-channel)
 (eval-when-compile (require 'subr-x))
-(require 'jupyter-base)
-(require 'jupyter-messages)             ; For `jupyter-send'
-(require 'ring)
 
-(defgroup jupyter-channels nil
-  "Jupyter channels"
-  :group 'jupyter)
+(declare-function jupyter-ioloop-poller-remove "jupyter-ioloop")
+(declare-function jupyter-ioloop-poller-add "jupyter-ioloop")
 
-(defcustom jupyter-hb-max-failures 5
-  "Number of heartbeat failures until the kernel is considered unreachable.
-A ping is sent to the kernel on a heartbeat channel and waits
-until `time-to-dead' seconds to see if the kernel sent a ping
-back. If the kernel doesn't send a ping back after
-`jupyter-hb-max-failures', the callback associated with the
-heartbeat channel is called. See `jupyter-hb-on-kernel-dead'."
-  :type 'integer
-  :group 'jupyter-channels)
+(defconst jupyter-socket-types
+  (list :hb zmq-REQ
+        :shell zmq-DEALER
+        :iopub zmq-SUB
+        :stdin zmq-DEALER
+        :control zmq-DEALER)
+  "The socket types for the various channels used by `jupyter'.")
 
-;;; Basic channel types
-
-(defclass jupyter-channel ()
-  ((type
-    :type keyword
-    :initarg :type
-    :documentation "The type of this channel. Should be one of
-the keys in `jupyter-socket-types'.")
-   (session
-    :type jupyter-session
-    :initarg :session
-    :documentation "The session object used to sign and
-send/receive messages.")
-   (endpoint
-    :type string
-    :initarg :endpoint
-    :documentation "The endpoint this channel is connected to.
- Typical endpoints look like \"tcp://127.0.0.1:5555\"."))
-  :abstract t)
-
-(defclass jupyter-sync-channel (jupyter-channel)
+(defclass jupyter-zmq-channel (jupyter-channel)
   ((socket
     :type (or null zmq-socket)
     :initform nil
     :documentation "The socket used for communicating with the kernel.")))
 
-(cl-defgeneric jupyter-start-channel ((channel jupyter-channel) &key identity)
-  "Start a Jupyter CHANNEL using IDENTITY as the routing ID.
-If CHANNEL is already alive, do nothing.")
+(defun jupyter-connect-endpoint (type endpoint &optional identity)
+  "Create socket with TYPE and connect to ENDPOINT.
+If IDENTITY is non-nil, it will be set as the ROUTING-ID of the
+socket. Return the created socket."
+  (let ((sock (zmq-socket (zmq-current-context) type)))
+    (prog1 sock
+      (zmq-socket-set sock zmq-LINGER 1000)
+      (when identity
+        (zmq-socket-set sock zmq-ROUTING-ID identity))
+      (zmq-connect sock endpoint))))
 
-(cl-defmethod jupyter-start-channel ((channel jupyter-sync-channel)
+(defun jupyter-connect-channel (ctype endpoint &optional identity)
+  "Create a socket based on a Jupyter channel type.
+CTYPE is one of the symbols `:hb', `:stdin', `:shell',
+`:control', or `:iopub' and represents the type of channel to
+connect to ENDPOINT. If IDENTITY is non-nil, it will be set as
+the ROUTING-ID of the socket. Return the created socket."
+  (let ((sock-type (plist-get jupyter-socket-types ctype)))
+    (unless sock-type
+      (error "Invalid channel type (%s)" ctype))
+    (jupyter-connect-endpoint sock-type endpoint identity)))
+
+(cl-defmethod jupyter-start-channel ((channel jupyter-zmq-channel)
                                      &key (identity (jupyter-session-id
                                                      (oref channel session))))
   (unless (jupyter-channel-alive-p channel)
@@ -93,33 +88,79 @@ If CHANNEL is already alive, do nothing.")
       (oset channel socket socket)
       (cl-case (oref channel type)
         (:iopub
-         (zmq-socket-set socket zmq-SUBSCRIBE ""))))))
+         (zmq-socket-set socket zmq-SUBSCRIBE ""))))
+    (when (and (functionp 'jupyter-ioloop-environment-p)
+               (jupyter-ioloop-environment-p))
+      (jupyter-ioloop-poller-add (oref channel socket) zmq-POLLIN))))
 
-(cl-defgeneric jupyter-stop-channel ((channel jupyter-channel))
-  "Stop a Jupyter CHANNEL.
-If CHANNEL is already stopped, do nothing.")
-
-(cl-defmethod jupyter-stop-channel ((channel jupyter-sync-channel))
+(cl-defmethod jupyter-stop-channel ((channel jupyter-zmq-channel))
   (when (jupyter-channel-alive-p channel)
-    (zmq-socket-set (oref channel socket) zmq-LINGER 0)
-    (zmq-close (oref channel socket))
+    (when (and (functionp 'jupyter-ioloop-environment-p)
+               (jupyter-ioloop-environment-p))
+      (jupyter-ioloop-poller-remove (oref channel socket)))
+    (with-slots (socket) channel
+      (zmq-disconnect socket (zmq-socket-get socket zmq-LAST-ENDPOINT)))
     (oset channel socket nil)))
 
-(cl-defmethod jupyter-send ((channel jupyter-sync-channel) type message &optional msg-id)
+(cl-defmethod jupyter-channel-alive-p ((channel jupyter-zmq-channel))
+  (not (null (oref channel socket))))
+
+(cl-defmethod jupyter-send ((channel jupyter-zmq-channel) type message &optional msg-id)
   (jupyter-send (oref channel session) (oref channel socket) type message msg-id))
 
-(cl-defmethod jupyter-recv ((channel jupyter-sync-channel))
-  (jupyter-recv (oref channel session) (oref channel socket)))
+(cl-defmethod jupyter-recv ((channel jupyter-zmq-channel) &optional dont-wait)
+  (condition-case nil
+      (jupyter-recv (oref channel session) (oref channel socket)
+                    (when dont-wait zmq-DONTWAIT))
+    (zmq-EAGAIN nil)))
 
-(cl-defgeneric jupyter-channel-alive-p ((channel jupyter-channel))
-  "Determine if a CHANNEL is alive.")
+(cl-defmethod jupyter-send ((session jupyter-session)
+                            socket
+                            type
+                            message
+                            &optional
+                            msg-id
+                            flags)
+  "For SESSION, send a message on SOCKET.
+TYPE is message type of MESSAGE, one of the keys in
+`jupyter-message-types'. MESSAGE is the message content.
+Optionally supply a MSG-ID to the message, if this is nil a new
+message ID will be generated. FLAGS has the same meaning as in
+`zmq-send'. Return the message ID of the sent message."
+  (declare (indent 1))
+  (cl-destructuring-bind (id . msg)
+      (jupyter-encode-message session type
+        :msg-id msg-id :content message)
+    (prog1 id
+      (zmq-send-multipart socket msg flags))))
 
-(cl-defmethod jupyter-channel-alive-p ((channel jupyter-sync-channel))
-  (not (null (oref channel socket))))
+(cl-defmethod jupyter-recv ((session jupyter-session) socket &optional flags)
+  "For SESSION, receive a message on SOCKET with FLAGS.
+FLAGS is passed to SOCKET according to `zmq-recv'. Return a cons cell
+
+    (IDENTS . MSG)
+
+where IDENTS are the ZMQ identities associated with MSG and MSG
+is the message property list whose fields can be accessed through
+calls to `jupyter-message-content', `jupyter-message-parent-id',
+and other such functions."
+  (let ((msg (zmq-recv-multipart socket flags)))
+    (when msg
+      (cl-destructuring-bind (idents . parts)
+          (jupyter--split-identities msg)
+        (cons idents (jupyter-decode-message session parts))))))
 
 ;;; Heartbeat channel
 
-(defclass jupyter-hb-channel (jupyter-sync-channel)
+(defvar jupyter-hb-max-failures 5
+  "Number of heartbeat failures until the kernel is considered unreachable.
+A ping is sent to the kernel on a heartbeat channel and waits
+until `time-to-dead' seconds to see if the kernel sent a ping
+back. If the kernel doesn't send a ping back after
+`jupyter-hb-max-failures', the callback associated with the
+heartbeat channel is called. See `jupyter-hb-on-kernel-dead'.")
+
+(defclass jupyter-hb-channel (jupyter-zmq-channel)
   ((type
     :type keyword
     :initform :hb
@@ -191,7 +232,12 @@ seconds has elapsed without the kernel sending a ping back."
 
 (defun jupyter-hb--send-ping (channel &optional failed-count)
   (when (jupyter-hb--pingable-p channel)
-    (zmq-send (oref channel socket) "ping")
+    (condition-case nil
+        (zmq-send (oref channel socket) "ping")
+      ;; FIXME: Should be a part of `jupyter-hb--pingable-p'
+      (zmq-ENOTSOCK
+       (jupyter-hb-pause channel)
+       (oset channel socket nil)))
     (run-with-timer
      (oref channel time-to-dead) nil
      (lambda (channel-ref)
@@ -215,6 +261,6 @@ seconds has elapsed without the kernel sending a ping back."
                (funcall (oref channel dead-cb)))))))
      (jupyter-weak-ref channel))))
 
-(provide 'jupyter-channels)
+(provide 'jupyter-zmq-channel)
 
-;;; jupyter-channels.el ends here
+;;; jupyter-zmq-channel.el ends here

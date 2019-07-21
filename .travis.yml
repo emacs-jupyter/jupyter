@@ -1,5 +1,6 @@
 # https://github.com/travis-ci/travis-ci/issues/9061
 sudo: required
+dist: trusty
 matrix:
   # Report build failure/success before allowed failures complete
   fast_finish: true
@@ -42,6 +43,8 @@ install:
   - mkdir -p $(jupyter --runtime-dir)
   - jupyter --runtime-dir
   - jupyter --paths
+  - jupyter --version
+  - jupyter notebook --version
   - jupyter kernelspec list
 before_script:
   - ulimit -c unlimited -S

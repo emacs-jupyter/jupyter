@@ -53,6 +53,7 @@
 ;;; Code:
 
 (require 'jupyter-base)
+(require 'zmq)
 (eval-when-compile (require 'subr-x))
 
 (defvar jupyter-ioloop-poller nil
@@ -71,8 +72,9 @@ The hook is called with no arguments.")
 (defvar jupyter-ioloop-post-hook nil
   "A hook called at the end of every polling loop.
 The hook is called with a single argument, the list of polling
-events that occurred for this iteration, see
-the return value of `zmq-poller-wait-all'.")
+events that occurred for this iteration or nil. The polling
+events have the same value as the return value of
+`zmq-poller-wait-all'.")
 
 (defvar jupyter-ioloop-timers nil)
 
@@ -80,6 +82,10 @@ the return value of `zmq-poller-wait-all'.")
 
 (defvar jupyter-ioloop--argument-types nil
   "Argument types added via `jupyter-ioloop-add-arg-type'.")
+
+(defun jupyter-ioloop-environment-p ()
+  "Return non-nil if this Emacs instance is an IOLoop subprocess."
+  (and noninteractive jupyter-ioloop-stdin jupyter-ioloop-poller))
 
 (defclass jupyter-ioloop (jupyter-finalized-object)
   ((process :type (or null process) :initform nil)
@@ -170,18 +176,6 @@ while waiting using PROGRESS-MSG as the message."
   (and (oref ioloop process)
        (process-get (oref ioloop process) :last-event)))
 
-(cl-defmethod jupyter-ioloop-handler :before ((ioloop jupyter-ioloop) _obj event)
-  "Set the :last-event property of IOLOOP's process.
-Additionally set the :start and :quit properties of the process
-to t when they occur. See also `jupyter-ioloop-wait-until'."
-  (with-slots (process) ioloop
-    (cond
-     ((eq (car-safe event) 'start)
-      (process-put process :start t))
-     ((eq (car-safe event) 'quit)
-      (process-put process :quit t)))
-    (process-put process :last-event event)))
-
 (defmacro jupyter-ioloop-add-setup (ioloop &rest body)
   "Set IOLOOP's `jupyter-ioloop-setup' slot to BODY.
 BODY is the code that will be evaluated before the IOLOOP sends a
@@ -194,11 +188,7 @@ start event to the parent process."
 (defmacro jupyter-ioloop-add-teardown (ioloop &rest body)
   "Set IOLOOP's `jupyter-ioloop-teardown' slot to BODY.
 BODY is the code that will be evaluated just before the IOLOOP
-sends a quit event to the parent process.
-
-After BODY is evaluated in the IOLOOP environment, the channels
-in `jupyter-ioloop-channels' will be stopped before sending the
-quit event."
+sends a quit event to the parent process."
   (declare (indent 1))
   `(setf (oref ,ioloop teardown)
          (append (oref ,ioloop teardown)
@@ -215,7 +205,7 @@ For example suppose we define an argument type, jupyter-channel:
 
     (jupyter-ioloop-add-arg-type jupyter-channel
       (lambda (arg)
-        `(or (object-assoc ,arg :type jupyter-ioloop-channels)
+        `(or (object-assoc ,arg :type jupyter-channel-ioloop-channels)
              (error \"Channel not alive (%s)\" ,arg))))
 
 and define an event like
@@ -344,13 +334,17 @@ sending closures to the IOLOOP. An example:
 
 (defun jupyter-ioloop-poller-add (socket events)
   "Add SOCKET to be polled using the `jupyter-ioloop-poller'.
-EVENTS are the polling events that should be listened for on SOCKET."
+EVENTS are the polling events that should be listened for on
+SOCKET. If `jupyter-ioloop-poller' is not a `zmq-poller' object
+do nothing."
   (when (zmq-poller-p jupyter-ioloop-poller)
     (zmq-poller-add jupyter-ioloop-poller socket events)
     (cl-incf jupyter-ioloop-nsockets)))
 
 (defun jupyter-ioloop-poller-remove (socket)
-  "Remove SOCKET from the `jupyter-ioloop-poller'."
+  "Remove SOCKET from the `jupyter-ioloop-poller'.
+If `jupyter-ioloop-poller' is not a `zmq-poller' object do
+nothing."
   (when (zmq-poller-p jupyter-ioloop-poller)
     (zmq-poller-remove jupyter-ioloop-poller socket)
     (cl-decf jupyter-ioloop-nsockets)))
@@ -373,7 +367,7 @@ the local host, otherwise events are expected to be received on
 STDIN. This is useful on Windows systems which don't allow
 polling the STDIN file handle."
   (let ((stdin-form
-         (if port `(let ((sock (zmq-socket ctx zmq-PULL)))
+         (if port `(let ((sock (zmq-socket ctx zmq-PAIR)))
                      (prog1 sock
                        (zmq-connect sock (format "tcp://127.0.0.1:%s" ,port))))
            '0))
@@ -414,8 +408,7 @@ polling the STDIN file handle."
                      (when stdin-event
                        (setq events (delq stdin-event events))
                        (funcall dispatcher)))
-                   (when events
-                     (run-hook-with-args 'jupyter-ioloop-post-hook events)))))
+                   (run-hook-with-args 'jupyter-ioloop-post-hook events))))
            (quit
             ,@(oref ioloop teardown)
             (zmq-prin1 '(quit))))))))
@@ -428,6 +421,13 @@ polling the STDIN file handle."
 
 (defun jupyter-ioloop--make-filter (ioloop ref)
   (lambda (event)
+    (with-slots (process) ioloop
+      (cond
+       ((eq (car-safe event) 'start)
+        (process-put process :start t))
+       ((eq (car-safe event) 'quit)
+        (process-put process :quit t)))
+      (process-put process :last-event event))
     (let ((obj (jupyter-weak-ref-resolve ref)))
       (if obj (jupyter-ioloop-handler ioloop obj event)
         (jupyter-ioloop--delete-process (oref ioloop process))))))
@@ -446,8 +446,20 @@ If BUFFER is non-nil it should be a buffer that will be used as
 the IOLOOP subprocess buffer, see `zmq-start-process'."
   (jupyter-ioloop-stop ioloop)
   (let (stdin port)
-    (when (memq system-type '(windows-nt ms-dos cygwin))
-      (setq stdin (zmq-socket (zmq-current-context) zmq-PUSH))
+    ;; NOTE: A socket is used to read input from the parent process to avoid
+    ;; the stdin buffering done when using `read-from-minibuffer' in the
+    ;; subprocess. When `noninteractive', `read-from-minibuffer' uses
+    ;; `getc_unlocked' internally and `getc_unlocked' reads from the stdin FILE
+    ;; object as opposed to reading directly from STDIN_FILENO. The problem is
+    ;; that FILE objects are buffered streams which means that every message
+    ;; the parent process sends does not necessarily correspond to a POLLIN
+    ;; event on STDIN_FILENO in the subprocess. Since we only call
+    ;; `read-from-minibuffer' when there is a POLLIN event on STDIN_FILENO
+    ;; there is the potential that a message is waiting to be handled in the
+    ;; buffer used by stdin which will only get handled if we send more
+    ;; messages to the subprocess thereby creating more POLLIN events.
+    (when (or t (memq system-type '(windows-nt ms-dos cygwin)))
+      (setq stdin (zmq-socket (zmq-current-context) zmq-PAIR))
       (setq port (zmq-bind-to-random-port stdin "tcp://127.0.0.1")))
     (let ((process (zmq-start-process
                     (jupyter-ioloop--function ioloop (when stdin port))
@@ -479,6 +491,18 @@ returning."
                   (socket-p (zmq-socket-p stdin)))
         (zmq-unbind stdin (zmq-get-option stdin zmq-LAST-ENDPOINT))))))
 
+(defvar jupyter-ioloop--send-buffer nil)
+
+(defun jupyter-ioloop--dump-message (plist)
+  (with-current-buffer
+      (if (buffer-live-p jupyter-ioloop--send-buffer)
+          jupyter-ioloop--send-buffer
+        (setq jupyter-ioloop--send-buffer
+              (get-buffer-create " *jupyter-ioloop-send*")))
+    (erase-buffer)
+    (prin1 plist (current-buffer))
+    (buffer-string)))
+
 (cl-defmethod jupyter-send ((ioloop jupyter-ioloop) &rest args)
   "Using IOLOOP, send ARGS to its process.
 
@@ -488,9 +512,14 @@ serializable."
   (with-slots (process) ioloop
     (cl-assert (process-live-p process))
     (let ((stdin (process-get process :stdin)))
-      (if stdin (zmq-send-encoded stdin (with-temp-buffer
-                                          (prin1 args (current-buffer))
-                                          (buffer-string)))
+      (if stdin
+          (let ((msg (jupyter-ioloop--dump-message args)) sent)
+            (while (not sent)
+              (condition-case nil
+                  (progn
+                    (zmq-send-encoded stdin msg nil zmq-DONTWAIT)
+                    (setq sent t))
+                (zmq-EAGAIN (accept-process-output nil 0)))))
         (zmq-subprocess-send process args)))))
 
 (provide 'jupyter-ioloop)

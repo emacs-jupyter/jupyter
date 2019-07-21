@@ -34,6 +34,7 @@
 
 (declare-function org-babel-python-table-or-string "ob-python" (results))
 (declare-function org-babel-jupyter-initiate-session "ob-jupyter" (&optional session params))
+(declare-function org-babel-jupyter-src-block-session "ob-jupyter" ())
 (declare-function org-babel-jupyter-language-p "ob-jupyter" (lang))
 (declare-function org-element-context "org-element" (&optional element))
 (declare-function org-element-type "org-element" (element))
@@ -73,6 +74,18 @@ automatically be shown if this is non-nil."
   :group 'ob-jupyter
   :type '(repeat string))
 
+(defcustom jupyter-org-adjust-image-size t
+  "Try to best fit image output in the result block.
+
+If non-nil, and `org-image-actual-width' is set to a list, the
+image will not be stretched if its width is smaller than \(car
+`org-image-actual-width'\). This is done by inserting an
+#+ATTR_ORG keyword above the file path.
+
+See also the docstring of `org-image-actual-width' for more details."
+  :group 'ob-jupyter
+  :type 'boolean)
+
 (defconst jupyter-org-mime-types '(:text/org
                                    ;; Prioritize images over html
                                    :image/svg+xml :image/jpeg :image/png
@@ -81,10 +94,7 @@ automatically be shown if this is non-nil."
   "MIME types handled by Jupyter Org.")
 
 (defclass jupyter-org-client (jupyter-repl-client)
-  ((block-params
-    :initform nil
-    :documentation "The parameters of the most recently executed
-source code block. Set by `org-babel-execute:jupyter'.")))
+  ())
 
 (cl-defstruct (jupyter-org-request
                (:include jupyter-request)
@@ -104,34 +114,50 @@ source code block. Set by `org-babel-execute:jupyter'.")))
 
 ;;;; `jupyter-request' interface
 
-(cl-defmethod jupyter-generate-request ((client jupyter-org-client) _msg
+(cl-defmethod jupyter-generate-request ((_client jupyter-org-client) _msg
                                         &context (major-mode (eql org-mode)))
   "Return a `jupyter-org-request' for the current source code block."
   (if org-babel-current-src-block-location
       ;; Only use a `jupyter-org-request' when executing code blocks, setting
       ;; the `major-mode' context isn't enough, consider when a client is
       ;; started due to sending a completion request.
-      (let* ((block-params (oref client block-params))
-             (result-params (alist-get :result-params block-params)))
-        (jupyter-org-request
-         :marker (copy-marker org-babel-current-src-block-location)
-         :inline-block-p (save-excursion
-                           (goto-char org-babel-current-src-block-location)
-                           (and (memq (org-element-type (org-element-context))
+      (save-excursion
+        (goto-char org-babel-current-src-block-location)
+        (let* ((context (org-element-context))
+               (block-params (nth 2 (org-babel-get-src-block-info nil context)))
+               (result-params (alist-get :result-params block-params)))
+          (jupyter-org-request
+           :marker (copy-marker org-babel-current-src-block-location)
+           :inline-block-p (and (memq (org-element-type context)
                                       '(inline-babel-call inline-src-block))
-                                t))
-         :result-type (alist-get :result-type block-params)
-         :file (alist-get :file block-params)
-         :block-params block-params
-         :async-p (equal (alist-get :async block-params) "yes")
-         :silent-p (car (or (member "none" result-params)
-                            (member "silent" result-params)))))
+                                t)
+           :result-type (alist-get :result-type block-params)
+           :file (alist-get :file block-params)
+           :block-params block-params
+           :async-p (equal (alist-get :async block-params) "yes")
+           :silent-p (car (or (member "none" result-params)
+                              (member "silent" result-params))))))
     (cl-call-next-method)))
 
 (cl-defmethod jupyter-drop-request ((_client jupyter-org-client)
                                     (req jupyter-org-request))
   (when (markerp (jupyter-org-request-marker req))
     (set-marker (jupyter-org-request-marker req) nil)))
+
+(defvar org-babel-jupyter-session-clients) ; in ob-jupyter.el
+
+(defun jupyter-org-request-at-point ()
+  "Return the `jupyter-org-request' associated with `point' or nil."
+  (when-let* ((session (org-babel-jupyter-src-block-session))
+              (client (gethash session org-babel-jupyter-session-clients)))
+    (catch 'req
+      (jupyter-map-pending-requests client
+        (lambda (req)
+          (when (jupyter-org-request-p req)
+            (let ((marker (jupyter-org-request-marker req)))
+              (and (equal (marker-position marker) (point))
+                   (equal (marker-buffer marker) (current-buffer))
+                   (throw 'req req)))))))))
 
 ;;;; Stream
 
@@ -658,6 +684,14 @@ inserted without modification as the result of a code block."
   (prog1 str
     (put-text-property 0 1 'jupyter-org t str)))
 
+(defun jupyter-org-table-string (str)
+  "Return STR, ensuring that it is flagged as containing an `org' table.
+We need a way to distinguish a table string that is easily
+removed from the code block vs a regular string that will need to
+be wrapped in a drawer. Used in `jupyter-org-babel-result-p'."
+  (prog1 (jupyter-org-raw-string str)
+    (put-text-property 0 1 'org-table t str)))
+
 (defun jupyter-org-comment (value)
   "Return a comment `org-element' with VALUE."
   (list 'comment (list :value value)))
@@ -771,12 +805,7 @@ Otherwise, return VALUE formated as a fixed-width `org-element'."
     value)
    ((and (listp value)
          (jupyter-org-tabulablep value))
-    (let ((table (jupyter-org-raw-string (jupyter-org-table-to-orgtbl value))))
-      (prog1 table
-        ;; We need a way to distinguish a table string that is easily removed
-        ;; from the code block vs a regular string that will need to be
-        ;; wrapped in a drawer. See `jupyter-org--append-result'.
-        (put-text-property 0 1 'org-table t table))))
+    (jupyter-org-table-string (jupyter-org-table-to-orgtbl value)))
    (t
     (list 'fixed-width (list :value (format "%S" value))))))
 
@@ -830,6 +859,8 @@ EXT is used as the extension."
                (concat "." ext))))
     (concat (file-name-as-directory dir) (sha1 data) ext)))
 
+(defvar org-image-actual-width)
+
 (defun jupyter-org--image-result (mime params b64-encoded data &optional metadata)
   "Return an org-element suitable for inserting an image.
 MIME is the image mimetype, PARAMS is the
@@ -848,7 +879,10 @@ is created.
 
 If METADATA contains a :width or :height key, then the returned
 org-element will have an ATTR_ORG affiliated keyword containing
-the width or height of the image."
+the width or height of the image. When there is no :width or
+:height key an ATTR_ORG keyword may containing the true size of
+the image may still be added, see
+`jupyter-org-adjust-image-size'."
   (let* ((overwrite (not (null (alist-get :file params))))
          (file (or (alist-get :file params)
                    (jupyter-org-image-file-name
@@ -867,6 +901,14 @@ the width or height of the image."
             (base64-decode-region (point-min) (point-max))))))
     (cl-destructuring-bind (&key width height &allow-other-keys)
         metadata
+      (if (and (null width)
+               jupyter-org-adjust-image-size
+               (numberp (car-safe org-image-actual-width)))
+          (let ((image-width (car (image-size
+                                   (create-image (expand-file-name file))
+                                   'pixels))))
+            (if (< image-width (car org-image-actual-width))
+                (setq width image-width))))
       (jupyter-org-image-link file width height))))
 
 (cl-defgeneric jupyter-org-result (_mime _params _data &optional _metadata)
@@ -950,22 +992,27 @@ passed to Jupyter org-mode source blocks."
       (push (cons :file (jupyter-org-request-file req)) params))
     (cl-destructuring-bind (data metadata)
         (jupyter-normalize-data plist metadata)
-      (or (jupyter-loop-over-mime
-              (or display-mime-types jupyter-org-mime-types)
-              mime data metadata
-            (jupyter-org-result mime params data metadata))
-          (prog1 nil
-            (warn "No valid mimetype found %s"
-                  (cl-loop for (k _v) on data by #'cddr collect k)))))))
+      (cond
+       ((jupyter-loop-over-mime
+            (or display-mime-types jupyter-org-mime-types)
+            mime data metadata
+          (jupyter-org-result mime params data metadata)))
+       (t
+        (warn "Requested mimetype(s) not returned by kernel: %s"
+              (or display-mime-types jupyter-org-mime-types)))))))
 
 (cl-defmethod jupyter-org-result ((_mime (eql :application/vnd.jupyter.widget-view+json))
                                   _params _data &optional _metadata)
   ;; TODO: Clickable text to open up a browser
   (jupyter-org-scalar "Widget"))
 
+(defvar org-table-line-regexp)
+
 (cl-defmethod jupyter-org-result ((_mime (eql :text/org)) _params data
                                   &optional _metadata)
-  (jupyter-org-raw-string data))
+  (if (string-match-p org-table-line-regexp data)
+      (jupyter-org-table-string data)
+    (jupyter-org-raw-string data)))
 
 (cl-defmethod jupyter-org-result ((mime (eql :image/png)) params data
                                   &optional metadata)
@@ -1035,6 +1082,8 @@ new \"scalar\" result with the result of calling
     (jupyter-org-scalar
      (cond
       ((and (stringp result)
+            ;; Don't assume non-empty string, see #144
+            (not (zerop (length result)))
             ;; Don't attempt to create a table when we just want scalar results
             ;; FIXME: `jupyter-org-scalar' also considers a table a scalar, but
             ;; `org-mode' doesn't.
@@ -1169,7 +1218,7 @@ newline or not before inserting subsequent stream results.
 
 Assumes `point' is at the end of the last source block result."
   (or (stringp result) (setq result (org-element-property :value result)))
-  (when (and result
+  (when (and result (not (zerop (length result)))
              (eq (aref result (1- (length result))) ?\n))
     (when (looking-back "#\\+END_EXAMPLE\n"
                         (line-beginning-position 0))

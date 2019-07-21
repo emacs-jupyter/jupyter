@@ -42,6 +42,8 @@
 
 (eval-when-compile (require 'subr-x))
 (require 'jupyter-base)
+(require 'hmac-def)
+(require 'json)
 
 (defgroup jupyter-messages nil
   "Jupyter messages"
@@ -59,7 +61,35 @@ Message parts that are nil, but should be encoded into an empty
 dictionary are set to this value so that they are encoded as
 dictionaries.")
 
+;;; UUID
+
+(defun jupyter-new-uuid ()
+  "Return a version 4 UUID."
+  (format "%04x%04x-%04x-%04x-%04x-%06x%06x"
+          (cl-random 65536)
+          (cl-random 65536)
+          (cl-random 65536)
+          ;; https://tools.ietf.org/html/rfc4122
+          (let ((r (cl-random 65536)))
+            (if (= (byteorder) ?l)
+                ;; ?l = little-endian
+                (logior (logand r 4095) 16384)
+              ;; big-endian
+              (logior (logand r 65295) 64)))
+          (let ((r (cl-random 65536)))
+            (if (= (byteorder) ?l)
+                (logior (logand r 49151) 32768)
+              (logior (logand r 65471) 128)))
+          (cl-random 16777216)
+          (cl-random 16777216)))
+
 ;;; Signing messages
+
+(defun jupyter-sha256 (object)
+  "Return the SHA256 hash of OBJECT."
+  (secure-hash 'sha256 object nil nil t))
+
+(define-hmac-function jupyter-hmac-sha256 jupyter-sha256 64 32)
 
 (cl-defun jupyter-sign-message (session parts &optional (signer #'jupyter-hmac-sha256))
   "Use SESSION to sign message PARTS.
@@ -240,7 +270,6 @@ The returned object has the same form as the object returned by
                      parts)
            buffers)))
 
-
 (cl-defun jupyter-decode-message (session parts &key (signer #'jupyter-hmac-sha256))
   "Use SESSION to decode message PARTS.
 PARTS should be a list of message parts in the order of a valid
@@ -297,44 +326,6 @@ and `:msg_type'."
        :metadata (list 'message-part metadata nil)
        :content (list 'message-part content nil)
        :buffers buffers))))
-
-;;; Sending/receiving
-
-(cl-defmethod jupyter-send ((session jupyter-session)
-                            socket
-                            type
-                            message
-                            &optional
-                            msg-id
-                            flags)
-  "For SESSION, send a message on SOCKET.
-TYPE is message type of MESSAGE, one of the keys in
-`jupyter-message-types'. MESSAGE is the message content.
-Optionally supply a MSG-ID to the message, if this is nil a new
-message ID will be generated. FLAGS has the same meaning as in
-`zmq-send'. Return the message ID of the sent message."
-  (declare (indent 1))
-  (cl-destructuring-bind (id . msg)
-      (jupyter-encode-message session type
-        :msg-id msg-id :content message)
-    (prog1 id
-      (zmq-send-multipart socket msg flags))))
-
-(cl-defmethod jupyter-recv ((session jupyter-session) socket &optional flags)
-  "For SESSION, receive a message on SOCKET with FLAGS.
-FLAGS is passed to SOCKET according to `zmq-recv'. Return a cons cell
-
-    (IDENTS . MSG)
-
-where IDENTS are the ZMQ identities associated with MSG and MSG
-is the message property list whose fields can be accessed through
-calls to `jupyter-message-content', `jupyter-message-parent-id',
-and other such functions."
-  (let ((msg (zmq-recv-multipart socket flags)))
-    (when msg
-      (cl-destructuring-bind (idents . parts)
-          (jupyter--split-identities msg)
-        (cons idents (jupyter-decode-message session parts))))))
 
 ;;; Control messages
 

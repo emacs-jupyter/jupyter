@@ -30,13 +30,14 @@
 ;;; Code:
 
 (require 'json)
+(require 'jupyter-env)
 
 (defgroup jupyter-kernelspec nil
   "Jupyter kernelspecs"
   :group 'jupyter)
 
 (declare-function jupyter-read-plist "jupyter-base" (file))
-(declare-function jupyter-command "jupyter-base" (&rest args))
+(declare-function jupyter-read-plist-from-string "jupyter-base" (file))
 
 (defvar jupyter--kernelspecs (make-hash-table :test #'equal :size 5)
   "An alist matching kernel names to their kernelspec directories.")
@@ -71,7 +72,8 @@ information of the host as a prefix."
     (or (and (not refresh) (gethash host jupyter--kernelspecs))
         (let ((specs (plist-get
                       (jupyter-read-plist-from-string
-                       (jupyter-command "kernelspec" "list" "--json"))
+                       (or (jupyter-command "kernelspec" "list" "--json")
+                           (error "Can't obtain kernelspecs from jupyter shell command")))
                       :kernelspecs)))
           (puthash
            host (cl-loop

@@ -58,6 +58,59 @@ forwarded to a separate buffer."
   :group 'jupyter-client
   :type 'integer)
 
+(defcustom jupyter-include-other-output nil
+  "Whether or not to handle IOPub messages from other clients.
+A Jupyter client can receive messages from other clients
+connected to the same kernel on the IOPub channel. You can choose
+to ignore these messages by setting
+`jupyter-include-other-output' to nil. If
+`jupyter-include-other-output' is non-nil, then any messages that
+are not associated with a request from a client are sent to the
+client's handler methods with a nil value for the request
+argument. To change the value of this variable for a particular
+client use `jupyter-set'."
+  :group 'jupyter
+  :type 'boolean)
+
+(defcustom jupyter-iopub-message-hook nil
+  "Hook run when a message is received on the IOPub channel.
+The hook is called with two arguments, the Jupyter client and the
+message it received.
+
+Do not add to this hook variable directly, use
+`jupyter-add-hook'. If any of the message hooks return a non-nil
+value, the client handlers will be prevented from running for the
+message."
+  :group 'jupyter
+  :type 'hook)
+(put 'jupyter-iopub-message-hook 'permanent-local t)
+
+(defcustom jupyter-shell-message-hook nil
+  "Hook run when a message is received on the SHELL channel.
+The hook is called with two arguments, the Jupyter client and the
+message it received.
+
+Do not add to this hook variable directly, use
+`jupyter-add-hook'. If any of the message hooks return a non-nil
+value, the client handlers will be prevented from running for the
+message."
+  :group 'jupyter
+  :type 'hook)
+(put 'jupyter-shell-message-hook 'permanent-local t)
+
+(defcustom jupyter-stdin-message-hook nil
+  "Hook run when a message is received on the STDIN channel.
+The hook is called with two arguments, the Jupyter client and the
+message it received.
+
+Do not add to this hook variable directly,
+use `jupyter-add-hook'. If any of the message hooks return a
+non-nil value, the client handlers will be prevented from running
+for the message."
+  :group 'jupyter
+  :type 'hook)
+(put 'jupyter-stdin-message-hook 'permanent-local t)
+
 (declare-function company-begin-backend "ext:company" (backend &optional callback))
 (declare-function company-doc-buffer "ext:company" (&optional string))
 (declare-function company-idle-begin "ext:company")
@@ -194,7 +247,7 @@ passed as the argument has a language of LANG."
         (jupyter-stop-channels client)))))
 
 (defun jupyter-clients ()
-  "Return a list of all `jupyter-kernel-clients'."
+  "Return a list of all `jupyter-kernel-client' objects."
   (jupyter-all-objects 'jupyter--clients))
 
 (defun jupyter-find-client-for-session (session-id)
@@ -282,9 +335,13 @@ subprocess buffer."
     (set (make-local-variable symbol) newval)))
 
 (defun jupyter-get (client symbol)
-  "Get CLIENT's local value of SYMBOL."
-  (jupyter-with-client-buffer client
-    (symbol-value symbol)))
+  "Get CLIENT's local value of SYMBOL.
+Return nil if SYMBOL is not bound for CLIENT."
+  (condition-case nil
+      (buffer-local-value symbol (oref client -buffer))
+    (void-variable nil)))
+
+(gv-define-simple-setter jupyter-get jupyter-set)
 
 ;;; Hooks
 
@@ -389,6 +446,16 @@ back."
 (defsubst jupyter-last-sent-request (client)
   "Return the most recent `jupyter-request' made by CLIENT."
   (gethash "last-sent" (oref client requests)))
+
+(defun jupyter-map-pending-requests (client function)
+  "Call FUNCTION for all pending requests of CLIENT."
+  (declare (indent 1))
+  (cl-check-type client jupyter-kernel-client)
+  (maphash (lambda (k v)
+             (unless (or (equal k "last-sent")
+                         (jupyter-request-idle-received-p v))
+               (funcall function v)))
+           (oref client requests)))
 
 ;;; Event handlers
 
@@ -531,6 +598,8 @@ multiple callbacks you would do
 
 ;;; Waiting for messages
 
+(defvar jupyter--already-waiting-p nil)
+
 (defun jupyter-wait-until (req msg-type cb &optional timeout progress-msg)
   "Wait until conditions for a request are satisfied.
 REQ, MSG-TYPE, and CB have the same meaning as in
@@ -545,9 +614,15 @@ display for reporting progress to the user while waiting."
   (let (msg)
     (jupyter-add-callback req
       msg-type (lambda (m) (setq msg (when (funcall cb m) m))))
-    (jupyter-with-timeout
-        (progress-msg (or timeout jupyter-default-timeout))
-      msg)))
+    (let* ((timeout-spec (when jupyter--already-waiting-p
+                           (with-timeout-suspend)))
+           (jupyter--already-waiting-p t))
+      (unwind-protect
+          (jupyter-with-timeout
+              (progress-msg (or timeout jupyter-default-timeout))
+            msg)
+        (when timeout-spec
+          (with-timeout-unsuspend timeout-spec))))))
 
 (defun jupyter-wait-until-startup (client &optional timeout progress-msg)
   "Wait for CLIENT to receive a status: startup message.
@@ -689,8 +764,12 @@ are taken:
                       ;; consider REQ as having received an idle message in
                       ;; this case.
                       (eq (jupyter-message-type msg) :shutdown-reply))
-              (setf (jupyter-request-idle-received-p req) t))
-            (jupyter--drop-idle-requests client)))))))
+              ;; Order matters here. We want to remove idle requests *before*
+              ;; setting another request idle to account for idle messages
+              ;; coming in out of order, e.g. before their respective reply
+              ;; messages.
+              (jupyter--drop-idle-requests client)
+              (setf (jupyter-request-idle-received-p req) t))))))))
 
 ;;; Channel handler macros
 
@@ -883,10 +962,7 @@ Methods that extend this generic function should
           (jupyter-display-current-buffer-reuse-window)))
        (res
         (setq res (ansi-color-apply res))
-        (if (cl-loop
-             with nlines = 0
-             for c across res when (eq c ?\n) do (cl-incf nlines)
-             thereis (> nlines jupyter-eval-short-result-max-lines))
+        (if (jupyter-line-count-greater-p res jupyter-eval-short-result-max-lines)
             (jupyter-with-display-buffer "result" 'reset
               (insert res)
               (goto-char (point-min))
@@ -1090,7 +1166,8 @@ representation of the results in the current buffer."
               :user-expressions user-expressions
               :allow-stdin allow-stdin
               :stop-on-error stop-on-error)))
-    (jupyter-send client :shell :execute-request msg)))
+    (prog1 (jupyter-send client :shell :execute-request msg)
+      (jupyter-server-mode-set-client client))))
 
 (cl-defgeneric jupyter-handle-payload ((source symbol) _payload)
   "Execute the action in a Jupyter PAYLOAD.
@@ -1782,7 +1859,7 @@ dispatching based on the kernel language."
       (let* ((jupyter-inhibit-handlers t)
              (req (jupyter-send-kernel-info-request client))
              (msg (jupyter-wait-until-received :kernel-info-reply
-                    req jupyter-long-timeout "Requesting kernel info...")))
+                    req (* 3 jupyter-long-timeout) "Requesting kernel info...")))
         (unless msg
           (error "Kernel did not respond to kernel-info request"))
         (prog1 (oset client kernel-info (jupyter-message-content msg))

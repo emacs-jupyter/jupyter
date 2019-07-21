@@ -34,89 +34,13 @@
 (require 'eieio)
 (require 'eieio-base)
 (require 'json)
-(require 'zmq)
-(require 'hmac-def)
-(require 'jupyter-kernelspec)
 
 (declare-function tramp-dissect-file-name "tramp" (name &optional nodefault))
 (declare-function tramp-file-name-user "tramp")
 (declare-function tramp-file-name-host "tramp")
 (declare-function jupyter-message-content "jupyter-messages" (msg))
 
-;;; Call the Jupyter command
-
-(defun jupyter-command (&rest args)
-  "Run a Jupyter shell command synchronously, return its output.
-The shell command run is
-
-    jupyter ARGS...
-
-If the command fails, return nil."
-  (with-temp-buffer
-    (when (zerop (apply #'process-file "jupyter" nil t nil args))
-      (string-trim-right (buffer-string)))))
-
 ;;; Custom variables
-
-(defcustom jupyter-include-other-output nil
-  "Whether or not to handle IOPub messages from other clients.
-A Jupyter client can receive messages from other clients
-connected to the same kernel on the IOPub channel. You can choose
-to ignore these messages by setting
-`jupyter-include-other-output' to nil. If
-`jupyter-include-other-output' is non-nil, then any messages that
-are not associated with a request from a client are sent to the
-client's handler methods with a nil value for the request
-argument. To change the value of this variable for a particular
-client use `jupyter-set'."
-  :group 'jupyter
-  :type 'boolean)
-
-(defcustom jupyter-iopub-message-hook nil
-  "Hook run when a message is received on the IOPub channel.
-The hook is called with two arguments, the Jupyter client and the
-message it received.
-
-Do not add to this hook variable directly, use
-`jupyter-add-hook'. If any of the message hooks return a non-nil
-value, the client handlers will be prevented from running for the
-message."
-  :group 'jupyter
-  :type 'hook)
-(put 'jupyter-iopub-message-hook 'permanent-local t)
-
-(defcustom jupyter-shell-message-hook nil
-  "Hook run when a message is received on the SHELL channel.
-The hook is called with two arguments, the Jupyter client and the
-message it received.
-
-Do not add to this hook variable directly, use
-`jupyter-add-hook'. If any of the message hooks return a non-nil
-value, the client handlers will be prevented from running for the
-message."
-  :group 'jupyter
-  :type 'hook)
-(put 'jupyter-shell-message-hook 'permanent-local t)
-
-(defcustom jupyter-stdin-message-hook nil
-  "Hook run when a message is received on the STDIN channel.
-The hook is called with two arguments, the Jupyter client and the
-message it received.
-
-Do not add to this hook variable directly,
-use `jupyter-add-hook'. If any of the message hooks return a
-non-nil value, the client handlers will be prevented from running
-for the message."
-  :group 'jupyter
-  :type 'hook)
-(put 'jupyter-stdin-message-hook 'permanent-local t)
-
-(defcustom jupyter-runtime-directory (jupyter-command "--runtime-dir")
-  "The Jupyter runtime directory.
-When a new kernel is started through `jupyter-start-kernel', this
-directory is where kernel connection files are written to."
-  :group 'jupyter
-  :type 'string)
 
 (defcustom jupyter-pop-up-frame nil
   "Whether or not buffers should be displayed in a new frame by default.
@@ -145,14 +69,6 @@ messages consider this variable."
 
 (defconst jupyter-protocol-version "5.3"
   "The jupyter protocol version that is implemented.")
-
-(defconst jupyter-socket-types
-  (list :hb zmq-REQ
-        :shell zmq-DEALER
-        :iopub zmq-SUB
-        :stdin zmq-DEALER
-        :control zmq-DEALER)
-  "The socket types for the various channels used by `jupyter'.")
 
 (defconst jupyter-message-types
   (list :execute-result "execute_result"
@@ -259,7 +175,7 @@ returned."
   (declare (indent 3) (debug (symbolp symbolp form body)))
   `(let ((,beg (point-marker))
          (,end (point-marker)))
-     (set-marker-insertion-type end t)
+     (set-marker-insertion-type ,end t)
      (unwind-protect
          (prog1 ,bodyform ,@afterforms)
        (set-marker ,beg nil)
@@ -414,33 +330,7 @@ the buffer below the selected window."
    msg-type nil (unless (jupyter-pop-up-frame-p msg-type)
                   #'display-buffer-below-selected)))
 
-;;; Signing functions/UUID
-
-(defun jupyter-sha256 (object)
-  "Return the SHA256 hash of OBJECT."
-  (secure-hash 'sha256 object nil nil t))
-
-(define-hmac-function jupyter-hmac-sha256 jupyter-sha256 64 32)
-
-(defun jupyter-new-uuid ()
-  "Return a version 4 UUID."
-  (format "%04x%04x-%04x-%04x-%04x-%06x%06x"
-          (cl-random 65536)
-          (cl-random 65536)
-          (cl-random 65536)
-          ;; https://tools.ietf.org/html/rfc4122
-          (let ((r (cl-random 65536)))
-            (if (= (byteorder) ?l)
-                ;; ?l = little-endian
-                (logior (logand r 4095) 16384)
-              ;; big-endian
-              (logior (logand r 65295) 64)))
-          (let ((r (cl-random 65536)))
-            (if (= (byteorder) ?l)
-                (logior (logand r 49151) 32768)
-              (logior (logand r 65471) 128)))
-          (cl-random 16777216)
-          (cl-random 16777216)))
+;;; Some useful classes
 
 (defclass jupyter-instance-tracker ()
   ((tracking-symbol :type symbol))
@@ -484,6 +374,8 @@ will be called when OBJ is garbage collected."
 
 ;;; Session object definition
 
+(declare-function jupyter-new-uuid "jupyter-messages")
+
 (cl-defstruct (jupyter-session
                (:constructor nil)
                (:constructor
@@ -499,8 +391,7 @@ fields:
 - CONN-INFO :: The connection info. property list of the kernel
   this session is used to sign messages for.
 
-- ID :: A string of bytes used as the `zmq-ROUTING-ID' for every
-  `jupyter-channel' that utilizes the session object.
+- ID :: A string of bytes that uniquely identifies this session.
 
 - KEY :: The key used when signing messages. If KEY is nil,
   message signing is not performed."
@@ -568,6 +459,37 @@ following fields:
 
 (eval-when-compile (require 'tramp))
 
+(defun jupyter-available-local-ports (n)
+  "Return a list of N ports available on the localhost."
+  (let (servers)
+    (unwind-protect
+        (cl-loop
+         repeat n
+         do (push (make-network-process
+                   :name "jupyter-available-local-ports"
+                   :server t
+                   :host "127.0.0.1"
+                   :service t)
+                  servers)
+         finally return (mapcar (lambda (p) (cadr (process-contact p))) servers))
+      (mapc #'delete-process servers))))
+
+(defun jupyter-make-ssh-tunnel (lport rport server remoteip)
+  (or remoteip (setq remoteip "127.0.0.1"))
+  (start-process
+   "jupyter-ssh-tunnel" nil
+   "ssh"
+   ;; Run in background
+   "-f"
+   ;; Wait until the tunnel is open
+   "-o ExitOnForwardFailure=yes"
+   ;; Local forward
+   "-L" (format "127.0.0.1:%d:%s:%d" lport remoteip rport)
+   server
+   ;; Close the tunnel if no other connections are made within 60
+   ;; seconds
+   "sleep 60"))
+
 (defun jupyter-tunnel-connection (conn-file &optional server)
   "Forward local ports to the remote ports in CONN-FILE.
 CONN-FILE is the path to a Jupyter connection file, SERVER is the
@@ -579,7 +501,7 @@ If CONN-FILE is a `tramp' file name, the SERVER argument will be
 ignored and the host will be extracted from the information
 contained in the file name.
 
-Note that `zmq-make-tunnel' is used to create the tunnels."
+Note only SSH tunnels are currently supported."
   (catch 'no-tunnels
     (let ((conn-info (jupyter-read-plist conn-file)))
       (when (and (file-remote-p conn-file)
@@ -597,111 +519,75 @@ Note that `zmq-make-tunnel' is used to create the tunnels."
             (_
              (setq server (if user (concat user "@" host)
                             host))))))
-      (let ((sock (zmq-socket (zmq-current-context) zmq-REP)))
-        (unwind-protect
-            (cl-loop
-             with remoteip = (plist-get conn-info :ip)
-             for (key maybe-rport) on conn-info by #'cddr
-             collect key and if (memq key '(:hb_port :shell_port :control_port
-                                                     :stdin_port :iopub_port))
-             collect (let ((lport (zmq-bind-to-random-port sock "tcp://127.0.0.1")))
-                       (zmq-unbind sock (zmq-socket-get sock zmq-LAST-ENDPOINT))
-                       (prog1 lport
-                         (zmq-make-tunnel lport maybe-rport server remoteip)))
-             else collect maybe-rport)
-          (zmq-socket-set sock zmq-LINGER 0)
-          (zmq-close sock))))))
-
-(cl-defun jupyter-create-connection-info (&key
-                                          (kernel-name "python")
-                                          (transport "tcp")
-                                          (ip "127.0.0.1")
-                                          (signature-scheme "hmac-sha256")
-                                          (key (jupyter-new-uuid))
-                                          (hb-port 0)
-                                          (stdin-port 0)
-                                          (control-port 0)
-                                          (shell-port 0)
-                                          (iopub-port 0))
-  "Create a connection info plist used to connect to a kernel.
-
-The plist has the standard keys found in the jupyter spec. See
-http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files.
-A port number of 0 for a channel means to use a randomly assigned
-port for that channel."
-  (unless (or (= (length key) 0)
-              (equal signature-scheme "hmac-sha256"))
-    (error "Only hmac-sha256 signing is currently supported"))
-  (append
-   (list :kernel_name kernel-name
-         :transport transport
-         :ip ip)
-   (when (> (length key) 0)
-     (list :signature_scheme signature-scheme
-           :key key))
-   (cl-loop
-    with sock = (zmq-socket (zmq-current-context) zmq-REP)
-    with addr = (concat transport "://" ip)
-    for (channel . port) in `((:hb_port . ,hb-port)
-                              (:stdin_port . ,stdin-port)
-                              (:control_port . ,control-port)
-                              (:shell_port . ,shell-port)
-                              (:iopub_port . ,iopub-port))
-    collect channel and
-    if (= port 0) do (setq port (zmq-bind-to-random-port sock addr))
-    and collect port else collect port
-    finally
-    (zmq-socket-set sock zmq-LINGER 0)
-    (zmq-close sock))))
-
-(defun jupyter-write-connection-file (session obj)
-  "Write a connection file based on SESSION to `jupyter-runtime-directory'.
-Return the path to the connection file.
-
-Also register a finalizer on OBJ to delete the file when OBJ is
-garbage collected. The file is also deleted when Emacs exits if
-it hasn't been already."
-  (cl-check-type session jupyter-session)
-  (cl-check-type obj jupyter-finalized-object)
-  (make-directory jupyter-runtime-directory 'parents)
-  (let* ((temporary-file-directory jupyter-runtime-directory)
-         (json-encoding-pretty-print t)
-         (file (make-temp-file "emacs-kernel-" nil ".json"))
-         (kill-hook (lambda () (when (and file (file-exists-p file))
-                            (delete-file file)))))
-    (add-hook 'kill-emacs-hook kill-hook)
-    (jupyter-add-finalizer obj
-      (lambda ()
-        (funcall kill-hook)
-        (remove-hook 'kill-emacs-hook kill-hook)))
-    (prog1 file
-      (with-temp-file file
-        (insert (json-encode-plist
-                 (jupyter-session-conn-info session)))))))
-
-(defun jupyter-connect-endpoint (type endpoint &optional identity)
-  "Create socket with TYPE and connect to ENDPOINT.
-If IDENTITY is non-nil, it will be set as the ROUTING-ID of the
-socket. Return the created socket."
-  (let ((sock (zmq-socket (zmq-current-context) type)))
-    (prog1 sock
-      (zmq-socket-set sock zmq-LINGER 1000)
-      (when identity
-        (zmq-socket-set sock zmq-ROUTING-ID identity))
-      (zmq-connect sock endpoint))))
-
-(defun jupyter-connect-channel (ctype endpoint &optional identity)
-  "Create a socket based on a Jupyter channel type.
-CTYPE is one of the symbols `:hb', `:stdin', `:shell',
-`:control', or `:iopub' and represents the type of channel to
-connect to ENDPOINT. If IDENTITY is non-nil, it will be set as
-the ROUTING-ID of the socket. Return the created socket."
-  (let ((sock-type (plist-get jupyter-socket-types ctype)))
-    (unless sock-type
-      (error "Invalid channel type (%s)" ctype))
-    (jupyter-connect-endpoint sock-type endpoint identity)))
+      (let* ((keys '(:hb_port :shell_port :control_port
+                              :stdin_port :iopub_port))
+             (lports (jupyter-available-local-ports (length keys))))
+        (cl-loop
+         with remoteip = (plist-get conn-info :ip)
+         for (key maybe-rport) on conn-info by #'cddr
+         collect key and if (memq key keys)
+         collect (let ((lport (pop lports)))
+                   (prog1 lport
+                     (jupyter-make-ssh-tunnel lport maybe-rport server remoteip)))
+         else collect maybe-rport)))))
 
 ;;; Helper functions
+
+(defvar server-buffer)
+(defvar jupyter-current-client)
+(defvar jupyter-server-mode-client-timer nil
+  "Timer used to unset `jupyter-current-client' from `server-buffer'.")
+
+;; FIXME: This works if we only consider a single send request that will also
+;; finish within TIMEOUT which is probably 99% of the cases. It doesn't work
+;; for multiple requests that have been sent using different clients where one
+;; sets the client in `server-buffer' and, before a file is opened by the
+;; underlying kernel, another sets the client in `server-buffer'.
+
+(defun jupyter-server-mode-set-client (client &optional timeout)
+  "Set CLIENT as the `jupyter-current-client' in the `server-buffer'.
+Kill `jupyter-current-client's local value in `server-buffer'
+after TIMEOUT seconds, defaulting to `jupyter-long-timeout'.
+
+If a function causes a buffer to be displayed through
+emacsclient, e.g. when a function calls an external command that
+invokes the EDITOR, we don't know when the buffer will be
+displayed. All we know is that the buffer that will be current
+before display will be the `server-buffer'. So we temporarily set
+`jupyter-current-client' in `server-buffer' so that the client
+gets a chance to be propagated to the displayed buffer, see
+`jupyter-repl-persistent-mode'.
+
+For this to work properly you should have something like the
+following in your Emacs configuration
+
+    (server-mode 1)
+    (setenv \"EDITOR\" \"emacsclient\")
+
+before starting any Jupyter kernels. The kernel also has to know
+that it should use EDITOR to open files."
+  (when (bound-and-true-p server-mode)
+    (with-current-buffer (get-buffer-create server-buffer)
+      (setq jupyter-current-client client)
+      (jupyter-server-mode--unset-client-soon timeout))))
+
+(defun jupyter-server-mode-unset-client ()
+  "Set `jupyter-current-client' to nil in `server-buffer'."
+  (when (and (bound-and-true-p server-mode)
+             (get-buffer server-buffer))
+    (with-current-buffer server-buffer
+      (setq jupyter-current-client nil))))
+
+(defun jupyter-server-mode--unset-client-soon (&optional timeout)
+  (when (timerp jupyter-server-mode-client-timer)
+    (cancel-timer jupyter-server-mode-client-timer))
+  (setq jupyter-server-mode-client-timer
+        (run-at-time (or timeout jupyter-long-timeout)
+                     nil #'jupyter-server-mode-unset-client)))
+
+;; After switching to a server buffer, keep the client alive in `server-buffer'
+;; to account for multiple files being opened by the server.
+(add-hook 'server-switch-hook #'jupyter-server-mode--unset-client-soon)
 
 (defun jupyter-read-plist (file)
   "Read a JSON encoded FILE as a property list."
@@ -712,38 +598,6 @@ the ROUTING-ID of the socket. Return the created socket."
   "Read a property list from a JSON encoded STRING."
   (let ((json-object-type 'plist))
     (json-read-from-string string)))
-
-(defun jupyter-locate-python ()
-  "Return the path to the python executable in use by Jupyter.
-If the `default-directory' is a remote directory, search on that
-remote. Raise an error if the executable could not be found.
-
-The paths examined are the data paths of \"jupyter --paths\" in
-the order specified.
-
-This function always returns the `file-local-name' of the path."
-  (let* ((remote (file-remote-p default-directory))
-         (paths (mapcar (lambda (x) (concat remote x))
-                   (or (plist-get
-                        (jupyter-read-plist-from-string
-                         (jupyter-command "--paths" "--json"))
-                        :data)
-                       (error "Can't get search paths"))))
-         (path nil))
-    (cl-loop
-     with programs = '("bin/python3" "bin/python"
-                       ;; Need to also check Windows since paths can be
-                       ;; pointing to local or remote files.
-                       "python3.exe" "python.exe")
-     with pred = (lambda (dir)
-                   (cl-loop
-                    for program in programs
-                    for spath = (expand-file-name program dir)
-                    thereis (setq path (and (file-exists-p spath) spath))))
-     for path in paths
-     thereis (locate-dominating-file path pred)
-     finally (error "No `python' found in search paths"))
-    (file-local-name path)))
 
 (defun jupyter-normalize-data (plist &optional metadata)
   "Return a list (DATA META) from PLIST.
@@ -767,6 +621,12 @@ no :metadata key can be found, then META will be METADATA."
    (or (plist-get (jupyter-message-content plist) :metadata)
        (plist-get plist :metadata)
        metadata)))
+
+(defun jupyter-line-count-greater-p (str n)
+  "Return non-nil if STR has more than N lines."
+  (string-match-p
+   (format "^\\(?:[^\n]*\n\\)\\{%d,\\}" (1+ n))
+   str))
 
 ;;; Simple weak references
 ;; Thanks to Chris Wellon https://nullprogram.com/blog/2014/01/27/
