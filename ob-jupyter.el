@@ -54,6 +54,8 @@
 (declare-function jupyter-run-server-repl "jupyter-server")
 (declare-function jupyter-connect-server-repl "jupyter-server")
 (declare-function jupyter-server-kernelspecs "jupyter-server")
+(declare-function jupyter-server-kernel-id-from-name "jupyter-server")
+(declare-function jupyter-server-name-client-kernel "jupyter-server")
 (declare-function jupyter-api-get-kernel "jupyter-rest-api")
 
 (declare-function jupyter-tramp-url-from-file-name "jupyter-tramp")
@@ -234,14 +236,19 @@ variables in PARAMS."
 
 (defun org-babel-jupyter--server-repl (session kernel)
   (require 'jupyter-server)
-  (let ((url (jupyter-tramp-url-from-file-name session))
-        (name-or-id (file-local-name session)))
-    (unless name-or-id
-      (error "No remote server session name"))
-    (let* ((server (or (jupyter-tramp-server-from-file-name session)
-                       (jupyter-server :url url)))
-           (specs (jupyter-server-kernelspecs server))
-           (kmodel (ignore-errors (jupyter-api-get-kernel server name-or-id))))
+  (let* ((url (jupyter-tramp-url-from-file-name session))
+         (server (or (jupyter-tramp-server-from-file-name session)
+                     (jupyter-server :url url)))
+         (localname (file-local-name session))
+         (name-or-id (if (null localname) (error "No remote server session name")
+                       ;; If a kernel has an associated name, get its kernel ID
+                       ;; otherwise return either a name to associate with a
+                       ;; newly started kernel on the server or an ID of an
+                       ;; existing kernel.
+                       (or (jupyter-server-kernel-id-from-name server localname)
+                           localname))))
+    (let ((specs (jupyter-server-kernelspecs server))
+          (kmodel (ignore-errors (jupyter-api-get-kernel server name-or-id))))
       ;; Language aliases may not exist for the kernels that are accessible on
       ;; the server.
       (org-babel-jupyter-aliases-from-kernelspecs nil specs)
@@ -255,7 +262,19 @@ variables in PARAMS."
             (jupyter-connect-server-repl server id nil nil 'jupyter-org-client))
         ;; If the file local name of SESSION doesn't match an existing kernel,
         ;; we are starting a new one.
-        (jupyter-run-server-repl server kernel nil nil 'jupyter-org-client)))))
+        (let ((client (jupyter-run-server-repl
+                       server kernel nil nil 'jupyter-org-client)))
+          (prog1 client
+            ;; Associate a name with the newly started kernel.
+            ;;
+            ;; TODO: If a kernel gets renamed in the future it doesn't affect
+            ;; any source block :session associations because the hash of the
+            ;; session name used here is already stored in the
+            ;; `org-babel-jupyter-session-clients' variable. Should that
+            ;; variable be updated on a kernel rename?
+            ;;
+            ;; TODO: Would we always want to do this?
+            (jupyter-server-name-client-kernel client name-or-id)))))))
 
 (defun org-babel-jupyter-initiate-session-by-key (session params)
   "Return the Jupyter REPL buffer for SESSION.
