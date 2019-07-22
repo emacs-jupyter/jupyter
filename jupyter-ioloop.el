@@ -78,7 +78,8 @@ events have the same value as the return value of
 
 (defvar jupyter-ioloop-timers nil)
 
-(defvar jupyter-ioloop-timeout 200)
+(defvar jupyter-ioloop-timeout 200
+  "Maximum time (in ms) to wait for polling events on `jupyter-ioloop-poller'.")
 
 (defvar jupyter-ioloop--argument-types nil
   "Argument types added via `jupyter-ioloop-add-arg-type'.")
