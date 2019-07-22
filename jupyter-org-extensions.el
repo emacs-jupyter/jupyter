@@ -64,49 +64,50 @@ blocks could be found in the buffer.
 
 Distance is line based, not character based. Also, `point' is
 assumed to not be inside a source block."
-  (save-excursion
-    (or (and (null query)
-             (cl-loop
-              with start = (line-number-at-pos)
-              with previous = (ignore-errors
-                                (save-excursion
-                                  (org-babel-previous-src-block)
-                                  (point)))
-              with next = (ignore-errors
-                            (save-excursion
-                              (org-babel-next-src-block)
-                              (point)))
-              with maybe-return-lang =
-              (lambda ()
-                (let ((info (org-babel-get-src-block-info 'light)))
-                  (when (org-babel-jupyter-language-p (nth 0 info))
-                    (cl-return (nth 0 info)))))
-              while (or previous next) do
-              (cond
-               ((or
-                 ;; Maybe return the previous Jupyter source block's language
-                 ;; if it is closer to the start point than the next source
-                 ;; block
-                 (and previous next (< (- start (line-number-at-pos previous))
-                                       (- (line-number-at-pos next) start)))
-                 ;; or when there is no next source block
-                 (and (null next) previous))
-                (goto-char previous)
-                (funcall maybe-return-lang)
-                (setq previous (ignore-errors
-                                 (org-babel-previous-src-block)
-                                 (point))))
-               (next
-                (goto-char next)
-                (funcall maybe-return-lang)
-                (setq next (ignore-errors
-                             (org-babel-next-src-block)
-                             (point)))))))
-        ;; If all else fails, query for the language to use
-        (let* ((kernelspec (jupyter-completing-read-kernelspec))
-               (lang (plist-get (cddr kernelspec) :language)))
-          (if (org-babel-jupyter-language-p lang) lang
-            (format "jupyter-%s" lang))))))
+  (org-save-outline-visibility nil
+    (save-excursion
+      (or (and (null query)
+               (cl-loop
+                with start = (line-number-at-pos)
+                with previous = (ignore-errors
+                                  (save-excursion
+                                    (org-babel-previous-src-block)
+                                    (point)))
+                with next = (ignore-errors
+                              (save-excursion
+                                (org-babel-next-src-block)
+                                (point)))
+                with maybe-return-lang =
+                (lambda ()
+                  (let ((info (org-babel-get-src-block-info 'light)))
+                    (when (org-babel-jupyter-language-p (nth 0 info))
+                      (cl-return (nth 0 info)))))
+                while (or previous next) do
+                (cond
+                 ((or
+                   ;; Maybe return the previous Jupyter source block's language
+                   ;; if it is closer to the start point than the next source
+                   ;; block
+                   (and previous next (< (- start (line-number-at-pos previous))
+                                         (- (line-number-at-pos next) start)))
+                   ;; or when there is no next source block
+                   (and (null next) previous))
+                  (goto-char previous)
+                  (funcall maybe-return-lang)
+                  (setq previous (ignore-errors
+                                   (org-babel-previous-src-block)
+                                   (point))))
+                 (next
+                  (goto-char next)
+                  (funcall maybe-return-lang)
+                  (setq next (ignore-errors
+                               (org-babel-next-src-block)
+                               (point)))))))
+          ;; If all else fails, query for the language to use
+          (let* ((kernelspec (jupyter-completing-read-kernelspec))
+                 (lang (plist-get (cddr kernelspec) :language)))
+            (if (org-babel-jupyter-language-p lang) lang
+              (format "jupyter-%s" lang)))))))
 
 (defun jupyter-org-between-block-end-and-result-p ()
   "If `point' is between a src-block and its result, return the result end.
@@ -118,7 +119,8 @@ separates the two."
   ;; after a src block, e.g. for named results that appear somewhere else.
   (save-excursion
     (let ((start (point)))
-      (when-let* ((src (and (ignore-errors (org-babel-previous-src-block))
+      (when-let* ((src (and (org-save-outline-visibility nil
+                              (ignore-errors (org-babel-previous-src-block)))
                             (org-element-context)))
                   (end (org-element-property :end src))
                   (result-pos (org-babel-where-is-src-block-result)))
@@ -330,16 +332,18 @@ With a prefix argument ARG, jump forward ARG many blocks.
 
 When BACKWARD is non-nil, jump to the previous block."
   (interactive "p")
-  (cl-loop
-   with count = (abs (or arg 1))
-   with origin = (point)
-   while (ignore-errors
-           (if backward (org-babel-previous-src-block)
-             (org-babel-next-src-block)))
-   thereis (when (jupyter-org-request-at-point)
-             (zerop (cl-decf count)))
-   finally (goto-char origin)
-   (user-error "No %s busy code blocks" (if backward "previous" "further"))))
+  (org-save-outline-visibility nil
+    (cl-loop
+     with count = (abs (or arg 1))
+     with origin = (point)
+     while (ignore-errors
+             (if backward (org-babel-previous-src-block)
+               (org-babel-next-src-block)))
+     thereis (when (jupyter-org-request-at-point)
+               (zerop (cl-decf count)))
+     finally (goto-char origin)
+     (user-error "No %s busy code blocks" (if backward "previous" "further"))))
+  (save-match-data (org-show-context)))
 
 ;;;###autoload
 (defun jupyter-org-previous-busy-src-block (arg)
@@ -598,10 +602,11 @@ If BELOW is non-nil, move the block down, otherwise move it up."
 (defun jupyter-org-clear-all-results ()
   "Clear all results in the buffer."
   (interactive)
-  (save-excursion
-    (goto-char (point-min))
-    (while (org-babel-next-src-block)
-      (org-babel-remove-result))))
+  (org-save-outline-visibility nil
+    (save-excursion
+      (goto-char (point-min))
+      (while (org-babel-next-src-block)
+        (org-babel-remove-result)))))
 
 ;;;###autoload
 (defun jupyter-org-interrupt-kernel ()
