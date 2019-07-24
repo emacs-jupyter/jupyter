@@ -1261,7 +1261,7 @@ execute the current cell."
                 nil (if complete-p "complete" "incomplete") "")))
            (t
             (let ((res (jupyter-wait-until-received :is-complete-reply
-                         (let ((jupyter-inhibit-handlers '(:status)))
+                         (let ((jupyter-inhibit-handlers '(not :is-complete-reply)))
                            (jupyter-send-is-complete-request
                                jupyter-current-client
                              :code (jupyter-repl-cell-code)))
