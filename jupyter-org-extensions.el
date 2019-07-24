@@ -38,6 +38,7 @@
 (declare-function org-in-src-block-p "org" (&optional inside))
 (declare-function org-narrow-to-subtree "org" ())
 (declare-function org-previous-line-empty-p "org" ())
+(declare-function org-show-context "org" (&optional key))
 (declare-function org-next-line-empty-p "org" ())
 (declare-function org-element-context "org-element" (&optional element))
 (declare-function org-element-type "org-element" (element))
