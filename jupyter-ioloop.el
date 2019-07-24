@@ -4,7 +4,7 @@
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 03 Nov 2018
-;; Version: 0.8.0
+;; Version: 0.8.1
 ;; Package-Requires: ((emacs "26"))
 
 ;; This program is free software; you can redistribute it and/or

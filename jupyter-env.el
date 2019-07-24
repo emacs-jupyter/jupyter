@@ -4,7 +4,7 @@
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 27 Jun 2019
-;; Version: 0.8.0
+;; Version: 0.8.1
 ;; Keywords: jupyter
 
 ;; This program is free software; you can redistribute it and/or

@@ -1,4 +1,4 @@
-* master
+* v0.8.1
 
 - Add the commands =jupyter-org-(next|previous)-busy-src-block= which will jump
   to the next or previous busy source block in an =org-mode= buffer. Bound to =N=
@@ -388,7 +388,7 @@
 Examine the output of
 
 #+NAME: changelog
-#+HEADER: :var PREV_VERSION="99986e5978058cfaeb5769740524d6d1274ee187" VERSION="master"
+#+HEADER: :var PREV_VERSION="e0531d040c6e4edf8fc7ba195a4450deaba70917" VERSION="master"
 #+BEGIN_SRC shell :results output
 git log --pretty=format:"%s" ${PREV_VERSION}...${VERSION}
 #+END_SRC
@@ -402,7 +402,7 @@ update the =VERSION= variables first.
 
 Update the =Version= in the header of all source files.
 
-#+BEGIN_SRC elisp :results silent :var version="0.8.0"
+#+BEGIN_SRC elisp :results silent :var version="0.8.1"
 (let ((re "^;; Version: \\(\\([0-9]+\\)\\.\\([0-9]+\\)\\.\\([0-9]+\\)\\)" ))
   (dolist (file (append (directory-files default-directory nil ".el$")
                         (directory-files (expand-file-name "test" default-directory) t ".el$")))
