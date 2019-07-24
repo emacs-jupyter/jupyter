@@ -1,5 +1,30 @@
 * master
 
+- Add the commands =jupyter-org-(next|previous)-busy-src-block= which will jump
+  to the next or previous busy source block in an =org-mode= buffer. Bound to =N=
+  and =P= in the =Hydra= provided in =org-mode= (=C-c h=).
+
+- Add customizable variable =jupyter-org-adjust-image-size= to avoid stretching
+  images when =org-image-actual-width= is set so that it falls back to a default
+  width for an inline image.
+
+- Fix a message buffering issue when sending multiple requests to a kernel in
+  quick succession, e.g. when calling =org-babel-execute-subtree= in =org-mode=
+  when all Jupyter source blocks in the subtree are evaluated asynchronously.
+
+- In =jupyter-org-insert-src-block= (1) adjust whitespace so that there is at
+  least one blank line before and following an inserted source block (2) do not
+  insert a new source block between a source block and its results, always
+  insert the new block after a source block's results (3) do not move past an
+  inlinetask, normally the current paragraph or element under =point= is moved
+  past before inserting a new source block.
+
+- Fix issues with undo in the REPL when trying to undo after inserting a
+  newline. See #139.
+
+- In =org-mode=, detect Org formatted table strings when a kernel returns a
+  =text/org= mimetype. This avoids wrapping the table in a drawer.
+
 - If a file is opened via =emacsclient=, attempt to associate the opened buffer
   with a REPL client. This is useful, e.g. when using the ~julia~ language's
   ~edit~ function and the =EDITOR= environment variable is set to
