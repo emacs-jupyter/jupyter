@@ -870,7 +870,7 @@
         (with-temp-buffer
           (jupyter-server-mode-set-client client 0.01))
         (should jupyter-current-client)
-        (sleep-for 0.02)
+        (sleep-for 0.1)
         (should-not jupyter-current-client)))))
 
 (ert-deftest jupyter-map-pending-requests ()
