@@ -124,7 +124,8 @@ See also the docstring of `org-image-actual-width' for more details."
       (save-excursion
         (goto-char org-babel-current-src-block-location)
         (let* ((context (org-element-context))
-               (block-params (nth 2 (org-babel-get-src-block-info nil context)))
+               (block-params (nth 2 (or (org-babel-get-src-block-info nil context)
+                                        (org-babel-lob-get-info context))))
                (result-params (alist-get :result-params block-params)))
           (jupyter-org-request
            :marker (copy-marker org-babel-current-src-block-location)

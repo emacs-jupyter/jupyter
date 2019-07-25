@@ -2759,6 +2759,25 @@ publish_display_data({'text/plain': \"foo\", 'text/latex': \"$\\alpha$\"});"
    ": foo\n"
    :display "plain"))
 
+(ert-deftest org-babel-jupyter-babel-call ()
+  :tags '(org babel)
+  (jupyter-org-test
+   (insert (format "\
+#+NAME: foo
+#+begin_src jupyter-python :async yes :session %s
+1 + 1
+#+end_src
+
+" jupyter-org-test-session))
+   (insert "
+#+CALL: foo()")
+   (org-ctrl-c-ctrl-c)
+   (beginning-of-line)
+   (jupyter-wait-until-idle (jupyter-org-request-at-point))
+   (goto-char (org-babel-where-is-src-block-result))
+   (forward-line)
+   (should (looking-at-p ": 2\n"))))
+
 ;; Local Variables:
 ;; byte-compile-warnings: (unresolved obsolete lexical)
 ;; eval: (and (functionp 'aggressive-indent-mode) (aggressive-indent-mode -1))
