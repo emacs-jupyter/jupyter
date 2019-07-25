@@ -2600,7 +2600,17 @@ x
    (should (equal (org-babel-jupyter-src-block-session)
                   (org-babel-jupyter-session-key
                    (nth 2 (org-babel-get-src-block-info 'light)))))
-   (erase-buffer)))
+   (erase-buffer)
+
+   (insert "\
+#+NAME: foo
+#+BEGIN_SRC jupyter-foo :session bar :kernel bar
+#+END_SRC
+
+#+CALL: foo()")
+   (should (equal (org-babel-jupyter-src-block-session)
+                  (org-babel-jupyter-session-key
+                   (nth 2 (org-babel-lob-get-info)))))))
 
 (ert-deftest org-babel-jupyter-override-src-block ()
   :tags '(org)

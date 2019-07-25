@@ -112,11 +112,13 @@ clients in `org-babel-jupyter-session-clients'."
   "Return the session key for the current Jupyter source block.
 Return nil if the current source block is not a Jupyter block or
 if there is no source block at point."
-  (when (org-in-src-block-p)
-    (cl-destructuring-bind (lang _ params . rest)
-        (org-babel-get-src-block-info 'light)
-      (when (org-babel-jupyter-language-p lang)
-        (org-babel-jupyter-session-key params)))))
+  (let ((info (or (and (org-in-src-block-p)
+                       (org-babel-get-src-block-info 'light))
+                  (org-babel-lob-get-info))))
+    (when info
+      (cl-destructuring-bind (lang _ params . rest) info
+        (when (org-babel-jupyter-language-p lang)
+          (org-babel-jupyter-session-key params))))))
 
 ;;; `ob' integration
 
