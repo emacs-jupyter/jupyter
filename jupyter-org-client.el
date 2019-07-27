@@ -1285,7 +1285,6 @@ result."
 Append RESULT to the contents of the block. If KEEP-NEWLINE is
 non-nil, ensure that the appended RESULT begins on a newline."
   (jupyter-org-delete-element element)
-  (jupyter-org-delete-blank-line)
   ;; Delete a newline that will be re-inserted by `org-element-interpret-data'.
   (when (eq (char-after) ?\n)
     (delete-char 1))
