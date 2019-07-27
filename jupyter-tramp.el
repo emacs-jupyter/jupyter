@@ -225,13 +225,14 @@ Operations not mentioned here will be handled by the default Emacs primitives.")
 ;;;###autoload
 (defsubst jupyter-tramp-file-name-method-p (method)
   "Return METHOD if it corresponds to a Jupyter filename method or nil."
-  (string-match-p "\\`jpys?\\'" method))
+  (and (string-match-p "\\`jpys?\\'" method) method))
 
 ;;;###autoload
 (defun jupyter-tramp-file-name-p (filename)
   "If FILENAME is a Jupyter filename, return its method otherwise nil."
-  (jupyter-tramp-file-name-method-p
-   (tramp-file-name-method (tramp-dissect-file-name filename))))
+  (when (tramp-tramp-file-p filename)
+    (jupyter-tramp-file-name-method-p
+     (tramp-file-name-method (tramp-dissect-file-name filename)))))
 
 ;;;###autoload
 (defun jupyter-tramp-file-name-handler (operation &rest args)

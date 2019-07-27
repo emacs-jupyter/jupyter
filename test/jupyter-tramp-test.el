@@ -30,6 +30,15 @@
 
 (require 'jupyter-tramp)
 
+(ert-deftest jupyter-tramp-file-name-p ()
+  :tags '(tramp)
+  (should-not (jupyter-tramp-file-name-p "foobar"))
+  (should-not (jupyter-tramp-file-name-p "/foobar"))
+  (should-not (jupyter-tramp-file-name-p "/ssh::foobar"))
+  (should (equal (jupyter-tramp-file-name-p "/jpy::foobar") "jpy"))
+  (should (equal (jupyter-tramp-file-name-p "/jpy::/foobar") "jpy"))
+  (should (equal (jupyter-tramp-file-name-p "/jpys::/foobar") "jpys")))
+
 (ert-deftest jupyter-tramp-file-directory-p ()
   :tags '(tramp)
   (jupyter-test-at-temporary-directory
