@@ -170,11 +170,7 @@ See also the docstring of `org-image-actual-width' for more details."
       (jupyter-with-display-buffer "org-results" req
         (insert (ansi-color-apply text))
         (pop-to-buffer (current-buffer)))
-    (jupyter-org--add-result
-     req (with-temp-buffer
-           (jupyter-with-control-code-handling
-            (insert text))
-           (buffer-string)))))
+    (jupyter-org--add-result req text)))
 
 ;;;; Errors
 
@@ -1253,6 +1249,36 @@ result."
              (not (jupyter-org--first-result-context-p context)))
     (jupyter-org--stream-context-p context)))
 
+;; Adapted from `jupyter-handle-control-codes'
+(defun jupyter-org--handle-control-codes (beg end)
+  "Handle any control sequences between BEG and END."
+  (save-excursion
+    (goto-char beg)
+    (while (< (point) end)
+      (let ((char (char-after)))
+        (cond
+         ((eq char ?\r)
+          (if (< (1+ (point)) end)
+              (if (memq (char-after (1+ (point)))
+                        '(?\n ?\r))
+                  (delete-char 1)
+                (let ((end (1+ (point))))
+                  (beginning-of-line)
+                  (when (looking-at-p ": ")
+                    (forward-char 2))
+                  (delete-region (point) end)))
+            (add-text-properties (point) (1+ (point))
+                                 '(invisible t))
+            (forward-char)))
+         ((eq char ?\a)
+          (delete-char 1)
+          (beep))
+         ((eq char ?\C-h)
+          ;; FIXME: Consider fixed width regions
+          (delete-region (1- (point)) (1+ (point))))
+         (t
+          (forward-char)))))))
+
 ;;;;; Fixed width -> example block promotion
 
 (defun jupyter-org--fixed-width-to-example-block (element result keep-newline)
@@ -1425,23 +1451,35 @@ Assumes `point' is on the #+RESULTS keyword line."
 
 (defun jupyter-org--do-insert-result (req result)
   (org-with-point-at (jupyter-org-request-marker req)
-    (goto-char (org-babel-where-is-src-block-result 'insert))
-    (let* ((indent (current-indentation))
-           (context (jupyter-org--normalized-insertion-context))
-           (pos (jupyter-org--append-stream-result-p context result)))
-      (cond
-       (pos
-        (goto-char pos)
-        (jupyter-org-indent-inserted-region indent
-          (jupyter-org--append-stream-result result)))
-       (t
-        (forward-line 1)
-        (unless (bolp) (insert "\n"))
-        (jupyter-org--prepare-append-result context)
-        (jupyter-org-indent-inserted-region indent
-          (jupyter-org--insert-result req context result)))))
-    (when (jupyter-org--stream-result-p result)
-      (jupyter-org--mark-stream-result-newline result))))
+    (let ((res-begin (org-babel-where-is-src-block-result 'insert)))
+      (goto-char res-begin)
+      (let* ((indent (current-indentation))
+             (context (jupyter-org--normalized-insertion-context))
+             (pos (jupyter-org--append-stream-result-p context result)))
+        (cond
+         (pos
+          (goto-char pos)
+          (jupyter-org-indent-inserted-region indent
+            (jupyter-org--append-stream-result result)))
+         (t
+          (forward-line 1)
+          (unless (bolp) (insert "\n"))
+          (jupyter-org--prepare-append-result context)
+          (jupyter-org-indent-inserted-region indent
+            (jupyter-org--insert-result req context result))))
+        (when (jupyter-org--stream-result-p result)
+          (let ((end (point-marker)))
+            (unwind-protect
+                (jupyter-org--handle-control-codes
+                 (if pos (save-excursion
+                           (goto-char pos)
+                           ;; Go back one line to account for an edge case
+                           ;; where a control code is at the end of a line.
+                           (line-beginning-position 0))
+                   res-begin)
+                 end)
+              (set-marker end nil)))
+          (jupyter-org--mark-stream-result-newline result))))))
 
 (cl-defgeneric jupyter-org--insert-result (req context result)
   "For REQ and given CONTEXT, insert RESULT.
