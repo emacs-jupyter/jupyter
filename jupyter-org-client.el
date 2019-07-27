@@ -1146,13 +1146,12 @@ new \"scalar\" result with the result of calling
   "Return STRING with its last newline removed."
   (replace-regexp-in-string "\n\\'" "" string))
 
-(defun jupyter-org--delete-element (element)
+(defun jupyter-org-delete-element (element)
   "Delete an `org' ELEMENT from the buffer.
 Leave its affiliated keywords and preserve any blank lines that
 appear after the element."
   (delete-region (jupyter-org-element-begin-after-affiliated element)
-                 (jupyter-org-element-end-before-blanks element))
-  (jupyter-org-delete-blank-line))
+                 (jupyter-org-element-end-before-blanks element)))
 
 (defun jupyter-org-babel-result-p (result)
   "Return non-nil if RESULT can be removed by `org-babel-remove-result'."
@@ -1285,7 +1284,8 @@ result."
   "Replace the fixed-width ELEMENT with an example-block.
 Append RESULT to the contents of the block. If KEEP-NEWLINE is
 non-nil, ensure that the appended RESULT begins on a newline."
-  (jupyter-org--delete-element element)
+  (jupyter-org-delete-element element)
+  (jupyter-org-delete-blank-line)
   ;; Delete a newline that will be re-inserted by `org-element-interpret-data'.
   (when (eq (char-after) ?\n)
     (delete-char 1))
@@ -1413,7 +1413,8 @@ of the fixed-width element and RESULT concatenated together."
                (jupyter-org-element-end-before-blanks context))))
     (t
      (when (jupyter-org--wrappable-element-p context)
-       (jupyter-org--delete-element context)))))
+       (jupyter-org-delete-element context)
+       (jupyter-org-delete-blank-line)))))
 
 ;;;; Insert result
 
