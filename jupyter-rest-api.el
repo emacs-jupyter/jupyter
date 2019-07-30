@@ -220,8 +220,6 @@ INHIBIT-COOKIES set to nil."
         (url-request-method jupyter-api-request-method)
         (url-request-data jupyter-api-request-data)
         (url-request-extra-headers jupyter-api-request-headers)
-        ;; Prevent the connection if security checks fail
-        (gnutls-verify-error t)
         ;; Avoid errors when `default-directory' is a remote
         ;; directory path. `url' seems to not be able to handle it.
         (default-directory user-emacs-directory))
