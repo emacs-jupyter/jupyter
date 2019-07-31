@@ -741,6 +741,14 @@ is equivalent to =/jpy:localhost#8888:=. You can change the defaults by
 modifying the =jpy= or =jpys= methods in the variable =tramp-methods= and
 =tramp-default-host-alist=.
 
+*** =jupyter-api-authentication-method=
+
+Authentication method used for new notebook server connections. By default,
+when connecting to a new notebook server you will be asked if either a password
+or a token should be used for authentication. If you only use tokens for
+authentication you can change this variable to avoid being asked on every new
+connection.
+
 ** Customizable variables available for all frontends
 
 *** =jupyter-eval-short-result-max-lines=
