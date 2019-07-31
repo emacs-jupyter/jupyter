@@ -138,6 +138,31 @@
        do (should (member cookie old-cookies))))))
 
 (defvar url-cookie-storage)
+(defvar url-cookies-changed-since-last-save)
+
+(ert-deftest jupyter-api-delete-cookies ()
+  :tags '(rest)
+  (cl-letf* ((url-cookie-storage
+              '(("localhost:8888"
+                 [url-cookie
+                  "username-localhost-8888"
+                  "foo"
+                  "Fri, 16 Aug 2019 06:02:50 GMT"
+                  "/" "localhost:8888" nil])
+                ("localhost"
+                 [url-cookie
+                  "username-localhost-8888"
+                  "foo"
+                  "Fri, 16 Aug 2019 06:02:50 GMT"
+                  "/" "localhost" nil])))
+             (cookies-written nil)
+             ((symbol-function #'url-cookie-write-file)
+              (lambda ()
+                (should url-cookies-changed-since-last-save)
+                (setq cookies-written t))))
+    (jupyter-api-delete-cookies "http://localhost:8888")
+    (should-not url-cookie-storage)
+    (should cookies-written)))
 
 (ert-deftest jupyter-api-login ()
   :tags '(rest)

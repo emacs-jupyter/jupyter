@@ -344,6 +344,39 @@ see RFC 6265."
                                                               (days-to-time 1))))))
           (url-cookie-store name value expires host-port localpart secure)))))
 
+;; Adapted from `url-cookie-delete'
+(defun jupyter-api--delete-cookie (cookie)
+  (let* ((storage (if (url-cookie-secure cookie)
+                      'url-cookie-secure-storage
+                    'url-cookie-storage))
+         (cookies (symbol-value storage))
+         (elem (assoc (url-cookie-domain cookie) cookies)))
+    (cl-callf2 delq cookie elem)
+    (when (zerop (length (cdr elem)))
+      (cl-callf2 delq elem cookies))
+    (set storage cookies)))
+
+(defun jupyter-api-delete-cookies (url)
+  "Delete all cookies for URL.
+All cookies associated with the HOST of URL are deleted. If URL
+has a non-standard port for the type of URL, all cookies
+associated with HOST:PORT are deleted as well."
+  (let* ((url (if (url-p url) url
+                (url-generic-parse-url url)))
+         (host (url-host url)))
+    (dolist (u (cons url
+                     ;; Also delete cookies that were duplicated by
+                     ;; `jupyter-api-copy-cookies-for-websocket'.
+                     (when-let* ((port (url-port-if-non-default url))
+                                 (u (copy-sequence url)))
+                       (prog1 (list u)
+                         (setf (url-host u) (format "%s:%s" host port))))))
+      (cl-loop
+       for cookie in (jupyter-api-url-cookies u)
+       do (jupyter-api--delete-cookie cookie)))
+    (setq url-cookies-changed-since-last-save t)
+    (url-cookie-write-file)))
+
 (defun jupyter-api-add-websocket-headers (plist)
   "Destructively modify PLIST to add a `:custom-header-alist' key.
 Appends the value of `jupyter-api-request-headers' to the

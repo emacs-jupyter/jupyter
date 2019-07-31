@@ -119,6 +119,7 @@ Access should be done through `jupyter-available-kernelspecs'.")))
     (unless (jupyter-api-server-exists-p server)
       (when (jupyter-comm-alive-p server)
         (jupyter-comm-stop server))
+      (jupyter-api-delete-cookies (oref server url))
       (delete-instance server))))
 
 ;;; `jupyter-server-kernel'
