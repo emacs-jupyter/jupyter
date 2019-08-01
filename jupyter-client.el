@@ -575,6 +575,9 @@ MSG-TYPE can also be a list, in which case run CB for every
 MSG-TYPE in the list. If MSG-TYPE is t, run CB for every message
 received for REQ.
 
+Multiple callbacks can be added for the same MSG-TYPE. The
+callbacks will be called in the order they were added.
+
 Any additional arguments to `jupyter-add-callback' are
 interpreted as additional CALLBACKS to add to REQ. So to add
 multiple callbacks you would do
