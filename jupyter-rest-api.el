@@ -69,6 +69,10 @@ The paths added to `load-path' are those necessary for proper
 operation of a `jupyter-rest-client'."
   `(progn
      (require 'url)
+     (setq url-cookie-file
+           ;; Value set by `url-do-setup'
+           ,(or url-cookie-file
+                (expand-file-name "cookies" url-configuration-directory)))
      (url-do-setup)
      ;; Don't save any cookies or history in a subprocess
      (ignore-errors (cancel-timer url-history-timer))
