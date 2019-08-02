@@ -152,7 +152,7 @@ and other such functions."
 
 ;;; Heartbeat channel
 
-(defvar jupyter-hb-max-failures 5
+(defvar jupyter-hb-max-failures 3
   "Number of heartbeat failures until the kernel is considered unreachable.
 A ping is sent to the kernel on a heartbeat channel and waits
 until `time-to-dead' seconds to see if the kernel sent a ping
@@ -167,7 +167,7 @@ heartbeat channel is called. See `jupyter-hb-on-kernel-dead'.")
     :documentation "The type of this channel is `:hb'.")
    (time-to-dead
     :type number
-    :initform 1
+    :initform 10
     :documentation "The time in seconds to wait for a response
 from the kernel until the connection is assumed to be dead. Note
 that this slot only takes effect when starting the channel.")
