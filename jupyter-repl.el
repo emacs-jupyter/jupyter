@@ -394,6 +394,19 @@ Do this only when the `major-mode' is `jupyter-repl-mode'."
                               &optional _metadata)
   (jupyter-widgets-display-model jupyter-current-client (plist-get data :model_id)))
 
+;;; Util
+
+(defun jupyter-repl-completing-read-repl-buffer (&optional mode)
+  "Return a REPL buffer, selecting from all available ones.
+MODE has the same meaning as in
+`jupyter-repl-available-repl-buffers'."
+  (let* ((buffers (or (jupyter-repl-available-repl-buffers mode)
+                      (error "No REPLs available")))
+         (buffer (completing-read "REPL buffer: " (mapcar #'buffer-name buffers) nil t)))
+    (when (equal buffer "")
+      (error "No REPL buffer selected"))
+    (get-buffer buffer)))
+
 ;;; Prompt
 
 (defconst jupyter-repl-input-prompt-format "In [%d] ")
@@ -1537,14 +1550,10 @@ the kernel `jupyter-current-client' is connected to."
   (or client (setq client jupyter-current-client))
   (when (or (null client)
             (not (object-of-class-p client 'jupyter-repl-client)))
-    (let* ((buffers (or (jupyter-repl-available-repl-buffers)
-                        (error "No REPLs available")))
-           (buffer (completing-read
-                    "REPL buffer: " (mapcar #'buffer-name buffers) nil t)))
-      (when (equal buffer "")
-        (error "No REPL buffer selected"))
-      (setq client (buffer-local-value
-                    'jupyter-current-client (get-buffer buffer)))))
+    ;; Also allow this command to be called from an Org mode buffer by
+    ;; selecting a client based on the REPL buffer.
+    (let ((buffer (jupyter-repl-completing-read-repl-buffer)))
+      (setq client (buffer-local-value 'jupyter-current-client buffer))))
   (let ((jupyter-current-client client))
     (unless shutdown
       ;; This may have been set to t due to a non-responsive kernel so make sure
@@ -2018,11 +2027,11 @@ of a subclass. If CLIENT is a buffer or the name of a buffer, use
 the `jupyter-current-client' local to the buffer."
   (interactive
    (list
-    (let ((repls (mapcar 'buffer-name (jupyter-repl-available-repl-buffers major-mode))))
-      (when repls
-        (with-current-buffer
-            (completing-read "jupyter-repl: " repls nil t)
-          jupyter-current-client)))))
+    (let ((buffer
+           (when (jupyter-repl-available-repl-buffers major-mode)
+             (jupyter-repl-completing-read-repl-buffer major-mode))))
+      (when buffer
+        (buffer-local-value 'jupyter-current-client buffer)))))
   (if (not client)
       (when (y-or-n-p "No REPL for `major-mode' exists. Start one? ")
         (call-interactively #'jupyter-run-repl))
