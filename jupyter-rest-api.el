@@ -404,6 +404,51 @@ Return the modified PLIST."
 
 ;;; Authentication
 
+;; TODO: Be more efficient by working with url objects directly
+
+(defun jupyter-api--auth-source-user (client &optional name)
+  (let ((url (url-generic-parse-url (oref client url))))
+    (concat
+     (or name
+         (read-string (format "Username [%s] (default %s): "
+                              (oref client url)
+                              user-login-name)
+                      nil nil user-login-name))
+     (unless (zerop (length (url-filename url)))
+       (concat "^" (url-filename url))))))
+
+(defun jupyter-api-auth-source-search (client &optional user)
+  "Query auth-source using CLIENT's URL for a match of USER.
+Return nil on failure or a list of matches on success. See
+`auth-source-search' for the details on the return value when
+successful."
+  (cl-check-type client jupyter-rest-client)
+  (let ((url (url-generic-parse-url (oref client url)))
+        (auth-source-creation-prompts
+         `((secret . ,(format "Password [%s]: " (oref client url))))))
+    ;; TODO: Consider :save-function
+    (auth-source-search
+     :create t
+     :host (url-host url)
+     :port (number-to-string (url-port url))
+     :user (jupyter-api--auth-source-user user)
+     :require '(:secret :user))))
+
+(defun jupyter-api-auth-source-save-token (client token &optional user)
+  "Save TOKEN for access to the API at CLIENT's URL."
+  (let* ((url (url-generic-parse-url (oref client url)))
+         (auth-source-creation-prompts
+          `((secret . ,(format "Token [%s]: " (oref client url)))))
+         (match
+          (car (auth-source-search
+                :create t :max 1 :delete t
+                :host (url-host url)
+                :port (number-to-string (url-port url))
+                :user (jupyter-api--auth-source-user user)
+                :secret token))))
+    (funcall (plist-get match :save-function))))
+
+
 (defvar jupyter-api-authentication-in-progress-p nil)
 
 (define-error 'jupyter-api-login-failed
