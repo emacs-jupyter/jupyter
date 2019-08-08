@@ -292,6 +292,19 @@ kernel has a matching ID."
            (error "Timeout when connecting websocket to kernel id %s" id))
     (jupyter-server-kernel-connected-p server id)))
 
+(defun jupyter-server--refresh-comm (server)
+  "Stop and then start SERVER communication.
+Reconnect the previously connected kernels when starting."
+  (when (jupyter-comm-alive-p server)
+    (let ((connected (cl-remove-if-not
+                      (apply-partially #'jupyter-server-kernel-connected-p server)
+                      (mapcar (lambda (kernel) (plist-get kernel :id))
+                         (jupyter-api-get-kernel server)))))
+      (jupyter-comm-stop server)
+      (jupyter-comm-start server)
+      (while connected
+        (jupyter-server--connect-channels server (pop connected))))))
+
 (cl-defmethod jupyter-api-request :around ((server jupyter-server) _method &rest _plist)
   (condition-case nil
       (cl-call-next-method)
@@ -301,16 +314,7 @@ kernel has a matching ID."
        (error "Unauthenticated request, can't attempt re-authentication \
 with default `jupyter-api-authentication-method'"))
      (prog1 (cl-call-next-method)
-       ;; Re-start websocket connections after re-authenticating
-       (when (jupyter-comm-alive-p server)
-         (let ((connected (cl-remove-if-not
-                           (apply-partially #'jupyter-server-kernel-connected-p server)
-                           (mapcar (lambda (kernel) (plist-get kernel :id))
-                              (jupyter-api-get-kernel server)))))
-           (jupyter-comm-stop server)
-           (jupyter-comm-start server)
-           (while connected
-             (jupyter-server--connect-channels server (pop connected)))))))))
+       (jupyter-server--refresh-comm server)))))
 
 (cl-defmethod jupyter-comm-start ((comm jupyter-server))
   (unless (and (slot-boundp comm 'ioloop)
