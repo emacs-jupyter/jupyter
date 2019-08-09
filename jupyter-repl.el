@@ -745,11 +745,7 @@ POS defaults to `point'."
 (defun jupyter-repl-connected-p ()
   "Is the `jupyter-current-client' connected to its kernel?"
   (when jupyter-current-client
-    (or (and (jupyter-client-has-manager-p)
-             ;; Check if the kernel is local
-             (jupyter-kernel-alive-p
-              (oref jupyter-current-client manager)))
-        (jupyter-hb-beating-p jupyter-current-client))))
+    (jupyter-kernel-alive-p jupyter-current-client)))
 
 ;;; Modifying cell code, truncating REPL buffer
 

@@ -254,6 +254,12 @@ CLIENT defaults to `jupyter-current-client'."
           (kill-buffer buffer))
         (jupyter-stop-channels client)))))
 
+(cl-defmethod jupyter-kernel-alive-p ((client jupyter-kernel-client))
+  "Return non-nil if the kernel CLIENT is connected to is alive."
+  (or (and (jupyter-client-has-manager-p client)
+           (jupyter-kernel-alive-p (oref client manager)))
+      (jupyter-hb-beating-p client)))
+
 (defun jupyter-clients ()
   "Return a list of all `jupyter-kernel-client' objects."
   (jupyter-all-objects 'jupyter--clients))
