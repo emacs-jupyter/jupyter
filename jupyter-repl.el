@@ -1537,21 +1537,24 @@ If CLIENT is nil, `jupyter-current-client' will be restarted
 instead. If `jupyter-current-client' is nil or is not a REPL
 client, prompt for a REPL client to restart. Otherwise restart
 the kernel `jupyter-current-client' is connected to."
-  (interactive (list current-prefix-arg nil))
-  (or client (setq client jupyter-current-client))
-  (when (or (null client)
-            (not (object-of-class-p client 'jupyter-repl-client)))
-    ;; Also allow this command to be called from an Org mode buffer by
-    ;; selecting a client based on the REPL buffer.
-    (let ((buffer (jupyter-repl-completing-read-repl-buffer)))
-      (setq client (buffer-local-value 'jupyter-current-client buffer))))
-  (let ((jupyter-current-client client))
-    (unless shutdown
-      ;; This may have been set to t due to a non-responsive kernel so make sure
-      ;; that we try again when restarting.
-      (jupyter-with-repl-buffer client
-        (setq jupyter-repl-use-builtin-is-complete nil)))
-    (jupyter-hb-pause client)
+  (interactive
+   (list current-prefix-arg nil))
+  (unless client
+    (setq client
+          (or jupyter-current-client
+              ;; Also allow this command to be called from an Org mode buffer by
+              ;; selecting a client based on the REPL buffer.
+              (buffer-local-value
+               'jupyter-current-client
+               (jupyter-repl-completing-read-repl-buffer)))))
+  (cl-check-type client jupyter-repl-client)
+  (unless shutdown
+    ;; This may have been set to t due to a non-responsive kernel so make sure
+    ;; that we try again when restarting.
+    (jupyter-with-repl-buffer client
+      (setq jupyter-repl-use-builtin-is-complete nil)))
+  (jupyter-hb-pause client)
+  (let ((manager (oref client manager)))
     (cond
      ((and (not shutdown)
            (jupyter-client-has-manager-p client)
@@ -1561,30 +1564,25 @@ the kernel `jupyter-current-client' is connected to."
      (t
       (message "%s kernel..." (if shutdown "Shutting down"
                                 "Restarting"))
-      (when (and (null (jupyter-wait-until-received :shutdown-reply
-                         (let ((jupyter-inhibit-handlers '(not :shutdown-reply)))
-                           (jupyter-send-shutdown-request client
-                             :restart (not shutdown)))))
-                 (not shutdown))
-        ;; Handle the case of a restart that does not send a shutdown-reply
-        ;;
-        ;; TODO: Clean up the logic of when to insert a new prompt. We insert
-        ;; a new prompt before we know if the kernel is ready, but this should
-        ;; be done after we know if the kernel is ready or not, e.g. on the
-        ;; next status: starting message. Generalize the stuff in
-        ;; `jupyter-start-new-kernel' that handles the status: starting message
-        ;; so its easier to hook into that message.
-        (message "Kernel did not send shutdown-reply")
-        (jupyter-repl--insert-banner-and-prompt client))))
+      (if manager (jupyter-shutdown-kernel manager (not shutdown))
+        ;; NOTE: It's not possible to restart a kernel without a kernel manager
+        ;; unless the kernel is able to restart on its own.
+        (when (and (null (jupyter-wait-until-received :shutdown-reply
+                           (let ((jupyter-inhibit-handlers '(not :shutdown-reply)))
+                             (jupyter-send-shutdown-request client
+                               :restart (not shutdown)))))
+                   (not shutdown))
+          ;; Handle the case of a restart that does not send a shutdown-reply
+          ;;
+          ;; TODO: Clean up the logic of when to insert a new prompt. We insert
+          ;; a new prompt before we know if the kernel is ready, but this should
+          ;; be done after we know if the kernel is ready or not, e.g. on the
+          ;; next status: starting message. Generalize the stuff in
+          ;; `jupyter-start-new-kernel' that handles the status: starting message
+          ;; so its easier to hook into that message.
+          (message "Kernel did not send shutdown-reply")
+          (jupyter-repl--insert-banner-and-prompt client)))))
     (unless shutdown
-      (when (jupyter-client-has-manager-p client)
-        (with-slots (manager) client
-          (jupyter-with-timeout
-              (nil jupyter-default-timeout
-                   ;; TODO: Force shutdown more cleanly
-                   (jupyter-shutdown-kernel manager nil 0))
-            (not (jupyter-kernel-alive-p manager)))
-          (jupyter-start-kernel manager)))
       (jupyter-hb-unpause client))))
 
 (defun jupyter-repl-display-kernel-buffer ()
