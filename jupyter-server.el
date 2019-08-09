@@ -435,9 +435,8 @@ ID of the kernel associated with COMM."
 
 ;;;; `jupyter-server-kernel-manager'
 
-(defclass jupyter-server-kernel-manager (jupyter-kernel-manager-base)
-  ((kernel :type jupyter-server-kernel :initarg :kernel)
-   (comm :type jupyter-server-kernel-comm)))
+(defclass jupyter-server-kernel-manager (jupyter-kernel-manager)
+  ((comm :type jupyter-server-kernel-comm)))
 
 (cl-defmethod jupyter-comm-start ((manager jupyter-server-kernel-manager))
   "Start a websocket connection to MANAGER's kernel.

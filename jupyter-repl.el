@@ -64,6 +64,8 @@
 (require 'jupyter-kernel-manager)
 (require 'ring)
 
+(declare-function jupyter-start-new-kernel "jupyter-kernel-process-manager")
+
 ;; TODO: Define `jupyter-kernel-manager-after-restart-hook' to update the
 ;; execution count after a restart. More generally, define more ways to hook
 ;; into differnt events of the client/kernel interaction.
@@ -2184,6 +2186,10 @@ command on the host."
     (or (when-let* ((name (caar (jupyter-find-kernelspecs kernel-name))))
           (setq kernel-name name))
         (error "No kernel found for prefix (%s)" kernel-name)))
+  ;; For `jupyter-start-new-kernel', we don't require this at top-level since
+  ;; there are many ways to interact with a kernel, e.g. through a notebook
+  ;; server, and we don't want to load any unnecessary files.
+  (require 'jupyter-kernel-process-manager)
   (cl-destructuring-bind (_manager client)
       (jupyter-start-new-kernel kernel-name client-class)
     (jupyter-bootstrap-repl client repl-name associate-buffer display)))

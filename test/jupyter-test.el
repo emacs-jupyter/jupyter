@@ -627,7 +627,7 @@
       (oset kernel session (jupyter-session
                             :key (plist-get conn-info :key)
                             :conn-info conn-info))
-      (let* ((manager (jupyter-kernel-manager :kernel kernel))
+      (let* ((manager (jupyter-kernel-process-manager :kernel kernel))
              (control-channel (oref manager control-channel))
              process)
         (should-not (jupyter-kernel-alive-p manager))
@@ -659,7 +659,7 @@
       (jupyter-kill-kernel kernel)
       (should-not (jupyter-kernel-alive-p kernel)))
     (ert-info ("Can we communicate?")
-      (let ((manager (jupyter-kernel-manager :kernel kernel)))
+      (let ((manager (jupyter-kernel-process-manager :kernel kernel)))
         (jupyter-start-kernel manager)
         (unwind-protect
             (let ((jupyter-current-client

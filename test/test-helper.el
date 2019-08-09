@@ -33,7 +33,7 @@
 (require 'jupyter-zmq-channel-ioloop)
 (require 'jupyter-channel-ioloop-comm)
 (require 'jupyter-org-client)
-(require 'jupyter-kernel-manager)
+(require 'jupyter-kernel-process-manager)
 (require 'org-element)
 (require 'subr-x)
 (require 'cl-lib)
