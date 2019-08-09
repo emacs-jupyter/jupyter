@@ -177,6 +177,9 @@ it hasn't been already."
 
 (cl-defmethod jupyter-start-kernel ((kernel jupyter-spec-kernel) &rest _args)
   (cl-destructuring-bind (_name . (resource-dir . spec)) (oref kernel spec)
+    ;; FIXME: Cleanup old connection file on kernel restarts. They will be
+    ;; cleaned up eventually, but not doing it immediately leaves stale
+    ;; connection files.
     (let ((conn-file (jupyter-write-connection-file
                       (oref kernel session) kernel))
           (process-environment
