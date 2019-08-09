@@ -742,17 +742,10 @@ POS defaults to `point'."
   (or (not (jupyter-repl-cell-line-p))
       (/= (jupyter-repl-cell-end-position) (point-max))))
 
-;; TODO: Allow a client argument, would be used in
-;; `jupyter-repl-restart-kernel' and probably other places.
-(defun jupyter-repl-client-has-manager-p ()
-  "Return non-nil if the `jupyter-current-client' has a kernel manager."
-  (and jupyter-current-client
-       (oref jupyter-current-client manager)))
-
 (defun jupyter-repl-connected-p ()
   "Is the `jupyter-current-client' connected to its kernel?"
   (when jupyter-current-client
-    (or (and (jupyter-repl-client-has-manager-p)
+    (or (and (jupyter-client-has-manager-p)
              ;; Check if the kernel is local
              (jupyter-kernel-alive-p
               (oref jupyter-current-client manager)))
@@ -1442,7 +1435,7 @@ the REPL to disable that mode in those buffers. See
                               (buffer-name (current-buffer))))
         (prog1 t
           (jupyter-stop-channels jupyter-current-client)
-          (when (and (jupyter-repl-client-has-manager-p)
+          (when (and (jupyter-client-has-manager-p)
                      (yes-or-no-p (format "Shutdown the client's kernel? ")))
             (jupyter-shutdown-kernel (oref jupyter-current-client manager)))
           (cl-loop
@@ -1530,7 +1523,7 @@ value."
 A kernel can be interrupted if it was started using a kernel
 manager. See `jupyter-start-new-kernel'."
   (interactive)
-  (if (not (jupyter-repl-client-has-manager-p))
+  (if (not (jupyter-client-has-manager-p))
       (user-error "Can only interrupt managed kernels")
     (message "Interrupting kernel")
     (jupyter-interrupt-kernel
@@ -1563,8 +1556,8 @@ the kernel `jupyter-current-client' is connected to."
     (jupyter-hb-pause client)
     (cond
      ((and (not shutdown)
-           (jupyter-repl-client-has-manager-p)
-           (not (jupyter-kernel-alive-p (oref client manager))))
+           (jupyter-client-has-manager-p client)
+           (not (jupyter-kernel-alive-p manager)))
       (message "Starting dead kernel...")
       (jupyter-repl--insert-banner-and-prompt client))
      (t
@@ -1586,7 +1579,7 @@ the kernel `jupyter-current-client' is connected to."
         (message "Kernel did not send shutdown-reply")
         (jupyter-repl--insert-banner-and-prompt client))))
     (unless shutdown
-      (when (jupyter-repl-client-has-manager-p)
+      (when (jupyter-client-has-manager-p client)
         (with-slots (manager) client
           (jupyter-with-timeout
               (nil jupyter-default-timeout
@@ -1599,7 +1592,7 @@ the kernel `jupyter-current-client' is connected to."
 (defun jupyter-repl-display-kernel-buffer ()
   "Display the kernel processes stdout."
   (interactive)
-  (if (jupyter-repl-client-has-manager-p)
+  (if (jupyter-client-has-manager-p)
       (let ((manager (oref jupyter-current-client manager)))
         (if (jupyter-kernel-alive-p manager)
             (if (and (slot-boundp manager 'kernel)

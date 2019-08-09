@@ -236,6 +236,14 @@ passed as the argument has a language of LANG."
 
 ;;; Initializing a `jupyter-kernel-client'
 
+(defun jupyter-client-has-manager-p (&optional client)
+  "Return non-nil if CLIENT's kernel has a kernel manager.
+CLIENT defaults to `jupyter-current-client'."
+  (or client (setq client jupyter-current-client))
+  (when client
+    (cl-check-type client jupyter-kernel-client)
+    (and (oref client manager) t)))
+
 (cl-defmethod initialize-instance ((client jupyter-kernel-client) &optional _slots)
   (cl-call-next-method)
   (let ((buffer (generate-new-buffer " *jupyter-kernel-client*")))
