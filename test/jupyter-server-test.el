@@ -25,8 +25,6 @@
 ;;; Commentary:
 
 ;; Test `jupyter-rest-api' and `jupyter-server' related functionality.
-;; XXX: BEWARE THESE TESTS WILL OVERWRITE YOUR `url-cookie-file'!!!!!!
-;; TODO: Avoid this by using a custom  `url-cookie-file'?
 
 ;;; Code:
 

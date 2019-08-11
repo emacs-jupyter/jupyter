@@ -62,7 +62,11 @@ start a new kernel REPL instead of re-using one.")
   (make-temp-file jupyter-test-temporary-directory-name 'directory)
   "The directory where temporary processes/files will start or be written to.")
 
+;; tmp directory for TRAMP
 (make-directory (expand-file-name "tmp" jupyter-test-temporary-directory))
+;; Ensure we don't overwrite the default cookie file
+(setq url-cookie-file (let ((temporary-file-directory jupyter-test-temporary-directory))
+                        (make-temp-file "jupyter-cookie")))
 
 (message "system-configuration %s" system-configuration)
 
