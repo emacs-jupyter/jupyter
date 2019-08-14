@@ -501,7 +501,8 @@ returning."
         (setq jupyter-ioloop--send-buffer
               (get-buffer-create " *jupyter-ioloop-send*")))
     (erase-buffer)
-    (prin1 plist (current-buffer))
+    (let (print-level print-length)
+      (prin1 plist (current-buffer)))
     (buffer-string)))
 
 (cl-defmethod jupyter-send ((ioloop jupyter-ioloop) &rest args)
