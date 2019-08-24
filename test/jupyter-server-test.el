@@ -145,13 +145,13 @@
                  [url-cookie
                   "username-localhost-8888"
                   "foo"
-                  "Fri, 16 Aug 2019 06:02:50 GMT"
+                  "Fri, 16 Aug 9999 06:02:50 GMT"
                   "/" "localhost:8888" nil])
                 ("localhost"
                  [url-cookie
                   "username-localhost-8888"
                   "foo"
-                  "Fri, 16 Aug 2019 06:02:50 GMT"
+                  "Fri, 16 Aug 9999 06:02:50 GMT"
                   "/" "localhost" nil])))
              (cookies-written nil)
              ((symbol-function #'url-cookie-write-file)
