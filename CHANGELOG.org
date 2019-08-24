@@ -1,5 +1,27 @@
 * master
 
+- Add support for displaying evaluation results in the current buffer using
+  overlays. See =jupyter-eval-use-overlays= and the relevant README sections.
+
+- Fix =jupyter-repl-restart-kernel= to restart a kernel using a kernel manager
+  when one is available. Previously, restarting a kernel using that function
+  wouldn't work properly if the kernel was from a notebook server.
+
+- Increase default timeout until a kernel is considered dead to 30 seconds when
+  communicating directly with a kernel. More specifically, if a response from a
+  kernel is not received after three consecutive 10 s periods on the heartbeat
+  channel, the kernel is considered dead. Previously the timeout was five 1 s
+  periods. This should fix =Kernel not alive= errors when using the REPL if the
+  kernel being communicated with was on a slow connection.
+
+- Ensure that a non-default value of =url-cookie-file= is handled properly in the
+  notebook support.
+
+- In =org-mode= handle ANSI control codes in stream output.
+
+- In =org-mode= fix a regression where source block results were not being
+  associated with =#+CALL= Org elements.
+
 - Add support for the Jupyter Notebook REST API. See the relevant sections in
   the README.
 
@@ -393,7 +415,7 @@
 Examine the output of
 
 #+NAME: changelog
-#+HEADER: :var PREV_VERSION="e0531d040c6e4edf8fc7ba195a4450deaba70917" VERSION="master"
+#+HEADER: :var PREV_VERSION="81b034dad9dbe63753cff5817a7822d9425f1c1a" VERSION="master"
 #+BEGIN_SRC shell :results output
 git log --pretty=format:"%s" ${PREV_VERSION}...${VERSION}
 #+END_SRC
