@@ -110,11 +110,8 @@ websocket.")
        ;; Waiting is done using `accept-process-output' instead of
        ;; `zmq-poller-wait-all' since the latter doesn't allow Emacs to process
        ;; websocket events.
-       (setq jupyter-server-timeout jupyter-ioloop-timeout
-             jupyter-ioloop-timeout 0)
-       (push
-        (lambda () (accept-process-output nil (/ jupyter-server-timeout 1000.0)))
-        jupyter-ioloop-pre-hook)
+       (setq jupyter-server-timeout (/ jupyter-ioloop-timeout 4)
+             jupyter-ioloop-timeout (* 3 (/ jupyter-ioloop-timeout 4)))
        (setq jupyter-server-rest-client (jupyter-rest-client
                                          :url ,(oref ioloop url)
                                          :ws-url ,(oref ioloop ws-url)
@@ -127,10 +124,7 @@ websocket.")
 
 ;; Added to `jupyter-ioloop-pre-hook'
 (defun jupyter-server-ioloop--recv-messages ()
-  ;; A negative value of seconds means to return immediately if there was
-  ;; nothing that could be read from subprocesses. See `Faccept_process_output'
-  ;; and `wait_reading_process_output'.
-  (accept-process-output nil -1)
+  (accept-process-output nil (/ jupyter-server-timeout 1000.0))
   (when jupyter-server-recvd-messages
     (mapc (lambda (msg) (prin1 (cons 'message msg)))
        (nreverse jupyter-server-recvd-messages))
