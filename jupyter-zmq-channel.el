@@ -233,33 +233,32 @@ seconds has elapsed without the kernel sending a ping back."
 (defun jupyter-hb--send-ping (channel &optional failed-count)
   (when (jupyter-hb--pingable-p channel)
     (condition-case nil
-        (zmq-send (oref channel socket) "ping")
+        (progn
+          (zmq-send (oref channel socket) "ping")
+          (run-with-timer
+           (oref channel time-to-dead) nil
+           (lambda ()
+             (when-let* ((sock (and (jupyter-hb--pingable-p channel)
+                                    (oref channel socket))))
+               (oset channel beating
+                     (condition-case nil
+                         (and (zmq-recv sock zmq-DONTWAIT) t)
+                       ((zmq-EINTR zmq-EAGAIN) nil)))
+               (if (oref channel beating)
+                   (jupyter-hb--send-ping channel)
+                 ;; Reset the socket
+                 (jupyter-stop-channel channel)
+                 (jupyter-start-channel channel)
+                 (or failed-count (setq failed-count 0))
+                 (if (< failed-count jupyter-hb-max-failures)
+                     (jupyter-hb--send-ping channel (1+ failed-count))
+                   (oset channel paused t)
+                   (when (functionp (oref channel dead-cb))
+                     (funcall (oref channel dead-cb)))))))))
       ;; FIXME: Should be a part of `jupyter-hb--pingable-p'
       (zmq-ENOTSOCK
        (jupyter-hb-pause channel)
-       (oset channel socket nil)))
-    (run-with-timer
-     (oref channel time-to-dead) nil
-     (lambda (channel-ref)
-       (when-let* ((channel (jupyter-weak-ref-resolve channel-ref))
-                   (sock (and (jupyter-hb--pingable-p channel)
-                              (oref channel socket))))
-         (oset channel beating
-               (condition-case nil
-                   (and (zmq-recv sock zmq-DONTWAIT) t)
-                 ((zmq-EINTR zmq-EAGAIN) nil)))
-         (if (oref channel beating)
-             (jupyter-hb--send-ping channel)
-           ;; Reset the socket
-           (jupyter-stop-channel channel)
-           (jupyter-start-channel channel)
-           (or failed-count (setq failed-count 0))
-           (if (< failed-count jupyter-hb-max-failures)
-               (jupyter-hb--send-ping channel (1+ failed-count))
-             (oset channel paused t)
-             (when (functionp (oref channel dead-cb))
-               (funcall (oref channel dead-cb)))))))
-     (jupyter-weak-ref channel))))
+       (oset channel socket nil)))))
 
 (provide 'jupyter-zmq-channel)
 

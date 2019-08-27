@@ -82,13 +82,11 @@
    do (jupyter-start-channel (slot-value comm channel)))
   (oset comm thread
         (make-thread
-         (let ((comm-ref (jupyter-weak-ref comm)))
-           (lambda ()
-             (while (when-let* ((comm (jupyter-weak-ref-resolve comm-ref)))
-                      (prog1 comm
-                        (jupyter-zmq-channel-comm--check comm)))
-               (thread-yield)
-               (thread-yield)))))))
+         (lambda ()
+           (while (jupyter-comm-alive-p comm)
+             (jupyter-zmq-channel-comm--check comm)
+             (thread-yield)
+             (thread-yield))))))
 
 (cl-defmethod jupyter-comm-stop ((comm jupyter-zmq-channel-comm))
   (when (and (slot-boundp comm 'thread)
