@@ -1478,15 +1478,18 @@ DETAIL is the detail level to use for the request and defaults to
                       (setq jupyter-current-client client)
                       (help-setup-xref
                        (list
-                        ;; We find the client based on session so that we don't
-                        ;; capture a reference to the client.
+                        ;; Don't capture a strong reference to the client
+                        ;; object since we don't know when this reference will
+                        ;; be cleaned up.
                         (let ((ref (jupyter-weak-ref client)))
                           (lambda ()
                             (let ((jupyter-current-client
                                    (jupyter-weak-ref-resolve ref)))
                               (if jupyter-current-client
                                   (jupyter-inspect code pos nil detail)
-                                (error "Client for session has been removed"))))))
+                                ;; TODO: Skip over this xref, need to figure
+                                ;; out if going forward or backward first.
+                                (error "Client has been removed"))))))
                        nil)
                       (jupyter-insert msg)))))
             (message "Nothing found for %s"
