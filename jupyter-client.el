@@ -1160,7 +1160,7 @@ with `jupyter-eval-short-result-display-function'.
 
 If `jupyter-eval-use-overlays' is non-nil, evaluation results
 are displayed in the current buffer instead."
-  (interactive (list (jupyter-read-expression) nil))
+  (interactive (list (jupyter-read-expression)))
   (jupyter-eval-string str))
 
 (defun jupyter-eval-region (beg end)
