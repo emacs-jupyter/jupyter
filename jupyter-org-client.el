@@ -114,18 +114,20 @@ See also the docstring of `org-image-actual-width' for more details."
 
 ;;;; `jupyter-request' interface
 
+(defvar org-babel-jupyter-current-src-block-params)
+
 (cl-defmethod jupyter-generate-request ((_client jupyter-org-client) _msg
                                         &context (major-mode (eql org-mode)))
   "Return a `jupyter-org-request' for the current source code block."
-  (if org-babel-current-src-block-location
+  (if (and org-babel-current-src-block-location
+           org-babel-jupyter-current-src-block-params)
       ;; Only use a `jupyter-org-request' when executing code blocks, setting
       ;; the `major-mode' context isn't enough, consider when a client is
       ;; started due to sending a completion request.
       (save-excursion
         (goto-char org-babel-current-src-block-location)
         (let* ((context (org-element-context))
-               (block-params (nth 2 (or (org-babel-get-src-block-info nil context)
-                                        (org-babel-lob-get-info context))))
+               (block-params org-babel-jupyter-current-src-block-params)
                (result-params (alist-get :result-params block-params)))
           (jupyter-org-request
            :marker (copy-marker org-babel-current-src-block-location)

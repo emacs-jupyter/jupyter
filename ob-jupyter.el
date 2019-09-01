@@ -378,11 +378,21 @@ These parameters are handled internally."
     (setcar fresult "")
     (delq fparam params)))
 
+(defvar org-babel-jupyter-current-src-block-params nil
+  "The block params of the currently executed source block.
+`org-mode' merges many different sources of source block
+parameters that cannot be obtained by just calling
+`org-babel-log-get-info' or `org-babel-get-src-block-info' so
+this variable exists to ensure `jupyter-generate-request' uses
+the parameters that `org-mode' provides when evaluating a source
+block.")
+
 (defun org-babel-execute:jupyter (body params)
   "Execute BODY according to PARAMS.
 BODY is the code to execute for the current Jupyter `:session' in
 the PARAMS alist."
-  (let* ((jupyter-current-client
+  (let* ((org-babel-jupyter-current-src-block-params params)
+         (jupyter-current-client
           (thread-first (alist-get :session params)
             (org-babel-jupyter-initiate-session params)
             (thread-last (buffer-local-value 'jupyter-current-client))))
