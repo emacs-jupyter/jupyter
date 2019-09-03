@@ -994,7 +994,9 @@ representation of the result. If MIME is nil, return the
 text/plain representation."
   (interactive (list (jupyter-read-expression) nil))
   (let ((msg (jupyter-wait-until-received :execute-result
-               (let ((req (jupyter-eval-string code)))
+               (let* ((jupyter-inhibit-handlers t)
+                      (req (jupyter-send-execute-request jupyter-current-client
+                             :code code :store-history nil)))
                  (prog1 req
                    (jupyter-add-callback req
                      :execute-reply
