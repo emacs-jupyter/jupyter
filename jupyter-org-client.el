@@ -900,14 +900,13 @@ the image may still be added, see
             (base64-decode-region (point-min) (point-max))))))
     (cl-destructuring-bind (&key width height &allow-other-keys)
         metadata
-      (if (and (null width)
-               jupyter-org-adjust-image-size
-               (numberp (car-safe org-image-actual-width)))
-          (let ((image-width (car (image-size
-                                   (create-image (expand-file-name file))
-                                   'pixels))))
-            (if (< image-width (car org-image-actual-width))
-                (setq width image-width))))
+      (when (and jupyter-org-adjust-image-size (null width)
+                 (numberp (car-safe org-image-actual-width)))
+        (let ((image-width (car (image-size
+                                 (create-image (expand-file-name file))
+                                 'pixels))))
+          (when (< image-width (car org-image-actual-width))
+            (setq width image-width))))
       (jupyter-org-image-link file width height))))
 
 (cl-defgeneric jupyter-org-result (_mime _params _data &optional _metadata)
