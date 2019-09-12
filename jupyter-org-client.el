@@ -996,8 +996,12 @@ passed to Jupyter org-mode source blocks."
             mime data metadata
           (jupyter-org-result mime params data metadata)))
        (t
-        (warn "Requested mimetype(s) not returned by kernel: %s"
-              (or display-mime-types jupyter-org-mime-types)))))))
+        (let ((warning
+               (format
+                "%s did not return requested mimetype(s): %s"
+                (jupyter-message-type (jupyter-request-last-message req))
+                (or display-mime-types jupyter-org-mime-types))))
+          (display-warning 'jupyter warning)))))))
 
 (cl-defmethod jupyter-org-result ((_mime (eql :application/vnd.jupyter.widget-view+json))
                                   _params _data &optional _metadata)

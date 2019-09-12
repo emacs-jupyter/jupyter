@@ -297,8 +297,10 @@ returned."
                      (/= tick (buffer-modified-tick)))
                  mime)))
         (prog1 nil
-          (warn "No valid mimetype found %s"
-                (cl-loop for (k _v) on data by #'cddr collect k))))))
+          (let ((warning
+                 (format "No valid mimetype found: %s"
+                         (cl-loop for (k _v) on data by #'cddr collect k))))
+            (display-warning 'jupyter warning))))))
 
 ;;; HTML
 
