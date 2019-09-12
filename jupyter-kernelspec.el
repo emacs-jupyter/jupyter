@@ -55,8 +55,8 @@ kernelspec of a kernel and return the plist created by a call to
   "Get the available kernelspecs.
 Return an alist mapping kernel names to (DIRECTORY . PLIST) pairs
 where DIRECTORY is the resource directory of the kernel and PLIST
-is its kernelspec plist. The alist is formed by a call to the
-shell command
+is its kernelspec plist. The alist is formed by parsing the
+output of the shell command
 
     jupyter kernelspec list
 
@@ -65,9 +65,8 @@ update of the cached kernelspecs, give a non-nil value to
 REFRESH.
 
 If the `default-directory' is a remote directory, return the
-mapping for the remote host. In this case, each DIRECTORY in the
-kernelspec will be a remote file name with the connection
-information of the host as a prefix."
+mapping for the kernelspecs on the remote host. In this case,
+each DIRECTORY will be a remote file name."
   (let ((host (or (file-remote-p default-directory) "local")))
     (or (and (not refresh) (gethash host jupyter--kernelspecs))
         (let ((specs (plist-get
