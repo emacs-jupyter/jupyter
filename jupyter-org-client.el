@@ -116,11 +116,15 @@ See also the docstring of `org-image-actual-width' for more details."
 
 (defvar org-babel-jupyter-current-src-block-params)
 
-(cl-defmethod jupyter-generate-request ((_client jupyter-org-client) _msg
-                                        &context (major-mode (eql org-mode)))
+(cl-defmethod jupyter-generate-request ((_client jupyter-org-client) _msg)
   "Return a `jupyter-org-request' for the current source code block."
   (if (and org-babel-current-src-block-location
-           org-babel-jupyter-current-src-block-params)
+           org-babel-jupyter-current-src-block-params
+           (provided-mode-derived-p
+            (buffer-local-value
+             ;; Handle indirect buffers used by packages like polymode, see #171.
+             'major-mode (or (buffer-base-buffer) (current-buffer)))
+            'org-mode))
       ;; Only use a `jupyter-org-request' when executing code blocks, setting
       ;; the `major-mode' context isn't enough, consider when a client is
       ;; started due to sending a completion request.
