@@ -387,6 +387,9 @@ this variable exists to ensure `jupyter-generate-request' uses
 the parameters that `org-mode' provides when evaluating a source
 block.")
 
+(defconst org-babel-jupyter-async-inline-results-pending-indicator "???"
+  "A string to disambiguate pending inline results from empty results.")
+
 (defun org-babel-execute:jupyter (body params)
   "Execute BODY according to PARAMS.
 BODY is the code to execute for the current Jupyter `:session' in
@@ -423,7 +426,8 @@ the PARAMS alist."
         ;; Ensure we convert async blocks to synchronous ones when exporting
         (when (bound-and-true-p org-export-current-backend)
           (add-hook 'org-babel-after-execute-hook #'sync-on-export t t))
-        (if (jupyter-org-request-inline-block-p req) ""
+        (if (jupyter-org-request-inline-block-p req)
+            org-babel-jupyter-async-inline-results-pending-indicator
           (jupyter-org-pending-async-results req))))
      (t
       (let ((result-params (assq :result-params params)))
