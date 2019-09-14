@@ -1,5 +1,16 @@
 * master
 
+- Integrate better with packages like =polymode= when evaluating source blocks
+  in =org-mode= by considering indirect buffers. Thanks to =@dvzubarev= for
+  the [[https://github.com/dzop/emacs-jupyter/issues/171#issuecomment-522762377][solution]].
+
+- Fixed usage of source block parameters when evaluating source blocks
+  using =#+CALL= in =org-mode=. There are many sources of source block parameters
+  that =org-mode= merges to produce the final set of parameters passed
+  to =org-babel-execute:jupyter=, previously that function would just re-compute
+  source block parameters. Now it uses the parameters it was given,
+  see =org-babel-jupyter-current-src-block-params=.
+
 - Add support for displaying evaluation results in the current buffer using
   overlays. See =jupyter-eval-use-overlays= and the relevant README sections.
 
@@ -415,7 +426,7 @@
 Examine the output of
 
 #+NAME: changelog
-#+HEADER: :var PREV_VERSION="81b034dad9dbe63753cff5817a7822d9425f1c1a" VERSION="master"
+#+HEADER: :var PREV_VERSION="afbb9b513410ee6f36a1f2fa1ff8a505862de1ca" VERSION="master"
 #+BEGIN_SRC shell :results output
 git log --pretty=format:"%s" ${PREV_VERSION}...${VERSION}
 #+END_SRC
