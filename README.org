@@ -175,7 +175,7 @@ differences between =emacs-jupyter= and =ob-ipython= (biased in favor of
 - Better REPL interface
 
   - =ob-ipython= uses =python-shell-make-comint= to create a REPL connected to
-    a kernel. There are to problems with this (1) no syntax highlighting for
+    a kernel. There are two problems with this (1) no syntax highlighting for
     kernel languages other than Python (2) =comint= only groks text based
     output, but a Jupyter kernel can provide much richer representations of
     data, e.g. HTML, markdown, or =png= images to name a few. The REPL frontend
