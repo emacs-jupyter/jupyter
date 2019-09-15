@@ -1,44 +1,32 @@
 # https://github.com/travis-ci/travis-ci/issues/9061
 sudo: required
 dist: trusty
+language: nix
 matrix:
   # Report build failure/success before allowed failures complete
   fast_finish: true
   allow_failures:
-    - env: EMACS_VERSION=git-snapshot
+    - env: EMACS_CI=emacs-snapshot
 env:
-  - EMACS_VERSION=26.1
-  - EMACS_VERSION=git-snapshot
-before_install:
-  # Setup paths
-  - export PATH=${TRAVIS_BUILD_DIR}/.evm/bin:${HOME}/.cask/bin:${PATH}
-  - sudo apt-get update
-  # Install emacs
-  - if [[ ${EMACS_VERSION} = git-snapshot ]]; then sudo apt-get install -y texinfo; fi
-  # Use this fork of EVM for dynamic module support
-  - git clone https://github.com/ubolonton/evm ${TRAVIS_BUILD_DIR}/.evm
-  - evm config path /tmp
-  # Limit the output when git-snapshot, we can't just suppress it completely
-  # since Travis will cancel a job if it doesn't receive output after 10 mins.
-  - evm install emacs-${EMACS_VERSION} --use --skip | awk 'NR % 1000 == 0'
+  - EMACS_CI=emacs-26-1
+  - EMACS_CI=emacs-26-3
+  - EMACS_CI=emacs-snapshot
+install:
+  # Install Emacs
+  - bash <(curl https://raw.githubusercontent.com/purcell/nix-emacs-ci/master/travis-install)
   # Install cask
   - curl -fsSL https://raw.githubusercontent.com/cask/cask/master/go | python
-install:
-  - sudo apt-get install -y gdb
-  - gdb --version
-  - evm bin
   - sudo apt-get install -y python3 python3-pip &> /dev/null
   - sudo pip3 install --upgrade setuptools pip &> /dev/null
   # --ignore-installed six since jupyter tries to upgrade it, but it can't be
-  # ugraded since it is a distutils package
+  # upgraded since it is a distutils package
   - sudo pip3 install --ignore-installed six jupyter &> /dev/null
   # Install the kernelspec using the right python. Jupyter installs a default
   # python kernelspec that uses "python" for the command in
   # /usr/local/share/jupyter. This installs one with an absolute path using our
   # python3
   - sudo python3 -m ipykernel.kernelspec
-  - cd $TRAVIS_BUILD_DIR
-  - make dev
+before_script:
   # Ensure Jupyter runtime dir can be written to
   - mkdir -p $(jupyter --runtime-dir)
   - jupyter --runtime-dir
@@ -46,12 +34,9 @@ install:
   - jupyter --version
   - jupyter notebook --version
   - jupyter kernelspec list
-before_script:
-  - ulimit -c unlimited -S
-after_failure:
-  - COREFILE=$(find . -maxdepth 1 -name "core*" | head -n 1)
-  - if [[ -f "$COREFILE" ]]; then gdb -c "$COREFILE" $(evm bin) -ex "thread apply all bt" -ex "set pagination 0" -batch; fi
 script:
+  - export PATH=$HOME/.cask/bin:$PATH
   - cd $TRAVIS_BUILD_DIR
+  - make dev
   - make compile
   - make test
