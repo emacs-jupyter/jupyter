@@ -330,7 +330,10 @@ fails."
     (jupyter-tramp-get-file-model (file-name-directory file)))
    (t
     (condition-case err
-        (jupyter-api-get-file-model jupyter-current-server localname)
+        ;; Unset `signal-hook-function' so that TRAMP in Emacs >= 27 does not
+        ;; mess with the signal data until we have a chance to look at it.
+        (let (signal-hook-function)
+          (jupyter-api-get-file-model jupyter-current-server localname))
       (jupyter-api-http-error
        (cl-destructuring-bind (_ code msg) err
          (if (and (eq code 404)
@@ -345,7 +348,8 @@ fails."
                                 (directory-file-name file))
                                'no-content)
                               :writable))
-           (signal (car err) (cdr err)))))))))
+           (signal (car err) (cdr err)))))
+      (error (signal (car err) (cdr err)))))))
 
 (defun jupyter-tramp--get-file-model (file localname no-content)
   (let* ((path (jupyter-api-content-path localname))
@@ -520,13 +524,18 @@ See `jupyter-tramp-get-file-model' for details on what a file model is."
              ;; empty, manually delete all files below and then try again.
              (condition-case err
                  (prog1 t
-                   (jupyter-api-delete-file
-                       jupyter-current-server
-                     directory))
+                   ;; Unset `signal-hook-function' so that TRAMP in Emacs >= 27
+                   ;; does not mess with the signal data until we have a chance
+                   ;; to look at it.
+                   (let (signal-hook-function)
+                     (jupyter-api-delete-file
+                         jupyter-current-server
+                       directory)))
                (jupyter-api-http-error
-                (unless (and (= (cadr err) 400)
+                (unless (and (= (nth 1 err) 400)
                              (string-match-p "not empty" (caddr err)))
-                  (signal (car err) (cdr err)))))))
+                  (signal (car err) (cdr err))))
+               (error (signal (car err) (cdr err))))))
         (unless deleted
           ;; Recursive delete, we need to do this manually since we can get a 400
           ;; error on Windows when deleting to trash and also in general when not

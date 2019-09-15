@@ -143,7 +143,7 @@ Access should be done through `jupyter-available-kernelspecs'.")))
            (jupyter-api-get-kernel (oref kernel server) (oref kernel id))
          (file-error nil)               ; Non-existent server
          (jupyter-api-http-error
-          (unless (= (cadr err) 404)    ; Not Found
+          (unless (= (nth 1 err) 404)    ; Not Found
             (signal (car err) (cdr err)))))))
 
 (cl-defmethod jupyter-start-kernel ((kernel jupyter-server-kernel) &rest _ignore)
