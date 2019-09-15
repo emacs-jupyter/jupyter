@@ -220,16 +220,19 @@ The returned object has the same form as the object returned by
 `current-time'."
   (unless (string-match-p "T[^.,Z+-]+" str)
     (setq str (concat str "T00:00:00")))
-  (nconc (parse-iso8601-time-string str)
-         (save-match-data
-           (or (when (string-match "T[^.,Z+-]+\\(?:[.,]\\([0-9]+\\)\\)" str)
-                 (let* ((fraction (match-string 1 str))
-                        (plen (- 6 (length fraction)))
+  (save-match-data
+    (string-match "T[^.,Z+-]+\\([.,]\\([0-9]+\\)\\)" str)
+    (let ((fraction (match-string 2 str)))
+      (when fraction
+        (setq str (replace-match "" nil nil str 1)))
+      (nconc (parse-iso8601-time-string str)
+             (if fraction
+                 (let* ((plen (- 6 (length fraction)))
                         (pad (and (> plen 0) (expt 10 plen))))
                    (list (if pad (* pad (string-to-number fraction))
                            (string-to-number (substring fraction 0 6)))
-                         0)))
-               (list 0 0)))))
+                         0))
+               (list 0 0))))))
 
 (defun jupyter-encode-time (time)
   "Encode TIME into an ISO 8601 time string."
