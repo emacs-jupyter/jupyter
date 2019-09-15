@@ -182,7 +182,9 @@
           (cl-letf (((symbol-function #'image-type-available-p)
                      (lambda (_typ) nil)))
             (should-not (jupyter-insert data)))
-          (should (eq (jupyter-insert data) :image/jpeg))
+          (cl-letf (((symbol-function #'image-type-available-p)
+                     (lambda (typ) (eq typ 'jpeg))))
+            (should (eq (jupyter-insert data) :image/jpeg)))
           (should (equal (buffer-string) "kjdaljk\n"))
           (erase-buffer))))))
 
