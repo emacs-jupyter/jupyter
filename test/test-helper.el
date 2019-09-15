@@ -50,6 +50,9 @@
   (setq jupyter-long-timeout 120
         jupyter-default-timeout 60))
 
+(when (> emacs-major-version 26)
+  (defalias 'ert--print-backtrace #'backtrace-to-string))
+
 (defvar jupyter-test-with-new-client nil
   "Whether the global client for a kernel should be used for tests.
 Let bind to a non-nil value around a call to
