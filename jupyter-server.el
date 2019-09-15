@@ -161,11 +161,10 @@ Access should be done through `jupyter-available-kernelspecs'.")))
   ((kernel :type jupyter-server-kernel :initarg :kernel)))
 
 (cl-defmethod jupyter-comm-id ((comm jupyter-server-kernel-comm))
-  (format "kid=%s" (truncate-string-to-width
-                    (thread-first comm
-                      (oref kernel)
-                      (oref id))
-                    9 nil nil "…")))
+  (let* ((kernel (oref comm kernel))
+         (id (oref kernel id)))
+    (or (jupyter-server-kernel-name (oref kernel server) id)
+        (format "kid=%s" (truncate-string-to-width id 9 nil nil "…")))))
 
 ;;; Assigning names to kernel IDs
 
