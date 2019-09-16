@@ -540,10 +540,15 @@ least the following keys:
             (length (member name display-names)))
          (append kernels nil))))
 
+(define-error 'jupyter-server-non-existent
+  "The server doesn't exist")
+
 (defun jupyter-current-server (&optional ask)
   "Return an existing `jupyter-server' or ASK for a new one.
 If ASK is non-nil, always ask for a URL and return the
-`jupyter-server' object corresponding to it.
+`jupyter-server' object corresponding to it. If no Jupyter server
+at URL exists, `signal' a `jupyter-server-non-existent' error
+with error data being URL.
 
 If the buffer local value of `jupyter-current-server' is non-nil,
 return its value. If `jupyter-current-server' is nil and the
@@ -576,7 +581,10 @@ a URL."
                                          (setf (url-type u) "ws")
                                          (url-recreate-url u)))))
              (or (jupyter-find-server url ws-url)
-                 (jupyter-server :url url :ws-url ws-url))))))
+                 (let ((server (jupyter-server :url url :ws-url ws-url)))
+                   (if (jupyter-api-server-exists-p server) server
+                     (delete-instance server)
+                     (signal 'jupyter-server-non-existent (list url)))))))))
     (let ((server
            (if ask (funcall read-url-make-server)
              (cond
