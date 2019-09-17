@@ -94,9 +94,10 @@ handling a message is always
                       :ioloop-class 'jupyter-zmq-channel-ioloop))
   (with-slots (kcomm) client
     (oset kcomm hb (jupyter-hb-channel))
-    (oset kcomm stdin (make-jupyter-proxy-channel))
-    (oset kcomm shell (make-jupyter-proxy-channel))
-    (oset kcomm iopub (make-jupyter-proxy-channel))))
+    (oset kcomm channels
+          (list :stdin (make-jupyter-proxy-channel)
+                :shell (make-jupyter-proxy-channel)
+                :iopub (make-jupyter-proxy-channel)))))
 
 (cl-defmethod jupyter-send ((client jupyter-echo-client)
                             channel

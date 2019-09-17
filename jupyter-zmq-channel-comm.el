@@ -44,9 +44,7 @@
                                     jupyter-hb-comm
                                     jupyter-comm-autostop)
   ((session :type jupyter-session)
-   (iopub :type jupyter-zmq-channel)
-   (shell :type jupyter-zmq-channel)
-   (stdin :type jupyter-zmq-channel)
+   (channels :type (list-of (or keyword jupyter-zmq-channel)) :initform nil)
    (thread)))
 
 (cl-defmethod initialize-instance ((_comm jupyter-zmq-channel-comm) &optional _slots)
@@ -63,7 +61,7 @@
   (condition-case err
       (cl-loop
        for channel-type in '(:iopub :shell :stdin)
-       for channel = (slot-value comm (jupyter-comm--channel channel-type))
+       for channel = (plist-get (oref comm channels) channel-type)
        for msg = (and (jupyter-channel-alive-p channel)
                       (with-slots (session socket) channel
                         (condition-case nil
@@ -77,9 +75,10 @@
      (signal (car err) (cdr err)))))
 
 (cl-defmethod jupyter-comm-start ((comm jupyter-zmq-channel-comm))
+  (jupyter-start-channel (oref comm hb))
   (cl-loop
-   for channel in '(hb shell iopub stdin)
-   do (jupyter-start-channel (slot-value comm channel)))
+   for channel in '(:iopub :shell :stdin)
+   do (jupyter-start-channel (plist-get (oref comm channels) channel)))
   (oset comm thread
         (make-thread
          (lambda ()
@@ -93,33 +92,40 @@
              (thread-alive-p (oref comm thread)))
     (thread-signal (oref comm thread) 'quit nil)
     (slot-makeunbound comm 'thread))
+  (jupyter-stop-channel (oref comm hb))
   (cl-loop
-   for channel in '(hb shell iopub stdin)
-   do (jupyter-stop-channel (slot-value comm channel))))
+   for channel in '(:iopub :shell :stdin)
+   do (jupyter-stop-channel (plist-get (oref comm channels) channel))))
 
 (cl-defmethod jupyter-comm-alive-p ((comm jupyter-zmq-channel-comm))
   (jupyter-channels-running-p comm))
 
 (cl-defmethod jupyter-channel-alive-p ((comm jupyter-zmq-channel-comm) channel)
-  (and (slot-boundp comm (jupyter-comm--channel channel))
-       (jupyter-channel-alive-p (slot-value comm (jupyter-comm--channel channel)))))
+  (if (eq channel :hb)
+      (and (slot-boundp comm 'hb)
+           (jupyter-channel-alive-p (oref comm hb)))
+    (let ((c (plist-get (oref comm channels) channel)))
+      (and c (jupyter-channel-alive-p c)))))
 
 (cl-defmethod jupyter-channels-running-p ((comm jupyter-zmq-channel-comm))
-  (cl-loop
-   for channel in '(:shell :iopub :stdin :hb)
-   thereis (jupyter-channel-alive-p comm channel)))
+  (or (cl-loop
+       for channel in '(:shell :iopub :stdin)
+       thereis (jupyter-channel-alive-p comm channel))
+      (and (slot-boundp comm 'hb)
+           (jupyter-channel-alive-p (oref comm hb)))))
 
 ;;;; Channel start/stop methods
 
 (cl-defmethod jupyter-stop-channel ((comm jupyter-zmq-channel-comm) channel)
   (when (jupyter-channel-alive-p comm channel)
-    (jupyter-stop-channel
-     (slot-value comm (jupyter-comm--channel channel)))))
+    (if (eq channel :hb)
+        (jupyter-stop-channel (oref comm hb))
+      (jupyter-stop-channel (plist-get (oref comm channels) channel)))))
 
 (cl-defmethod jupyter-start-channel ((comm jupyter-zmq-channel-comm) channel)
   (unless (jupyter-channel-alive-p comm channel)
-    (jupyter-start-channel
-     (slot-value comm (jupyter-comm--channel channel)))))
+    (if (eq channel :hb) (jupyter-start-channel (oref comm hb))
+      (jupyter-start-channel (plist-get (oref comm channels) channel)))))
 
 (cl-defmethod jupyter-initialize-connection ((comm jupyter-zmq-channel-comm)
                                              (session jupyter-session))
@@ -130,17 +136,18 @@
                    'jupyter-hb-channel
                    :session (oref comm session)
                    :endpoint (plist-get endpoints :hb)))
-    (cl-loop
-     for channel in `(:stdin :shell :iopub)
-     do (setf (slot-value comm (jupyter-comm--channel channel))
-              (jupyter-zmq-channel
-               :type channel
-               :session (oref comm session)
-               :endpoint (plist-get endpoints channel))))))
+    (oset comm channels
+          (cl-loop
+           for channel in '(:stdin :shell :iopub)
+           collect channel and
+           collect (jupyter-zmq-channel
+                    :type channel
+                    :session (oref comm session)
+                    :endpoint (plist-get endpoints channel))))))
 
 (cl-defmethod jupyter-send ((comm jupyter-zmq-channel-comm)
                             _ channel-type msg-type msg msg-id)
-  (let ((channel (slot-value comm (jupyter-comm--channel channel-type))))
+  (let ((channel (plist-get (oref comm channels) channel-type)))
     ;; Run the event handler on the next command loop since the expectation is
     ;; the client is that sending is asynchronous. There may be some code that
     ;; makes assumptions based on this.
