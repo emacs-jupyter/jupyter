@@ -1428,13 +1428,7 @@ of the fixed-width element and RESULT concatenated together."
 
 (defmacro jupyter-org-indent-inserted-region (indentation &rest body)
   "Indent the region inserted by BODY using INDENTATION.
-INDENTATION is a form to be evaluated for the number of leading
-indentation characters. If INDENTATION is nil, it defaults to
-`current-indentation'.
-
-BODY is wrapped with a call to `jupyter-with-insertion-bounds'
-before evaluation and whatever text is inserted into the buffer
-after evaluation is indented by INDENTATION."
+If INDENTATION is nil, it defaults to `current-indentation'."
   (declare (indent 1))
   (let ((indent (make-symbol "indent")))
     `(let ((,indent ,(or indentation '(current-indentation))))
