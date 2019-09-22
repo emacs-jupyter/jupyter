@@ -226,15 +226,9 @@ call is replaced by the form returned by the function specified
 in the `jupyter-ioloop-add-arg-type' call."
   (declare (indent 1))
   `(progn
-     (setq jupyter-ioloop--argument-types
-           (delq (assoc ',tag jupyter-ioloop--argument-types)
-                 jupyter-ioloop--argument-types))
-
-     (push
-      (cons ',tag
-            ;; Ensure we don't create lexical closures
-            ,(list '\` fun))
-      jupyter-ioloop--argument-types)))
+     (setf (alist-get ',tag jupyter-ioloop--argument-types nil 'remove) nil)
+     ;; NOTE: FUN is quoted to ensure lexical closures aren't created
+     (push (cons ',tag ,(list '\` fun)) jupyter-ioloop--argument-types)))
 
 (defun jupyter-ioloop--replace-args (args)
   "Convert special arguments in ARGS.
@@ -249,16 +243,13 @@ result of calling the function associated with TAG in
 `jupyter-ioloop--argument-types'.
 
 Return the list of converted arguments."
-  (cl-loop
-   with arg-type = nil
-   for arg in args
-   if (and (listp arg)
-           (setq arg-type (assoc (cadr arg) jupyter-ioloop--argument-types)))
-   ;; ,(app (lambda (x) ...) arg)
-   collect (list '\, (list 'app `(lambda (x) ,(funcall (cdr arg-type) 'x))
-                           (car arg)))
-   ;; ,arg
-   else collect (list '\, arg)))
+  (mapcar (lambda (arg)
+       (pcase arg
+         (`(,val ,tag)
+          (let ((form (alist-get tag jupyter-ioloop--argument-types)))
+            (list '\, (list 'app `(lambda (x) ,(funcall form 'x)) val))))
+         (_ (list '\, arg))))
+     args))
 
 (defmacro jupyter-ioloop-add-event (ioloop event args &optional doc &rest body)
   "For IOLOOP, add an EVENT handler.
@@ -292,30 +283,33 @@ fired if EXP matches any event types handled by IOLOOP.
 
 TODO: Explain these
 By default this adds the events quit, callback, and timer."
-  `(let* ((cmd ,exp)
-          (res (pcase cmd
-                 ,@(cl-loop
-                    for (event args body) in (oref ioloop events)
-                    for cond = (list '\` (cl-list* event (jupyter-ioloop--replace-args args)))
-                    if (memq event '(quit callback timer))
-                    do (error "Event can't be one of quit, callback, or, timer")
-                    ;; cond = `(event ,arg1 ,arg2 ...)
-                    else collect `(,cond ,@body))
-                 ;; Default events
-                 (`(timer ,id ,period ,cb)
-                  ;; Ensure we don't send anything back to the parent process
-                  (prog1 nil
-                    (let ((timer (run-at-time 0.0 period (byte-compile cb))))
-                      (puthash id timer jupyter-ioloop-timers))))
-                 (`(callback ,cb)
-                  ;; Ensure we don't send anything back to the parent process
-                  (prog1 nil
-                    (setq jupyter-ioloop-timeout 0)
-                    (add-hook 'jupyter-ioloop-pre-hook (byte-compile cb) 'append)))
-                 ('(quit) (signal 'quit nil))
-                 (_ (error "Unhandled command %s" cmd)))))
-     ;; Can only send lists at the moment
-     (when (and res (listp res)) (zmq-prin1 res))))
+  (let ((user-events
+         (cl-loop
+          for (event args body) in (oref ioloop events)
+          for cond = (list '\` (cl-list*
+                                event (jupyter-ioloop--replace-args args)))
+          if (memq event '(quit callback timer))
+          do (error "Event can't be one of quit, callback, or, timer")
+          ;; cond = `(event ,arg1 ,arg2 ...)
+          else collect `(,cond ,@body))))
+    `(let* ((cmd ,exp)
+            (res (pcase cmd
+                   ,@user-events
+                   ;; Default events
+                   (`(timer ,id ,period ,cb)
+                    ;; Ensure we don't send anything back to the parent process
+                    (prog1 nil
+                      (let ((timer (run-at-time 0.0 period (byte-compile cb))))
+                        (puthash id timer jupyter-ioloop-timers))))
+                   (`(callback ,cb)
+                    ;; Ensure we don't send anything back to the parent process
+                    (prog1 nil
+                      (setq jupyter-ioloop-timeout 0)
+                      (add-hook 'jupyter-ioloop-pre-hook (byte-compile cb) 'append)))
+                   ('(quit) (signal 'quit nil))
+                   (_ (error "Unhandled command %s" cmd)))))
+       ;; Can only send lists at the moment
+       (when (and res (listp res)) (zmq-prin1 res)))))
 
 (cl-defgeneric jupyter-ioloop-add-callback ((ioloop jupyter-ioloop) cb)
   "In IOLOOP, add CB to be run in the IOLOOP environment.
@@ -357,6 +351,39 @@ nothing."
     (process-put process :stdin nil))
   (delete-process process))
 
+(defun jupyter-ioloop--body (ioloop on-stdin)
+  `(let (events)
+     (condition-case nil
+         (progn
+           ,@(oref ioloop setup)
+           ;; Initialize any callbacks that were added before the ioloop was
+           ;; started
+           (setq jupyter-ioloop-pre-hook
+                 (mapcar (lambda (f) (unless (byte-code-function-p f) (byte-compile f)))
+                    (append jupyter-ioloop-pre-hook
+                            (quote ,(mapcar #'macroexpand-all
+                                       (oref ioloop callbacks))))))
+           ;; Notify the parent process we are ready to do something
+           (zmq-prin1 '(start))
+           (let ((on-stdin (byte-compile (lambda () ,on-stdin))))
+             (while t
+               (run-hooks 'jupyter-ioloop-pre-hook)
+               (setq events
+                     (condition-case nil
+                         (zmq-poller-wait-all
+                          jupyter-ioloop-poller
+                          jupyter-ioloop-nsockets
+                          jupyter-ioloop-timeout)
+                       ((zmq-EAGAIN zmq-EINTR zmq-ETIMEDOUT) nil)))
+               (let ((stdin-event (zmq-assoc jupyter-ioloop-stdin events)))
+                 (when stdin-event
+                   (setq events (delq stdin-event events))
+                   (funcall on-stdin)))
+               (run-hook-with-args 'jupyter-ioloop-post-hook events))))
+       (quit
+        ,@(oref ioloop teardown)
+        (zmq-prin1 '(quit))))))
+
 (defun jupyter-ioloop--function (ioloop port)
   "Return the function that does the work of IOLOOP.
 The returned function is suitable to send to a ZMQ subprocess for
@@ -367,52 +394,21 @@ socket to receive events from the parent process on the PORT of
 the local host, otherwise events are expected to be received on
 STDIN. This is useful on Windows systems which don't allow
 polling the STDIN file handle."
-  (let ((stdin-form
-         (if port `(let ((sock (zmq-socket ctx zmq-PAIR)))
-                     (prog1 sock
-                       (zmq-connect sock (format "tcp://127.0.0.1:%s" ,port))))
-           '0))
-        (dispatcher-form
-         (jupyter-ioloop--event-dispatcher
-          ioloop (if port '(read (zmq-recv-decoded jupyter-ioloop-stdin))
-                   '(zmq-subprocess-read)))))
-    `(lambda (ctx)
-       (push ,(file-name-directory (locate-library "jupyter-base")) load-path)
-       (require 'jupyter-ioloop)
-       (setq jupyter-ioloop-poller (zmq-poller))
-       (setq jupyter-ioloop-stdin ,stdin-form)
-       (zmq-poller-add jupyter-ioloop-poller jupyter-ioloop-stdin zmq-POLLIN)
-       (let (events)
-         (condition-case nil
-             (progn
-               ,@(oref ioloop setup)
-               (setq
-                ;; Initialize any callbacks that were added before the ioloop was started
-                jupyter-ioloop-pre-hook
-                (mapcar (lambda (f) (unless (byte-code-function-p f) (byte-compile f)))
-                   (append jupyter-ioloop-pre-hook
-                           (quote ,(mapcar #'macroexpand-all
-                                      (oref ioloop callbacks))))))
-               ;; Notify the parent process we are ready to do something
-               (zmq-prin1 '(start))
-               (let ((dispatcher (byte-compile (lambda () ,dispatcher-form))))
-                 (while t
-                   (run-hooks 'jupyter-ioloop-pre-hook)
-                   (setq events
-                         (condition-case nil
-                             (zmq-poller-wait-all
-                              jupyter-ioloop-poller
-                              jupyter-ioloop-nsockets
-                              jupyter-ioloop-timeout)
-                           ((zmq-EAGAIN zmq-EINTR zmq-ETIMEDOUT) nil)))
-                   (let ((stdin-event (zmq-assoc jupyter-ioloop-stdin events)))
-                     (when stdin-event
-                       (setq events (delq stdin-event events))
-                       (funcall dispatcher)))
-                   (run-hook-with-args 'jupyter-ioloop-post-hook events))))
-           (quit
-            ,@(oref ioloop teardown)
-            (zmq-prin1 '(quit))))))))
+  `(lambda (ctx)
+     (push ,(file-name-directory (locate-library "jupyter-base")) load-path)
+     (require 'jupyter-ioloop)
+     (setq jupyter-ioloop-poller (zmq-poller))
+     (setq jupyter-ioloop-stdin
+           ,(if port
+                `(let ((sock (zmq-socket ctx zmq-PAIR)))
+                   (prog1 sock
+                     (zmq-connect sock (format "tcp://127.0.0.1:%s" ,port))))
+              0))
+     (zmq-poller-add jupyter-ioloop-poller jupyter-ioloop-stdin zmq-POLLIN)
+     ,(jupyter-ioloop--body
+       ioloop (jupyter-ioloop--event-dispatcher
+               ioloop (if port '(read (zmq-recv-decoded jupyter-ioloop-stdin))
+                        '(zmq-subprocess-read))))))
 
 (defun jupyter-ioloop-alive-p (ioloop)
   "Return non-nil if IOLOOP is ready to receive/send events."

@@ -73,7 +73,6 @@
   "TRAMP integration with the Jupyter Contents REST API"
   :group 'jupyter)
 
-(declare-function dired-check-switches "dired" (switches short &optional long))
 (declare-function jupyter-decode-time "jupyter-messages" (str))
 
 (defmacro jupyter-tramp-with-api-connection (file &rest body)
@@ -90,9 +89,7 @@ host, localname, ..., are all bound to values parsed from FILE."
      ;; FIXME: There is a dilemma here, a `jupyter-server' is a more particular
      ;; object than what we need. There is really no reason to have it here, we
      ;; just need a `jupyter-rest-client'. Is there a reason this needs to be
-     ;; here? Also we should really rename `jupyter-server' to something like
-     ;; `jupyter-server-client' since it isn't a representation of a server,
-     ;; but a communication channel with one.
+     ;; here?
      (let ((jupyter-current-server
             (jupyter-tramp-server-from-file-name ,file)))
        ,@body)))

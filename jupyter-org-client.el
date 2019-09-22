@@ -442,7 +442,8 @@ the `syntax-table' will be set to that of the REPL buffers."
               (buffer-local-value 'jupyter-current-client
                                   (org-babel-jupyter-initiate-session
                                    (alist-get :session ,params) ,params)))
-             (,syntax (jupyter-kernel-language-syntax-table jupyter-current-client)))
+             (,syntax (jupyter-kernel-language-syntax-table
+                       jupyter-current-client)))
         (with-syntax-table ,syntax
           ,@body)))))
 
@@ -649,19 +650,19 @@ C-x C-e         `jupyter-eval-line-or-region'"
                 (copy-tree char-property-alias-alist))
     (cl-callf append (alist-get 'invisible char-property-alias-alist)
       '(jupyter-invisible))
-    (unless (cl-find-if (lambda (x) (eq (car x) 'jupyter-org-font-lock-ansi-escapes))
-                        org-font-lock-keywords)
-      (setq org-font-lock-keywords
-            (append org-font-lock-keywords
-                    '((jupyter-org-font-lock-ansi-escapes))))))
+    (unless (cl-find-if
+             (lambda (x) (eq (car x) 'jupyter-org-font-lock-ansi-escapes))
+             org-font-lock-keywords)
+      (cl-callf append org-font-lock-keywords
+        '((jupyter-org-font-lock-ansi-escapes)))))
    (t
     (remove-hook 'completion-at-point-functions 'jupyter-org-completion-at-point t)
     (remove-hook 'after-revert-hook 'jupyter-org-interaction-mode t)
     (cl-callf2 delq 'jupyter-invisible
                (alist-get 'invisible char-property-alias-alist))
-    (setq org-font-lock-keywords
-          (cl-remove-if (lambda (x) (eq (car x) 'jupyter-org-font-lock-ansi-escapes))
-                        org-font-lock-keywords)))))
+    (cl-callf2 cl-remove-if
+        (lambda (x) (eq (car x) 'jupyter-org-font-lock-ansi-escapes))
+        org-font-lock-keywords))))
 
 (add-hook 'org-mode-hook 'jupyter-org-interaction-mode)
 
@@ -1571,7 +1572,8 @@ example-block elements."
            ;; stream result, return A.
            (when (jupyter-org--stream-result-p (car a))
              (setcar a (jupyter-org-scalar
-                        (jupyter-org-strip-last-newline (car a)))))
+                        (jupyter-org-strip-last-newline
+                         (car a)))))
            a)))
     (nreverse
      (funcall

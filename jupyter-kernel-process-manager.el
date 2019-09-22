@@ -70,9 +70,9 @@ fatal signal."
   (cl-check-type kernel jupyter-kernel-lifetime)
   (let ((ref (jupyter-weak-ref kernel)))
     (lambda (process _)
-      (when (memq (process-status process) '(exit signal))
-        (when-let* ((kernel (jupyter-weak-ref-resolve ref)))
-          (jupyter-kernel-died kernel))))))
+      (when-let (kernel (and (memq (process-status process) '(exit signal))
+                             (jupyter-weak-ref-resolve ref)))
+        (jupyter-kernel-died kernel)))))
 
 (cl-defmethod jupyter-start-kernel :after ((kernel jupyter-kernel-process) &rest _args)
   (setf (process-sentinel (oref kernel process))
@@ -260,7 +260,7 @@ connect to MANAGER's kernel."
 
 (cl-defmethod jupyter-stop-channels ((manager jupyter-kernel-process-manager))
   "Stop the control channel on MANAGER."
-  (when-let* ((channel (oref manager control-channel)))
+  (when-let (channel (oref manager control-channel))
     (jupyter-stop-channel channel)
     (oset manager control-channel nil)))
 

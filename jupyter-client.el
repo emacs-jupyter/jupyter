@@ -558,33 +558,12 @@ back."
 (defun jupyter--run-callbacks (req msg)
   "Run REQ's MSG callbacks.
 See `jupyter-add-callback'."
-  (when-let* ((callbacks (and req (jupyter-request-callbacks req))))
+  (when-let (callbacks (and req (jupyter-request-callbacks req)))
     ;; Callback for all message types
-    (funcall (alist-get t callbacks #'identity) msg)
-    (funcall (alist-get (jupyter-message-type msg) callbacks #'identity) msg)))
-
-(defmacro jupyter--set-callback (place callback)
-  "Build a callback from a previous callback at PLACE.
-PLACE is a generalized variable and CALLBACK should be bound to a
-function that takes a single argument.
-
-Construct a new function, combining any function stored in PLACE
-with CALLBACK. If there is a function stored in PLACE, it is
-assumed to take a single argument.
-
-The combined function is equivalent to
-
-    (lambda (msg)
-      (funcall PLACE msg)
-      (funcall CALLBACK msg))
-
-Store the new function in PLACE."
-  (gv-letplace (getter setter) place
-    (macroexp-let2 nil old getter
-      (funcall setter
-               `(lambda (msg)
-                  (and (functionp ,old) (funcall ,old msg))
-                  (funcall ,callback msg))))))
+    (when-let (f (alist-get t callbacks))
+      (funcall f msg))
+    (when-let (f (alist-get (jupyter-message-type msg) callbacks))
+      (funcall f msg))))
 
 (defun jupyter--add-callback (req msg-type cb)
   "Helper function for `jupyter-add-callback'.
@@ -597,8 +576,9 @@ when MSG-TYPE is received for REQ."
               ;; associated with a request.
               (eq msg-type t))
     (error "Not a valid message type (`%s')" msg-type))
-  (jupyter--set-callback
-   (alist-get msg-type (jupyter-request-callbacks req)) cb))
+  (add-function
+   :after (alist-get msg-type (jupyter-request-callbacks req) #'identity)
+   cb))
 
 (defun jupyter-add-callback (req msg-type cb &rest callbacks)
   "Add a callback to run when a message is received for a request.

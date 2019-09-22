@@ -512,6 +512,8 @@ Note only SSH tunnels are currently supported."
         (pcase-let (((cl-struct tramp-file-name method user host)
                      (tramp-dissect-file-name conn-file)))
           (pcase method
+            ;; TODO: Document this in the README along with the fact that
+            ;; connection files can use /ssh: TRAMP files.
             ("docker"
              ;; Assume docker is using the -p argument to publish its exposed
              ;; ports to the localhost. The ports used in the container should
@@ -570,6 +572,12 @@ following in your Emacs configuration
 before starting any Jupyter kernels. The kernel also has to know
 that it should use EDITOR to open files."
   (when (bound-and-true-p server-mode)
+    ;; After switching to a server buffer, keep the client alive in `server-buffer'
+    ;; to account for multiple files being opened by the server.
+    (unless (and (boundp 'server-switch-hook)
+                 (memq #'jupyter-server-mode--unset-client-soon
+                       server-switch-hook))
+      (add-hook 'server-switch-hook #'jupyter-server-mode--unset-client-soon))
     (with-current-buffer (get-buffer-create server-buffer)
       (setq jupyter-current-client client)
       (jupyter-server-mode--unset-client-soon timeout))))
@@ -587,10 +595,6 @@ that it should use EDITOR to open files."
   (setq jupyter-server-mode-client-timer
         (run-at-time (or timeout jupyter-long-timeout)
                      nil #'jupyter-server-mode-unset-client)))
-
-;; After switching to a server buffer, keep the client alive in `server-buffer'
-;; to account for multiple files being opened by the server.
-(add-hook 'server-switch-hook #'jupyter-server-mode--unset-client-soon)
 
 (defun jupyter-read-plist (file)
   "Read a JSON encoded FILE as a property list."
