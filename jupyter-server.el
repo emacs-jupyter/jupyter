@@ -867,7 +867,8 @@ the same meaning as in `jupyter-connect-repl'."
                          name))
                    'face 'font-lock-constant-face))
             (activity (propertize (jupyter-format-time-low-res time)
-                                  'face 'font-lock-doc-face))
+                                  'face 'font-lock-doc-face
+                                  'jupyter-time time))
             (conns (propertize (number-to-string connections)
                                'face 'shadow))
             (state (propertize execution_state
@@ -895,7 +896,8 @@ used."
       (if (eq major-mode 'jupyter-server-kernel-list-mode)
           (revert-buffer)
         (setq tabulated-list-format (jupyter-server--kernel-list-format)
-              tabulated-list-entries #'jupyter-server--kernel-list-entries)
+              tabulated-list-entries #'jupyter-server--kernel-list-entries
+              tabulated-list-sort-key (cons "Activity" t))
         (jupyter-server-kernel-list-mode)
         ;; So that `dired-jump' will visit the directory of the kernel server.
         (setq default-directory
