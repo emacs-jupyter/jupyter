@@ -633,7 +633,7 @@ If BELOW is non-nil, move the block down, otherwise move it up."
   _C-<return>_: current to next       _P_: previous busy  _C-n_: move down  _l_: clear result
   _M-<return>_: to point              _n_: next           _x_: kill         _L_: clear all
 _C-M-<return>_: subtree to point      _N_: next busy      _c_: copy         _i_: interrupt
-  _S-<return>_: Restart/block         _g_: visible        _o_: clone
+  _S-<return>_: Restart/block         _g_: visible        _o_: clone      _C-s_: scratch buffer
 _S-C-<return>_: Restart/to point      _G_: any            _m_: merge
 _S-M-<return>_: Restart/buffer    _<tab>_: (un)fold       _s_: split
            _r_: Goto repl             ^ ^                 _+_: insert above
@@ -670,7 +670,8 @@ _S-M-<return>_: Restart/buffer    _<tab>_: (un)fold       _s_: split
            ("h" jupyter-org-edit-header)
 
            ("/" jupyter-org-inspect-src-block)
-           ("i" jupyter-org-interrupt-kernel)))
+           ("i" jupyter-org-interrupt-kernel)
+           ("C-s" org-babel-jupyter-scratch-buffer)))
   (call-interactively #'jupyter-org-hydra/body))
 
 (define-key jupyter-org-interaction-mode-map (kbd "C-c h") #'jupyter-org-hydra/body)
