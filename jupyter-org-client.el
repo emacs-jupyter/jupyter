@@ -588,7 +588,23 @@ property."
           (setq begin1 next)))
        (t
         (put-text-property begin next 'jupyter-ansi t)
-        (jupyter-ansi-color-apply-on-region begin next)
+        (cl-letf (((symbol-function #'delete-and-extract-region)
+                   (lambda (beg end)
+                     (prog1 (buffer-substring-no-properties beg end)
+                       ;; FIXME: Not removing escape sequences adds in a lot of
+                       ;; invisible characters that slows down Emacs on large
+                       ;; ANSI coded regions and seems mostly related to
+                       ;; redisplay since hiding the region behind an invisible
+                       ;; overlay removes the slowdown.
+                       (add-text-properties
+                        beg end '(invisible t jupyter-invisible t)))))
+                  (ansi-color-apply-face-function
+                   (lambda (beg end face)
+                     (when face
+                       (setq face (list face))
+                       (font-lock-prepend-text-property beg end 'face face)
+                       (put-text-property beg end 'font-lock-face face)))))
+          (ansi-color-apply-on-region begin next))
         (setq begin next))))))
 
 ;; Adapted from `org-fontify-meta-lines-and-blocks-1'
