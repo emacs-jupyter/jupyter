@@ -302,7 +302,8 @@ the host."
       (setq client
             (cond
              ((string-suffix-p ".json" session)
-              (jupyter-connect-repl session nil nil 'jupyter-org-client))
+              (jupyter-connect-repl (expand-file-name session) nil nil
+                                    'jupyter-org-client))
              (t
               (funcall (if (and (file-remote-p session)
                                 (jupyter-tramp-file-name-p session))
