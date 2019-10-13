@@ -54,7 +54,7 @@ overlays at the end of the line if possible."
   :group 'jupyter-client
   :type 'boolean)
 
-(defcustom jupyter-eval-overlay-prefix "=>"
+(defcustom jupyter-eval-overlay-prefix "=> "
   "Evaluation result overlays will be prefixed with this string."
   :group 'jupyter-client
   :type 'string)
@@ -1242,7 +1242,7 @@ representation of the results in the current buffer."
                     ;; overlay.
                     (if newline " \n" " ")
                     (propertize
-                     (concat jupyter-eval-overlay-prefix " " text)
+                     (concat jupyter-eval-overlay-prefix text)
                      'face 'jupyter-eval-overlay))))
       ;; Ensure `point' doesn't move past the beginning or end of the overlay
       ;; on motion commands.
