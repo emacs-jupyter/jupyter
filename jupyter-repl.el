@@ -1508,7 +1508,7 @@ value."
         (setq req (jupyter-send-execute-request jupyter-current-client
                     :code str
                     :store-history jupyter-repl-echo-eval-p))
-        (if cell-previous-code
+        (if jupyter-repl-echo-eval-p
             (jupyter-repl-replace-cell-code cell-previous-code))))
     ;; Add callbacks to display evaluation output in pop-up buffers either when
     ;; we aren't copying the input to a REPL cell or, if we are, when the REPL
