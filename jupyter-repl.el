@@ -1518,7 +1518,7 @@ value."
     ;; when BEG and END are non-nil.
     (prog1 req
       (unless (and jupyter-repl-echo-eval-p
-                   (get-buffer-window nil 'visible))
+                   (get-buffer-window (oref jupyter-current-client buffer) 'visible))
         (jupyter-eval-add-callbacks req beg end)))))
 
 ;;; Kernel management
