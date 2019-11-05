@@ -1,6 +1,6 @@
 {
     "private": true,
-    "name": "emacs-jupyter",
+    "name": "emacs-jupyter-widgets",
     "version": "0.3.0",
     "description": "Integrate emacs-jupyter with widgets in a browser.",
     "main": "index.js",
