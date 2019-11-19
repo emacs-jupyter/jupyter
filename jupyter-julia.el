@@ -30,11 +30,7 @@
 (eval-when-compile (require 'subr-x))
 (require 'jupyter-repl)
 
-(declare-function julia-latexsub-or-indent "ext:julia-mode" (arg))
-
-(cl-defmethod jupyter-indent-line (&context (major-mode julia-mode))
-  "Call `julia-latexsub-or-indent'."
-  (call-interactively #'julia-latexsub-or-indent))
+(declare-function julia-latexsub-completion-at-point "ext:julia-mode" (arg))
 
 (cl-defmethod jupyter-load-file-code (file &context (jupyter-lang julia))
   (format "include(\"%s\");" file))
@@ -57,29 +53,12 @@
       (prog1 prefix
         (when (consp prefix)
           (let ((beg (- (point) (length (car prefix)))))
-            (cond
-             ;; Include the \ in the prefix so it gets replaced if a canidate is
-             ;; selected.
-             ((eq (char-before beg) ?\\)
-              (setcar prefix (concat "\\" (car prefix))))
-             ;; Also include : to complete symbols when used as dictionary keys
-             ((and (eq (char-before beg) ?:)
-                   (not (eq (char-before (1- beg)) ?:))
-                   ;; Except for when it is part of range expressions like 1:len
-                   (not (memq (char-syntax (char-before (1- beg))) '(?w ?_))))
-              (setcar prefix (concat ":" (car prefix))))))))))))
-
-(cl-defmethod jupyter-completion-post-completion (candidate
-                                                  &context (jupyter-lang julia))
-  "Insert the unicode representation of a LaTeX completion."
-  (if (eq (aref candidate 0) ?\\)
-      (when (get-text-property 0 'annot candidate)
-        (search-backward candidate)
-        (delete-region (point) (match-end 0))
-        ;; Alternatively use `julia-latexsub-or-indent', but I have found
-        ;; problems with that.
-        (insert (string-trim (get-text-property 0 'annot candidate))))
-    (cl-call-next-method)))
+            ;; Include : to complete symbols when used as dictionary keys
+            (and (eq (char-before beg) ?:)
+                 (not (eq (char-before (1- beg)) ?:))
+                 ;; Except for when it is part of range expressions like 1:len
+                 (not (memq (char-syntax (char-before (1- beg))) '(?w ?_)))
+                 (setcar prefix (concat ":" (car prefix)))))))))))
 
 ;;; `markdown-mode'
 
@@ -211,6 +190,7 @@ if !isdefined(Main, :__JUPY_saved_dir)
 end")))
 
 (cl-defmethod jupyter-repl-after-init (&context (jupyter-lang julia))
+  (add-hook 'completion-at-point-functions #'julia-latexsub-completion-at-point nil t)
   (add-function
    :after (local 'syntax-propertize-function)
    #'jupyter-julia--propertize-repl-mode-char)
