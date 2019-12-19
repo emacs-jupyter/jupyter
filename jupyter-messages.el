@@ -211,8 +211,9 @@ decoded string."
       (prog1 val
         (when-let* ((msg-type (and (listp val)
                                    (plist-get val :msg_type))))
-          (plist-put
-           val :msg_type (jupyter-message-type-as-keyword msg-type)))))))
+         (unless (string-empty-p msg-type))
+           (plist-put
+            val :msg_type (jupyter-message-type-as-keyword msg-type)))))))
 
 (defun jupyter-decode-time (str)
   "Decode an ISO 8601 time STR into a time object.
