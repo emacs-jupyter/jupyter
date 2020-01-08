@@ -90,7 +90,7 @@
 
 (defface jupyter-repl-traceback
   '((((class color) (min-colors 88) (background light))
-     :background "darkred")
+     :background "LightYellow2")
     (((class color) (min-colors 88) (background dark))
      :background "firebrick"))
   "Face used for a traceback."
