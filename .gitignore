@@ -4,3 +4,4 @@ flycheck_*
 node_modules/
 *lock*
 built/
+.cask/
