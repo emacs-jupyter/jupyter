@@ -54,17 +54,17 @@ kernelspec of a kernel and return the plist created by a call to
   "Get the available kernelspecs.
 Return an alist mapping kernel names to (DIRECTORY . PLIST) pairs
 where DIRECTORY is the resource directory of the kernel and PLIST
-is its kernelspec plist. The alist is formed by parsing the
+is its kernelspec plist.  The alist is formed by parsing the
 output of the shell command
 
     jupyter kernelspec list
 
-By default the available kernelspecs are cached. To force an
+By default the available kernelspecs are cached.  To force an
 update of the cached kernelspecs, give a non-nil value to
 REFRESH.
 
 If the `default-directory' is a remote directory, return the
-mapping for the kernelspecs on the remote host. In this case,
+mapping for the kernelspecs on the remote host.  In this case,
 each DIRECTORY will be a remote file name."
   (let ((host (or (file-remote-p default-directory) "local")))
     (or (and (not refresh) (gethash host jupyter--kernelspecs))
@@ -84,8 +84,8 @@ each DIRECTORY will be a remote file name."
 
 (defun jupyter-get-kernelspec (name &optional refresh)
   "Get the kernelspec for a kernel named NAME.
-If no kernelspec is found, return nil. Otherwise return the
-kernelspec plist for the kernel names NAME. Optional argument
+If no kernelspec is found, return nil.  Otherwise return the
+kernelspec plist for the kernel names NAME.  Optional argument
 REFRESH has the same meaning as in
 `jupyter-available-kernelspecs'."
   (cdr (assoc name (jupyter-available-kernelspecs refresh))))
@@ -153,12 +153,12 @@ Optional argument REFRESH has the same meaning as in
   "Attempt to find available kernelspecs for MODE.
 MODE should be a major mode symbol and defaults to `major-mode'.
 REFRESH has the same meaning as in
-`jupyter-available-kernelspecs'. Return a list of available
-kernelspecs or nil if none could be found. Note that this does
+`jupyter-available-kernelspecs'.  Return a list of available
+kernelspecs or nil if none could be found.  Note that this does
 not mean that no kernel exists for MODE.
 
 Currently this just concatenates the kernelspec language name
-with `-mode' to see if `major-mode' is equivalent. This is
+with `-mode' to see if `major-mode' is equivalent.  This is
 sufficient for `python' and `julia' kernels using their standard
 major modes, but most likely will fail for other cases."
   (cl-loop

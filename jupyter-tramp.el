@@ -23,7 +23,7 @@
 ;;; Commentary:
 
 ;; Integrate the Jupyter REST API contents endpoint with Emacs' file handling
-;; facilities for remote files. Adds two new remote file methods, /jpy: and
+;; facilities for remote files.  Adds two new remote file methods, /jpy: and
 ;; /jpys:, the former being HTTP connections and the latter being HTTPS
 ;; connections.
 ;;
@@ -84,8 +84,8 @@ host, localname, ..., are all bound to values parsed from FILE."
   (declare (indent 1) (debug ([&or stringp symbolp] body)))
   `(with-parsed-tramp-file-name ,file nil
      ;; FIXME: There is a dilemma here, a `jupyter-server' is a more particular
-     ;; object than what we need. There is really no reason to have it here, we
-     ;; just need a `jupyter-rest-client'. Is there a reason this needs to be
+     ;; object than what we need.  There is really no reason to have it here, we
+     ;; just need a `jupyter-rest-client'.  Is there a reason this needs to be
      ;; here?
      (let ((jupyter-current-server
             (jupyter-tramp-server-from-file-name ,file)))
@@ -283,7 +283,7 @@ The filename is based off of URL's host and port if any."
 (defun jupyter-tramp-server-from-file-name (filename)
   "Return a `jupyter-server' instance based off of FILENAME's remote components.
 If the connection has not been authenticated by the server,
-attempt to authenticate the connection. Raise an error if that
+attempt to authenticate the connection.  Raise an error if that
 fails."
   (unless (jupyter-tramp-file-name-p filename)
     (error "Not a Jupyter filename"))
@@ -351,7 +351,7 @@ fails."
                  file localname path no-content)))
     (or (jupyter-api-find-model path model)
         ;; We reach here when MODEL is a directory that does
-        ;; not contain PATH. PATH is writable if the
+        ;; not contain PATH.  PATH is writable if the
         ;; directory is.
         (list :path path :name nil
               :writable (plist-get model :writable)))))
@@ -363,13 +363,13 @@ For non-existent files the model
     (:path PATH :name nil :writable WRITABLE)
 
 is returned, where PATH is a local path name to FILE on the
-server, i.e. excludes the remote part of FILE. WRITABLE will be t
+server, i.e. excludes the remote part of FILE.  WRITABLE will be t
 if FILE can be created on the server or nil if PATH is outside
 the base directory the server was started in.
 
 When NO-CONTENT is non-nil, return a model for file that excludes
-:content if an actual request needs to be made. The :content key
-may or may not be present in this case. If NO-CONTENT is nil,
+:content if an actual request needs to be made.  The :content key
+may or may not be present in this case.  If NO-CONTENT is nil,
 guarantee that we request FILE's content as well.
 
 See `jupyter-tramp-get-file-model' for details on what a file model is."
@@ -624,7 +624,7 @@ See `jupyter-tramp-get-file-model' for details on what a file model is."
 (defun jupyter-tramp--recover-this-file (orig)
   "If the `current-buffer' is Jupyter file, revert back to a checkpoint.
 If no checkpoints exist, revert back to the file that exists on
-the server. For any other file, call ORIG, which is the function
+the server.  For any other file, call ORIG, which is the function
 `recover-this-file'"
   (interactive)
   (let ((file (buffer-file-name)))
@@ -650,7 +650,7 @@ the server. For any other file, call ORIG, which is the function
 ;; (advice-add 'recover-this-file :around 'jupyter-tramp--recover-this-file)
 
 ;; TODO: What to do about reading and writing large files? See
-;; `jupyter-api-upload-large-file'. Also the out of band functions of TRAMP.
+;; `jupyter-api-upload-large-file'.  Also the out of band functions of TRAMP.
 ;;
 ;; Adapted from `tramp-sh-handle-write-region'
 (defun jupyter-tramp-write-region (start end filename &optional append visit lockname mustbenew)
@@ -797,11 +797,11 @@ the server. For any other file, call ORIG, which is the function
 (defun jupyter-tramp-directory-file-models (directory &optional full match)
   "Return the files contained in DIRECTORY as Jupyter file models.
 The returned files have the form (PATH . MODEL) where PATH is
-relative to DIRECTORY unless FULL is non-nil. In that case PATH
-is an absolute file name. PATH will have an ending / character if
+relative to DIRECTORY unless FULL is non-nil.  In that case PATH
+is an absolute file name.  PATH will have an ending / character if
 MODEL corresponds to a directory.
 
-If MATCH is non-nil, it should be a regular expression. Only
+If MATCH is non-nil, it should be a regular expression.  Only
 return files that match it.
 
 If DIRECTORY does not correspond to a directory on the server,

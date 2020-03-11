@@ -97,7 +97,7 @@ argument of the process."
   ;; like an exec shell command to start the process which launches the kernel,
   ;; but exec like commands on Windows start a new process instead of replacing
   ;; the current one which results in the process we start here exiting after
-  ;; the new process is launched. We call python directly to avoid this.
+  ;; the new process is launched.  We call python directly to avoid this.
   (apply #'cl-call-next-method
          kernel (jupyter-locate-python)
          "-c" "from jupyter_client.kernelapp import main; main()"
@@ -155,7 +155,7 @@ argument of the process."
 Return the path to the connection file.
 
 Also register a finalizer on OBJ to delete the file when OBJ is
-garbage collected. The file is also deleted when Emacs exits if
+garbage collected.  The file is also deleted when Emacs exits if
 it hasn't been already."
   (cl-check-type session jupyter-session)
   (cl-check-type obj jupyter-finalized-object)
@@ -176,7 +176,7 @@ it hasn't been already."
 
 (cl-defmethod jupyter-start-kernel ((kernel jupyter-spec-kernel) &rest _args)
   (cl-destructuring-bind (_name . (resource-dir . spec)) (oref kernel spec)
-    ;; FIXME: Cleanup old connection file on kernel restarts. They will be
+    ;; FIXME: Cleanup old connection file on kernel restarts.  They will be
     ;; cleaned up eventually, but not doing it immediately leaves stale
     ;; connection files.
     (let ((conn-file (jupyter-write-connection-file
@@ -228,7 +228,7 @@ connect to MANAGER's kernel."
         (require 'jupyter-zmq-channel-ioloop)
         ;; TODO: We can also have the manager hold the kcomm object and just
         ;; pass a single kcomm object to all clients using this manager since the
-        ;; kcomm broadcasts event to all connected clients. This is more
+        ;; kcomm broadcasts event to all connected clients.  This is more
         ;; efficient as it only uses one subprocess for every client connected to
         ;; a kernel.
         (oset client kcomm (make-instance
@@ -267,8 +267,8 @@ connect to MANAGER's kernel."
   "Shutdown MANAGER's kernel with an optional RESTART.
 If RESTART is non-nil, then restart the kernel after shutdown.
 First send a shutdown request on the control channel to the
-kernel. If the kernel has not shutdown within TIMEOUT, forcibly
-kill the kernel subprocess. After shutdown the MANAGER's control
+kernel.  If the kernel has not shutdown within TIMEOUT, forcibly
+kill the kernel subprocess.  After shutdown the MANAGER's control
 channel is stopped unless RESTART is non-nil."
   (when (jupyter-kernel-alive-p manager)
     ;; FIXME: For some reason the control-channel is nil sometimes
@@ -278,7 +278,7 @@ channel is stopped unless RESTART is non-nil."
                     (jupyter-message-shutdown-request :restart restart))
       ;; FIXME: This doesn't work properly, the kernel sends a shutdown reply
       ;; but the process status cannot be determined correctly as it is still
-      ;; considered alive. This is mainly when using the
+      ;; considered alive.  This is mainly when using the
       ;; `jupyter-command-kernel' and probably has to do with the fact that the
       ;; kernel is launched by a python process instead of being launched
       ;; directly as a process by Emacs.
@@ -298,7 +298,7 @@ channel is stopped unless RESTART is non-nil."
   "Interrupt MANAGER's kernel.
 If the kernel's interrupt mode is set to \"message\" send an
 interrupt request on MANAGER's control channel and wait until
-TIMEOUT for a reply. Otherwise if the kernel does not specify an
+TIMEOUT for a reply.  Otherwise if the kernel does not specify an
 interrupt mode, send an interrupt signal to the kernel
 subprocess."
   (when (jupyter-kernel-alive-p manager)
@@ -340,7 +340,7 @@ subprocess."
 The :transport key is set to \"tcp\" and the :ip key will be
 \"127.0.0.1\".
 
-The plist has the standard keys found in the jupyter spec. See
+The plist has the standard keys found in the jupyter spec.  See
 http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files.
 A port number of 0 for a channel means to use a randomly assigned
 port for that channel."
@@ -373,19 +373,19 @@ port for that channel."
 
 (defun jupyter-start-new-kernel (kernel-name &optional client-class)
   "Start a managed Jupyter kernel.
-KERNEL-NAME is the name of the kernel to start. It can also be
+KERNEL-NAME is the name of the kernel to start.  It can also be
 the prefix of a valid kernel name, in which case the first kernel
 in `jupyter-available-kernelspecs' that has KERNEL-NAME as a
-prefix will be used. Optional argument CLIENT-CLASS is a subclass
+prefix will be used.  Optional argument CLIENT-CLASS is a subclass
 of `jupyer-kernel-client' and will be used to initialize a new
-client connected to the kernel. CLIENT-CLASS defaults to the
+client connected to the kernel.  CLIENT-CLASS defaults to the
 symbol `jupyter-kernel-client'.
 
 Return a list (KM KC) where KM is the kernel manager managing the
-lifetime of the kernel subprocess. KC is a new client connected
-to the kernel whose class is CLIENT-CLASS. The client is
+lifetime of the kernel subprocess.  KC is a new client connected
+to the kernel whose class is CLIENT-CLASS.  The client is
 connected to the kernel with all channels listening for messages
-and the heartbeat channel unpaused. Note that the client's
+and the heartbeat channel unpaused.  Note that the client's
 `manager' slot will also be set to the kernel manager instance,
 see `jupyter-make-client'.
 

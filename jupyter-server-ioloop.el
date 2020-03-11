@@ -23,7 +23,7 @@
 ;;; Commentary:
 
 ;; A `jupyter-server-ioloop' launches websocket connections in order to
-;; communicate with a kernel server via the Jupyter messaging protocol. You can
+;; communicate with a kernel server via the Jupyter messaging protocol.  You can
 ;; tell the ioloop to establish a websocket connection to a particular kernel
 ;; by sending a connect-channels event with the websocket URL and kernel ID.
 ;;
@@ -41,9 +41,9 @@
 ;; with the ID of the kernel.
 ;;
 ;; Finally, a `jupyter-server-ioloop' behaves as a `jupyter-channel-ioloop'
-;; when sent a `send' event. That is it will emit a `sent' event after every
+;; when sent a `send' event.  That is it will emit a `sent' event after every
 ;; `send' and when a message is received from the kernel will emit a `message'
-;; event. When sending a `send' event, the format is the same as a
+;; event.  When sending a `send' event, the format is the same as a
 ;; `jupyter-channel-ioloop' except that the kernel ID must be first argument.
 ;;
 ;;     (jupyter-send ioloop 'send "id" ...)
@@ -95,7 +95,7 @@ kernel-id must be the first element, e.g.
 
 Events that are emitted to the parent process are the message
 event, also the same as the event in `jupyter-channel-ioloop'
-except with a kernel-id as the first element. And a
+except with a kernel-id as the first element.  And a
 disconnected-channels event that occurs whenever a websocket is
 closed, the event has the kernel-id of the associated with the
 websocket.")

@@ -23,7 +23,7 @@
 ;;; Commentary:
 
 ;; A `jupyter-channel-ioloop' using `jupyter-zmq-channel' to send and receive
-;; messages. Whenever a message is received on a channel an event that looks
+;; messages.  Whenever a message is received on a channel an event that looks
 ;; like the following will be sent back to the parent process
 ;;
 ;;     (message CHANNEL-TYPE IDENTS . MSG)
@@ -58,14 +58,14 @@
 (defun jupyter-zmq-channel-ioloop--recv-messages (events)
   "Print the received messages described in EVENTS.
 EVENTS is a list of socket events as returned by
-`zmq-poller-wait-all'. If any of the sockets in EVENTS matches
+`zmq-poller-wait-all'.  If any of the sockets in EVENTS matches
 one of the sockets in `jupyter-channel-ioloop-channels', receive a
 message on the channel and print a list with the form
 
     (message CHANNEL-TYPE . MSG...)
 
-to stdout. CHANNEL-TYPE is the channel on which MSG was received,
-either :shell, :stdin, or :iopub. MSG is a list as returned by
+to stdout.  CHANNEL-TYPE is the channel on which MSG was received,
+either :shell, :stdin, or :iopub.  MSG is a list as returned by
 `jupyter-recv'."
   (let (messages)
     (dolist (channel jupyter-channel-ioloop-channels)

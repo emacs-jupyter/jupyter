@@ -24,15 +24,15 @@
 
 ;; Implements the `jupyter-comm-layer' interface on-top of a `jupyter-ioloop'
 ;; subclass that implements the `jupyter-channel' interface through events sent
-;; to the ioloop. The `jupyter-ioloop' must implement a start-channel,
-;; stop-channel, and a send event. For the start-channel and stop-channel
+;; to the ioloop.  The `jupyter-ioloop' must implement a start-channel,
+;; stop-channel, and a send event.  For the start-channel and stop-channel
 ;; events the `jupyter-ioloop' must send back a list like
 ;;
 ;;     (start-channel :hb) or (stop-channel :shell)
 ;;
 ;; for confirmation that the corresponding channel was indeed started or
-;; stopped. The start-channel event should accept two arguments, (CHANNEL
-;; ENDPOINT), used to start CHANNEL. The stop-channel event should accept a
+;; stopped.  The start-channel event should accept two arguments, (CHANNEL
+;; ENDPOINT), used to start CHANNEL.  The stop-channel event should accept a
 ;; single argument, CHANNEL, and stop the channel in the `jupyter-ioloop'
 ;; environment.
 ;;

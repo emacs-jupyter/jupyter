@@ -27,7 +27,7 @@
 ;; A `jupyter-kernel-client' does not come with any widget support by default,
 ;; the purpose of the `jupyter-widget-client' class is to provide such support.
 ;; This is done by opening an external browser and serving it the necessary
-;; resources to display widgets using the `simple-httpd' package. Emacs then
+;; resources to display widgets using the `simple-httpd' package.  Emacs then
 ;; acts as an intermediary for the widget comm messages sent between the
 ;; browser and the kernel, communicating with the kernel through `zmq' and with
 ;; the browser through `websocket'.
@@ -66,7 +66,7 @@ displaying the widgets for this client.")
     :type string
     :initform "null"
     :documentation "The JSON encode string representing the
-widget state. When a browser displaying the widgets of the client
+widget state.  When a browser displaying the widgets of the client
 is closed, the state of the widgets is sent back to Emacs so that
 the state can be recovred when a new browser is opened.")
    (widget-messages
@@ -95,7 +95,7 @@ callbacks."
     (pcase (jupyter-message-type msg)
       ("connect"
        ;; Send any queued widget messages when receiving the connect message
-       ;; from the browser. Note this message type is not a true Jupyter
+       ;; from the browser.  Note this message type is not a true Jupyter
        ;; message.
        (cl-loop for msg in (nreverse (oref client widget-messages))
                 do (websocket-send-text ws msg))
@@ -136,7 +136,7 @@ callbacks."
 (defun jupyter-widgets-sanitize-comm-msg (msg)
   "Ensure that a comm MSG's fields are not ambiguous before encoding.
 For example, for fields that are supposed to be arrays, ensure
-that they will be encoded as such. In addition, add fields
+that they will be encoded as such.  In addition, add fields
 required by the JupyterLab widget manager."
   (prog1 msg
     (let ((buffers (plist-member msg :buffers)))
@@ -237,7 +237,7 @@ required by the JupyterLab widget manager."
 (defun httpd/jupyter (proc path _query &rest _args)
   "Serve the javascript required for Jupyter widget support.
 PROC is the httpd process and PATH is the requested resource
-path. Currently no resources are accessible at any PATH other
+path.  Currently no resources are accessible at any PATH other
 than the root, which will serve the necessary Javascript to
 load."
   (let ((split-path (split-string (substring path 1) "/")))
@@ -250,9 +250,9 @@ load."
 (defun httpd/jupyter/widgets/built (proc path _query &rest _args)
   "Serve the resources required by the widgets in the browser.
 PROC is the httpd process and PATH is the requested resource
-path. Currently this will only serve a file from the js/built
+path.  Currently this will only serve a file from the js/built
 directory if it has one of the extensions woff, woff2, ttf, svg,
-or eot. These are used by Jupyter."
+or eot.  These are used by Jupyter."
   (let* ((split-path (split-string (substring path 1) "/"))
          (file (car (last split-path)))
          (mime (pcase (file-name-extension file)
@@ -278,7 +278,7 @@ or eot. These are used by Jupyter."
 
 ;; TODO: Since the path when we instantiate widgets is jupyter/widgets, all
 ;; files that are trying to be loaded locally in the javascript will be
-;; referenced to this path. If we encounter a javascript file requesting to be
+;; referenced to this path.  If we encounter a javascript file requesting to be
 ;; loaded we can automatically search the jupyter --paths for notebook
 ;; extension modules matching it.
 (defun httpd/jupyter/widgets (proc &rest _args)

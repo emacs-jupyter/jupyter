@@ -98,7 +98,7 @@ A key into this table can be constructed for the src-block at
   "Return the session key based on the keys in PARAMS.
 PARAMS is the arguments alist as returned by
 `org-babel-get-src-block-info' and should contain a :kernel key
-and a valid :session key. The session key is used to access the
+and a valid :session key.  The session key is used to access the
 clients in `org-babel-jupyter-session-clients'."
   (let ((session (alist-get :session params))
         (kernel (alist-get :kernel params)))
@@ -123,11 +123,11 @@ if there is no source block at point."
 
 (defun org-babel-variable-assignments:jupyter (params &optional lang)
   "Assign variables in PARAMS according to the Jupyter kernel language.
-LANG is the kernel language of the source block. If LANG is nil,
+LANG is the kernel language of the source block.  If LANG is nil,
 get the kernel language from the current source block.
 
 The variables are assigned by looking for the function
-`org-babel-variable-assignments:LANG'. If this function does not
+`org-babel-variable-assignments:LANG'.  If this function does not
 exist or if LANG cannot be determined, assign variables using
 `org-babel-variable-assignments:python'."
   (or lang (setq lang (org-babel-jupyter--src-block-kernel-language)))
@@ -139,7 +139,7 @@ exist or if LANG cannot be determined, assign variables using
 
 (cl-defgeneric org-babel-jupyter-transform-code (code _changelist)
   "Transform CODE according to CHANGELIST, return the transformed CODE.
-CHANGELIST is a property list containing the requested changes. The default
+CHANGELIST is a property list containing the requested changes.  The default
 implementation returns CODE unchanged.
 
 This is useful for kernel languages to extend using the
@@ -156,7 +156,7 @@ be in CHANGELIST."
 BODY is the code to expand, PARAMS should be the header arguments
 of the src block with BODY as its code, and VAR-LINES should be
 the list of strings containing the variables to evaluate before
-executing body. LANG is the kernel language of the source block.
+executing body.  LANG is the kernel language of the source block.
 
 This function is similar to
 `org-babel-variable-assignments:jupyter' in that it attempts to
@@ -164,7 +164,7 @@ find the kernel language of the source block if LANG is not
 provided.
 
 BODY is expanded by calling the function
-`org-babel-expand-body:LANG'. If this function doesn't exist or
+`org-babel-expand-body:LANG'.  If this function doesn't exist or
 if LANG cannot be determined, fall back to
 `org-babel-expand-body:generic'.
 
@@ -271,7 +271,7 @@ variables in PARAMS."
             ;; TODO: If a kernel gets renamed in the future it doesn't affect
             ;; any source block :session associations because the hash of the
             ;; session name used here is already stored in the
-            ;; `org-babel-jupyter-session-clients' variable. Should that
+            ;; `org-babel-jupyter-session-clients' variable.  Should that
             ;; variable be updated on a kernel rename?
             ;;
             ;; TODO: Would we always want to do this?
@@ -280,7 +280,7 @@ variables in PARAMS."
 (defun org-babel-jupyter-initiate-session-by-key (session params)
   "Return the Jupyter REPL buffer for SESSION.
 If SESSION does not have a client already, one is created based
-on SESSION and PARAMS. If SESSION ends with \".json\" then
+on SESSION and PARAMS.  If SESSION ends with \".json\" then
 SESSION is interpreted as a kernel connection file and a new
 kernel connected to SESSION is created.
 
@@ -291,7 +291,7 @@ be used.
 
 If SESSION is a remote file name, like /ssh:ec2:jl, then the
 kernel starts on the remote host /ssh:ec2: with a session name of
-jl. The remote host must have jupyter installed since the
+jl.  The remote host must have jupyter installed since the
 \"jupyter kernel\" command will be used to start the kernel on
 the host."
   (let* ((kernel (alist-get :kernel params))
@@ -408,10 +408,10 @@ the PARAMS alist."
     (cond
      ((or (equal (alist-get :async params) "yes")
           (plist-member params :async))
-      ;; TODO: Support :results link in this case as well. What we can do is
+      ;; TODO: Support :results link in this case as well.  What we can do is
       ;; set `jupyter-org-request-silent-p' to "none" so that no results are
       ;; appended, but then we have to remove the ID and insert the link once
-      ;; everything comes in. Maybe remove `jupyter-org-request-silent-p' and
+      ;; everything comes in.  Maybe remove `jupyter-org-request-silent-p' and
       ;; have the meaning of `jupyter-org-request-result-type' to also include
       ;; silent results and link style results?
       (when (member "file" (assq :result-params params))
@@ -460,7 +460,7 @@ the PARAMS alist."
   "Set `org-babel-header-args:LANG' to its Jupyter equivalent.
 `org-babel-header-args:LANG' is set to the value of
 `org-babel-header-args:jupyter-LANG', if the latter exists, when
-RESTORE is nil. If `org-babel-header-args:LANG' had a value, save
+RESTORE is nil.  If `org-babel-header-args:LANG' had a value, save
 it as a symbol property of `org-babel-header-args:LANG' for
 restoring it later.
 
@@ -520,7 +520,7 @@ See `org-babel-jupyter-override-src-block'."
 (defun org-babel-jupyter-make-language-alias (kernel lang)
   "Similar to `org-babel-make-language-alias' but for Jupyter src-blocks.
 KERNEL should be the name of the default kernel to use for kernel
-LANG. All necessary org-babel functions for a language with the
+LANG.  All necessary org-babel functions for a language with the
 name jupyter-LANG will be aliased to the Jupyter functions."
   (dolist (fn org-babel-jupyter--babel-ops)
     (let ((sym (intern-soft (concat "org-babel-" fn ":jupyter"))))
@@ -540,7 +540,7 @@ name jupyter-LANG will be aliased to the Jupyter functions."
       (set (intern var) `((:async . "no"))))
     (put (intern var) 'variable-documentation
          (format "Default header arguments for Jupyter %s src-blocks" lang))
-    ;; Always set the kernel if there isn't one. Typically the default header
+    ;; Always set the kernel if there isn't one.  Typically the default header
     ;; args for a language are set by the user in their configurations by
     ;; calling `setq', but the :kernel is typically not something the user
     ;; wants to set directly so make sure its defined in the header args.
@@ -560,10 +560,10 @@ name jupyter-LANG will be aliased to the Jupyter functions."
 (defun org-babel-jupyter-aliases-from-kernelspecs (&optional refresh specs)
   "Make language aliases based on the available kernelspecs.
 For all kernel SPECS, make a language alias for the kernel
-language if one does not already exist. The alias is created with
+language if one does not already exist.  The alias is created with
 `org-babel-jupyter-make-language-alias'.
 
-SPECS defaults to `jupyter-available-kernelspecs'. Optional
+SPECS defaults to `jupyter-available-kernelspecs'.  Optional
 argument REFRESH has the same meaning as in
 `jupyter-available-kernelspecs'."
   (cl-loop

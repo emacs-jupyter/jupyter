@@ -58,11 +58,11 @@ beginning of a source block in a list."
 
 (defun jupyter-org-closest-jupyter-language (&optional query)
   "Return the language of the closest Jupyter source block.
-If QUERY is non-nil, ask for a language to use instead. Asking
+If QUERY is non-nil, ask for a language to use instead.  Asking
 for which language to use is also done if no Jupyter source
 blocks could be found in the buffer.
 
-Distance is line based, not character based. Also, `point' is
+Distance is line based, not character based.  Also, `point' is
 assumed to not be inside a source block."
   (org-save-outline-visibility nil
     (save-excursion
@@ -115,7 +115,7 @@ assumed to not be inside a source block."
 result begins where the src-block ends, i.e. when only whitespace
 separates the two."
   ;; Move after a src block's results first if `point' is between a src
-  ;; block and it's results. Don't do this if the results are not directly
+  ;; block and it's results.  Don't do this if the results are not directly
   ;; after a src block, e.g. for named results that appear somewhere else.
   (save-excursion
     (let ((start (point)))
@@ -140,7 +140,7 @@ If `point' is in a src-block use the language of the src-block and
 copy the header to the new block.
 
 If QUERY is non-nil and `point' is not in a src-block, ask for
-the language to use for the new block. Otherwise try to select a
+the language to use for the new block.  Otherwise try to select a
 language based on the src-block's near `point'."
   (interactive (list current-prefix-arg nil))
   (if (org-in-src-block-p)
@@ -258,18 +258,18 @@ The session is selected in the following way:
 
    * If `point' is not at a Jupyter source block, examine the
      source blocks before `point' and ask the user to select a
-     session if multiple exist. If there is only one session, use
+     session if multiple exist.  If there is only one session, use
      it without asking.
 
    * Finally, if a session could not be found, then no Jupyter
-     source blocks exist before `point'. In this case, no session
+     source blocks exist before `point'.  In this case, no session
      is selected and all the source blocks before `point' will be
      evaluated, e.g. when all source blocks before `point' are
      shell source blocks.
 
 NOTE: If a session could be selected, only Jupyter source blocks
 that have the same session are evaluated *without* evaluating any
-other source blocks. You can also evaluate ANY source block that
+other source blocks.  You can also evaluate ANY source block that
 doesn't have a Jupyter session by providing a prefix argument.
 This is useful, e.g. to evaluate shell source blocks along with
 Jupyter source blocks."
@@ -302,7 +302,7 @@ Jupyter source blocks."
         ;; block.
         ;;
         ;; If a Jupyter based SESSION could be found, only source blocks that
-        ;; have a Jupyter session matching SESSION are evaluated. When a source
+        ;; have a Jupyter session matching SESSION are evaluated.  When a source
         ;; block doesn't have a Jupyter session, it is only evaluated when ANY
         ;; is non-nil.
         (when (or (null session)
@@ -317,7 +317,7 @@ Jupyter source blocks."
 (defun jupyter-org-execute-subtree (any)
   "Execute Jupyter source blocks that start before point in the current subtree.
 This function narrows the buffer to the current subtree and calls
-`jupyter-org-execute-to-point'. See that function for the meaning
+`jupyter-org-execute-to-point'.  See that function for the meaning
 of the ANY argument."
   (interactive "P")
   (save-restriction
@@ -465,7 +465,7 @@ Defaults to `jupyter-org-jump-to-block-context-lines'."
 (defun jupyter-org-src-block-bounds ()
   "Return the region containing the current source block.
 If the source block has results, include the results in the
-returned region. The region is returned as (BEGIN . END)"
+returned region.  The region is returned as (BEGIN . END)"
   (unless (org-in-src-block-p)
     (error "Not in a source block"))
   (let* ((src (org-element-context))

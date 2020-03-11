@@ -25,28 +25,28 @@
 ;; Overview of implementation
 ;;
 ;; A `jupyter-server' communicates with a Jupyter kernel server (either the
-;; notebook or a kernel gateway) via the Jupyter REST API. Given the URL and
+;; notebook or a kernel gateway) via the Jupyter REST API.  Given the URL and
 ;; Websocket URL for the server, the `jupyter-server' object can launch kernels
-;; using the function `jupyter-server-start-new-kernel'. The kernelspecs
+;; using the function `jupyter-server-start-new-kernel'.  The kernelspecs
 ;; available on the server can be accessed by calling
 ;; `jupyter-server-kernelspecs'.
 ;;
 ;; `jupyter-server-start-new-kernel' returns a list (KM KC) where KM is a
 ;; `jupyter-server-kernel-manager' and KC is a kernel client that can
-;; communicate with the kernel managed by KM. `jupyter-server-kernel-manager'
+;; communicate with the kernel managed by KM.  `jupyter-server-kernel-manager'
 ;; sends requests to the server using the `jupyter-server' object to manage the
 ;; lifetime of the kernel and ensures that a websocket is opened so that kernel
 ;; clients created using `jupyter-make-client' can communicate with the kernel.
 ;;
 ;; Communication with the channels of the kernels that are launched on the
 ;; `jupyter-server' is established via a `jupyter-server-ioloop' which
-;; multiplexes the channels of all the kernel servers. The kernel ID the server
+;; multiplexes the channels of all the kernel servers.  The kernel ID the server
 ;; associated with a kernel can then be used to filter messages for a
 ;; particular kernel and to send messages to a kernel through the
 ;; `jupyter-server-ioloop'.
 ;;
 ;; `jupyter-server-kernel-comm' is a `jupyter-comm-layer' that handles the
-;; communication of a client with a server kernel. The job of the
+;; communication of a client with a server kernel.  The job of the
 ;; `jupyter-server-kernel-comm' is to connect to the `jupyter-server's event
 ;; stream and filter the messages to handle those of a particular kernel
 ;; identified by kernel ID.
@@ -54,16 +54,16 @@
 ;; Starting REPLs
 ;;
 ;; You can launch kernels without connecting clients to them by using
-;; `jupyter-server-launch-kernel'. To connect a REPL to a launched kernel use
-;; `jupyter-connect-server-repl'. To both launch and connect a REPL use
-;; `jupyter-run-server-repl'. All of the previous commands determine the server
+;; `jupyter-server-launch-kernel'.  To connect a REPL to a launched kernel use
+;; `jupyter-connect-server-repl'.  To both launch and connect a REPL use
+;; `jupyter-run-server-repl'.  All of the previous commands determine the server
 ;; to use by using the `jupyter-current-server' function, which see.
 ;;
 ;; Managing kernels on a server
 ;;
 ;; To get an overview of all live kernels on a server you can call
-;; `jupyter-server-list-kernels'. From the buffer displayed there are a number
-;; of keys bound that enable you to manage the kernels on the server. See
+;; `jupyter-server-list-kernels'.  From the buffer displayed there are a number
+;; of keys bound that enable you to manage the kernels on the server.  See
 ;; `jupyter-server-kernel-list-mode-map'.
 ;;
 ;; TODO: Find where it would be appropriate to call `delete-instance' on a
@@ -178,7 +178,7 @@ For example
       (\"72d92ded-1275-440a-852f-90f655197305\" . \"thermo\"))\)
 
 You can persist this alist across Emacs sessions using `desktop',
-`savehist', or any other session persistence package. For
+`savehist', or any other session persistence package.  For
 example, when using `savehist' you can add the following to your
 init file to persist the server names across Emacs sessions.
 
@@ -209,7 +209,7 @@ check all kernels on all existing servers."
 
 (defun jupyter-server-kernel-name (server id)
   "Return the associated name of the kernel with ID on SERVER.
-If there is no name associated, return nil. See
+If there is no name associated, return nil.  See
 `jupyter-server-kernel-names'."
   (cl-check-type server jupyter-server)
   (let ((kernel-names (assoc (oref server url) jupyter-server-kernel-names)))
@@ -217,7 +217,7 @@ If there is no name associated, return nil. See
 
 (defun jupyter-server-kernel-id-from-name (server name)
   "Return the ID of the kernel that has NAME on SERVER.
-If NAME does not have a kernel associated, return nil. See
+If NAME does not have a kernel associated, return nil.  See
 `jupyter-server-kernel-names'."
   (cl-check-type server jupyter-server)
   (jupyter-server-cull-kernel-names server)
@@ -269,8 +269,8 @@ ID of the kernel will be associated with NAME, see
 (cl-defmethod jupyter-event-handler ((comm jupyter-server) event)
   "Send EVENT to all clients connected to COMM.
 Each client must have a KERNEL slot which, in turn, must have an
-ID slot. The second element of EVENT is expected to be a kernel
-ID. Send EVENT, with the kernel ID excluded, to a client whose
+ID slot.  The second element of EVENT is expected to be a kernel
+ID.  Send EVENT, with the kernel ID excluded, to a client whose
 kernel has a matching ID."
   (let ((kernel-id (cadr event)))
     (setq event (cons (car event) (cddr event)))
@@ -370,7 +370,7 @@ with default `jupyter-api-authentication-method'"))
 
 (cl-defmethod jupyter-server-kernelspecs ((server jupyter-server) &optional refresh)
   "Return the kernelspecs on SERVER.
-By default the available kernelspecs are cached. To force an
+By default the available kernelspecs are cached.  To force an
 update of the cached kernelspecs, give a non-nil value to
 REFRESH.
 
@@ -427,7 +427,7 @@ ID of the kernel associated with COMM."
                (throw 'member t)))))))
 
 ;; TODO: Remove the need for these methods, they are remnants from an older
-;; implementation. They will need to be removed from `jupyter-kernel-client'.
+;; implementation.  They will need to be removed from `jupyter-kernel-client'.
 (cl-defmethod jupyter-channel-alive-p ((comm jupyter-server-kernel-comm) _channel)
   (jupyter-comm-alive-p comm))
 
@@ -502,7 +502,7 @@ Return nil if none could be found."
 
 (defun jupyter-find-server (url &optional ws-url)
   "Return a live `jupyter-server' that lives at URL.
-Finds a server that matches both URL and WS-URL. When WS-URL the
+Finds a server that matches both URL and WS-URL.  When WS-URL the
 default set by `jupyter-rest-client' is used.
 
 Return nil if no `jupyter-server' could be found."
@@ -548,12 +548,12 @@ least the following keys:
 (defun jupyter-current-server (&optional ask)
   "Return an existing `jupyter-server' or ASK for a new one.
 If ASK is non-nil, always ask for a URL and return the
-`jupyter-server' object corresponding to it. If no Jupyter server
+`jupyter-server' object corresponding to it.  If no Jupyter server
 at URL exists, `signal' a `jupyter-server-non-existent' error
 with error data being URL.
 
 If the buffer local value of `jupyter-current-server' is non-nil,
-return its value. If `jupyter-current-server' is nil and the
+return its value.  If `jupyter-current-server' is nil and the
 `jupyter-current-client' is communicating with a kernel behind a
 kernel server, return the `jupyter-server' managing the
 connection.
@@ -637,19 +637,19 @@ is used as determined by `jupyter-current-server'."
 ;; the channels.
 (defun jupyter-server-start-new-kernel (server kernel-name &optional client-class)
   "Start a managed Jupyter kernel on SERVER.
-KERNEL-NAME is the name of the kernel to start. It can also be
+KERNEL-NAME is the name of the kernel to start.  It can also be
 the prefix of a valid kernel name, in which case the first kernel
 in ‘jupyter-server-kernelspecs’ that has KERNEL-NAME as a
 prefix will be used.
 
 Optional argument CLIENT-CLASS is a subclass
 of ‘jupyer-kernel-client’ and will be used to initialize a new
-client connected to the kernel. CLIENT-CLASS defaults to the
+client connected to the kernel.  CLIENT-CLASS defaults to the
 symbol ‘jupyter-kernel-client’.
 
 Return a list (KM KC) where KM is the kernel manager managing the
-lifetime of the kernel on SERVER. KC is a new client connected to
-the kernel whose class is CLIENT-CLASS. Note that the client’s
+lifetime of the kernel on SERVER.  KC is a new client connected to
+the kernel whose class is CLIENT-CLASS.  Note that the client’s
 ‘manager’ slot will also be set to the kernel manager instance,
 see ‘jupyter-make-client’."
   (or client-class (setq client-class 'jupyter-kernel-client))
