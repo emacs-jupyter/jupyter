@@ -25,7 +25,7 @@
 ;; Implement the `jupyter-comm-layer' interface on-top of a `jupyter-ioloop'.
 ;; Note this class only implements a subset of the `jupyter-comm-layer'
 ;; interface needed for a `jupyter-kernel-client' and is usually sub-classed to
-;; be usable by a `jupyter-kernel-client'. See `jupyter-channel-ioloop-comm'.
+;; be usable by a `jupyter-kernel-client'.  See `jupyter-channel-ioloop-comm'.
 
 ;;; Code:
 

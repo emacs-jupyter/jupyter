@@ -23,7 +23,7 @@
 ;;; Commentary:
 
 ;; Define a `jupyter-ioloop' that can be sent events to start, stop, or send a
-;; message on a set of `jupyter-channel' objects. For example to start a
+;; message on a set of `jupyter-channel' objects.  For example to start a
 ;; `jupyter-channel' in the subprocess environment you would do something like
 ;;
 ;;     (jupyter-send ioloop 'start-channel TYPE ENDPOINT)
@@ -37,7 +37,7 @@
 ;;
 ;; When you call `jupyter-ioloop-start' a `jupyter-session' object needs to
 ;; passed as the second argument with whatever object you would like to receive
-;; events as the third. The `jupyter-session-id' will be used as the value of
+;; events as the third.  The `jupyter-session-id' will be used as the value of
 ;; the :identity key in the call to `jupyter-start-channel' when starting a
 ;; channel.
 ;;
@@ -95,7 +95,7 @@
   "In the IOLOOP, set SESSION as the `jupyter-channel-ioloop-session'.
 Add a form to IOLOOP's setup that sets the variable
 `jupyter-channel-ioloop-session' to a `jupyter-session' based on
-SESSION's id and key. Remove any top level form in the setup that
+SESSION's id and key.  Remove any top level form in the setup that
 sets `jupyter-channel-ioloop-session' via `setq' before doing so."
   (cl-callf (lambda (setup)
               (cons `(setq jupyter-channel-ioloop-session
@@ -114,15 +114,15 @@ sets `jupyter-channel-ioloop-session' via `setq' before doing so."
   "Start IOLOOP, using SESSION to set the `jupyter-channel-ioloop-session'.
 Add setup forms to IOLOOP that will initialize the
 `jupyter-channel-ioloop-session' variable to a `jupyter-session'
-based on SESSION's id and key. Also add
-`jupyter-ioloop-recv-messages' to `jupyter-ioloop-post-hook'. In
+based on SESSION's id and key.  Also add
+`jupyter-ioloop-recv-messages' to `jupyter-ioloop-post-hook'.  In
 addition add the events send, start-channel, and stop-channel
-that the parent Emacs process can send to the IOLOOP. See
+that the parent Emacs process can send to the IOLOOP.  See
 `jupyter-channel-ioloop-add-send-event',
 `jupyter-channel-ioloop-add-start-channel-event', and
 `jupyter-ioloop-add-stop-channel-event'.
 
-After doing the above initialization, start the IOLOOP. OBJ and
+After doing the above initialization, start the IOLOOP.  OBJ and
 BUFFER have the same meaning as in the method definition for
 `jupyter-ioloop'."
   (jupyter-channel-ioloop--set-session ioloop session)
@@ -137,15 +137,15 @@ The event fires when the IOLOOP receives a list with the form
     (start-channel CHANNEL-TYPE ENDPOINT)
 
 and shall stop any existing channel with CHANNEL-TYPE and start a
-new channel with CHANNEL-TYPE connected to ENDPOINT. The
+new channel with CHANNEL-TYPE connected to ENDPOINT.  The
 underlying socket IDENTITY is derived from
-`jupyter-channel-ioloop-session' in the IOLOOP environment. The
+`jupyter-channel-ioloop-session' in the IOLOOP environment.  The
 channel will be added to the variable
 `jupyter-channel-ioloop-channels' in the IOLOOP environment.
 
 Note, before sending this event to IOLOOP, the corresponding
 channel needs to be available in the
-`jupyer-channel-ioloop-channels' variable. You can initialize
+`jupyer-channel-ioloop-channels' variable.  You can initialize
 this variable in the setup form of IOLOOP.
 
 A list with the form

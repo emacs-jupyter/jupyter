@@ -35,7 +35,7 @@
 When a new kernel is started through `jupyter-start-kernel', this
 directory is where kernel connection files are written to.
 
-This variable should not be used. To obtain the runtime directory
+This variable should not be used.  To obtain the runtime directory
 call the function `jupyter-runtime-directory'.")
 
 (defun jupyter-command (&rest args)
@@ -52,7 +52,7 @@ return nil."
 
 (defun jupyter-runtime-directory ()
   "Return the runtime directory used by Jupyter.
-Create the directory if necessary. If `default-directory' is a
+Create the directory if necessary.  If `default-directory' is a
 remote directory, return the runtime directory on that remote.
 
 As a side effect, the variable `jupyter-runtime-directory' is set
@@ -72,7 +72,7 @@ to the local runtime directory if it is nil."
 (defun jupyter-locate-python ()
   "Return the path to the python executable in use by Jupyter.
 If the `default-directory' is a remote directory, search on that
-remote. Raise an error if the executable could not be found.
+remote.  Raise an error if the executable could not be found.
 
 The paths examined are the data paths of \"jupyter --paths\" in
 the order specified.

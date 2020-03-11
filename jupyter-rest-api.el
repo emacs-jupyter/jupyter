@@ -22,14 +22,14 @@
 
 ;;; Commentary:
 
-;; Routines for working with the Jupyter REST API. Currently only the kernels,
-;; kernelspecs, contents, and config endpoints are implemented. Functions that
-;; get information from the server take the form `jupyter-api-get-*'. The lower
+;; Routines for working with the Jupyter REST API.  Currently only the kernels,
+;; kernelspecs, contents, and config endpoints are implemented.  Functions that
+;; get information from the server take the form `jupyter-api-get-*'.  The lower
 ;; level functions that make requests have the form `jupyter-api/<endpoint>'.
 ;; Functions that alter the state of a kernel look like
-;; `jupyter-api-interrupt-kernel'. Those that modify files have the appropriate
+;; `jupyter-api-interrupt-kernel'.  Those that modify files have the appropriate
 ;; name familiar to Emacs-Lisp, e.g. to create a directory on the server there
-;; is the function `jupyter-api-make-directory'. The exception are those that
+;; is the function `jupyter-api-make-directory'.  The exception are those that
 ;; actually read and write files, `jupyter-api-read-file-content' and
 ;; `jupyter-api-write-file-content' respectively.
 
@@ -139,7 +139,7 @@ respectively."
 (define-error 'jupyter-api-http-redirect-limit
   "Redirect limit reached" 'jupyter-api-http-error)
 
-;; Same as their corresponding `url-request' counterparts. We define our own
+;; Same as their corresponding `url-request' counterparts.  We define our own
 ;; variables here so that it will be easier to transition away from
 ;; `url-retrieve' if necessary.
 (defvar jupyter-api-request-headers nil)
@@ -156,7 +156,7 @@ respectively."
 (defun jupyter-api-url-parse-response (buffer)
   "Given a URL BUFFER parse and return its response.
 BUFFER should be a URL buffer as returned by, e.g.
-`url-retrieve'. Return a plist representation of its JSON
+`url-retrieve'.  Return a plist representation of its JSON
 content.
 
 If the response indicates an error, signal a
@@ -208,8 +208,8 @@ of `url-retrieve'.
 
 If ASYNC is nil, retrieve URL synchronously and return its JSON
 response or signal an error when something went wrong with the
-request. On success, if the response obtained by URL is not JSON,
-return nil otherwise the parsed JSON is returned as a plist. On
+request.  On success, if the response obtained by URL is not JSON,
+return nil otherwise the parsed JSON is returned as a plist.  On
 error, either an `jupyter-api-http-error' (when
 `url-http-response-status' >= 400),
 `jupyter-api-http-redirect-limit' (when `url-max-redirections' is
@@ -224,7 +224,7 @@ INHIBIT-COOKIES set to nil."
         (url-request-data jupyter-api-request-data)
         (url-request-extra-headers jupyter-api-request-headers)
         ;; Avoid errors when `default-directory' is a remote
-        ;; directory path. `url' seems to not be able to handle it.
+        ;; directory path.  `url' seems to not be able to handle it.
         (default-directory user-emacs-directory))
     (if async (url-retrieve url async async-args t)
       (let ((buffer (url-retrieve-synchronously url t nil jupyter-long-timeout)))
@@ -237,7 +237,7 @@ INHIBIT-COOKIES set to nil."
 (defun jupyter-api-http-request (url endpoint method &rest data)
   "Send request to URL/ENDPOINT using HTTP METHOD.
 DATA is encoded into a JSON string using `json-encode-plist' and
-sent as the HTTP request data. If DATA is nil, don't send any
+sent as the HTTP request data.  If DATA is nil, don't send any
 request data."
   (declare (indent 3))
   (when data
@@ -266,9 +266,9 @@ If the value of PLACE is a multibyte string, encode it using the
 us-ascii coding system.
 
 This is necessary when the contents of an API request contains
-unicode characters. The HTTP request constructed in
+unicode characters.  The HTTP request constructed in
 `url-http-create-request' concatenates various string components
-to make up the full request. If the contents are encoded, but
+to make up the full request.  If the contents are encoded, but
 some other component is multibyte, the resulting string after
 concatenating all elements will contain multibyte characters and
 this will cause errors in the URL library."
@@ -335,10 +335,10 @@ see RFC 6265."
           ;; since cookies are required to have them.
           ;;
           ;; FIXME: This is mainly for the _xsrf cookie which does not have an
-          ;; expiration date. I believe this is to be interpreted as meaning
-          ;; the cookie should only be valid for the current session. We go
+          ;; expiration date.  I believe this is to be interpreted as meaning
+          ;; the cookie should only be valid for the current session.  We go
           ;; through `url-cookie-write-file' so that the subprocess which
-          ;; starts websockets can read the required cookies. An alternative
+          ;; starts websockets can read the required cookies.  An alternative
           ;; solution would be to pass the cookies directly to the subprocess.
           (unless expires
             (setq expires (setf (url-cookie-expires cookie)
@@ -361,7 +361,7 @@ see RFC 6265."
 
 (defun jupyter-api-delete-cookies (url)
   "Delete all cookies for URL.
-All cookies associated with the HOST of URL are deleted. If URL
+All cookies associated with the HOST of URL are deleted.  If URL
 has a non-standard port for the type of URL, all cookies
 associated with HOST:PORT are deleted as well."
   (let* ((url (if (url-p url) url
@@ -384,7 +384,7 @@ associated with HOST:PORT are deleted as well."
   "Destructively modify PLIST to add a `:custom-header-alist' key.
 Appends the value of `jupyter-api-request-headers' to the
 `:custom-header-alist' key of PLIST, creating the key if
-necessary. Before doing so, move past any non-keyword elements of
+necessary.  Before doing so, move past any non-keyword elements of
 PLIST so as to only modify what looks like a property list.
 
 Return the modified PLIST."
@@ -445,8 +445,8 @@ Return the modified PLIST."
   (let ((err (plist-get status :error)))
     (unless
         (or (not err)
-            ;; Handle HTTP 1.0. When given a POST request, 302 redirection
-            ;; doesn't change the method to GET dynamically. On the Jupyter
+            ;; Handle HTTP 1.0.  When given a POST request, 302 redirection
+            ;; doesn't change the method to GET dynamically.  On the Jupyter
             ;; notebook, the redirected page expects a GET and will return
             ;; 405 (invalid method).
             (and (plist-get status :redirect)
@@ -456,7 +456,7 @@ Return the modified PLIST."
 (defun jupyter-api-login (client)
   "Attempt to login to the server using CLIENT.
 Login is attempted by sending a GET request to CLIENT's login
-endpoint using `url-retrieve'. To change the login information,
+endpoint using `url-retrieve'.  To change the login information,
 set `jupyter-api-request-method', `jupyter-api-request-data', and
 `jupyter-api-request-headers'.
 
@@ -532,7 +532,7 @@ slot of CLIENT and restore the AUTH slot on failure."
                                         &optional passwd)
   "Authenticate CLIENT by asking for a password.
 If PASSWD is provided it must be a function that takes zero
-arguments. It will be called before each authentication attempt.
+arguments.  It will be called before each authentication attempt.
 If CLIENT could not be authenticated raise an error."
   (or (functionp passwd)
       (setq passwd (lambda () (read-passwd (format "Password [%s]: "
@@ -541,7 +541,7 @@ If CLIENT could not be authenticated raise an error."
     ;; FIXME: Workaround due to the function generalizer in the base
     ;; `jupyter-api-authenticate' method only recognizing function symbols or
     ;; compiled functions since it currently uses `type-of' instead of
-    ;; `cl-typep'. This wouldn't be needed for the compiled sources, but seems
+    ;; `cl-typep'.  This wouldn't be needed for the compiled sources, but seems
     ;; to cause issues on Windows even when the sources are compiled.
     (apply-partially
      (lambda ()
@@ -610,7 +610,7 @@ Raise an error on failure."
 (defun jupyter-api-construct-endpoint (plist)
   "Return a cons cell (ENDPOINT . REST) based on PLIST.
 ENDPOINT is the API endpoint constructed from the elements at the
-beginning of PLIST that are strings. REST will contain the
+beginning of PLIST that are strings.  REST will contain the
 remainder of PLIST.
 
 So if PLIST looks like
@@ -621,7 +621,7 @@ ENDPOINT will be \"api/kernels\" and REST will be '(:k1 ...).
 
 If there is an alist after the strings of PLIST that make up the
 ENDPOINT, the alist is interpreted as the query component of
-ENDPOINT. So if PLIST looks like
+ENDPOINT.  So if PLIST looks like
 
     '(\"api\" \"contents\" ((\"content\" . \"1\")) :k1 ...)
 
@@ -659,7 +659,7 @@ will be '(:k1 ...)."
 METHOD is the HTTP request method and PLIST contains the request.
 The elements of PLIST before the first non-string form the REST
 API endpoint and the rest of the PLIST after will be encoded into
-a JSON object and sent as the request data. So a call like
+a JSON object and sent as the request data.  So a call like
 
    \(jupyter-api-request client \"POST\" \"api\" \"kernels\" :name \"python\")
 
@@ -679,7 +679,7 @@ A call to this method can also look like
 In this case, the alist after the strings that make up the base
 endpoint, but before the rest of the non-strings elements of
 PLIST, will be interpreted as the query component of the
-resulting endpoint. So for the above example, the resulting url
+resulting endpoint.  So for the above example, the resulting url
 will be http://localhost:8888/api/contents?content=1.
 
 If METHOD is \"WS\", a websocket will be opened using the REST api
@@ -687,7 +687,7 @@ url and PLIST will be used in a call to `websocket-open'.
 
 If the request receives a 403 \"Access Forbidden\" response,
 signal a `jupyter-api-unauthenticated' error with the error data
-being the arguments passed to this method. Otherwise for any
+being the arguments passed to this method.  Otherwise for any
 other kind of HTTP error, signal a `jupyter-api-http-error' with
 error data being a list of two elements, the first being the HTTP
 response code and the second being a error message returned from
@@ -725,7 +725,7 @@ the server."
 
 (cl-defmethod jupyter-api/kernels ((client jupyter-rest-client) method &rest plist)
   "Send an HTTP request to the api/kernels endpoint to CLIENT's url.
-METHOD is the HTTP method to use. PLIST has the same meaning as
+METHOD is the HTTP method to use.  PLIST has the same meaning as
 in `jupyter-api-request'."
   (apply #'jupyter-api-request client method "api" "kernels" plist))
 
@@ -734,7 +734,7 @@ in `jupyter-api-request'."
 
 (cl-defmethod jupyter-api/kernelspecs ((client jupyter-rest-client) method &rest plist)
   "Send an HTTP request to the api/kernelspecs endpoint of CLIENT.
-METHOD is the HTTP method to use. PLIST has the same meaning as
+METHOD is the HTTP method to use.  PLIST has the same meaning as
 in `jupyter-api-request'."
   (apply #'jupyter-api-request client method "api" "kernelspecs" plist))
 
@@ -743,7 +743,7 @@ in `jupyter-api-request'."
 
 (cl-defmethod jupyter-api/contents ((client jupyter-rest-client) method &rest plist)
   "Send an HTTP request to the api/contents endpoint of CLIENT.
-METHOD is the HTTP method to use. PLIST has the same meaning as
+METHOD is the HTTP method to use.  PLIST has the same meaning as
 in `jupyter-api-request'."
   (apply #'jupyter-api-request client method "api" "contents" plist))
 
@@ -752,7 +752,7 @@ in `jupyter-api-request'."
 
 (cl-defmethod jupyter-api/config ((client jupyter-rest-client) method &rest plist)
   "Send an HTTP request to the api/config endpoint of CLIENT.
-METHOD is the HTTP method to use. PLIST has the same meaning as
+METHOD is the HTTP method to use.  PLIST has the same meaning as
 in `jupyter-api-request'."
   (apply #'jupyter-api-request client method "api" "config" plist))
 
@@ -798,7 +798,7 @@ If NAME is not provided use the default kernelspec."
 (cl-defmethod jupyter-shutdown-kernel ((client jupyter-rest-client) kernel-id
                                        &optional restart timeout)
   "Send an HTTP request using CLIENT to shutdown the kernel with KERNEL-ID.
-Optionally RESTART the kernel. If TIMEOUT is provided, it is the
+Optionally RESTART the kernel.  If TIMEOUT is provided, it is the
 timeout used for the HTTP request."
   (let ((jupyter-long-timeout (or timeout jupyter-long-timeout)))
     (if restart (jupyter-api-restart-kernel client kernel-id)
@@ -866,7 +866,7 @@ one as if the `default-directory' where /."
 (defun jupyter-api-get-file-model (client file &optional no-content type)
   "Send a request using CLIENT to get a model of FILE.
 If NO-CONTENT is non-nil, tell the server to return a model
-excluding the FILE's contents. Otherwise a model with contents is
+excluding the FILE's contents.  Otherwise a model with contents is
 returned.
 
 If TYPE is non-nil, signal an error if FILE is not of the
@@ -930,7 +930,7 @@ considered."
   "Send a request using CLIENT to write CONTENT to FILENAME.
 
 If BINARY is non-nil, as a final step encode CONTENT as a base64
-string and set the file's format to \"base64\". Otherwise CONTENT
+string and set the file's format to \"base64\".  Otherwise CONTENT
 is encoded as UTF-8 and file's format is set to \"text\".
 
 Note, only the `file-local-name' of FILENAME is considered."
@@ -949,7 +949,7 @@ Note, only the `file-local-name' of FILENAME is considered."
 (defun jupyter-api-read-file-content (client file)
   "Send a request using CLIENT to read the content of FILE.
 
-If FILE's contents are encoded, decode it first. This currently
+If FILE's contents are encoded, decode it first.  This currently
 only applies to the case where FILE's format is \"base64\".
 
 Note, only the `file-local-name' of FILENAME is considered."
@@ -970,7 +970,7 @@ Note, only the `file-local-name' of DIRECTORY is considered."
     :type "directory"))
 
 ;; FIXME: Extremely slow and fails often with a `wrong-type-argument' error
-;; somewhere in the `url-retrieve' code. It's not uploading very much data per
+;; somewhere in the `url-retrieve' code.  It's not uploading very much data per
 ;; chunk...I wonder where it goes wrong?
 (defun jupyter-api-upload-large-file (client file tofile &optional format filter)
   (or format (setq format "text"))
@@ -987,7 +987,7 @@ Note, only the `file-local-name' of DIRECTORY is considered."
               (exit nil))
          (with-temp-buffer
            (condition-case error
-               ;; Open up the connection. Note you don't want the first
+               ;; Open up the connection.  Note you don't want the first
                ;; HTTP request to contain large amounts of data otherwise
                ;; `url-retrieve' will hang for some reason.
                (if (not (jupyter-api-server-accessible-p client))
@@ -1099,10 +1099,10 @@ ID is either a string or plist containing an :id property."
 (defun jupyter-api-find-model (path dir-model)
   "Find a model with PATH in DIR-MODEL.
 PATH must be an API content path as returned by
-`jupyter-api-content-path'. Recursively searches for a model
+`jupyter-api-content-path'.  Recursively searches for a model
 whose :path property is equal to PATH, searching for other models
 in the :content property of DIR-MODEL until either one is found
-or DIR-MODEL isn't a directory model. Returns the model if found,
+or DIR-MODEL isn't a directory model.  Returns the model if found,
 otherwise nil."
   (cond
    ((equal (plist-get dir-model :path) path) dir-model)
@@ -1150,9 +1150,9 @@ collected."
 (defun jupyter-api-insert-model-content (model &optional replace beg end)
   "Insert the content of MODEL into the current buffer.
 If REPLACE is non-nil, replace the contents of the current buffer
-using `replace-buffer-contents'. BEG and END are byte offsets
+using `replace-buffer-contents'.  BEG and END are byte offsets
 into the content of MODEL, only insert the portion of MODEL's
-contents bounded by BEG and END. BEG and END default to
+contents bounded by BEG and END.  BEG and END default to
 `point-min' and `point-max' respectively."
   (let ((source (jupyter-api-content-buffer model)))
     (with-current-buffer source

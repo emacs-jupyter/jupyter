@@ -22,10 +22,10 @@
 
 ;;; Commentary:
 
-;; Implements synchronous channel types using ZMQ sockets. Each channel is
+;; Implements synchronous channel types using ZMQ sockets.  Each channel is
 ;; essentially a wrapper around a `zmq-socket' constrained to a socket type by
 ;; the type of the channel and with an associated `zmq-IDENTITY' obtained from
-;; the `jupyter-session' that must be associated with the channel. A heartbeat
+;; the `jupyter-session' that must be associated with the channel.  A heartbeat
 ;; channel is distinct from the other channels in that it is implemented using
 ;; a timer which periodically pings the kernel depending on how its configured.
 ;; In order for communication to occur on the other channels, one of
@@ -59,7 +59,7 @@
 (defun jupyter-connect-endpoint (type endpoint &optional identity)
   "Create socket with TYPE and connect to ENDPOINT.
 If IDENTITY is non-nil, it will be set as the ROUTING-ID of the
-socket. Return the created socket."
+socket.  Return the created socket."
   (let ((sock (zmq-socket (zmq-current-context) type)))
     (prog1 sock
       (zmq-socket-set sock zmq-LINGER 1000)
@@ -71,8 +71,8 @@ socket. Return the created socket."
   "Create a socket based on a Jupyter channel type.
 CTYPE is one of the symbols `:hb', `:stdin', `:shell',
 `:control', or `:iopub' and represents the type of channel to
-connect to ENDPOINT. If IDENTITY is non-nil, it will be set as
-the ROUTING-ID of the socket. Return the created socket."
+connect to ENDPOINT.  If IDENTITY is non-nil, it will be set as
+the ROUTING-ID of the socket.  Return the created socket."
   (let ((sock-type (plist-get jupyter-socket-types ctype)))
     (unless sock-type
       (error "Invalid channel type (%s)" ctype))
@@ -122,10 +122,10 @@ the ROUTING-ID of the socket. Return the created socket."
                             flags)
   "For SESSION, send a message on SOCKET.
 TYPE is message type of MESSAGE, one of the keys in
-`jupyter-message-types'. MESSAGE is the message content.
+`jupyter-message-types'.  MESSAGE is the message content.
 Optionally supply a MSG-ID to the message, if this is nil a new
-message ID will be generated. FLAGS has the same meaning as in
-`zmq-send'. Return the message ID of the sent message."
+message ID will be generated.  FLAGS has the same meaning as in
+`zmq-send'.  Return the message ID of the sent message."
   (declare (indent 1))
   (cl-destructuring-bind (id . msg)
       (jupyter-encode-message session type
@@ -135,7 +135,7 @@ message ID will be generated. FLAGS has the same meaning as in
 
 (cl-defmethod jupyter-recv ((session jupyter-session) socket &optional flags)
   "For SESSION, receive a message on SOCKET with FLAGS.
-FLAGS is passed to SOCKET according to `zmq-recv'. Return a cons cell
+FLAGS is passed to SOCKET according to `zmq-recv'.  Return a cons cell
 
     (IDENTS . MSG)
 
@@ -155,9 +155,9 @@ and other such functions."
   "Number of heartbeat failures until the kernel is considered unreachable.
 A ping is sent to the kernel on a heartbeat channel and waits
 until `time-to-dead' seconds to see if the kernel sent a ping
-back. If the kernel doesn't send a ping back after
+back.  If the kernel doesn't send a ping back after
 `jupyter-hb-max-failures', the callback associated with the
-heartbeat channel is called. See `jupyter-hb-on-kernel-dead'.")
+heartbeat channel is called.  See `jupyter-hb-on-kernel-dead'.")
 
 (defclass jupyter-hb-channel (jupyter-zmq-channel)
   ((type
@@ -168,7 +168,7 @@ heartbeat channel is called. See `jupyter-hb-on-kernel-dead'.")
     :type number
     :initform 10
     :documentation "The time in seconds to wait for a response
-from the kernel until the connection is assumed to be dead. Note
+from the kernel until the connection is assumed to be dead.  Note
 that this slot only takes effect when starting the channel.")
    (dead-cb
     :type function
@@ -185,7 +185,7 @@ channel is communicating with the kernel.")
     :type boolean
     :initform t
     :documentation "A flag variable indicating that the heartbeat
-channel is paused and not communicating with the kernel. To
+channel is paused and not communicating with the kernel.  To
 pause the heartbeat channel use `jupyter-hb-pause', to unpause
 use `jupyter-hb-unpause'."))
   :documentation "A base class for heartbeat channels.")
@@ -211,10 +211,10 @@ use `jupyter-hb-unpause'."))
   "Un-pause checking for heatbeat events on CHANNEL."
   (when (oref channel paused)
     (if (jupyter-channel-alive-p channel)
-        ;; Consume a pending message from the kernel if there is one. We send a
+        ;; Consume a pending message from the kernel if there is one.  We send a
         ;; ping and then schedule a timer which fires TIME-TO-DEAD seconds
         ;; later to receive the ping back from the kernel and start the process
-        ;; all over again. If the channel is paused before TIME-TO-DEAD
+        ;; all over again.  If the channel is paused before TIME-TO-DEAD
         ;; seconds, there may still be a ping from the kernel waiting.
         (ignore-errors (zmq-recv (oref channel socket) zmq-DONTWAIT))
       (jupyter-start-channel channel))

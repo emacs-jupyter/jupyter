@@ -25,7 +25,7 @@
 ;; Routines to sign, encode, decode, send, and receive Jupyter messages.
 ;; Messages are represented as property lists, the contents of a message should
 ;; never be accessed directly since decoding of a message's contents is done on
-;; demand. You access the message contents through `jupyter-message-content',
+;; demand.  You access the message contents through `jupyter-message-content',
 ;; `jupyter-message-header', `jupyter-message-metadata', etc.
 ;;
 ;; There are convenience macros: `jupyter-with-message-content' and
@@ -92,10 +92,10 @@ dictionaries.")
 
 (cl-defun jupyter-sign-message (session parts &optional (signer #'jupyter-hmac-sha256))
   "Use SESSION to sign message PARTS.
-Return the signature of PARTS. PARTS should be in the order of a
-valid Jupyter message, see `jupyter-decode-message'. SIGNER is
+Return the signature of PARTS.  PARTS should be in the order of a
+valid Jupyter message, see `jupyter-decode-message'.  SIGNER is
 the message signing function and should take two arguments, the
-text to sign and the key used for signing. The default value
+text to sign and the key used for signing.  The default value
 signs messages using `jupyter-hmac-sha256'."
   (if (> (length (jupyter-session-key session)) 0)
       (cl-loop
@@ -123,8 +123,8 @@ Return a cons cell (IDENTS . REST-PARTS)."
 (defun jupyter--message-header (session msg-type msg-id)
   "Return a message header.
 The `:session' key of the header will have its value set to
-SESSION's ID, and its `:msg_type' will be set to MSG-TYPE. MSG-ID
-will be set to the value of the `:msg_id' key. The other fields
+SESSION's ID, and its `:msg_type' will be set to MSG-TYPE.  MSG-ID
+will be set to the value of the `:msg_id' key.  The other fields
 of the returned plist are `:version', `:username', and `:date'.
 They are all set to appropriate default values."
   (list
@@ -141,7 +141,7 @@ They are all set to appropriate default values."
   "Encode PART into a JSON string.
 Take into account `jupyter-message-type' keywords by replacing
 them with their appropriate message type strings according to the
-Jupyter messaging spec. After encoding into a JSON
+Jupyter messaging spec.  After encoding into a JSON
 representation, return the UTF-8 encoded string.
 
 If PART is a string, return the UTF-8 encoded string without
@@ -149,7 +149,7 @@ encoding into JSON first.
 
 If PART is a list whose first element is the symbol,
 `message-part', then return the second element of the list if it
-is non-nil. If it is nil, then set the list's second element to
+is non-nil.  If it is nil, then set the list's second element to
 the result of calling `jupyter--encode' on the third element and
 return the result."
   (if (eq (car-safe part) 'message-part)
@@ -190,12 +190,12 @@ return the result."
 
 If PART is a list whose first element is the symbol,
 `message-part', then return the third element of the list if it
-is non-nil. If it is nil, then set the list's third element to
+is non-nil.  If it is nil, then set the list's third element to
 the result of calling `jupyter--decode' on the second element and
 return the result.
 
 Otherwise, if PART is a string decode it using UTF-8 encoding and
-read it as a JSON string. If it is not valid JSON, return the
+read it as a JSON string.  If it is not valid JSON, return the
 decoded string."
   (if (eq (car-safe part) 'message-part)
       (cl-destructuring-bind (_ encoded-rep decoded-rep) part
@@ -323,10 +323,10 @@ Jupyter message, i.e. a list of the form
 
 If SESSION supports signing messages, then the signature
 resulting from the signing of (cdr PARTS) using SESSION should be
-equal to SIGNATURE. An error is thrown if it is not.
+equal to SIGNATURE.  An error is thrown if it is not.
 
 If SIGNER is non-nil it should be a function used to sign the
-message. Otherwise the default signing function is used, see
+message.  Otherwise the default signing function is used, see
 `jupyter-sign-message'.
 
 The returned plist has elements of the form
@@ -334,19 +334,19 @@ The returned plist has elements of the form
     (message-part JSON PLIST)
 
 for the keys `:header', `:parent-header', `:metadata', and
-`:content'. JSON is the JSON encoded string of the message part.
+`:content'.  JSON is the JSON encoded string of the message part.
 For `:header' and `:parent-header', PLIST will be the decoded
-message PLIST for the part. The other message parts are decoded
+message PLIST for the part.  The other message parts are decoded
 into property lists on demand, i.e. after a call to
 `jupyter-message-metadata' or `jupyter-message-content' PLIST
 will be decoded message part.
 
 The binary buffers are left unchanged and will be the value of
-the `:buffers' key in the returned plist. Also, the message ID
+the `:buffers' key in the returned plist.  Also, the message ID
 and type are available in the top level of the plist as `:msg_id'
 and `:msg_type'."
   (when (< (length parts) 5)
-    (error "Malformed message. Minimum length of parts is 5"))
+    (error "Malformed message.  Minimum length of parts is 5"))
   (when (jupyter-session-key session)
     (let ((signature (car parts)))
       (when (= (length signature) 0)
@@ -481,7 +481,7 @@ and `:msg_type'."
 (defmacro jupyter-with-message-content (msg keys &rest body)
   "For MSG, bind the corresponding KEYS of its contents then evaluate BODY.
 KEYS is a list of key names found in the
-`jupyter-message-content' of MSG. The values are bound to their
+`jupyter-message-content' of MSG.  The values are bound to their
 key names while evaluating BODY.
 
 So to bind the :status key of MSG you would do
@@ -525,9 +525,9 @@ The returned function takes a single argument which is expected
 to be a Jupyter message property list.
 
 The elements of KEYS can either be a symbol, KEY, or a two
-element list (VAL MIMETYPE). In the former case, KEY will be
+element list (VAL MIMETYPE).  In the former case, KEY will be
 bound to the corresponding value of KEY in the
-`jupyter-message-content' of the message argument. In the latter
+`jupyter-message-content' of the message argument.  In the latter
 case, VAL will be bound to the value of the MIMETYPE found in the
 `jupyter-message-data' of the message."
   (declare (indent defun) (debug ((&rest [&or symbolp (symbolp symbolp)]) body)))
@@ -557,7 +557,7 @@ case, VAL will be bound to the value of the MIMETYPE found in the
 If the value of KEY is a list whose first element is the symbol
 `message-part', then if the the third element of the list is nil
 set it to the result of calling `jupyter--decode' on the second
-element. If the third element is non-nil, return it. Otherwise
+element.  If the third element is non-nil, return it.  Otherwise
 return the value of KEY in MSG."
   `(let ((part (plist-get ,msg ,key)))
      (if (and (consp part) (eq (car part) 'message-part))
@@ -632,8 +632,8 @@ The returned time has the same form as returned by
   "Get the message data for a specific mimetype.
 MSG should be a message with a `:data' field in its contents.
 MIMETYPE is should be a standard media mimetype
-keyword (`:text/plain', `:image/png', ...). If the messages data
-has a key corresponding to MIMETYPE, return the value. Otherwise
+keyword (`:text/plain', `:image/png', ...).  If the messages data
+has a key corresponding to MIMETYPE, return the value.  Otherwise
 return nil."
   (plist-get (jupyter-message-get msg :data) mimetype))
 

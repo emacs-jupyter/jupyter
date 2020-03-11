@@ -23,8 +23,8 @@
 ;;; Commentary:
 
 ;; A communication layer using `jupyter-zmq-channel' objects for communicating
-;; with a kernel. This communication layer is mainly meant for speed comparison
-;; with the `jupyter-channel-ioloop-comm' layer. It implements communication in
+;; with a kernel.  This communication layer is mainly meant for speed comparison
+;; with the `jupyter-channel-ioloop-comm' layer.  It implements communication in
 ;; the current Emacs instance and comparing it with the
 ;; `jupyter-channel-ioloop-comm' shows how much of a slow down there is when
 ;; all the processing of messages happens in the current Emacs instance.
@@ -148,7 +148,7 @@
                             _ channel-type msg-type msg msg-id)
   (let ((channel (plist-get (oref comm channels) channel-type)))
     ;; Run the event handler on the next command loop since the expectation is
-    ;; the client is that sending is asynchronous. There may be some code that
+    ;; the client is that sending is asynchronous.  There may be some code that
     ;; makes assumptions based on this.
     (run-at-time
      0 nil (lambda (id)

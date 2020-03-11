@@ -86,7 +86,7 @@
                                                       &context (jupyter-lang julia))
   "Send a help query to the Julia REPL for LINK-TEXT if URL is \"@ref\".
 If URL is \"@ref <section>\" then open a browser to the Julia
-manual for <section>. Otherwise follow the link normally."
+manual for <section>.  Otherwise follow the link normally."
   (if (string-prefix-p "@ref" url)
       (if (string= url "@ref")
           ;; Links have the form `fun`
@@ -192,7 +192,7 @@ nil."
       :store-history nil
       :silent t
       ;; This is mainly for supporting the :dir header argument in `org-mode'
-      ;; source blocks. We send this after initializing the REPL and after a
+      ;; source blocks.  We send this after initializing the REPL and after a
       ;; kernel restart so that we can get proper line numbers when an error
       ;; occurs.
       :code "\

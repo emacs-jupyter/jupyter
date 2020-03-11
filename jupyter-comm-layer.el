@@ -34,15 +34,15 @@
 ;; `jupyter-initialize-connection'.
 ;;
 ;; A client registers with the kcomm by calling `jupyter-connect-client' and
-;; de-registers with `jupyter-disconnect-client'. The communication layer deals
+;; de-registers with `jupyter-disconnect-client'.  The communication layer deals
 ;; with "events" which are just lists with an identifying symbol as the head
-;; element. Events that occur on the communication layer meant for clients,
+;; element.  Events that occur on the communication layer meant for clients,
 ;; e.g. a message received by a kernel or notification that a message was sent
-;; to a kernel, will be broadcast to all registered clients. Every client
+;; to a kernel, will be broadcast to all registered clients.  Every client
 ;; wanting to receive such events must extend the method
 ;; `jupyter-event-handler' using the head method specializer.
 ;;
-;; An event is sent to the kernel using `jupyter-send'. So that sending an
+;; An event is sent to the kernel using `jupyter-send'.  So that sending an
 ;; event to the communication layer would look like
 ;;
 ;;     (jupyter-send kcomm 'send channel-type msg-type msg msg-id)
@@ -89,7 +89,7 @@
 (cl-defgeneric jupyter-connect-client ((comm jupyter-comm-layer) obj)
   "Register OBJ to receive events from COMM.
 By default, on the first OBJ connected, `jupyter-comm-start' is
-called if needed. This means that a call to
+called if needed.  This means that a call to
 `jupyter-initialize-connection' should precede a call to
 `jupyter-connect-client'.")
 
@@ -100,7 +100,7 @@ called if needed.")
 
 (cl-defgeneric jupyter-comm-id ((comm jupyter-comm-layer))
   "Return an identification string for COMM.
-Can be used to identify this communication channel. For example,
+Can be used to identify this communication channel.  For example,
 used in `jupyter-repl-scratch-buffer' to name the scratch
 buffer.")
 
@@ -121,7 +121,7 @@ buffer.")
     (error "Can't initialize a live comm")))
 
 ;; TODO: Figure out a better interface for these channel methods or just make
-;; them unnecessary. The design of `jupyter-comm-layer' only deals with
+;; them unnecessary.  The design of `jupyter-comm-layer' only deals with
 ;; "events" and the channel abstraction is an implementation detail that
 ;; shouldn't be visible to the client.
 

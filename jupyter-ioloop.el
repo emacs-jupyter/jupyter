@@ -23,15 +23,15 @@
 ;;; Commentary:
 
 ;; An ioloop encapsulates a subprocess that communicates with its parent
-;; process in a pre-defined way. The parent process sends events (lists with a
+;; process in a pre-defined way.  The parent process sends events (lists with a
 ;; head element tagging the type of event and the rest of the elements being
 ;; the arguments), via a call to the `jupyter-send' method of a
-;; `jupyter-ioloop'. The ioloop subprocess then handles the event in its
-;; environment. You add an event that can be handled in the ioloop environment
+;; `jupyter-ioloop'.  The ioloop subprocess then handles the event in its
+;; environment.  You add an event that can be handled in the ioloop environment
 ;; by calling `jupyter-ioloop-add-event' before calling `jupyter-ioloop-start'.
 ;;
 ;; In the event handler of the ioloop, you may optionally return another event
-;; back to the parent process. In this case, when the parent process receives
+;; back to the parent process.  In this case, when the parent process receives
 ;; the event it is dispatched to an appropriate `jupyter-ioloop-handler'.
 ;;
 ;; An example that will echo back what was sent to the ioloop as a message in
@@ -70,7 +70,7 @@ The hook is called with no arguments.")
 (defvar jupyter-ioloop-post-hook nil
   "A hook called at the end of every polling loop.
 The hook is called with a single argument, the list of polling
-events that occurred for this iteration or nil. The polling
+events that occurred for this iteration or nil.  The polling
 events have the same value as the return value of
 `zmq-poller-wait-all'.")
 
@@ -96,10 +96,10 @@ events have the same value as the return value of
 
 An ioloop starts an Emacs subprocess setup to send events back
 and forth between the parent Emacs process and the ioloop
-asynchronously. The ioloop subprocess is essentially a polling
+asynchronously.  The ioloop subprocess is essentially a polling
 loop that polls its stdin and any sockets that may have been
 created in the ioloop environment and performs pre-defined
-actions when stdin sends an event. The structure of the
+actions when stdin sends an event.  The structure of the
 subprocess is the following
 
 \(progn
@@ -129,7 +129,7 @@ You add events to be handled by the subprocess using
 `jupyter-ioloop-add-event', the return value of any event added
 is what is sent to the parent Emacs process and what will
 eventually be used as the EVENT argument of
-`jupyter-ioloop-handler', which see. To suppress the subprocess
+`jupyter-ioloop-handler', which see.  To suppress the subprocess
 from sending anything back to the parent, ensure nil is returned
 by the form created by `jupyter-ioloop-add-event'.
 
@@ -154,11 +154,11 @@ a filter function described in `zmq-start-process'."
 
 (defun jupyter-ioloop-wait-until (ioloop event cb &optional timeout progress-msg)
   "Wait until EVENT occurs on IOLOOP.
-If EVENT occurs, call CB and return its value if non-nil. CB is
+If EVENT occurs, call CB and return its value if non-nil.  CB is
 called with a single argument, an event list whose first element
-is EVENT. If CB returns nil, continue waiting until EVENT occurs
+is EVENT.  If CB returns nil, continue waiting until EVENT occurs
 again or until TIMEOUT seconds elapses, TIMEOUT defaults to
-`jupyter-default-timeout'. If TIMEOUT is reached, return nil.
+`jupyter-default-timeout'.  If TIMEOUT is reached, return nil.
 
 If PROGRESS-MSG is non-nil, a progress reporter will be displayed
 while waiting using PROGRESS-MSG as the message."
@@ -234,9 +234,9 @@ Map over ARGS, converting its elements into
 
     ,arg or ,(app (lambda (x) BODY) arg)
 
-for use in a `pcase' form. The latter form occurs when one of
+for use in a `pcase' form.  The latter form occurs when one of
 ARGS is of the form (arg TAG) where TAG is one of the keys in
-`jupyter-ioloop--argument-types'. BODY will be replaced with the
+`jupyter-ioloop--argument-types'.  BODY will be replaced with the
 result of calling the function associated with TAG in
 `jupyter-ioloop--argument-types'.
 
@@ -251,11 +251,11 @@ Return the list of converted arguments."
 
 (defmacro jupyter-ioloop-add-event (ioloop event args &optional doc &rest body)
   "For IOLOOP, add an EVENT handler.
-ARGS is a list of arguments that are bound when EVENT occurs. DOC
+ARGS is a list of arguments that are bound when EVENT occurs.  DOC
 is an optional documentation string describing what BODY, the
-expression which will be evaluated when EVENT occurs, does. If
+expression which will be evaluated when EVENT occurs, does.  If
 BODY evaluates to any non-nil value, it will be sent to the
-parent Emacs process. A nil value for BODY means don't send
+parent Emacs process.  A nil value for BODY means don't send
 anything.
 
 Some arguments are treated specially:
@@ -311,11 +311,11 @@ By default this adds the events quit, callback, and timer."
 
 (cl-defgeneric jupyter-ioloop-add-callback ((ioloop jupyter-ioloop) cb)
   "In IOLOOP, add CB to be run in the IOLOOP environment.
-CB is run at the start of every polling loop. Callbacks are
+CB is run at the start of every polling loop.  Callbacks are
 called in the order they are added.
 
 WARNING: A function added as a callback should be quoted to avoid
-sending closures to the IOLOOP. An example:
+sending closures to the IOLOOP.  An example:
 
     (jupyter-ioloop-add-callback ioloop
       `(lambda () (zmq-prin1 'foo \"bar\")))"
@@ -328,7 +328,7 @@ sending closures to the IOLOOP. An example:
 (defun jupyter-ioloop-poller-add (socket events)
   "Add SOCKET to be polled using the `jupyter-ioloop-poller'.
 EVENTS are the polling events that should be listened for on
-SOCKET. If `jupyter-ioloop-poller' is not a `zmq-poller' object
+SOCKET.  If `jupyter-ioloop-poller' is not a `zmq-poller' object
 do nothing."
   (when (zmq-poller-p jupyter-ioloop-poller)
     (zmq-poller-add jupyter-ioloop-poller socket events)
@@ -390,7 +390,7 @@ evaluation using `zmq-start-process'.
 If PORT is non-nil the returned function will create a ZMQ PULL
 socket to receive events from the parent process on the PORT of
 the local host, otherwise events are expected to be received on
-STDIN. This is useful on Windows systems which don't allow
+STDIN.  This is useful on Windows systems which don't allow
 polling the STDIN file handle."
   `(lambda (ctx)
      (push ,(file-name-directory (locate-library "jupyter-base")) load-path)
@@ -443,12 +443,12 @@ the IOLOOP subprocess buffer, see `zmq-start-process'."
   (let (stdin port)
     ;; NOTE: A socket is used to read input from the parent process to avoid
     ;; the stdin buffering done when using `read-from-minibuffer' in the
-    ;; subprocess. When `noninteractive', `read-from-minibuffer' uses
+    ;; subprocess.  When `noninteractive', `read-from-minibuffer' uses
     ;; `getc_unlocked' internally and `getc_unlocked' reads from the stdin FILE
-    ;; object as opposed to reading directly from STDIN_FILENO. The problem is
+    ;; object as opposed to reading directly from STDIN_FILENO.  The problem is
     ;; that FILE objects are buffered streams which means that every message
     ;; the parent process sends does not necessarily correspond to a POLLIN
-    ;; event on STDIN_FILENO in the subprocess. Since we only call
+    ;; event on STDIN_FILENO in the subprocess.  Since we only call
     ;; `read-from-minibuffer' when there is a POLLIN event on STDIN_FILENO
     ;; there is the potential that a message is waiting to be handled in the
     ;; buffer used by stdin which will only get handled if we send more
@@ -461,8 +461,8 @@ the IOLOOP subprocess buffer, see `zmq-start-process'."
                     ;; We go through this Emacs-fu, brought to you by Chris
                     ;; Wellons, https://nullprogram.com/blog/2014/01/27/,
                     ;; because we want OBJECT to be the final say in when
-                    ;; everything gets garbage collected. If OBJECT loses
-                    ;; scope, the ioloop process should be killed off. This
+                    ;; everything gets garbage collected.  If OBJECT loses
+                    ;; scope, the ioloop process should be killed off.  This
                     ;; wouldn't happen if we hold a strong reference to
                     ;; OBJECT.
                     :filter (jupyter-ioloop--make-filter
@@ -503,7 +503,7 @@ returning."
   "Using IOLOOP, send ARGS to its process.
 
 All arguments passed to this function are sent as a list to the
-process unchanged. This means that all arguments should be
+process unchanged.  This means that all arguments should be
 serializable."
   (with-slots (process) ioloop
     (cl-assert (process-live-p process))

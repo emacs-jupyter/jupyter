@@ -78,7 +78,7 @@ automatically be shown if this is non-nil."
 
 If non-nil, and `org-image-actual-width' is set to a list, the
 image will not be stretched if its width is smaller than \(car
-`org-image-actual-width'\). This is done by inserting an
+`org-image-actual-width'\).  This is done by inserting an
 #+ATTR_ORG keyword above the file path.
 
 See also the docstring of `org-image-actual-width' for more details."
@@ -189,7 +189,7 @@ See also the docstring of `org-image-actual-width' for more details."
 (defun jupyter-org-goto-error ()
   "Go to the error location specified by the jupyter-error-loc text property.
 If `point' has a non-nil jupyter-error-loc property, jump to that
-line in the previous source block. See
+line in the previous source block.  See
 `jupyter-org-error-location'."
   (interactive)
   (when-let* ((loc (get-text-property (point) 'jupyter-error-loc)))
@@ -205,7 +205,7 @@ line in the previous source block. See
   "Return the line number corresponding to an error from a traceback.
 This method is called with `point' at `point-min' in a buffer
 containing the traceback of the last error that occurred due to
-execution of a source block. It should return the line number
+execution of a source block.  It should return the line number
 relative to the source block that caused the error or nil if a
 line number could not be found."
   (ignore))
@@ -289,7 +289,7 @@ to."
      ((jupyter-org-request-inline-block-p req)
       ;; For inline results, only text/plain results are allowed
       ;;
-      ;; TODO: Possibly file links are allowed as well. See
+      ;; TODO: Possibly file links are allowed as well.  See
       ;; `org-babel-insert-result'
       (setq data (plist-get data :text/plain))
       (if (jupyter-org-request-async-p req)
@@ -309,7 +309,7 @@ to."
                                            metadata
                                            ;; TODO: Add request objects as text
                                            ;; properties of source code blocks
-                                           ;; to implement display IDs. Or how
+                                           ;; to implement display IDs.  Or how
                                            ;; can #+NAME be used as a display
                                            ;; ID?
                                            _transient)
@@ -411,7 +411,7 @@ Return the result of BODY when it is evaluated, otherwise nil is
 returned."
   (declare (debug (body)))
   `(if (not (org-in-src-block-p 'inside))
-       ;; Invalidate cache when going outside of a source block. This way if
+       ;; Invalidate cache when going outside of a source block.  This way if
        ;; the language of the block changes we don't end up using the cache
        ;; since it is only used for Jupyter blocks.
        (when jupyter-org--src-block-cache
@@ -427,7 +427,7 @@ returned."
 A client is initialized if necessary.
 
 If `point' is not inside the code of a Jupyter source block, BODY
-is not evaluated and nil is returned. Return the result of BODY
+is not evaluated and nil is returned.  Return the result of BODY
 when it is evaluated.
 
 In addition to evaluating BODY with an active Jupyter client set,
@@ -453,7 +453,7 @@ the `syntax-table' will be set to that of the REPL buffers."
 
 (cl-defmethod jupyter-code-context ((_type (eql completion))
                                     &context (major-mode org-mode))
-  ;; Always called from within a valid code block. See
+  ;; Always called from within a valid code block.  See
   ;; `jupyter-org-completion-at-point'.
   (list (buffer-substring-no-properties
          (jupyter-org--src-block-beg)
@@ -510,9 +510,9 @@ the `jupyter-current-client' of the session associated with the
 code block, see `jupyter-org-with-src-block-client'.
 
 If LANG is non-nil, it is a language symbol such as python or
-julia. Only bind KEY to DEF whenever the underlying kernel
-language is LANG. If LANG is nil, then KEY is bound to DEF
-regardless of kernel language. Note, the same key can be bound
+julia.  Only bind KEY to DEF whenever the underlying kernel
+language is LANG.  If LANG is nil, then KEY is bound to DEF
+regardless of kernel language.  Note, the same key can be bound
 for different kernel languages.
 
 All of the keys are bound in `jupyter-org-interaction-mode-map'
@@ -542,7 +542,7 @@ and they only take effect when the variable
                 (if jupyter-org--defining-key-p
                     ;; Stub definition so that `lookup-key' returns a non-nil
                     ;; value since the normal filter only returns a definition
-                    ;; when inside a source block. We only need to make the
+                    ;; when inside a source block.  We only need to make the
                     ;; definition for KEY once and not on every re-definition
                     ;; of KEY for a particular language.
                     #'undefined
@@ -558,13 +558,13 @@ and they only take effect when the variable
 
 ;; NOTE: We cache the properties here since this is called during the font-lock
 ;; process (and maybe shouldn't be?) which means that it can be called many
-;; times on the same region. We don't want to re-compute the faces on each
+;; times on the same region.  We don't want to re-compute the faces on each
 ;; call.
 (defun jupyter-org--ansi-color-apply-on-region (begin end)
   "Handle ANSI escape codes between (BEGIN . END) and cache the results.
 If (BEGIN . END) is not marked with a jupyter-ansi text property,
 apply `jupyter-ansi-color-apply-on-region' on the region and mark
-it with a non-nil jupyter-ansi property. Otherwise, prepend any
+it with a non-nil jupyter-ansi property.  Otherwise, prepend any
 non-nil font-lock-face properties in the region to the face
 property."
   ;; Don't add these changes to the undo list, gives a slight speed up.
@@ -621,7 +621,7 @@ property."
   "Minor mode for interacting with a Jupyter REPL from an `org-mode' buffer.
 When this minor mode is enabled, some of the keybindings
 available in `jupyter-repl-interaction-mode' are also available
-when `point' is inside a Jupyter code block. Completion is also
+when `point' is inside a Jupyter code block.  Completion is also
 enabled when `point' is inside a code block.
 
 In addition, ANSI escape sequences in example blocks or
@@ -681,7 +681,7 @@ C-x C-e         `jupyter-eval-line-or-region'"
 (defun jupyter-org-raw-string (str)
   "Return STR, ensuring that it is flagged as already being `org' syntax.
 Adds a non-nil jupyter-org text property on the first character
-of STR. If a string returned by `jupyter-org-result' has a
+of STR.  If a string returned by `jupyter-org-result' has a
 non-nil jupyter-org property on the first character, it is
 inserted without modification as the result of a code block."
   (prog1 str
@@ -691,7 +691,7 @@ inserted without modification as the result of a code block."
   "Return STR, ensuring that it is flagged as containing an `org' table.
 We need a way to distinguish a table string that is easily
 removed from the code block vs a regular string that will need to
-be wrapped in a drawer. Used in `jupyter-org-babel-result-p'."
+be wrapped in a drawer.  Used in `jupyter-org-babel-result-p'."
   (prog1 (jupyter-org-raw-string str)
     (put-text-property 0 1 'org-table t str)))
 
@@ -723,7 +723,7 @@ VALUE."
 (defun jupyter-org-image-link (path &optional width height)
   "Return an `org-element' for an image at PATH.
 If a WIDTH or HEIGHT are provided, then return a paragraph
-element with an affiliated keyword ATTR_ORG. So that the image
+element with an affiliated keyword ATTR_ORG.  So that the image
 link will be rendered like
 
     #+ATTR_ORG :width 300 :height 300
@@ -791,7 +791,7 @@ or example-block depending on
 If VALUE is another `org-element' return it unchanged.
 
 If VALUE is a list and can be represented as a table, return an
-`org-mode' table as a string. To distinguish the table from a
+`org-mode' table as a string.  To distinguish the table from a
 regular string, it has a non-nil org-table text property on its
 first character.
 
@@ -822,10 +822,10 @@ Otherwise, return VALUE formated as a fixed-width `org-element'."
 
 (defun jupyter-org-results-drawer (&rest results)
   "Return a drawer `org-element' containing RESULTS.
-RESULTS can be either strings or other `org-element's. Newlines
+RESULTS can be either strings or other `org-element's.  Newlines
 are added after every `org-element' object in RESULTS, such as
 file links, so that each result appears on a single line in the
-string representation of the drawer. The returned drawer has a
+string representation of the drawer.  The returned drawer has a
 name of \"RESULTS\"."
   (apply #'org-element-set-contents
          (list 'drawer (list :drawer-name "RESULTS"))
@@ -875,14 +875,14 @@ string and will be decoded before writing to file.
 
 If PARAMS contains a :file key, it is used as the FILENAME.
 Otherwise a file name is created, see
-`jupyter-org-image-file-name'. Note, when PARAMS contains a :file
+`jupyter-org-image-file-name'.  Note, when PARAMS contains a :file
 key any existing file with the file name will be overwritten when
-writing the image data. This is not the case when a new file name
+writing the image data.  This is not the case when a new file name
 is created.
 
 If METADATA contains a :width or :height key, then the returned
 org-element will have an ATTR_ORG affiliated keyword containing
-the width or height of the image. When there is no :width or
+the width or height of the image.  When there is no :width or
 :height key an ATTR_ORG keyword may containing the true size of
 the image may still be added, see
 `jupyter-org-adjust-image-size'."
@@ -916,7 +916,7 @@ the image may still be added, see
 (cl-defgeneric jupyter-org-result (_mime _params _data &optional _metadata)
   "Return an `org-element' representing a result.
 Either a string or an `org-element' is a valid return value of
-this method. The former will be inserted as is, while the latter
+this method.  The former will be inserted as is, while the latter
 will be inserted by calling `org-element-interpret-data' first.
 
 The returned result should be a representation of a MIME type
@@ -934,15 +934,15 @@ As an example, if DATA only contains the mimetype
 (defun jupyter-org--find-mime-types (req-types)
   "Return the keywords in `jupyter-org-mime-types' that match REQ-TYPES.
 
-If a match is not found, return nil. Try to be intelligent and
+If a match is not found, return nil.  Try to be intelligent and
 return what the user might intend to use.
 
 REQ-TYPES can be a string such as `plain', `plain html', or
-`text/plain'. The string `text' is translated to `:text/plain'
+`text/plain'.  The string `text' is translated to `:text/plain'
 and `image' to `:image/png'."
   (when req-types
     ;; Iterate the user-specified mimetypes looking for symbols that match a
-    ;; symbol in `jupyter-org-mime-types'. Invalid mimetypes are ignored.
+    ;; symbol in `jupyter-org-mime-types'.  Invalid mimetypes are ignored.
     (delete nil
             (mapcar (lambda (req-type)
                  (cond
@@ -961,12 +961,12 @@ and `image' to `:image/png'."
                                   &optional metadata &rest _ignore)
   "For REQ, return the rendered DATA.
 PLIST is a property list, (:mimetype1 value1 ...), containing the
-different representations of a result returned by a kernel. Note,
+different representations of a result returned by a kernel.  Note,
 PLIST can also be a full message property list or a property list
 with a :data and :metadata key.
 
 METADATA is the metadata plist used to render PLIST with, as
-returned by the Jupyter kernel. METADATA typically contains
+returned by the Jupyter kernel.  METADATA typically contains
 information such as the size of an image to be rendered.
 
 
@@ -975,15 +975,15 @@ the MIME types in `jupyter-org-mime-types' calling
 
     (jupyter-org-result MIME PARAMS DATA METADATA)
 
-for each MIME type. Return the result of the first iteration in
-which the above call returns a non-nil value. PARAMS is the REQ's
+for each MIME type.  Return the result of the first iteration in
+which the above call returns a non-nil value.  PARAMS is the REQ's
 `jupyter-org-request-block-params', DATA and METADATA are the
 data and metadata of the current MIME type.
 
 If PARAMS has a space separated string associated with its
-:display key like \"image/png html plain\", i.e. MIME subtypes or
+:display key like \"image/png html plain\", i.e.  MIME subtypes or
 full MIME types, then loop over the corresponding subset of MIME
-types in `jupyter-org-mime-types' in the same order given. This
+types in `jupyter-org-mime-types' in the same order given.  This
 adds support for the :display header argument that can be
 passed to Jupyter org-mode source blocks."
   (cl-assert plist json-plist)
@@ -1039,7 +1039,7 @@ passed to Jupyter org-mode source blocks."
 (defun jupyter-org--parse-latex-element (data)
   "Return a latex-fragment or latex-environment org-element obtained from DATA.
 DATA is inserted into a temporary buffer and an org-element latex
-fragment or environment is parsed and returned. If neither can be
+fragment or environment is parsed and returned.  If neither can be
 parsed, wrap DATA in a minipage environment and return it."
   (with-temp-buffer
     (insert data)
@@ -1077,7 +1077,7 @@ parsed, wrap DATA in a minipage environment and return it."
 ;; well.
 ;;
 ;; Using an :around method to attempt to guarantee that this is called as the
-;; outer most method. Kernel languages should extend the primary method.
+;; outer most method.  Kernel languages should extend the primary method.
 (cl-defmethod jupyter-org-result :around ((_mime (eql :text/plain)) params _data
                                           &optional _metadata)
   "Do some final transformations of the result.
@@ -1094,7 +1094,7 @@ new \"scalar\" result with the result of calling
             ;; FIXME: `jupyter-org-scalar' also considers a table a scalar, but
             ;; `org-mode' doesn't.
             (not (member "scalar" (alist-get :result-params params)))
-            ;; Be a little more stringent than `org-babel-script-escape'. It
+            ;; Be a little more stringent than `org-babel-script-escape'.  It
             ;; gives bad results on the following
             ;;
             ;;     [1] Foo bar
@@ -1165,8 +1165,8 @@ appear after the element."
 (defun jupyter-org-babel-result-p (result)
   "Return non-nil if RESULT can be removed by `org-babel-remove-result'."
   (or (and (stringp result)
-           ;; Org tables are returned as strings by this time. So we need
-           ;; something to distinguish them from regular strings. See
+           ;; Org tables are returned as strings by this time.  So we need
+           ;; something to distinguish them from regular strings.  See
            ;; `jupyter-org-scalar'.
            (get-text-property 0 'org-table result))
       (memq (org-element-type result)
@@ -1181,8 +1181,8 @@ appear after the element."
   (or (jupyter-org-babel-result-p element)
       (let ((type (org-element-type element)))
         (or (memq type '(latex-fragment latex-environment))
-            ;; TODO: Figure out a better way. I predict there will be more
-            ;; situations where a comment would be useful to add. That means
+            ;; TODO: Figure out a better way.  I predict there will be more
+            ;; situations where a comment would be useful to add.  That means
             ;; we would have to verify each one.
             (and (eq type 'comment)
                  (equal jupyter-org--goto-error-string
@@ -1217,7 +1217,7 @@ appear after the element."
 (defun jupyter-org--mark-stream-result-newline (result)
   "Remember if RESULT ended in a newline.
 Add a non-nil jupyter-stream-newline property to the most
-recently inserted stream RESULT if it ends in a newline. This is
+recently inserted stream RESULT if it ends in a newline.  This is
 so that `jupyter-org--append-stream-result' can properly insert a
 newline or not before inserting subsequent stream results.
 
@@ -1233,7 +1233,7 @@ Assumes `point' is at the end of the last source block result."
 (defun jupyter-org--stream-context-p (context)
   "Determine if CONTEXT is a stream result.
 Return the insertion point to append new stream output if CONTEXT
-is a stream result. Otherwise return nil."
+is a stream result.  Otherwise return nil."
   (save-excursion
     (goto-char (if (eq (org-element-type context) 'drawer)
                    (jupyter-org-element-contents-end context)
@@ -1291,7 +1291,7 @@ result."
 
 (defun jupyter-org--fixed-width-to-example-block (element result keep-newline)
   "Replace the fixed-width ELEMENT with an example-block.
-Append RESULT to the contents of the block. If KEEP-NEWLINE is
+Append RESULT to the contents of the block.  If KEEP-NEWLINE is
 non-nil, ensure that the appended RESULT begins on a newline."
   (jupyter-org-delete-element element)
   ;; Delete a newline that will be re-inserted by `org-element-interpret-data'.
@@ -1312,7 +1312,7 @@ non-nil, ensure that the appended RESULT begins on a newline."
 
 (defun jupyter-org--append-to-fixed-width (result keep-newline)
   "Append RESULT to the fixed-width element at point.
-`point' is assumed to be at the insertion point. If KEEP-NEWLINE is
+`point' is assumed to be at the insertion point.  If KEEP-NEWLINE is
 non-nil, ensure that the appended RESULT begins on a newline."
   (save-match-data
     (let ((first-newline (string-match "\n" result)))
@@ -1401,7 +1401,7 @@ of the fixed-width element and RESULT concatenated together."
   deleted text as the contents of CONTEXT.
 
 - Otherwise, if CONTEXT is a previous unwrapped result, delete it
-  from the buffer. An unwrapped result is a previous result not
+  from the buffer.  An unwrapped result is a previous result not
   wrapped in a drawer."
   (cl-case (org-element-type context)
     ;; Go to the end of the drawer to insert the new result.

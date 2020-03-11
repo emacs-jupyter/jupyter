@@ -45,11 +45,11 @@
 Note, this variable is only considered when evaluating code
 interactively with functions like `jupyter-eval-line-or-region'.
 
-If equal to nil, frames will never be popped up. When equal to t,
+If equal to nil, frames will never be popped up.  When equal to t,
 pop-up frames instead of windows.
 
 `jupyter-pop-up-frame' can also be a list of message type
-keywords for messages which will cause frames to be used. For any
+keywords for messages which will cause frames to be used.  For any
 message type not in the list, windows will be used instead.
 Currently only `:execute-result', `:error', and `:stream'
 messages consider this variable."
@@ -137,8 +137,8 @@ A longer timeout is needed, for example, when retrieving the
 Or until WAIT-FORMS evaluates to a non-nil value.
 
 Wait until timeout SECONDS, periodically evaluating WAIT-FORMS
-until it returns non-nil. If WAIT-FORMS returns non-nil, stop
-waiting and return its value. Otherwise if timeout SECONDS
+until it returns non-nil.  If WAIT-FORMS returns non-nil, stop
+waiting and return its value.  Otherwise if timeout SECONDS
 elapses, evaluate TIMEOUT-FORMS and return its value.
 
 If PROGRESS is non-nil and evaluates to a string, a progress
@@ -169,9 +169,9 @@ SPEC takes the form (PROGRESS SECONDS TIMEOUT-FORMS...).
 (defmacro jupyter-with-insertion-bounds (beg end bodyform &rest afterforms)
   "Bind BEG and END to `point-marker's, evaluate BODYFORM then AFTERFORMS.
 The END marker will advance if BODYFORM inserts text in the
-current buffer. Thus after BODYFORM is evaluated, AFTERFORMS will
+current buffer.  Thus after BODYFORM is evaluated, AFTERFORMS will
 have access to the bounds of the text inserted by BODYFORM in the
-variables BEG and END. The result of evaluating BODYFORM is
+variables BEG and END.  The result of evaluating BODYFORM is
 returned."
   (declare (indent 3) (debug (symbolp symbolp form body)))
   `(let ((,beg (point-marker))
@@ -192,7 +192,7 @@ MIME data to loop over and any associated metadata, respectively.
 
 Evaluate BODYFORMS with DATA and METADATA temporarily bound to
 the data and metadata of the MIME type for the current iteration.
-If BODYFORMS returns non-nil, return its value. Otherwise loop
+If BODYFORMS returns non-nil, return its value.  Otherwise loop
 over the next MIME type in MIME-ORDER that has a non-nil value in
 the DATA property list."
   (declare (indent 4) (debug ([&or form symbolp listp]
@@ -235,7 +235,7 @@ See `jupyter-with-display-buffer'.")
   "Return non-nil if the current output buffer should be reset.
 If ARG is a `jupyter-request', reset the buffer if ARG's
 `jupyter-request-id' is no equal to the
-`jupyter-buffer-last-request-id'. If ARG is not a
+`jupyter-buffer-last-request-id'.  If ARG is not a
 `jupyter-request-id', return ARG."
   (if (jupyter-request-p arg)
       ;; Reset the output buffer is the last request ID does not
@@ -267,11 +267,11 @@ that BODY is evaluated in is let bound to whatever value it has
 before making that buffer current.
 
 RESET is a form or symbol that determines if the buffer should be
-erased before evaluating BODY. If RESET is nil, no erasing of the
-buffer is ever performed. If RESET evaluates to a
+erased before evaluating BODY.  If RESET is nil, no erasing of the
+buffer is ever performed.  If RESET evaluates to a
 `jupyter-request' object, reset the buffer if the previous
 request that generated output in the buffer is not the same
-request. Otherwise if RESET evaluates to any non-nil value, reset
+request.  Otherwise if RESET evaluates to any non-nil value, reset
 the output buffer."
   (declare (indent 2) (debug (stringp [&or atom form] body)))
   (let ((buffer (make-symbol "buffer"))
@@ -301,7 +301,7 @@ If ALIST is non-nil it is used as the ACTION alist of
 
 If MSG-TYPE is specified, it should be one of the keywords in
 `jupyter-message-types' and is used in setting `pop-up-frames'
-and `pop-up-windows'. See `jupyter-pop-up-frame'.
+and `pop-up-windows'.  See `jupyter-pop-up-frame'.
 
 The rest of the arguments are display ACTIONS tried after
 attempting to re-use a window and before attempting to pop-up a
@@ -324,7 +324,7 @@ new window or frame."
 (defun jupyter-display-current-buffer-guess-where (msg-type)
   "Display the current buffer in a window or frame depending on MSG-TYPE.
 Call `jupyter-display-current-buffer-reuse-window' passing
-MSG-TYPE as argument. If MSG-TYPE should be displayed in a window
+MSG-TYPE as argument.  If MSG-TYPE should be displayed in a window
 and the current buffer is not already being displayed, display
 the buffer below the selected window."
   (jupyter-display-current-buffer-reuse-window
@@ -386,7 +386,7 @@ will be called when OBJ is garbage collected."
                  (id (jupyter-new-uuid))
                  (key nil))))
   "A `jupyter-session' holds the information needed to
-authenticate messages. A `jupyter-session' contains the following
+authenticate messages.  A `jupyter-session' contains the following
 fields:
 
 - CONN-INFO :: The connection info. property list of the kernel
@@ -394,7 +394,7 @@ fields:
 
 - ID :: A string of bytes that uniquely identifies this session.
 
-- KEY :: The key used when signing messages. If KEY is nil,
+- KEY :: The key used when signing messages.  If KEY is nil,
   message signing is not performed."
   (conn-info nil :read-only t)
   (id nil :read-only t)
@@ -422,7 +422,7 @@ fields:
                (:constructor nil)
                (:constructor jupyter-request))
   "A `jupyter-request' encapsulates the current status of a
-request to a kernel. A `jupyter-request' consists of the
+request to a kernel.  A `jupyter-request' consists of the
 following fields:
 
 - ID :: A UUID to match a `jupyter-request' to the received
@@ -440,14 +440,14 @@ following fields:
 
 - INHIBITED-HANDLERS :: A list of handler message types to
                         prevent the running of that particular
-                        handler. If set to t, disable all
-                        handlers for this request. Note this
+                        handler.  If set to t, disable all
+                        handlers for this request.  Note this
                         should not be set directly, dynamically
                         bind `jupyter-inhibit-handlers' before
                         making the request.
 
 - CALLBACKS :: An alist mapping message types to their
-               corresponding callbacks. This alist is modified
+               corresponding callbacks.  This alist is modified
                through calls to `jupyter-add-callback' on the request."
   (id "")
   (time (current-time))
@@ -494,7 +494,7 @@ following fields:
 (defun jupyter-tunnel-connection (conn-file &optional server)
   "Forward local ports to the remote ports in CONN-FILE.
 CONN-FILE is the path to a Jupyter connection file, SERVER is the
-host that the kernel connection in CONN-FILE is located. Return a
+host that the kernel connection in CONN-FILE is located.  Return a
 copy of the connection plist in CONN-FILE, but with the ports
 replaced by the local ports used for the forwarding.
 
@@ -514,8 +514,8 @@ Note only SSH tunnels are currently supported."
             ;; connection files can use /ssh: TRAMP files.
             ("docker"
              ;; Assume docker is using the -p argument to publish its exposed
-             ;; ports to the localhost. The ports used in the container should
-             ;; be the same ports accessible on the local host. For example, if
+             ;; ports to the localhost.  The ports used in the container should
+             ;; be the same ports accessible on the local host.  For example, if
              ;; the shell port is on 1234 in the container, the published port
              ;; flag should be "-p 1234:1234".
              (throw 'no-tunnels conn-info))
@@ -542,7 +542,7 @@ Note only SSH tunnels are currently supported."
   "Timer used to unset `jupyter-current-client' from `server-buffer'.")
 
 ;; FIXME: This works if we only consider a single send request that will also
-;; finish within TIMEOUT which is probably 99% of the cases. It doesn't work
+;; finish within TIMEOUT which is probably 99% of the cases.  It doesn't work
 ;; for multiple requests that have been sent using different clients where one
 ;; sets the client in `server-buffer' and, before a file is opened by the
 ;; underlying kernel, another sets the client in `server-buffer'.
@@ -555,8 +555,8 @@ after TIMEOUT seconds, defaulting to `jupyter-long-timeout'.
 If a function causes a buffer to be displayed through
 emacsclient, e.g. when a function calls an external command that
 invokes the EDITOR, we don't know when the buffer will be
-displayed. All we know is that the buffer that will be current
-before display will be the `server-buffer'. So we temporarily set
+displayed.  All we know is that the buffer that will be current
+before display will be the `server-buffer'.  So we temporarily set
 `jupyter-current-client' in `server-buffer' so that the client
 gets a chance to be propagated to the displayed buffer, see
 `jupyter-repl-persistent-mode'.
@@ -567,7 +567,7 @@ following in your Emacs configuration
     (server-mode 1)
     (setenv \"EDITOR\" \"emacsclient\")
 
-before starting any Jupyter kernels. The kernel also has to know
+before starting any Jupyter kernels.  The kernel also has to know
 that it should use EDITOR to open files."
   (when (bound-and-true-p server-mode)
     ;; After switching to a server buffer, keep the client alive in `server-buffer'
@@ -606,14 +606,14 @@ that it should use EDITOR to open files."
 
 (defun jupyter-normalize-data (plist &optional metadata)
   "Return a list (DATA META) from PLIST.
-DATA is a property list of mimetype data extracted from PLIST. If
+DATA is a property list of mimetype data extracted from PLIST.  If
 PLIST is a message plist, then DATA will be the value of the
-:data key in the messages contents. If PLIST is not a message
+:data key in the messages contents.  If PLIST is not a message
 plist, then DATA is either the :data key of PLIST or PLIST
 itself.
 
 A similar extraction process is performed for the :metadata key
-of PLIST which will be the META argument in the return value. If
+of PLIST which will be the META argument in the return value.  If
 no :metadata key can be found, then META will be METADATA."
   (list
    (or
@@ -699,7 +699,7 @@ otherwise return the underlying object."
 
 (defun jupyter-error-if-not-client-class-p (class &optional check-class)
   "Signal a wrong-type-argument error if CLASS is not a client class.
-If CHECK-CLASS is provided check CLASS against it. CHECK-CLASS
+If CHECK-CLASS is provided check CLASS against it.  CHECK-CLASS
 defaults to `jupyter-kernel-client'."
   (or check-class (setq check-class 'jupyter-kernel-client))
   (cl-assert (class-p check-class))
