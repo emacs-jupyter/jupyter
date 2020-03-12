@@ -244,13 +244,13 @@ load."
     (if (= (length split-path) 1)
         (with-httpd-buffer proc "text/javascript; charset=UTF-8"
           (insert-file-contents
-           (expand-file-name "js/built/index.built.js" jupyter-root)))
+           (expand-file-name "js/widget/built/index.built.js" jupyter-root)))
       (error "Not found"))))
 
 (defun httpd/jupyter/widgets/built (proc path _query &rest _args)
   "Serve the resources required by the widgets in the browser.
 PROC is the httpd process and PATH is the requested resource
-path. Currently this will only serve a file from the js/built
+path. Currently this will only serve a file from the js/widget/built
 directory if it has one of the extensions woff, woff2, ttf, svg,
 or eot. These are used by Jupyter."
   (let* ((split-path (split-string (substring path 1) "/"))
@@ -266,7 +266,7 @@ or eot. These are used by Jupyter."
                   "application/vnd.ms-fontobject"))))
     (unless mime
       (error "Unsupported file type"))
-    (setq file (expand-file-name (concat "js/built/" file) jupyter-root))
+    (setq file (expand-file-name (concat "js/widget/built/" file) jupyter-root))
     ;; TODO: Fix this, when loading the files through httpd, font awesome
     ;; doesnt work
     (when (file-exists-p file)

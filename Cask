@@ -5,8 +5,11 @@
 (package-file "jupyter.el")
 
 (files "*.el" "jupyter.png" "widget.html"
-       ("js" "js/*" (:exclude "js/node_modules" "js/built"
-                              "js/*lock*")))
+       ("js"
+        ("widget" "js/widget/*"
+         (:exclude "js/widget/node_modules" "js/widget/built"
+                   "js/widget/*lock*"))
+        ("web-renderer" "js/web-renderer/*")))
 
 (development
  (depends-on "ert-runner")

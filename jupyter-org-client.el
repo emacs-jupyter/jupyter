@@ -913,6 +913,18 @@ the image may still be added, see
             (setq width image-width))))
       (jupyter-org-image-link file width height))))
 
+(defun jupyter-org--web-result (mime params data &optional metadata)
+  "Handle javascript/html replies that need javascript to run in
+order to be displayed in an org-mode buffer.
+TODO Check if emacs is built with xwidgets and prioritize rendering that way"
+  (let ((image-data (with-temp-buffer
+                      (insert data)
+                      (call-process-region
+                       (point-min) (point-max) "node" t t nil
+                       (concat jupyter-root "js/web-renderer/index.js"))
+                      (buffer-substring-no-properties (point-min) (point-max)))))
+    (jupyter-org--image-result :image/png params nil image-data metadata)))
+
 (cl-defgeneric jupyter-org-result (_mime _params _data &optional _metadata)
   "Return an `org-element' representing a result.
 Either a string or an `org-element' is a valid return value of
@@ -1070,7 +1082,9 @@ parsed, wrap DATA in a minipage environment and return it."
 
 (cl-defmethod jupyter-org-result ((_mime (eql :text/html)) params data
                                   &optional _metadata)
-  (jupyter-org-export-block-or-pandoc "html" data params))
+  (if (member "raw" (alist-get :result-params params))
+      (jupyter-org--web-result _mime params data _metadata)
+    (jupyter-org-export-block-or-pandoc "html" data params)))
 
 ;; NOTE: The order of :around methods is that the more specialized wraps the
 ;; more general, this makes sense since it is how the primary methods work as

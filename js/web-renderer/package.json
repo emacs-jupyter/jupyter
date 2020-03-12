@@ -1,0 +1,22 @@
+{
+    "private": true,
+    "name": "emacs-jupyter-web-renderer",
+    "version": "0.3.0",
+    "description": "View html/js/css in emacs",
+    "main": "index.js",
+    "scripts": {
+        "start": "node index.js",
+        "test": "npm run test:default",
+        "test:default": "echo \"No test specified\""
+    },
+    "author": "Lane Spangler",
+    "license": "GPL-2.0-or-later",
+    "dependencies": {
+        "puppeteer-core": "2.0.0",
+        "sharp": "0.23"
+    },
+    "engines": {
+        "node": ">=8.9.0"
+    },
+    "engineStrict": "true"
+}
