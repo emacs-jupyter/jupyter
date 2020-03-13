@@ -1957,7 +1957,7 @@ the `current-buffer' will automatically have
 
 \\{jupyter-repl-interaction-mode-map}"
   :group 'jupyter-repl
-  :lighter '(:eval (jupyter-repl-interaction-mode-line))
+  :lighter (:eval (jupyter-repl-interaction-mode-line))
   :init-value nil
   (cond
    (jupyter-repl-interaction-mode
