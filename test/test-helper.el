@@ -419,12 +419,11 @@ message contents."
 
 (defun jupyter-test-conn-info-plist ()
   "Return a connection info plist suitable for testing."
-  (let* ((ports (cl-loop
-                 with sock = (zmq-socket (zmq-current-context) zmq-PUB)
-                 for c in '(:shell :hb :iopub :stdin :control)
-                 collect c and
-                 collect (zmq-bind-to-random-port sock "tcp://127.0.0.1")
-                 finally (zmq-close sock))))
+  (let* ((ports
+          (cl-loop
+           with ports = (jupyter-available-local-ports 5)
+           for c in '(:shell :hb :iopub :stdin :control)
+           collect c and collect (pop ports))))
     `(:shell_port
       ,(plist-get ports :shell)
       :key  "8671b7e4-5656e6c9d24edfce81916780"
@@ -592,11 +591,8 @@ see the documentation on the --NotebookApp.password argument."
     (unless noninteractive
       (error "This should only be called in batch mode"))
     (message "Starting up notebook process for tests")
-    (let* ((sock (zmq-socket (zmq-current-context) zmq-PUB))
-           (port (zmq-bind-to-random-port sock "tcp://127.0.0.1")))
+    (let ((port (car (jupyter-available-local-ports 1))))
       (prog1 port
-        (zmq-unbind sock (zmq-get-option sock zmq-LAST-ENDPOINT))
-        (zmq-close sock)
         (let ((default-directory jupyter-test-temporary-directory)
               (buffer (generate-new-buffer "*jupyter-notebook*"))
               (args (append
