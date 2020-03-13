@@ -145,10 +145,15 @@ See also the docstring of `org-image-actual-width' for more details."
                               (member "silent" result-params))))))
     (cl-call-next-method)))
 
+(defvar org-babel-jupyter-current-src-block-params)
+
 (cl-defmethod jupyter-drop-request ((_client jupyter-org-client)
                                     (req jupyter-org-request))
   (when (markerp (jupyter-org-request-marker req))
-    (set-marker (jupyter-org-request-marker req) nil)))
+    (set-marker (jupyter-org-request-marker req) nil))
+  (when (eq org-babel-jupyter-current-src-block-params
+            (jupyter-org-request-block-params req))
+    (setq org-babel-jupyter-current-src-block-params nil)))
 
 (defvar org-babel-jupyter-session-clients) ; in ob-jupyter.el
 
