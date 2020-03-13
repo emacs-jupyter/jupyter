@@ -2789,6 +2789,26 @@ publish_display_data({'text/plain': \"foo\", 'text/latex': \"$\\alpha$\"});"
    (forward-line)
    (should (looking-at-p ": 2\n"))))
 
+(ert-deftest org-babel-jupyter-inline-blocks ()
+  :tags '(org)
+  (ert-info ("Treat inline and non-inline results similarly")
+    ;; #204
+    (jupyter-org-test
+     (insert (format "\
+#+NAME: hello_jupyter
+#+BEGIN_SRC jupyter-python :results value :display plain :session %s
+\"hello\"
+#+END_SRC
+
+" jupyter-org-test-session))
+     (insert "call_hello_jupyter()")
+     (let ((pos (point)))
+       (beginning-of-line)
+       (org-ctrl-c-ctrl-c)
+       (goto-char pos)
+       (should (looking-at-p " {{{results(=hello=)}}}"))))))
+
+
 ;; Local Variables:
 ;; byte-compile-warnings: (unresolved obsolete lexical)
 ;; eval: (and (functionp 'aggressive-indent-mode) (aggressive-indent-mode -1))

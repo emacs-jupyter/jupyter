@@ -284,7 +284,7 @@ to."
 
 ;;;; Execute result
 
-(cl-defmethod jupyter-handle-execute-result ((_client jupyter-org-client)
+(cl-defmethod jupyter-handle-execute-result ((client jupyter-org-client)
                                              (req jupyter-org-request)
                                              _execution-count
                                              data
@@ -292,17 +292,22 @@ to."
   (unless (eq (jupyter-org-request-result-type req) 'output)
     (cond
      ((jupyter-org-request-inline-block-p req)
-      ;; For inline results, only text/plain results are allowed
+      ;; For inline results, only text/plain results are allowed at the moment.
       ;;
-      ;; TODO: Possibly file links are allowed as well.  See
-      ;; `org-babel-insert-result'
-      (setq data (plist-get data :text/plain))
-      (if (jupyter-org-request-async-p req)
-          (org-with-point-at (jupyter-org-request-marker req)
-            (org-babel-insert-result data))
-        ;; The results are returned in `org-babel-execute:jupyter' in the
-        ;; synchronous case
-        (jupyter-org--add-result req data)))
+      ;; TODO: Handle all of the different macro types for inline results, see
+      ;; `org-babel-insert-result'.
+      (setq data `(:text/plain ,(plist-get data :text/plain)))
+      (let ((result (let ((r (jupyter-org-result req data metadata)))
+                      (if (stringp r) r
+                        (or (org-element-property :value r) "")))))
+        (if (jupyter-org-request-async-p req)
+            (org-with-point-at (jupyter-org-request-marker req)
+              (org-babel-insert-result
+               result (jupyter-org-request-block-params req)
+               nil nil (jupyter-kernel-language client)))
+          ;; The results are returned in `org-babel-execute:jupyter' in the
+          ;; synchronous case
+          (jupyter-org--add-result req result))))
      (t
       (jupyter-org--add-result req (jupyter-org-result req data metadata))))))
 
