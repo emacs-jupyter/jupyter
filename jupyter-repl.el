@@ -119,7 +119,7 @@ timeout, the built-in is-complete handler is used."
 
 (defcustom jupyter-repl-cell-pre-send-hook nil
   "Hook run before sending the contents of an input cell to a kernel.
-This hook is run with `point' at the cell code beginning position
+The hook is run with `point' at the cell code beginning position
 and before the contents of the cell are extracted from the buffer
 for sending to the kernel."
   :type 'hook
@@ -127,7 +127,8 @@ for sending to the kernel."
 
 (defcustom jupyter-repl-cell-post-send-hook nil
   "Hook run after sending the contents of an input cell to a kernel.
-This hook is run with `point' at the cell code beginning position."
+The hook is run with `point' at the cell code beginning
+position."
   :type 'hook
   :group 'jupyter-repl)
 
@@ -195,11 +196,11 @@ blank line, i.e. if RET is pressed twice in a row.")
 ;;; Macros
 
 (defmacro jupyter-with-repl-buffer (client &rest body)
-  "Switch to CLIENT's REPL buffer before running BODY.
-This switches to CLIENT's buffer slot, sets `inhibit-read-only'
-to t, and then runs BODY.  Afterwards, if CLIENT's buffer is
-currently being shown in a window, move windows `point' to the
-value of `point' in the buffer."
+  "Switch to CLIENT's REPL buffer and evaluate BODY.
+`inhibit-read-only' is let bound to t while evaluating
+BODY.  After evaluation, if the current buffer is visible in some
+window, set the window point to the value of `point' in the
+buffer."
   (declare (indent 1) (debug (symbolp &rest form)))
   `(with-current-buffer (oref ,client buffer)
      (let ((inhibit-read-only t))
@@ -208,17 +209,15 @@ value of `point' in the buffer."
            (when win (set-window-point win (point))))))))
 
 (defmacro jupyter-repl-without-continuation-prompts (&rest body)
-  "Run BODY without inserting continuation prompts.
-Normally a continuation prompt is inserted for every newline
-inserted into the REPL buffer through a function in
-`after-change-functions'.  Prevent the function from running while
-executing BODY."
+  "Evaluate BODY without inserting continuation prompts.
+This is done by inhibiting modification hooks while BODY is being
+evaluated."
   (declare (debug (&rest form)))
   `(let ((inhibit-modification-hooks t))
      ,@body))
 
 (defmacro jupyter-repl-append-output (client req &rest body)
-  "Switch to CLIENT's buffer, move to the end of REQ, and run BODY.
+  "Switch to CLIENT's buffer, move to the end of REQ, and evaluate BODY.
 REQ is a `jupyter-request' previously made using CLIENT, a REPL
 client.
 
@@ -239,9 +238,9 @@ Also handles any terminal control codes in the appended output."
            (set-buffer-modified-p nil))))))
 
 (defmacro jupyter-with-repl-lang-buffer (&rest body)
-  "Run BODY in the `jupyter-repl-lang-buffer' of the `current-buffer'.
+  "Evaluate BODY in the `jupyter-repl-lang-buffer' of the `current-buffer'.
 The contents of `jupyter-repl-lang-buffer' is erased before
-running BODY."
+evaluating BODY."
   (declare (indent 0) (debug (&rest form)))
   (let ((client (make-symbol "clientvar")))
     `(let ((,client jupyter-current-client))
@@ -252,7 +251,7 @@ running BODY."
            ,@body)))))
 
 (defmacro jupyter-with-repl-cell (&rest body)
-  "Narrow to the current cell, run BODY, then widen.
+  "Narrow to the current cell, evaluate BODY, then widen.
 The cell is narrowed to the region between and including
 `jupyter-repl-cell-code-beginning-position' and
 `jupyter-repl-cell-code-end-position'."
@@ -1125,7 +1124,7 @@ nil, pretend it's one."
   "Search existing history session for an element matching input.
 Only consider the text before point.  If N is negative, find the Nth
 previous match, otherwise the Nth next.  If N is zero or nil, make it
-one. \"Existing history session\" means those history elements already
+one.  \"Existing history session\" means those history elements already
 visited while forming the current input."
   (interactive "p")
   (when (or (null n) (zerop n)) (setq n 1))
@@ -1307,10 +1306,14 @@ Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
 (defun jupyter-repl-yank-handle-field-property (val beg end)
   "If VAL is not cell-code, remove the field property between BEG and END.
 Yanking text into a REPL cell normally removes the field
-property, see `yank-excluded-properties', but this property is
-added in `jupyter-repl-after-change' which is run after insertion
-of text and *before* `insert-for-yank' removes excluded
-properties."
+property (see `yank-excluded-properties') but this property is
+added in `jupyter-repl-after-change' to mark text in an input cell.
+
+The problem is that the after change functions run *before*
+`insert-for-yank' removes the field property.  This function is
+added to `yank-handled-properties' to prevent the removal of
+field when the associated text is part of the input to a REPL
+cell."
   ;; Assume that text with a field value of cell-code is due to
   ;; `jupyter-repl-mark-as-cell-code'.
   (unless (eq val 'cell-code)
@@ -1963,6 +1966,8 @@ the `current-buffer' will automatically have
       (kill-local-variable 'jupyter-current-client)))))
 
 (defun jupyter-repl-interaction-mode-reenable ()
+  "Re-enable `jupyter-repl-interaction-mode' in the current buffer.
+Do so only if possible in the `current-buffer'."
   (when (and (not jupyter-repl-interaction-mode)
              (cl-typep jupyter-current-client 'jupyter-repl-client)
              (eq major-mode
