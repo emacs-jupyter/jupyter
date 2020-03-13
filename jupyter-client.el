@@ -2050,8 +2050,9 @@ If the kernel CLIENT is connected to does not respond to a
 `:kernel-info-request', raise an error.
 
 Note, the value of the :name key in the :language_info property
-list is a symbol as opposed to a string mainly to speed up method
-dispatching based on the kernel language."
+list is a symbol as opposed to a string for the purposes of
+method dispatching.  Also all instances of \" \" in the language
+name are changed to \"-\" and all uppercase characters lowered."
   (cl-check-type client jupyter-kernel-client)
   (or (oref client kernel-info)
       (let* ((jupyter-inhibit-handlers t)
@@ -2064,10 +2065,10 @@ dispatching based on the kernel language."
         (unless msg
           (error "Kernel did not respond to kernel-info request"))
         (prog1 (oset client kernel-info (jupyter-message-content msg))
-          ;; Convert to a language symbol for method dispatching
+          ;; Canonicalize language name to a language symbol for method dispatching
           (let* ((info (plist-get (oref client kernel-info) :language_info))
                  (lang (plist-get info :name)))
-            (plist-put info :name (intern lang)))))))
+            (plist-put info :name (intern (jupyter-canonicalize-language-string lang))))))))
 
 (defun jupyter-kernel-language-mode-properties (client)
   "Get the `major-mode' info of CLIENT's kernel language.

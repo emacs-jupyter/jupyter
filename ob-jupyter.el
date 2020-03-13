@@ -558,13 +558,19 @@ language if one does not already exist.  The alias is created with
 
 SPECS defaults to `jupyter-available-kernelspecs'.  Optional
 argument REFRESH has the same meaning as in
-`jupyter-available-kernelspecs'."
+`jupyter-available-kernelspecs'.
+
+Note, spaces or uppercase characters in the language alias are
+converted into dashes or lowercase characters in the language
+alias, e.g.
+
+    Wolfram Language -> jupyter-wolfram-language"
   (cl-loop
    with specs = (or specs
                     (with-demoted-errors "Error retrieving kernelspecs: %S"
                       (jupyter-available-kernelspecs refresh)))
    for (kernel . (_dir . spec)) in specs
-   for lang = (plist-get spec :language)
+   for lang = (jupyter-canonicalize-language-string (plist-get spec :language))
    unless (member lang languages) collect lang into languages and
    do (org-babel-jupyter-make-language-alias kernel lang)))
 

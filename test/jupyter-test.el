@@ -676,6 +676,13 @@
 
 ;;; Environment
 
+(ert-deftest jupyter-canonicalize-language-string ()
+  :tags '(base env)
+  (should (equal (jupyter-canonicalize-language-string "Wolfram Language")
+                 "wolfram-language"))
+  (should (equal (jupyter-canonicalize-language-string "/gnu/store/python")
+                 "python")))
+
 (ert-deftest jupyter-runtime-directory ()
   :tags '(env)
   (let (dir-created jupyter-runtime-directory)
