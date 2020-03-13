@@ -323,7 +323,7 @@ For `url-retrieve', the callback will be called with a nil status."
   `(let* ((host (format "localhost:%s" (jupyter-test-ensure-notebook-server)))
           (url (format "http://%s" host))
           (,server (or (jupyter-find-server url)
-                       (jupyter-server :url url))))
+                       (jupyter-server-make-instance :url url))))
      ,@body))
 
 (defmacro jupyter-test-with-server-kernel (server name kernel &rest body)
