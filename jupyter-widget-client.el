@@ -187,6 +187,28 @@ required by the JupyterLab widget manager."
 
 ;;; `jupyter-kernel-client' methods
 
+(defun jupyter-widgets-start-websocket-server ()
+  "Start the `jupyter-widgets-server' if necessary."
+  (unless (process-live-p jupyter-widgets-server)
+    (setq jupyter-widgets-server
+          (websocket-server
+           jupyter-widgets-port
+           :host 'local
+           :on-message #'jupyter-widgets-on-message
+           :on-close #'jupyter-widgets-on-close))))
+
+(defun jupyter-widgets--initialize-client (client)
+  (unless (jupyter-get client 'jupyter-widgets-initialized)
+    (jupyter-set client 'jupyter-widgets-initialized t)
+    (unless (get-process "httpd")
+      (httpd-start))
+    (browse-url
+     (format jupyter-widgets-url-format
+             httpd-port
+             user-login-name
+             (jupyter-session-id (oref client session))
+             jupyter-widgets-port))))
+
 (cl-defmethod jupyter-handle-comm-open ((client jupyter-widget-client)
                                         req
                                         _id
@@ -194,24 +216,8 @@ required by the JupyterLab widget manager."
                                         _target-module
                                         _data)
   (when (member target-name jupyter-widgets-supported-targets)
-    ;; Initialize the server
-    (unless (process-live-p jupyter-widgets-server)
-      (setq jupyter-widgets-server
-            (websocket-server
-             jupyter-widgets-port
-             :host 'local
-             :on-message #'jupyter-widgets-on-message
-             :on-close #'jupyter-widgets-on-close)))
-    (unless (jupyter-get client 'jupyter-widgets-initialized)
-      (jupyter-set client 'jupyter-widgets-initialized t)
-      (unless (get-process "httpd")
-        (httpd-start))
-      (browse-url
-       (format jupyter-widgets-url-format
-               httpd-port
-               user-login-name
-               (jupyter-session-id (oref client session))
-               jupyter-widgets-port)))
+    (jupyter-widgets-start-websocket-server)
+    (jupyter-widgets--initialize-client client)
     (jupyter-widgets-send-message client (jupyter-request-last-message req)))
   (cl-call-next-method))
 
