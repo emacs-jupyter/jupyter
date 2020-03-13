@@ -649,8 +649,8 @@ the server.  For any other file, call ORIG, which is the function
 ;; TODO: Something that doesn't use advise
 ;; (advice-add 'recover-this-file :around 'jupyter-tramp--recover-this-file)
 
-;; TODO: What to do about reading and writing large files? See
-;; `jupyter-api-upload-large-file'.  Also the out of band functions of TRAMP.
+;; TODO: What to do about reading and writing large files?  Also the out of
+;; band functions of TRAMP.
 ;;
 ;; Adapted from `tramp-sh-handle-write-region'
 (defun jupyter-tramp-write-region (start end filename &optional append visit lockname mustbenew)
