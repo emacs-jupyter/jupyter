@@ -77,8 +77,6 @@
 (require 'jupyter-repl)
 (require 'jupyter-rest-api)
 (require 'jupyter-kernel-manager)
-(require 'jupyter-ioloop-comm)
-(require 'jupyter-server-ioloop)
 
 (declare-function jupyter-tramp-file-name-p "jupyter-tramp" (filename))
 (declare-function jupyter-tramp-server-from-file-name "jupyter-tramp" (filename))
@@ -109,7 +107,6 @@ Used in, e.g. a `jupyter-server-kernel-list-mode' buffer.")
 ;; `jupyter-server-client' since it isn't a representation of a server, but a
 ;; communication channel with one.
 (defclass jupyter-server (jupyter-rest-client
-                          jupyter-ioloop-comm
                           eieio-instance-tracker)
   ((tracking-symbol :initform 'jupyter--servers)
    (kernelspecs
@@ -265,17 +262,21 @@ ID of the kernel will be associated with NAME, see
 
 (cl-defgeneric jupyter-server-kernel-connected-p ((client jupyter-server) id)
   "Return non-nil if CLIENT can communicate with a kernel that has ID.")
+
+;; TODO: Move the following two functions to jupyter-server-ioloop-comm.el
 (defun jupyter-server--connect-channels (server id)
-  (jupyter-send server 'connect-channels id)
-  (jupyter-with-timeout
-      (nil jupyter-default-timeout
-           (error "Timeout when connecting websocket to kernel id %s" id))
-    (jupyter-server-kernel-connected-p server id)))
+  (when (object-of-class-p server 'jupyter-comm-layer)
+    (jupyter-send server 'connect-channels id)
+    (jupyter-with-timeout
+        (nil jupyter-default-timeout
+             (error "Timeout when connecting websocket to kernel id %s" id))
+      (jupyter-server-kernel-connected-p server id))))
 
 (defun jupyter-server--refresh-comm (server)
   "Stop and then start SERVER communication.
 Reconnect the previously connected kernels when starting."
-  (when (jupyter-comm-alive-p server)
+  (when (and (object-of-class-p server 'jupyter-comm-layer)
+             (jupyter-comm-alive-p server))
     (let ((connected (cl-remove-if-not
                       (apply-partially #'jupyter-server-kernel-connected-p server)
                       (mapcar (lambda (kernel) (plist-get kernel :id))
@@ -408,7 +409,10 @@ MANAGER's COMM slot will be set to the `jupyter-comm-layer'
 receiving events on the websocket when this method returns."
   (with-slots (kernel comm) manager
     (unless (slot-boundp manager 'comm)
-      (oset manager comm (jupyter-server-kernel-comm :kernel kernel)))
+      (oset manager comm
+            (if (object-of-class-p (oref kernel server) 'jupyter-comm-layer)
+                (jupyter-server-ioloop-kernel-comm :kernel kernel)
+              (jupyter-server-kernel-comm :kernel kernel))))
     (unless (jupyter-comm-alive-p comm)
       (jupyter-comm-start comm))))
 
@@ -508,6 +512,18 @@ least the following keys:
 (define-error 'jupyter-server-non-existent
   "The server doesn't exist")
 
+(defun jupyter-server-make-instance (&rest args)
+  "Return a different subclass of `jupyter-server' depending on `jupyter-server-use-zmq'.
+A `jupyter-server-ioloop-comm' object is returned if
+`jupyter-server-use-zmq' is non-nil, a `jupyter-server' is
+returned otherwise. ARGS is passed to the `make-instance'
+invocation for the subclass."
+  (if jupyter-server-use-zmq
+      (progn
+        (require 'jupyter-server-ioloop-comm)
+        (apply #'jupyter-server-ioloop-comm args))
+    (apply #'jupyter-server args)))
+
 (defun jupyter-current-server (&optional ask)
   "Return an existing `jupyter-server' or ASK for a new one.
 If ASK is non-nil, always ask for a URL and return the
@@ -546,7 +562,7 @@ a URL."
                                          (setf (url-type u) "ws")
                                          (url-recreate-url u)))))
              (or (jupyter-find-server url ws-url)
-                 (let ((server (jupyter-server :url url :ws-url ws-url)))
+                 (let ((server (jupyter-server-make-instance :url url :ws-url ws-url)))
                    (if (jupyter-api-server-exists-p server) server
                      (delete-instance server)
                      (signal 'jupyter-server-non-existent (list url)))))))))
