@@ -415,8 +415,7 @@ the PARAMS alist."
             ()
             ;; Remove the hook before waiting so it doesn't get called again.
             (remove-hook 'org-babel-after-execute-hook #'sync-on-export t)
-            (unless (jupyter-request-idle-received-p req)
-              (while (null (jupyter-wait-until-idle req jupyter-long-timeout))))))
+            (while (null (jupyter-wait-until-idle req jupyter-long-timeout)))))
         ;; Ensure we convert async blocks to synchronous ones when exporting
         (when (bound-and-true-p org-export-current-backend)
           (add-hook 'org-babel-after-execute-hook #'sync-on-export t t))
