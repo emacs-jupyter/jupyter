@@ -36,6 +36,7 @@
 (declare-function org-babel-jupyter-src-block-session "ob-jupyter" ())
 (declare-function org-babel-jupyter-language-p "ob-jupyter" (lang))
 (declare-function org-element-context "org-element" (&optional element))
+(declare-function org-element-create "org-element" (type &optional props &rest children))
 (declare-function org-element-type "org-element" (element))
 (declare-function org-element-normalize-string "org-element" (s))
 (declare-function org-element-at-point "org-element" ())
@@ -707,7 +708,7 @@ be wrapped in a drawer.  Used in `jupyter-org-babel-result-p'."
 
 (defun jupyter-org-comment (value)
   "Return a comment `org-element' with VALUE."
-  (list 'comment (list :value value)))
+  (org-element-create 'comment (list :value value)))
 
 (defun jupyter-org-export-block-or-pandoc (type value params)
   "Return VALUE, either converted with pandoc or in an export block.
@@ -723,12 +724,13 @@ Otherwise, wrap it in an export block."
   "Return an export-block `org-element'.
 The block will export TYPE and the contents of the block will be
 VALUE."
-  (list 'export-block (list :type type
+  (org-element-create 'export-block
+                      (list :type type
                             :value (org-element-normalize-string value))))
 
 (defun jupyter-org-file-link (path)
   "Return a file link `org-element' that points to PATH."
-  (list 'link (list :type "file" :path path)))
+  (org-element-create 'link (list :type "file" :path path)))
 
 (defun jupyter-org-image-link (path &optional width height)
   "Return an `org-element' for an image at PATH.
@@ -747,9 +749,9 @@ Otherwise return a `jupyter-org-file-link' for PATH."
                     (when height
                       (concat (when width " ")
                               ":height " (number-to-string height))))))
-        (list 'paragraph (list :attr_org (list attrs))
-              (jupyter-org-file-link path)
-              "\n"))
+        (org-element-create 'paragraph (list :attr_org (list attrs))
+                            (jupyter-org-file-link path)
+                            "\n"))
     (jupyter-org-file-link path)))
 
 (defun jupyter-org-src-block (language parameters value &optional switches)
@@ -757,14 +759,16 @@ Otherwise return a `jupyter-org-file-link' for PATH."
 LANGUAGE, PARAMETERS, VALUE, and SWITCHES all have the same
 meaning as a src-block `org-element'."
   (declare (indent 2))
-  (list 'src-block (list :language language
-                         :parameters parameters
-                         :switches switches
-                         :value value)))
+  (org-element-create 'src-block
+                      (list :language language
+                            :parameters parameters
+                            :switches switches
+                            :value value)))
 
 (defun jupyter-org-example-block (value)
   "Return an example-block `org-element' with VALUE."
-  (list 'example-block (list :value (org-element-normalize-string value))))
+  (org-element-create 'example-block
+                      (list :value (org-element-normalize-string value))))
 
 ;; From `org-babel-insert-result'
 (defun jupyter-org-tabulablep (r)
@@ -811,7 +815,7 @@ Otherwise, return VALUE formated as a fixed-width `org-element'."
     (if (cl-loop with i = 0 for c across value if (eq c ?\n) do (cl-incf i)
                  thereis (>= i org-babel-min-lines-for-block-output))
         (jupyter-org-example-block value)
-      (list 'fixed-width (list :value value))))
+      (org-element-create 'fixed-width (list :value value))))
    ((and (listp value)
          (or (memq (car value) org-element-all-objects)
              (memq (car value) org-element-all-elements)))
@@ -820,15 +824,15 @@ Otherwise, return VALUE formated as a fixed-width `org-element'."
          (jupyter-org-tabulablep value))
     (jupyter-org-table-string (jupyter-org-table-to-orgtbl value)))
    (t
-    (list 'fixed-width (list :value (format "%S" value))))))
+    (org-element-create 'fixed-width (list :value (format "%S" value))))))
 
 (defun jupyter-org-latex-fragment (value)
   "Return a latex-fragment `org-element' consisting of VALUE."
-  (list 'latex-fragment (list :value value)))
+  (org-element-create 'latex-fragment (list :value value)))
 
 (defun jupyter-org-latex-environment (value)
   "Return a latex-fragment `org-element' consisting of VALUE."
-  (list 'latex-environment (list :value value)))
+  (org-element-create 'latex-environment (list :value value)))
 
 (defun jupyter-org-results-drawer (&rest results)
   "Return a drawer `org-element' containing RESULTS.
@@ -1310,7 +1314,6 @@ non-nil, ensure that the appended RESULT begins on a newline."
   (insert (org-element-interpret-data
            (jupyter-org-example-block
             (concat
-             ;; TODO: optimize this
              (let ((old-result
                     (org-element-normalize-string
                      (org-element-property :value element))))
