@@ -78,6 +78,11 @@ widget socket."))
 
 ;;; Websocket handlers
 
+(defsubst jupyter-widgets--send-deferred (client)
+  (cl-loop for msg in (nreverse (oref client widget-messages))
+           do (websocket-send-text (oref client widget-sock) msg))
+  (oset client widget-messages nil))
+
 (defun jupyter-widgets-on-message (ws frame)
   "When websocket, WS, receives a message FRAME, handle it.
 Send the contents of the message FRAME to the kernel and register
@@ -89,17 +94,11 @@ callbacks."
                   (jupyter-message-session msg))))
     (cl-assert client)
     (unless (equal ws (oref client widget-sock))
-      ;; TODO: Handle multiple clients and sending
-      ;; widget state to new clients
+      ;; TODO: Handle multiple clients and sending widget state to new clients
       (oset client widget-sock ws))
     (pcase (jupyter-message-type msg)
       ("connect"
-       ;; Send any queued widget messages when receiving the connect message
-       ;; from the browser.  Note this message type is not a true Jupyter
-       ;; message.
-       (cl-loop for msg in (nreverse (oref client widget-messages))
-                do (websocket-send-text ws msg))
-       (oset client widget-messages nil))
+       (jupyter-widgets--send-deferred client))
       (_
        ;; Any other message the browser sends is meant for the kernel so do the
        ;; redirection and setup the callbacks
@@ -168,9 +167,7 @@ required by the JupyterLab widget manager."
                  :shell)))
     (push (jupyter--encode msg) (oref client widget-messages))
     (when (websocket-openp (oref client widget-sock))
-      (cl-loop for msg in (nreverse (oref client widget-messages))
-               do (websocket-send-text (oref client widget-sock) msg))
-      (oset client widget-messages nil))))
+      (jupyter-widgets--send-deferred client))))
 
 ;;; Displaying widgets in the browser
 ;; NOTE: The "display_model" and "clear_display" messages below are not true
