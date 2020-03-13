@@ -1419,6 +1419,15 @@ this method is called."
   ;; added after deleting text at the beginning of a cell.
   (jupyter-repl-mark-as-cell-code beg (min (point-max) (+ beg 1))))
 
+(defun jupyter-repl--deactivate-interaction-buffers ()
+  (cl-loop
+   with client = jupyter-current-client
+   for buffer in (buffer-list)
+   do (with-current-buffer buffer
+        (when (and jupyter-repl-interaction-mode
+                   (eq jupyter-current-client client))
+          (jupyter-repl-interaction-mode -1)))))
+
 (defun jupyter-repl-kill-buffer-query-function ()
   "Ask before killing a Jupyter REPL buffer.
 If the REPL buffer is killed, stop the client's channels.  When
@@ -1437,13 +1446,7 @@ the REPL to disable that mode in those buffers.  See
           (jupyter-stop-channels jupyter-current-client)
           (when (and (jupyter-client-has-manager-p)
                      (yes-or-no-p (format "Shutdown the client's kernel? ")))
-            (jupyter-shutdown-kernel (oref jupyter-current-client manager)))
-          (cl-loop
-           with client = jupyter-current-client
-           for buffer in (buffer-list)
-           do (with-current-buffer buffer
-                (when (eq jupyter-current-client client)
-                  (jupyter-repl-interaction-mode -1)))))))))
+            (jupyter-shutdown-kernel (oref jupyter-current-client manager))))))))
 
 (defun jupyter-repl-error-before-major-mode-change ()
   "Error if attempting to change the `major-mode' in a REPL buffer."
@@ -1782,6 +1785,7 @@ Return the buffer switched to."
     (erase-buffer)
     ;; Add local hooks
     (add-hook 'kill-buffer-query-functions #'jupyter-repl-kill-buffer-query-function nil t)
+    (add-hook 'kill-buffer-hook #'jupyter-repl--deactivate-interaction-buffers nil t)
     (add-hook 'after-change-functions 'jupyter-repl-do-after-change nil t)
     (add-hook 'pre-redisplay-functions 'jupyter-repl-preserve-window-margins nil t)
     ;; Initialize the REPL
