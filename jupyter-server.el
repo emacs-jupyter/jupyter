@@ -332,6 +332,8 @@ The kernelspecs are returned in the same form as returned by
                                 (cons nil (plist-get spec :spec)))))))
   (plist-get (oref server kernelspecs) :kernelspecs))
 
+;;;; `jupyter-server-kernel-comm'
+
 ;; TODO: Remove the need for these methods, they are remnants from an older
 ;; implementation.  They will need to be removed from `jupyter-kernel-client'.
 (cl-defmethod jupyter-channel-alive-p ((comm jupyter-server-abstract-kcomm) _channel)
@@ -339,6 +341,61 @@ The kernelspecs are returned in the same form as returned by
 
 (cl-defmethod jupyter-channels-running-p ((comm jupyter-server-abstract-kcomm))
   (jupyter-comm-alive-p comm))
+
+(defun jupyter-server--ws-on-message (ws frame)
+  (cl-case (websocket-frame-opcode frame)
+    ((text binary)
+     (let* ((msg (jupyter-read-plist-from-string
+                  (websocket-frame-payload frame)))
+            ;; TODO: Get rid of some of these explicit/implicit `intern' calls
+            (channel (intern (concat ":" (plist-get msg :channel))))
+            (msg-type (jupyter-message-type-as-keyword
+                       (jupyter-message-type msg)))
+            (parent-header (plist-get msg :parent_header)))
+       (plist-put msg :msg_type msg-type)
+       (plist-put parent-header :msg_type msg-type)
+       (jupyter-event-handler
+        (plist-get (websocket-client-data ws) :comm)
+        ;; NOTE: The nil is the identity field expected by a
+        ;; `jupyter-channel-ioloop', it is mimicked here.
+        (cl-list* 'message channel nil msg))))
+    (t
+     (error "Unhandled websocket frame opcode (%s)"
+            (websocket-frame-opcode frame)))))
+
+(cl-defmethod jupyter-comm-start ((comm jupyter-server-kernel-comm))
+  (unless (jupyter-comm-alive-p comm)
+    (with-slots (server id) (oref comm kernel)
+      (let ((ws (jupyter-api-get-kernel-ws
+                 server id
+                 :on-message #'jupyter-server--ws-on-message)))
+        (oset comm ws ws)
+        (plist-put (websocket-client-data ws) :comm comm)))))
+
+(cl-defmethod jupyter-comm-stop ((comm jupyter-server-kernel-comm))
+  (when (jupyter-comm-alive-p comm)
+    (websocket-close (oref comm ws))
+    (plist-put (websocket-client-data (oref comm ws)) :comm nil)
+    (slot-makeunbound comm 'ws)))
+
+(cl-defmethod jupyter-comm-alive-p ((comm jupyter-server-kernel-comm))
+  (and (slot-boundp comm 'ws)
+       (eq (plist-get (websocket-client-data (oref comm ws)) :comm) comm)))
+
+(cl-defmethod jupyter-send ((comm jupyter-server-kernel-comm) _event-type &rest event)
+  "Use COMM to send an EVENT to the server with type, EVENT-TYPE.
+SERVER will direct EVENT to the right kernel based on the kernel
+ID of the kernel associated with COMM."
+  (unless (jupyter-comm-alive-p comm)
+    (jupyter-comm-start comm))
+  (cl-destructuring-bind (channel msg-type msg &optional msg-id) event
+    (with-slots (ws) comm
+      (websocket-send-text
+       ws (jupyter-encode-raw-message
+              (plist-get (websocket-client-data ws) :session) msg-type
+            :channel (substring (symbol-name channel) 1)
+            :msg-id msg-id
+            :content msg)))))
 
 ;;;; `jupyter-server-kernel-manager'
 
