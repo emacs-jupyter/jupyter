@@ -113,9 +113,9 @@ callbacks."
               (content (jupyter-message-content msg))
               (jupyter-inhibit-handlers
                ;; Only let the browser handle these messages
-               (cons :comm-msg
-                     (when (memq msg-type '(:comm-info-request))
-                       '(:status :comm-info-reply))))
+               (if (memq msg-type '(:comm-info-request))
+                   '(:comm-msg :status :comm-info-reply)
+                 '(:comm-msg)))
               (req (jupyter-send client channel msg-type content msg-id)))
          (jupyter-add-callback req
            '(:comm-open :comm-close :comm-info-reply :comm-msg :status)
