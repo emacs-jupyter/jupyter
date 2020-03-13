@@ -132,32 +132,32 @@ callbacks."
 
 ;;; Working with comm messages
 
-(defun jupyter-widgets-sanitize-comm-msg (msg)
+(defun jupyter-widgets-normalize-comm-msg (msg)
   "Ensure that a comm MSG's fields are not ambiguous before encoding.
 For example, for fields that are supposed to be arrays, ensure
 that they will be encoded as such.  In addition, add fields
 required by the JupyterLab widget manager."
   (prog1 msg
-    (let ((buffers (plist-member msg :buffers)))
-      (if (null buffers) (plist-put msg :buffers [])
-        (when (eq (cadr buffers) nil)
-          (setcar (cdr buffers) [])))
-      (unless (equal (cadr buffers) [])
-        (setq buffers (cadr buffers))
-        (while (car buffers)
-          (setcar buffers
-                  (base64-encode-string
-                   (encode-coding-string (car buffers) 'utf-8-auto t) t))
-          (setq buffers (cdr buffers))))
-      ;; Needed by WidgetManager
-      (unless (jupyter-message-metadata msg)
-        (plist-put msg :metadata '(:version "2.0"))))))
+    (when (memq (jupyter-message-type msg)
+                '(:comm-open :comm-close :comm-msg))
+      (let ((buffers (plist-member msg :buffers)))
+        (if (null buffers) (plist-put msg :buffers [])
+          (when (eq (cadr buffers) nil)
+            (setcar (cdr buffers) [])))
+        (unless (equal (cadr buffers) [])
+          (setq buffers (cadr buffers))
+          (while (car buffers)
+            (setcar buffers
+                    (base64-encode-string
+                     (encode-coding-string (car buffers) 'utf-8-auto t) t))
+            (setq buffers (cdr buffers))))
+        ;; Needed by WidgetManager
+        (unless (jupyter-message-metadata msg)
+          (plist-put msg :metadata '(:version "2.0")))))))
 
 (cl-defmethod jupyter-widgets-send-message ((client jupyter-widget-client) msg)
   "Send a MSG to CLIENT's `widget-sock' `websocket'."
-  (when (memq (jupyter-message-type msg)
-              '(:comm-open :comm-close :comm-msg))
-    (jupyter-widgets-sanitize-comm-msg msg))
+  (setq msg (jupyter-widgets-normalize-comm-msg msg))
   (let ((msg-type (jupyter-message-type msg)))
     (plist-put msg :channel
                (cond
