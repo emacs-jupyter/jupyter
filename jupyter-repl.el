@@ -1863,7 +1863,7 @@ VERBOSE has the same meaning as in
   (let (fld frf sff spf comment)
     (jupyter-with-repl-lang-buffer
       (setq fld font-lock-defaults
-            frf (or font-lock-fontify-region-function #'ignore)
+            frf (or #'font-lock-fontify-region #'ignore)
             sff (or font-lock-syntactic-face-function #'ignore)
             spf (or syntax-propertize-function #'ignore)
             comment comment-start))
