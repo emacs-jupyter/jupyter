@@ -221,8 +221,9 @@ Operations not mentioned here will be handled by the default Emacs primitives.")
   "Return METHOD if it corresponds to a Jupyter filename method or nil."
   (and (string-match-p "\\`jpys?\\'" method) method))
 
+;; NOTE: Needs to be a `defsubst' to avoid recursive loading.
 ;;;###autoload
-(defun jupyter-tramp-file-name-p (filename)
+(defsubst jupyter-tramp-file-name-p (filename)
   "If FILENAME is a Jupyter filename, return its method otherwise nil."
   (when (tramp-tramp-file-p filename)
     (jupyter-tramp-file-name-method-p
