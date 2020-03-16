@@ -2800,20 +2800,27 @@ publish_display_data({'text/plain': \"foo\", 'text/latex': \"$\\alpha$\"});"
   :tags '(org)
   (ert-info ("Treat inline and non-inline results similarly")
     ;; #204
-    (jupyter-org-test
-     (insert (format "\
+    (let ((src (format "\
 #+NAME: hello_jupyter
 #+BEGIN_SRC jupyter-python :results value :display plain :session %s
 \"hello\"
 #+END_SRC
 
-" jupyter-org-test-session))
-     (insert "call_hello_jupyter()")
-     (let ((pos (point)))
-       (beginning-of-line)
+" jupyter-org-test-session)))
+      (jupyter-org-test
+       (insert src)
+       (insert "call_hello_jupyter()")
+       (let ((pos (point)))
+         (beginning-of-line)
+         (org-ctrl-c-ctrl-c)
+         (goto-char pos)
+         (should (looking-at-p " {{{results(=hello=)}}}"))))
+      (jupyter-org-test
+       (save-excursion (insert src))
        (org-ctrl-c-ctrl-c)
-       (goto-char pos)
-       (should (looking-at-p " {{{results(=hello=)}}}"))))))
+       (goto-char (org-babel-where-is-src-block-result))
+       (forward-line)
+       (should (looking-at-p ": hello"))))))
 
 
 ;; Local Variables:
