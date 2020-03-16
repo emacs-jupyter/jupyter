@@ -88,6 +88,11 @@
   "Support for the Jupyter kernel gateway"
   :group 'jupyter)
 
+(defcustom jupyter-server-use-zmq (and (locate-library "zmq") t)
+  "Whether or not ZMQ should be used as a backend."
+  :type 'boolean
+  :group 'jupyter)
+
 (defvar-local jupyter-current-server nil
   "The `jupyter-server' associated with the current buffer.
 Used in, e.g. a `jupyter-server-kernel-list-mode' buffer.")
@@ -159,8 +164,12 @@ Access should be done through `jupyter-available-kernelspecs'.")))
   ;; The notebook server already takes care of forcing shutdown of a kernel.
   (ignore))
 
-(defclass jupyter-server-kernel-comm (jupyter-comm-layer)
-  ((kernel :type jupyter-server-kernel :initarg :kernel)))
+(defclass jupyter-server-abstract-kcomm (jupyter-comm-layer)
+  ((kernel :type jupyter-server-kernel :initarg :kernel))
+  :abstract t)
+
+(defclass jupyter-server-kernel-comm (jupyter-server-abstract-kcomm)
+  ())
 
 (cl-defmethod jupyter-comm-id ((comm jupyter-server-kernel-comm))
   (let* ((kernel (oref comm kernel))
