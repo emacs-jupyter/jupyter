@@ -466,7 +466,7 @@ See `jupyter-tramp-get-file-model' for details on what a file model is."
                                'jupyter-tramp-file-name-handler)
                          tramp-foreign-file-name-handler-alist)))
             (expand-file-name name))))
-    (tramp-run-real-handler 'expand-file-name (list name))))
+    (tramp-run-real-handler 'expand-file-name (list name directory))))
 
 ;;; File operations
 
