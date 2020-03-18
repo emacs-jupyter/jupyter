@@ -1307,18 +1307,22 @@ set the =jupyter-request-inhibited-handlers= slot of a =jupyter-request=
 object. This slot can take the same values as =jupyter-inhibit-handlers=.
 ** Waiting for messages
 
-All message passing between the kernel and Emacs happens asynchronously. So if
-a code path in Emacs Lisp is dependent on some message already having been
-received, e.g. an idle message, there needs to be primitives that will block so
-that there is a guarantee that a particular message has been received before
-proceeding.
+When using an asynchronous method of communication between a kernel and a
+client, e.g. when =jupyter-ioloop-comm= is used, there needs to be a way for a
+program to guarantee that some message has already been received.  That is, a
+program must be able to wait for particular messages before proceeding.
 
-The following functions all wait for different conditions to be met on the
-received messages of a request and return the message that caused the function
-to stop waiting or =nil= if no message was received within a timeout period.
-The default timeout is =jupyter-default-timeout= seconds.
+=jupyter-wait-until= will wait until the function it is passed returns non-nil
+for one of the messages received by a request and will return either the value
+of the function or =nil= if a timeout is reached. The default timeout
+is =jupyter-default-timeout=.
 
-For example, to wait until an idle message has been received for a request:
+=jupyter-wait-until-received= and =jupyter-wait-until-idle= are convenience
+functions built on top of =jupyter-wait-until=.
+
+*** Examples
+
+Wait until an idle message has been received for a request:
 
 #+BEGIN_SRC elisp
 (let ((timeout 4))
@@ -1328,37 +1332,13 @@ For example, to wait until an idle message has been received for a request:
    timeout))
 #+END_SRC
 
-To wait until a message of a specific type is received for a request:
+Wait until a message of a specific type is received for a request:
 
 #+BEGIN_SRC elisp
 (jupyter-wait-until-received :execute-reply
   (jupyter-send-execute-request client :code "[i*10 for i in range(100000)]"))
 #+END_SRC
 
-The most general form of the blocking functions is =jupyter-wait-until= which
-takes a message type and a predicate function of a single argument. Whenever a
-message is received that matches the message type, the message is passed to the
-function to determine if =jupyter-wait-until= should return from waiting.
-
-#+BEGIN_SRC elisp
-(defun stream-prints-50-p (msg)
-  (let ((text (jupyter-message-get msg :text)))
-    (cl-loop for line in (split-string text "\n")
-             thereis (equal line "50"))))
-
-(let ((timeout 2))
-  (jupyter-wait-until
-      (jupyter-send-execute-request client :code "[print(i) for i in range(100)]")
-      :stream #'stream-prints-50-p
-    timeout))
-#+END_SRC
-
-The above code runs =stream-prints-50-p= for every =stream= message received
-from a kernel (here assumed to be a python kernel) for an execute request that
-prints the numbers 0 to 99 and waits until the kernel has printed the number 50
-before returning from the =jupyter-wait-until= call. If the number 50 is not
-printed before the two second timeout, =jupyter-wait-until= returns =nil=.
-Otherwise it returns the stream message whose content contains the number 50.
 ** Message property lists
 :PROPERTIES:
 :ID:       D09FDD89-43A9-41DA-A6E8-6D6C73336981
