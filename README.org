@@ -1194,7 +1194,40 @@ interact with an [[https://github.com/jupyter-widgets/ipyleaflet][ipyleaflet]] m
 ** TODO =jupyter-ioloop=
 ** TODO =jupyter-channel-ioloop=
 ** TODO =jupyter-zmq-channel-ioloop=
-** TODO =jupyter-comm-layer=
+** =jupyter-comm-layer=
+
+The =jupyter-comm-layer= class abstracts the sending/receiving of messages
+between a kernel and a =jupyter-kernel-client= so that a =jupyter-kernel-client=
+does not need to be concerned with the underlying way that messages are
+communicated.  It also allows one to build up layers of event handling in which
+subsets of events may be handled on one layer and the remaining events handled
+by the remaining layers.
+
+A =jupyter-comm-layer= deals in events which are lists with an identifying
+element in the head position.  Jupyter messages are then just one kind of
+event.  When events are received, the =jupyter-event-handler= method is called on
+all registered event handlers, passing the event to the handlers.  Events can
+be sent to the other end of a =jupyter-comm-layer= using the =jupyter-send= method.
+
+Objects interested in receiving events need to define a =jupyter-event-handler=
+method for the particular events they would like to receive.  Then, to start
+receiving they should call =jupyter-comm-add-handler= and to
+stop =jupyter-comm-remove-handler=.  Here is an example =jupyter-event-handler=
+
+#+begin_src elisp
+(cl-defmethod jupyter-event-handler ((client jupyter-kernel-client)
+                                     (event (head message)))
+  (cl-destructuring-bind (_ channel _idents . msg) event
+    (jupyter-handle-message client channel msg)))
+#+end_src
+
+The lifetime of a =jupyter-comm-layer= is controlled by the
+methods =jupyter-comm-start= and =jupyter-comm-start=.  To check if
+a =jupyter-comm-layer= is able to send/receive events, use =jupyter-comm-alive-p=.
+Initialization of a =jupyter-comm-layer=, e.g. to ensure the right Jupyter
+session ID/key are used, is done by the optional =jupyter-comm-initialize=
+method.
+
 ** Callbacks and hooks
 :PROPERTIES:
 :ID:       0E7CA280-8D14-4994-A3C7-C3B7204AC9D2
