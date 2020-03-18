@@ -126,7 +126,7 @@
     (if (eq channel :hb) (jupyter-start-channel (oref comm hb))
       (jupyter-start-channel (plist-get (oref comm channels) channel)))))
 
-(cl-defmethod jupyter-initialize-connection ((comm jupyter-zmq-channel-comm)
+(cl-defmethod jupyter-comm-initialize ((comm jupyter-zmq-channel-comm)
                                              (session jupyter-session))
   (cl-call-next-method)
   (let ((endpoints (jupyter-session-endpoints session)))

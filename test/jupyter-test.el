@@ -74,13 +74,13 @@
   :tags '(mock comm)
   (let ((comm (jupyter-mock-comm-layer))
         (obj (make-jupyter-mock-comm-obj)))
-    (jupyter-connect-client comm obj)
-    (should (= (length (oref comm clients)) 1))
-    (should (eq (jupyter-weak-ref-resolve (car (oref comm clients))) obj))
+    (jupyter-comm-add-handler comm obj)
+    (should (= (length (oref comm handlers)) 1))
+    (should (eq (jupyter-weak-ref-resolve (car (oref comm handlers))) obj))
     (should (= (oref comm alive) 1))
-    (jupyter-connect-client comm obj)
-    (should (= (length (oref comm clients)) 1))
-    (should (eq (jupyter-weak-ref-resolve (car (oref comm clients))) obj))
+    (jupyter-comm-add-handler comm obj)
+    (should (= (length (oref comm handlers)) 1))
+    (should (eq (jupyter-weak-ref-resolve (car (oref comm handlers))) obj))
     (should (= (oref comm alive) 1))
 
     (should-not (jupyter-mock-comm-obj-event obj))
@@ -89,10 +89,10 @@
     (sleep-for 0.01)
     (should (equal (jupyter-mock-comm-obj-event obj) '(event)))
 
-    (jupyter-disconnect-client comm obj)
-    (should (= (length (oref comm clients)) 0))
+    (jupyter-comm-remove-handler comm obj)
+    (should (= (length (oref comm handlers)) 0))
     (should-not (oref comm alive))
-    (jupyter-disconnect-client comm obj)))
+    (jupyter-comm-remove-handler comm obj)))
 
 ;;; Callbacks
 
@@ -706,14 +706,14 @@
 
 ;; TODO: Different values of the session argument
 ;; TODO: Update for new `jupyter-channel-ioloop-comm'
-(ert-deftest jupyter-initialize-connection ()
+(ert-deftest jupyter-comm-initialize ()
   :tags '(client init)
   (skip-unless nil)
   ;; The default comm is a jupyter-channel-ioloop-comm
   (let ((conn-info (jupyter-test-conn-info-plist))
         (client (jupyter-kernel-client)))
     (oset client kcomm (jupyter-zmq-channel-comm))
-    (jupyter-initialize-connection client conn-info)
+    (jupyter-comm-initialize client conn-info)
     ;; kcomm by default is a `jupyter-channel-ioloop-comm'
     (with-slots (session kcomm) client
       (ert-info ("Client session")
@@ -741,11 +741,11 @@
         (should-not (jupyter-channels-running-p client))
         (jupyter-start-channels client)
         (should (jupyter-channels-running-p client))
-        (jupyter-initialize-connection client conn-info)
+        (jupyter-comm-initialize client conn-info)
         (should-not (jupyter-channels-running-p client)))
       (ert-info ("Invalid signature scheme")
         (plist-put conn-info :signature_scheme "hmac-foo")
-        (should-error (jupyter-initialize-connection client conn-info))))))
+        (should-error (jupyter-comm-initialize client conn-info))))))
 
 (ert-deftest jupyter-write-connection-file ()
   :tags '(client)
@@ -778,7 +778,7 @@
     (let ((conn-info (jupyter-test-conn-info-plist))
           (client (jupyter-kernel-client)))
       (oset client kcomm (jupyter-zmq-channel-comm))
-      (jupyter-initialize-connection client conn-info)
+      (jupyter-comm-initialize client conn-info)
       (cl-loop
        for channel in '(:hb :shell :iopub :stdin)
        for alive-p = (jupyter-channel-alive-p client channel)

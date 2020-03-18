@@ -38,7 +38,7 @@
 ;;
 ;; Initializing the connection
 ;;
-;; The `jupyter-initialize-connection' method should be called before calling
+;; The `jupyter-comm-initialize' method should be called before calling
 ;; `jupyter-comm-start' and should be passed a `jupyter-session' object used to
 ;; initialize the `jupyter-channel-ioloop' object.
 
@@ -70,7 +70,7 @@
                         (jupyter-session-id (oref comm session))
                         9 nil nil "…")))
 
-(cl-defmethod jupyter-initialize-connection ((comm jupyter-channel-ioloop-comm)
+(cl-defmethod jupyter-comm-initialize ((comm jupyter-channel-ioloop-comm)
                                              (session jupyter-session))
   (cl-call-next-method)
   (let ((endpoints (jupyter-session-endpoints session)))

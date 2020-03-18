@@ -2236,7 +2236,7 @@ interactively, DISPLAY the new REPL buffer as well."
     (oset client kcomm (make-instance
                         'jupyter-channel-ioloop-comm
                         :ioloop-class 'jupyter-zmq-channel-ioloop))
-    (jupyter-initialize-connection client file-or-plist)
+    (jupyter-comm-initialize client file-or-plist)
     (jupyter-start-channels client)
     (jupyter-hb-unpause client)
     (jupyter-bootstrap-repl client repl-name associate-buffer display)))

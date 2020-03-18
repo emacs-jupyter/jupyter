@@ -277,7 +277,7 @@
           (let ((kcomm (jupyter-server-kernel-comm
                         :kernel kernel)))
             (should-not (jupyter-server-kernel-connected-p server id))
-            (jupyter-connect-client server kcomm)
+            (jupyter-comm-add-handler server kcomm)
             (should (jupyter-server-kernel-connected-p server id))
             (should (jupyter-comm-alive-p kcomm))
             (jupyter-comm-stop kcomm)
@@ -386,7 +386,7 @@
             (should (jupyter-comm-alive-p (oref manager comm)))
             (should (slot-boundp client 'kcomm))
             (should (eq (oref manager comm) (oref client kcomm)))
-            (jupyter-comm-client-loop (oref client kcomm) c
+            (jupyter-comm-handler-loop (oref client kcomm) c
               (should (eq c client)))
             (should (equal (jupyter-eval "1 + 1") "2")))
         (jupyter-shutdown-kernel manager)))))

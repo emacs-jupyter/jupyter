@@ -234,7 +234,7 @@ connect to MANAGER's kernel."
         (oset client kcomm (make-instance
                             'jupyter-channel-ioloop-comm
                             :ioloop-class 'jupyter-zmq-channel-ioloop))
-        (jupyter-initialize-connection client (oref kernel session))))))
+        (jupyter-comm-initialize client (oref kernel session))))))
 
 (cl-defmethod jupyter-start-kernel :after ((manager jupyter-kernel-process-manager) &rest _args)
   (with-slots (kernel) manager

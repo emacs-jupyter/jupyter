@@ -31,10 +31,10 @@
 ;; A specific kernel communication layer (kcomm for short) is implemented by
 ;; extending the methods: `jupyter-comm-start', `jupyter-comm-stop',
 ;; `jupyter-comm-alive-p',`jupyter-event-handler', `jupyter-send', and possibly
-;; `jupyter-initialize-connection'.
+;; `jupyter-comm-initialize'.
 ;;
-;; A client registers with the kcomm by calling `jupyter-connect-client' and
-;; de-registers with `jupyter-disconnect-client'.  The communication layer deals
+;; A client registers with the kcomm by calling `jupyter-comm-add-handler' and
+;; de-registers with `jupyter-comm-remove-handler'.  The communication layer deals
 ;; with "events" which are just lists with an identifying symbol as the head
 ;; element.  Events that occur on the communication layer meant for clients,
 ;; e.g. a message received by a kernel or notification that a message was sent
@@ -63,16 +63,16 @@
   :group 'jupyter)
 
 (defclass jupyter-comm-layer ()
-  ((clients :type list :initform nil))
+  ((handlers :type list :initform nil))
   :abstract t)
 
-(defmacro jupyter-comm-client-loop (comm client &rest body)
-  "Loop over COMM's clients, binding each to CLIENT before evaluating BODY."
+(defmacro jupyter-comm-handler-loop (comm handler &rest body)
+  "Loop over COMM's handlers, binding each to HANDLER before evaluating BODY."
   (declare (indent 2))
-  (let ((clients (make-symbol "clients")))
-    `(let ((,clients (oref ,comm clients)))
-       (while ,clients
-         (when-let* ((,client (jupyter-weak-ref-resolve (pop ,clients))))
+  (let ((handlers (make-symbol "handlers")))
+    `(let ((,handlers (oref ,comm handlers)))
+       (while ,handlers
+         (when-let* ((,handler (jupyter-weak-ref-resolve (pop ,handlers))))
            ,@body)))))
 
 ;;; `jupyter-comm-layer'
@@ -86,14 +86,26 @@
 (cl-defgeneric jupyter-comm-alive-p ((comm jupyter-comm-layer))
   "Return non-nil if communication has started on COMM.")
 
-(cl-defgeneric jupyter-connect-client ((comm jupyter-comm-layer) obj)
+(define-obsolete-function-alias 'jupyter-connect-client 'jupyter-comm-add-handler "0.8.2"
   "Register OBJ to receive events from COMM.
 By default, on the first OBJ connected, `jupyter-comm-start' is
 called if needed.  This means that a call to
-`jupyter-initialize-connection' should precede a call to
-`jupyter-connect-client'.")
+`jupyter-comm-initialize' should precede a call to
+`jupyter-add-handler'.")
 
-(cl-defgeneric jupyter-disconnect-client ((comm jupyter-comm-layer) obj)
+(cl-defgeneric jupyter-comm-add-handler ((comm jupyter-comm-layer) obj)
+  "Register OBJ to receive events from COMM.
+By default, on the first OBJ connected, `jupyter-comm-start' is
+called if needed.  This means that a call to
+`jupyter-comm-initialize' should precede a call to
+`jupyter-add-handler'.")
+
+(define-obsolete-function-alias 'jupyter-disconnect-client 'jupyter-comm-remove-handler "0.8.2"
+  "De-register OBJ from receiving events from COMM.
+By default, on the last OBJ removed, `jupyter-comm-stop' is
+called if needed.")
+
+(cl-defgeneric jupyter-comm-remove-handler ((comm jupyter-comm-layer) obj)
   "De-register OBJ from receiving events from COMM.
 By default, on the last OBJ removed, `jupyter-comm-stop' is
 called if needed.")
@@ -112,10 +124,17 @@ buffer.")
   "Send EVENT to the underlying kernel using COMM."
   (error "Subclasses need to override this method"))
 
-(cl-defgeneric jupyter-initialize-connection ((comm jupyter-comm-layer) &rest _ignore)
+(define-obsolete-function-alias 'jupyter-initialize-connection 'jupyter-comm-initialize "0.8.2"
+  "Register OBJ to receive events from COMM.
+By default, on the first OBJ connected, `jupyter-comm-start' is
+called if needed.  This means that a call to
+`jupyter-comm-initialize' should precede a call to
+`jupyter-add-handler'.")
+
+(cl-defgeneric jupyter-comm-initialize ((comm jupyter-comm-layer) &rest _ignore)
   "Initialize communication on COMM.")
 
-(cl-defmethod jupyter-initialize-connection ((comm jupyter-comm-layer) &rest _ignore)
+(cl-defmethod jupyter-comm-initialize ((comm jupyter-comm-layer) &rest _ignore)
   "Raise an error if COMM is already alive."
   (when (jupyter-comm-alive-p comm)
     (error "Can't initialize a live comm")))
@@ -131,42 +150,42 @@ buffer.")
 (cl-defmethod jupyter-channel-alive-p ((_comm jupyter-comm-layer) _channel)
   (error "Need to implement"))
 
-(cl-defmethod jupyter-connect-client ((comm jupyter-comm-layer) obj)
-  (unless (cl-loop for ref in (oref comm clients)
+(cl-defmethod jupyter-comm-add-handler ((comm jupyter-comm-layer) obj)
+  (unless (cl-loop for ref in (oref comm handlers)
                    thereis (eq (jupyter-weak-ref-resolve ref) obj))
-    (push (jupyter-weak-ref obj) (oref comm clients)))
-  ;; Remove any garbage collected clients
-  (oset comm clients
+    (push (jupyter-weak-ref obj) (oref comm handlers)))
+  ;; Remove any garbage collected handlers
+  (oset comm handlers
         (cl-remove-if-not #'jupyter-weak-ref-resolve
-                          (oref comm clients)))
+                          (oref comm handlers)))
   (unless (jupyter-comm-alive-p comm)
     (jupyter-comm-start comm)))
 
-(cl-defmethod jupyter-disconnect-client ((comm jupyter-comm-layer) obj)
-  (oset comm clients
+(cl-defmethod jupyter-comm-remove-handler ((comm jupyter-comm-layer) obj)
+  (oset comm handlers
         (cl-remove-if (lambda (ref)
                         (let ((deref (jupyter-weak-ref-resolve ref)))
                           (or (eq deref obj) (null deref))))
-                      (oref comm clients))))
+                      (oref comm handlers))))
 
 (cl-defmethod jupyter-event-handler ((comm jupyter-comm-layer) event)
-  "Broadcast EVENT to all clients registered to receive them on COMM."
-  ;; TODO: Dynamically cleanup list of garbage collected clients when looping
+  "Broadcast EVENT to all handlers registered to receive them on COMM."
+  ;; TODO: Dynamically cleanup list of garbage collected handlers when looping
   ;; over it.
-  (jupyter-comm-client-loop comm client
-    (run-at-time 0 nil #'jupyter-event-handler client event)))
+  (jupyter-comm-handler-loop comm handler
+    (run-at-time 0 nil #'jupyter-event-handler handler event)))
 
 ;;; `jupyter-comm-autostop'
 
 (defclass jupyter-comm-autostop ()
   ()
   :abstract t
-  :documentation "Stop the comm when the last client disconnects.")
+  :documentation "Stop the comm when the last handler disconnects.")
 
-(cl-defmethod jupyter-disconnect-client :after ((comm jupyter-comm-autostop) _client)
-  "Stop COMM when there are no clients."
+(cl-defmethod jupyter-comm-remove-handler :after ((comm jupyter-comm-autostop) _handler)
+  "Stop COMM when there are no handlers."
   (when (and (jupyter-comm-alive-p comm)
-             (zerop (length (oref comm clients))))
+             (zerop (length (oref comm handlers))))
     (jupyter-comm-stop comm)))
 
 ;;; `jupyter-hb-comm'

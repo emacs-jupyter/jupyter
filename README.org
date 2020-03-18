@@ -842,14 +842,14 @@ Methods that require a message type as an argument such as
 For a =jupyter-kernel-client= to start communicating with a kernel, the
 following steps are taken:
 
-1. Initialize the connection using =jupyter-initialize-connection=
+1. Initialize the connection using =jupyter-comm-initialize=
 2. Start listening on the client's channels with =jupyter-start-channels=
 
 When starting a local kernel process, both steps are taken care of in
 =jupyter-start-new-kernel=.
 
 For remote kernels, you will have to manually supply the connection JSON file
-to =jupyter-initialize-connection= and start the kernel channels.
+to =jupyter-comm-initialize= and start the kernel channels.
 **** Sending messages
 
 Once a connection is initialized, messages can be sent to the kernel using the
@@ -880,7 +880,7 @@ user and sends it to the kernel.
 Represents a client connected to a Jupyter kernel.
 *** Initializing a connection
 
-=jupyter-initialize-connection= takes a client and a connection file as
+=jupyter-comm-initialize= takes a client and a connection file as
 arguments and configures the client to communicate with the kernel whose
 connection information is contained in the [[http://jupyter-client.readthedocs.io/en/stable/kernels.html#connection-files][connection file]].
 
@@ -889,11 +889,11 @@ After initializing a connection, to begin communicating with a kernel call
 
 #+BEGIN_SRC elisp
 (let ((client (jupyter-kernel-client)))
-  (jupyter-initialize-connection client "kernel1234.json")
+  (jupyter-comm-initialize client "kernel1234.json")
   (jupyter-start-channels client))
 #+END_SRC
 
-=jupyter-initialize-connection= is mainly useful when initializing a remote
+=jupyter-comm-initialize= is mainly useful when initializing a remote
 connection or connecting to an existing kernel. In order to start a new kernel
 on the =localhost= use =jupyter-start-new-kernel=
 

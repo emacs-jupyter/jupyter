@@ -294,7 +294,7 @@ CLIENT defaults to `jupyter-current-client'."
 
 (defun jupyter--connection-info (info-or-session)
   "Return the connection plist according to INFO-OR-SESSION.
-See `jupyter-initialize-connection'."
+See `jupyter-comm-initialize'."
   (cond
    ((jupyter-session-p info-or-session)
     (jupyter-session-conn-info info-or-session))
@@ -312,7 +312,7 @@ See `jupyter-initialize-connection'."
 
 ;; FIXME: This requires that CLIENT is communicating with a kernel using a
 ;; `jupyter-channel-ioloop-comm' object.
-(cl-defmethod jupyter-initialize-connection ((client jupyter-kernel-client) info-or-session)
+(cl-defmethod jupyter-comm-initialize ((client jupyter-kernel-client) info-or-session)
   "Initialize CLIENT with connection INFO-OR-SESSION.
 INFO-OR-SESSION can be a file name, a plist, or a
 `jupyter-session' object that will be used to initialize CLIENT's
@@ -348,7 +348,7 @@ http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
               (jupyter-session
                :key (plist-get conn-info :key)
                :conn-info conn-info)))
-    (jupyter-initialize-connection
+    (jupyter-comm-initialize
      (oref client kcomm)
      (oref client session))))
 
@@ -525,12 +525,12 @@ back."
 ;;; Starting communication with a kernel
 
 (cl-defmethod jupyter-start-channels ((client jupyter-kernel-client))
-  (jupyter-connect-client (oref client kcomm) client))
+  (jupyter-comm-add-handler (oref client kcomm) client))
 
 (cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
   "Stop any running channels of CLIENT."
   (when (slot-boundp client 'kcomm)
-    (jupyter-disconnect-client (oref client kcomm) client)))
+    (jupyter-comm-remove-handler (oref client kcomm) client)))
 
 (cl-defmethod jupyter-channels-running-p ((client jupyter-kernel-client))
   "Are any channels of CLIENT running?"

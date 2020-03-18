@@ -274,7 +274,7 @@ ID.  Send EVENT, with the kernel ID excluded, to a client whose
 kernel has a matching ID."
   (let ((kernel-id (cadr event)))
     (setq event (cons (car event) (cddr event)))
-    (jupyter-comm-client-loop comm client
+    (jupyter-comm-handler-loop comm client
       (when (equal kernel-id (oref (oref client kernel) id))
         ;; TODO: Since the event handlers of CLIENT will eventually call the
         ;; `jupyter-handle-message' of a `jupyter-kernel-client' we really
@@ -333,14 +333,14 @@ with default `jupyter-api-authentication-method'"))
                        :ws-headers (jupyter-api-auth-headers comm)))
     (cl-call-next-method)))
 
-(cl-defmethod jupyter-connect-client ((comm jupyter-server)
+(cl-defmethod jupyter-comm-add-handler ((comm jupyter-server)
                                       (kcomm jupyter-server-kernel-comm))
   (cl-call-next-method)
   (with-slots (id) (oref kcomm kernel)
     (unless (jupyter-server-kernel-connected-p comm id)
       (jupyter-server--connect-channels comm id))))
 
-(cl-defmethod jupyter-disconnect-client ((comm jupyter-server)
+(cl-defmethod jupyter-comm-remove-handler ((comm jupyter-server)
                                          (kcomm jupyter-server-kernel-comm))
   (with-slots (id) (oref kcomm kernel)
     (when (jupyter-server-kernel-connected-p comm id)
@@ -400,11 +400,11 @@ kernel associated with COMM, then COMM's `jupyter-event-handler'
 will receive those events."
   (with-slots (server) (oref comm kernel)
     (jupyter-comm-start server)
-    (jupyter-connect-client server comm)))
+    (jupyter-comm-add-handler server comm)))
 
 (cl-defmethod jupyter-comm-stop ((comm jupyter-server-kernel-comm) &rest _ignore)
   "Disconnect COMM from receiving server events."
-  (jupyter-disconnect-client (oref (oref comm kernel) server) comm))
+  (jupyter-comm-remove-handler (oref (oref comm kernel) server) comm))
 
 (cl-defmethod jupyter-send ((comm jupyter-server-kernel-comm) event-type &rest event)
   "Use COMM to send an EVENT to the server with type, EVENT-TYPE.
@@ -422,7 +422,7 @@ ID of the kernel associated with COMM."
           (oref kernel server)
           (oref kernel id))
          (catch 'member
-           (jupyter-comm-client-loop (oref kernel server) client
+           (jupyter-comm-handler-loop (oref kernel server) client
              (when (eq client comm)
                (throw 'member t)))))))
 
@@ -660,7 +660,7 @@ see ‘jupyter-make-client’."
          (manager (jupyter-server-kernel-manager :kernel kernel)))
     ;; Needs to be started before calling `jupyter-make-client' since that
     ;; method will send a request to start a websocket channel to the kernel.
-    ;; FIXME: This should be done in a `jupyter-initialize-connection' method,
+    ;; FIXME: This should be done in a `jupyter-comm-initialize' method,
     ;; but first that method needs to be generalize in `jupyter-client.el'
     (unless (jupyter-kernel-alive-p manager)
       (jupyter-start-kernel manager))
