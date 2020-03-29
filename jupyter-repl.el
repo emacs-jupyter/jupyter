@@ -208,12 +208,14 @@ buffer."
          (let ((win (get-buffer-window)))
            (when win (set-window-point win (point))))))))
 
+(defvar jupyter-repl-inhibit-continuation-prompts nil
+  "Non-nil when continuation prompts are suppressed.
+See `jupyter-repl-insert-continuation-prompts'.")
+
 (defmacro jupyter-repl-without-continuation-prompts (&rest body)
-  "Evaluate BODY without inserting continuation prompts.
-This is done by inhibiting modification hooks while BODY is being
-evaluated."
+  "Evaluate BODY without inserting continuation prompts."
   (declare (debug (&rest form)))
-  `(let ((inhibit-modification-hooks t))
+  `(let ((jupyter-repl-inhibit-continuation-prompts t))
      ,@body))
 
 (defmacro jupyter-repl-append-output (client req &rest body)
@@ -1322,20 +1324,25 @@ cell."
 (defun jupyter-repl-insert-continuation-prompts (bound)
   "Insert continuation prompts if needed, stopping at BOUND.
 Return the new BOUND since inserting continuation prompts may add
-more characters than were initially in the buffer."
-  (setq bound (set-marker (make-marker) bound))
-  (set-marker-insertion-type bound t)
-  ;; Don't record these changes as it adds unnecessary undo information which
-  ;; interferes with undo.
-  (let ((buffer-undo-list t))
-    (while (and (< (point) bound)
-                (search-forward "\n" bound 'noerror))
-      ;; Delete the newline that is re-added by prompt insertion
-      ;; FIXME: Why not just overlay the newline?
-      (delete-char -1)
-      (jupyter-repl-insert-prompt 'continuation)))
-  (prog1 (marker-position bound)
-    (set-marker bound nil)))
+more characters than were initially in the buffer.
+
+If `jupyter-repl-inhibit-continuation-prompts' is non-nil return
+BOUND without inserting any continuation prompts."
+  (if jupyter-repl-inhibit-continuation-prompts
+      bound
+    (setq bound (set-marker (make-marker) bound))
+    (set-marker-insertion-type bound t)
+    ;; Don't record these changes as it adds unnecessary undo information which
+    ;; interferes with undo.
+    (let ((buffer-undo-list t))
+      (while (and (< (point) bound)
+                  (search-forward "\n" bound 'noerror))
+        ;; Delete the newline that is re-added by prompt insertion
+        ;; FIXME: Why not just overlay the newline?
+        (delete-char -1)
+        (jupyter-repl-insert-prompt 'continuation)))
+    (prog1 (marker-position bound)
+      (set-marker bound nil))))
 
 (defun jupyter-repl-mark-as-cell-code (beg end)
   "Add the field property to text between (BEG . END) if within a code cell."
