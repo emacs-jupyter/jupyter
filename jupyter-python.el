@@ -51,9 +51,9 @@ buffer."
                         jupyter-repl-prompt-margin-width
                         (- (point) (line-beginning-position))
                         (- (line-end-position) (point)))))
-            (jupyter-repl-insert
-             :inherit t
-             (make-string (if (> len 4) len 4) ? ))))))))
+            (insert-and-inherit
+             (propertize (make-string (if (> len 4) len 4) ? )
+                         'read-only t))))))))
 
 (cl-defmethod jupyter-insert :around ((msg cons)
                                       &context (jupyter-lang python)

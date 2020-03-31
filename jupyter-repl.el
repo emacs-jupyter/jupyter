@@ -332,48 +332,9 @@ will not be present when undo is re-enabled if COND is non-nil."
 
 ;;; Text insertion
 
-(defun jupyter-repl-insert (&rest args)
-  "Insert text into the `current-buffer', possibly with text properties.
-
-This acts like `insert' except that the leading elements of ARGS
-can contain the following keywords along with their values:
-
-- `:read-only' :: A non-nil value makes the text to be inserted,
-  read only.  This is t by default, so to make text editable you
-  will have to do something like:
-    (jupyter-repl-insert :read-only nil \"<editable text>\")
-
-- `:properties' :: A list of text properties and their values to
-  be added to the inserted text.  This defaults to an empty list.
-
-- `:inherit' :: A non-nil value will use
-  `insert-and-inherit' instead of `insert' for the function used
-  to insert the text.  This is nil by default."
-  (let ((arg nil)
-        (read-only t)
-        (properties nil)
-        (insert-fun #'insert))
-    (while (keywordp (setq arg (car args)))
-      (cl-case arg
-        (:read-only (setq read-only (cadr args)))
-        (:properties (setq properties (cadr args)))
-        (:inherit
-         (setq insert-fun (if (cadr args) #'insert-and-inherit #'insert)))
-        (otherwise
-         (error "Keyword not one of `:read-only', `:properties', `:inherit-' (`%s')" arg)))
-      (setq args (cddr args)))
-    (when read-only
-      (push t properties)
-      (push 'read-only properties))
-    (when properties
-      (dolist (s args)
-        (add-text-properties 0 (length s) properties s)))
-    (jupyter-repl-inhibit-undo-when read-only
-      (apply insert-fun args))))
-
 (defun jupyter-repl-newline ()
   "Insert a read-only newline into the `current-buffer'."
-  (jupyter-repl-insert "\n"))
+  (insert (propertize "\n" 'read-only t)))
 
 (cl-defmethod jupyter-insert :around (mime-or-plist
                                       &context (major-mode jupyter-repl-mode) &rest _ignore)
@@ -475,7 +436,7 @@ interpreted as `in'."
   (jupyter-repl-without-continuation-prompts
    (let ((inhibit-read-only t))
      ;; The newline that `jupyter-repl--make-prompt' will overlay.
-     (jupyter-repl-insert :read-only (not (eq type 'continuation)) "\n")
+     (insert (propertize "\n" 'read-only (not (eq type 'continuation))))
      (cond
       ((eq type 'in)
        (let ((count (oref jupyter-current-client execution-count)))
@@ -491,8 +452,9 @@ interpreted as `in'."
        ;;
        ;; front-sticky is to prevent `point' from being trapped between the
        ;; newline of the prompt overlay and this invisible character.
-       (jupyter-repl-insert
-        :properties '(invisible t rear-nonsticky t front-sticky t) " ")
+       (insert (propertize " "
+                           'read-only t 'invisible t
+                           'rear-nonsticky t 'front-sticky t))
        ;; The insertion of a new prompt starts a new cell, don't consider the
        ;; buffer modified anymore.  This is also an indicator for when undo's
        ;; can be made in the buffer.
@@ -509,8 +471,7 @@ interpreted as `in'."
           'jupyter-repl-output-prompt
           `(jupyter-cell (out ,count))))
        ;; See the note above about the invisible character for input prompts
-       (jupyter-repl-insert
-        :properties '(invisible t front-sticky t) " "))
+       (insert (propertize " " 'read-only t 'invisible t 'front-sticky t)))
       ((eq type 'continuation)
        (jupyter-repl--make-prompt
         ;; This needs to be two characters wide for some
@@ -822,7 +783,7 @@ cell code will be erased and NEW-CODE inserted in its place."
              beg (+ beg new-len) (- end beg)))))
     (goto-char (jupyter-repl-cell-code-beginning-position))
     (delete-region (point) (jupyter-repl-cell-code-end-position))
-    (jupyter-repl-insert :inherit t :read-only nil new-code)))
+    (insert-and-inherit new-code)))
 
 (defun jupyter-repl-truncate-buffer ()
   "Truncate the `current-buffer' based on `jupyter-repl-maximum-size'.
@@ -1180,9 +1141,9 @@ elements."
       ("complete"
        (jupyter-send-execute-request client))
       ("incomplete"
-       (jupyter-repl-insert :read-only nil "\n")
+       (insert "\n")
        (if (= (length indent) 0) (jupyter-repl-indent-line)
-         (jupyter-repl-insert :read-only nil indent)))
+         (insert indent)))
       ("invalid"
        ;; Force an execute to produce a traceback
        (jupyter-send-execute-request client))
@@ -1216,9 +1177,8 @@ elements."
          (jupyter-repl-newline)
          ;; TODO: Add a slot mentioning that the kernel is shutdown so that we can
          ;; block sending requests or delay until it has restarted.
-         (jupyter-repl-insert
-          (propertize (concat "kernel " (if restart "restart" "shutdown"))
-                      'font-lock-face 'warning))
+         (insert (propertize (concat "kernel " (if restart "restart" "shutdown"))
+                             'read-only t 'font-lock-face 'warning))
          (jupyter-repl-newline)
          (when restart
            (jupyter-repl--insert-banner-and-prompt client)))))))
@@ -1903,13 +1863,11 @@ VERBOSE has the same meaning as in
 Make the text of BANNER read only and apply the `shadow' face to
 it."
   (jupyter-repl-without-continuation-prompts
-   (let ((start (point)))
-     (jupyter-repl-insert banner)
-     (jupyter-repl-newline)
-     (add-text-properties
-      start (point) '(jupyter-banner
-                      t font-lock-face shadow
-                      fontified t font-lock-fontified t)))))
+   (insert (propertize banner
+                       'read-only t 'jupyter-banner t
+                       'font-lock-face 'shadow 'fontified t
+                       'font-lock-fontified t))
+   (jupyter-repl-newline)))
 
 (defun jupyter-repl-sync-execution-state ()
   "Synchronize the `jupyter-current-client's kernel state.
