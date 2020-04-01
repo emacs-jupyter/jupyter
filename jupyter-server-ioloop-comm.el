@@ -111,8 +111,9 @@ kernel has a matching ID."
 
 (cl-defmethod jupyter-server-kernel-connected-p ((comm jupyter-server-ioloop-comm) id)
   "Return non-nil if COMM has a WebSocket connection to a kernel with ID."
-  (and (jupyter-comm-alive-p comm)
-       (member id (process-get (oref (oref comm ioloop) process) :kernel-ids))))
+  (when (jupyter-comm-alive-p comm)
+    (with-slots (process) (oref comm ioloop)
+      (member id (process-get process :kernel-ids)))))
 
 ;; `jupyter-server-ioloop-kcomm'
 
