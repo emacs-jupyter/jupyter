@@ -26,8 +26,11 @@
 
 ;;; Code:
 
+(require 'zmq)
 (require 'jupyter-client)
 (require 'jupyter-repl)
+(require 'jupyter-zmq-channel-ioloop)
+(require 'jupyter-channel-ioloop-comm)
 (require 'jupyter-org-client)
 (require 'jupyter-kernel-process-manager)
 (require 'org-element)
@@ -86,7 +89,14 @@ handling a message is always
 (cl-defmethod initialize-instance ((client jupyter-echo-client) &optional _slots)
   (cl-call-next-method)
   (oset client messages (make-ring 10))
-  (oset client kcomm (jupyter-mock-comm-layer)))
+  (oset client kcomm (jupyter-channel-ioloop-comm
+                      :ioloop-class 'jupyter-zmq-channel-ioloop))
+  (with-slots (kcomm) client
+    (oset kcomm hb (jupyter-hb-channel))
+    (oset kcomm channels
+          (list :stdin (make-jupyter-proxy-channel)
+                :shell (make-jupyter-proxy-channel)
+                :iopub (make-jupyter-proxy-channel)))))
 
 (cl-defmethod jupyter-send ((client jupyter-echo-client)
                             channel
@@ -128,12 +138,6 @@ handling a message is always
 
 (cl-defmethod jupyter-comm-alive-p ((comm jupyter-mock-comm-layer))
   (oref comm alive))
-
-(cl-defmethod jupyter-channel-alive-p ((comm jupyter-mock-comm-layer) _channel)
-  (jupyter-comm-alive-p comm))
-
-(cl-defmethod jupyter-channels-running-p ((comm jupyter-mock-comm-layer))
-  (jupyter-comm-alive-p comm))
 
 (cl-defmethod jupyter-comm-start ((comm jupyter-mock-comm-layer))
   (unless (oref comm alive)
@@ -280,6 +284,29 @@ running BODY."
   `(jupyter-test-with-kernel-repl "python" ,client
      ,@body))
 
+(defun jupyter-test-ioloop-eval-event (ioloop event)
+  (eval
+   `(progn
+      ,@(oref ioloop setup)
+      ,(jupyter-ioloop--event-dispatcher ioloop event))))
+
+(defmacro jupyter-test-channel-ioloop (ioloop &rest body)
+  (declare (indent 1))
+  (let ((var (car ioloop))
+        (val (cadr ioloop)))
+    (with-temp-buffer
+      `(let* ((,var ,val)
+              (standard-output (current-buffer))
+              (jupyter-channel-ioloop-channels nil)
+              (jupyter-channel-ioloop-session nil)
+              ;; Needed so that `jupyter-ioloop-environment-p' passes
+              (jupyter-ioloop-stdin t)
+              (jupyter-ioloop-poller (zmq-poller)))
+         (unwind-protect
+             (progn ,@body)
+           (zmq-poller-destroy jupyter-ioloop-poller)
+           (jupyter-ioloop-stop ,var))))))
+
 (defmacro jupyter-test-rest-api-request (bodyform &rest check-forms)
   "Replace the body of `url-retrieve*' with CHECK-FORMS, evaluate BODYFORM.
 For `url-retrieve', the callback will be called with a nil status."
@@ -323,7 +350,7 @@ For `url-retrieve', the callback will be called with a nil status."
   `(let* ((host (format "localhost:%s" (jupyter-test-ensure-notebook-server)))
           (url (format "http://%s" host))
           (,server (or (jupyter-find-server url)
-                       (jupyter-server-make-instance :url url))))
+                       (jupyter-server :url url))))
      ,@body))
 
 (defmacro jupyter-test-with-server-kernel (server name kernel &rest body)
@@ -598,6 +625,14 @@ see the documentation on the --NotebookApp.password argument."
                                   (process-buffer (car jupyter-test-notebook))
                                 (buffer-string)))))))
 
+(defvar jupyter-test-zmq-sockets (make-hash-table :weakness 'key))
+
+(advice-add 'zmq-socket
+            :around (lambda (&rest args)
+                      (let ((sock (apply args)))
+                        (prog1 sock
+                          (puthash sock t jupyter-test-zmq-sockets)))))
+
 ;; Do lots of cleanup to avoid core dumps on Travis due to epoll reconnect
 ;; attempts.
 (add-hook
@@ -611,6 +646,12 @@ see the documentation on the --NotebookApp.password argument."
     for client in (jupyter-clients)
     do (ignore-errors (jupyter-stop-channels client))
     (when (oref client manager)
-      (ignore-errors (jupyter-shutdown-kernel (oref client manager)))))))
+      (ignore-errors (jupyter-shutdown-kernel (oref client manager)))))
+   (cl-loop
+    for sock being the hash-keys of jupyter-test-zmq-sockets do
+    (ignore-errors
+      (zmq-set-option sock zmq-LINGER 0)
+      (zmq-close sock)))
+   (ignore-errors (zmq-context-terminate (zmq-current-context)))))
 
 ;;; test-helper.el ends here

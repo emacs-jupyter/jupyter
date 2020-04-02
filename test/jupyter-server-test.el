@@ -257,29 +257,9 @@
 
 ;;; Server
 
+;; And `jupyter-server-kernel-comm'
 (ert-deftest jupyter-server ()
   :tags '(server)
-  (let ((jupyter-server-use-zmq nil))
-    (jupyter-test-with-notebook server
-      (jupyter-test-with-server-kernel server "python" kernel
-        (ert-info ("`jupyter-comm-layer' methods")
-          (let ((kcomm (jupyter-server-kernel-comm :kernel kernel)))
-            (should-not (jupyter-comm-alive-p kcomm))
-            (jupyter-comm-start kcomm)
-            (should (jupyter-comm-alive-p kcomm))
-            (jupyter-comm-stop kcomm)
-            (should-not (jupyter-comm-alive-p kcomm))))
-        (ert-info ("Sending/receiving")
-          (let ((client (jupyter-kernel-client)))
-            (oset client kcomm (jupyter-server-kernel-comm :kernel kernel))
-            (jupyter-start-channels client)
-            (should (json-plist-p (jupyter-kernel-info client)))
-            (jupyter-stop-channels client)))))))
-
-;; And `jupyter-server-ioloop-kernel-comm'
-(ert-deftest jupyter-server-ioloop-comm ()
-  :tags '(server)
-  (skip-unless jupyter-server-use-zmq)
   (jupyter-test-with-notebook server
     (ert-info ("`jupyter-comm-layer' methods")
       (when (jupyter-comm-alive-p server)
@@ -292,7 +272,7 @@
       (let ((id (oref kernel id)))
         (should (jupyter-api-get-kernel server id))
         (ert-info ("Connecting kernel comm to server")
-          (let ((kcomm (jupyter-server-ioloop-kernel-comm
+          (let ((kcomm (jupyter-server-kernel-comm
                         :kernel kernel)))
             (should-not (jupyter-server-kernel-connected-p server id))
             (jupyter-comm-add-handler server kcomm)
@@ -302,7 +282,7 @@
             (should-not (jupyter-comm-alive-p kcomm))
             (should (jupyter-comm-alive-p server))))
         (ert-info ("Connecting kernel comm starts server comm if necessary")
-          (let ((kcomm (jupyter-server-ioloop-kernel-comm
+          (let ((kcomm (jupyter-server-kernel-comm
                         :kernel kernel)))
             (jupyter-comm-stop server)
             (should-not (jupyter-comm-alive-p server))

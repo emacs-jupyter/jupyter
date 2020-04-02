@@ -239,7 +239,7 @@ variables in PARAMS."
   (require 'jupyter-server)
   (let* ((url (jupyter-tramp-url-from-file-name session))
          (server (or (jupyter-tramp-server-from-file-name session)
-                     (jupyter-server-make-instance :url url)))
+                     (jupyter-server :url url)))
          (localname (file-local-name session))
          (name-or-id (if (null localname) (error "No remote server session name")
                        ;; If a kernel has an associated name, get its kernel ID

@@ -77,20 +77,15 @@
 (require 'jupyter-repl)
 (require 'jupyter-rest-api)
 (require 'jupyter-kernel-manager)
+(require 'jupyter-ioloop-comm)
+(require 'jupyter-server-ioloop)
 
 (declare-function jupyter-tramp-file-name-p "jupyter-tramp" (filename))
 (declare-function jupyter-tramp-server-from-file-name "jupyter-tramp" (filename))
 (declare-function jupyter-tramp-file-name-from-url "jupyter-tramp" (url))
-(declare-function jupyter-server-ioloop-kernel-comm "jupyter-server-ioloop-comm")
-(declare-function jupyter-server-ioloop-comm "jupyter-server-ioloop-comm")
 
 (defgroup jupyter-server nil
   "Support for the Jupyter kernel gateway"
-  :group 'jupyter)
-
-(defcustom jupyter-server-use-zmq (and (locate-library "zmq") t)
-  "Whether or not ZMQ should be used as a backend."
-  :type 'boolean
   :group 'jupyter)
 
 (defvar-local jupyter-current-server nil
@@ -107,6 +102,7 @@ Used in, e.g. a `jupyter-server-kernel-list-mode' buffer.")
 ;; `jupyter-server-client' since it isn't a representation of a server, but a
 ;; communication channel with one.
 (defclass jupyter-server (jupyter-rest-client
+                          jupyter-ioloop-comm
                           eieio-instance-tracker)
   ((tracking-symbol :initform 'jupyter--servers)
    (kernelspecs
@@ -163,14 +159,10 @@ Access should be done through `jupyter-available-kernelspecs'.")))
   ;; The notebook server already takes care of forcing shutdown of a kernel.
   (ignore))
 
-(defclass jupyter-server-abstract-kcomm (jupyter-comm-layer)
-  ((kernel :type jupyter-server-kernel :initarg :kernel))
-  :abstract t)
+(defclass jupyter-server-kernel-comm (jupyter-comm-layer)
+  ((kernel :type jupyter-server-kernel :initarg :kernel)))
 
-(defclass jupyter-server-kernel-comm (jupyter-server-abstract-kcomm)
-  ((ws :type websocket)))
-
-(cl-defmethod jupyter-comm-id ((comm jupyter-server-abstract-kcomm))
+(cl-defmethod jupyter-comm-id ((comm jupyter-server-kernel-comm))
   (let* ((kernel (oref comm kernel))
          (id (oref kernel id)))
     (or (jupyter-server-kernel-name (oref kernel server) id)
@@ -249,7 +241,7 @@ CLIENT must be communicating with a `jupyter-server-kernel', the
 ID of the kernel will be associated with NAME, see
 `jupyter-server-kernel-names'."
   (cl-check-type client jupyter-kernel-client)
-  (cl-check-type (oref client kcomm) jupyter-server-abstract-kcomm)
+  (cl-check-type (oref client kcomm) jupyter-server-kernel-comm)
   (let* ((kernel (thread-first client
                    (oref kcomm)
                    (oref kernel)))
@@ -258,25 +250,53 @@ ID of the kernel will be associated with NAME, see
 
 ;;; Plumbing
 
+;;;; `jupyter-server' events
+
+(cl-defmethod jupyter-event-handler ((comm jupyter-server)
+                                     (event (head disconnect-channels)))
+  (let ((kernel-id (cadr event)))
+    (with-slots (ioloop) comm
+      (cl-callf2 remove kernel-id
+                 (process-get (oref ioloop process) :kernel-ids)))))
+
+(cl-defmethod jupyter-event-handler ((comm jupyter-server)
+                                     (event (head connect-channels)))
+  (let ((kernel-id (cadr event)))
+    (with-slots (ioloop) comm
+      (cl-callf append (process-get (oref ioloop process) :kernel-ids)
+        (list kernel-id)))))
+
+(cl-defmethod jupyter-event-handler ((comm jupyter-server) event)
+  "Send EVENT to all clients connected to COMM.
+Each client must have a KERNEL slot which, in turn, must have an
+ID slot.  The second element of EVENT is expected to be a kernel
+ID.  Send EVENT, with the kernel ID excluded, to a client whose
+kernel has a matching ID."
+  (let ((kernel-id (cadr event)))
+    (setq event (cons (car event) (cddr event)))
+    (jupyter-comm-handler-loop comm client
+      (when (equal kernel-id (oref (oref client kernel) id))
+        ;; TODO: Since the event handlers of CLIENT will eventually call the
+        ;; `jupyter-handle-message' of a `jupyter-kernel-client' we really
+        ;; don't need to do any filtering based off of a `jupyter-session-id',
+        ;; but maybe should? The `jupyter-handle-message' method will only
+        ;; handle messages that have a parent ID of a previous request so there
+        ;; already is filtering at the kernel client level.
+        (jupyter-event-handler client event)))))
+
 ;;;; `jupyter-server' methods
 
-(cl-defgeneric jupyter-server-kernel-connected-p ((client jupyter-server) id)
-  "Return non-nil if CLIENT can communicate with a kernel that has ID.")
-
-;; TODO: Move the following two functions to jupyter-server-ioloop-comm.el
 (defun jupyter-server--connect-channels (server id)
-  (when (object-of-class-p server 'jupyter-comm-layer)
-    (jupyter-send server 'connect-channels id)
-    (jupyter-with-timeout
-        (nil jupyter-default-timeout
-             (error "Timeout when connecting websocket to kernel id %s" id))
-      (jupyter-server-kernel-connected-p server id))))
+  (jupyter-send server 'connect-channels id)
+  (jupyter-with-timeout
+      (nil jupyter-default-timeout
+           (error "Timeout when connecting websocket to kernel id %s" id))
+    (jupyter-server-kernel-connected-p server id)))
 
 (defun jupyter-server--refresh-comm (server)
   "Stop and then start SERVER communication.
 Reconnect the previously connected kernels when starting."
-  (when (and (object-of-class-p server 'jupyter-comm-layer)
-             (jupyter-comm-alive-p server))
+  (when (jupyter-comm-alive-p server)
     (let ((connected (cl-remove-if-not
                       (apply-partially #'jupyter-server-kernel-connected-p server)
                       (mapcar (lambda (kernel) (plist-get kernel :id))
@@ -296,6 +316,44 @@ Reconnect the previously connected kernels when starting."
 with default `jupyter-api-authentication-method'"))
      (prog1 (cl-call-next-method)
        (jupyter-server--refresh-comm server)))))
+
+(cl-defmethod jupyter-comm-start ((comm jupyter-server))
+  (unless (and (slot-boundp comm 'ioloop)
+               (jupyter-ioloop-alive-p (oref comm ioloop)))
+    ;; TODO: Is a write to the cookie file and then a read of the cookie file
+    ;; whenever connecting a websocket in a subprocess good enough? If, e.g.
+    ;; the notebook is restarted and it clears the login information, there are
+    ;; sometimes error due to `jupyter-api-request' trying to ask for login
+    ;; information which look like "wrong type argument listp, [http://...]".
+    ;; They don't seem to happens with the changes mentioned, but is it enough?
+    (url-cookie-write-file)
+    (oset comm ioloop (jupyter-server-ioloop
+                       :url (oref comm url)
+                       :ws-url (oref comm ws-url)
+                       :ws-headers (jupyter-api-auth-headers comm)))
+    (cl-call-next-method)))
+
+(cl-defmethod jupyter-comm-add-handler ((comm jupyter-server)
+                                      (kcomm jupyter-server-kernel-comm))
+  (cl-call-next-method)
+  (with-slots (id) (oref kcomm kernel)
+    (unless (jupyter-server-kernel-connected-p comm id)
+      (jupyter-server--connect-channels comm id))))
+
+(cl-defmethod jupyter-comm-remove-handler ((comm jupyter-server)
+                                         (kcomm jupyter-server-kernel-comm))
+  (with-slots (id) (oref kcomm kernel)
+    (when (jupyter-server-kernel-connected-p comm id)
+      (jupyter-send comm 'disconnect-channels id)
+      (unless (jupyter-ioloop-wait-until (oref comm ioloop)
+                  'disconnect-channels #'identity)
+        (error "Timeout when disconnecting websocket for kernel id %s" id))))
+  (cl-call-next-method))
+
+(cl-defmethod jupyter-server-kernel-connected-p ((comm jupyter-server) id)
+  "Return non-nil if COMM has a WebSocket connection to a kernel with ID."
+  (and (jupyter-comm-alive-p comm)
+       (member id (process-get (oref (oref comm ioloop) process) :kernel-ids))))
 
 (defun jupyter-server--verify-kernelspec (server spec)
   (cl-destructuring-bind (name _ . kspec) spec
@@ -333,75 +391,53 @@ The kernelspecs are returned in the same form as returned by
                                 (cons nil (plist-get spec :spec)))))))
   (plist-get (oref server kernelspecs) :kernelspecs))
 
-;;;; `jupyter-server-kernel-comm'
+;;;; `jupyter-server-kernel-comm' methods
 
-;; TODO: Remove the need for these methods, they are remnants from an older
-;; implementation.  They will need to be removed from `jupyter-kernel-client'.
-(cl-defmethod jupyter-channel-alive-p ((comm jupyter-server-abstract-kcomm) _channel)
-  (jupyter-comm-alive-p comm))
+(cl-defmethod jupyter-comm-start ((comm jupyter-server-kernel-comm) &rest _ignore)
+  "Register COMM to receive server events.
+If SERVER receives events that have the same kernel ID as the
+kernel associated with COMM, then COMM's `jupyter-event-handler'
+will receive those events."
+  (with-slots (server) (oref comm kernel)
+    (jupyter-comm-start server)
+    (jupyter-comm-add-handler server comm)))
 
-(cl-defmethod jupyter-channels-running-p ((comm jupyter-server-abstract-kcomm))
-  (jupyter-comm-alive-p comm))
+(cl-defmethod jupyter-comm-stop ((comm jupyter-server-kernel-comm) &rest _ignore)
+  "Disconnect COMM from receiving server events."
+  (jupyter-comm-remove-handler (oref (oref comm kernel) server) comm))
 
-(defun jupyter-server--ws-on-message (ws frame)
-  (cl-case (websocket-frame-opcode frame)
-    ((text binary)
-     (let* ((msg (jupyter-read-plist-from-string
-                  (websocket-frame-payload frame)))
-            ;; TODO: Get rid of some of these explicit/implicit `intern' calls
-            (channel (intern (concat ":" (plist-get msg :channel))))
-            (msg-type (jupyter-message-type-as-keyword
-                       (jupyter-message-type msg)))
-            (parent-header (plist-get msg :parent_header)))
-       (plist-put msg :msg_type msg-type)
-       (plist-put parent-header :msg_type msg-type)
-       (jupyter-event-handler
-        (plist-get (websocket-client-data ws) :comm)
-        ;; NOTE: The nil is the identity field expected by a
-        ;; `jupyter-channel-ioloop', it is mimicked here.
-        (cl-list* 'message channel nil msg))))
-    (t
-     (error "Unhandled websocket frame opcode (%s)"
-            (websocket-frame-opcode frame)))))
-
-(cl-defmethod jupyter-comm-start ((comm jupyter-server-kernel-comm))
-  (unless (jupyter-comm-alive-p comm)
-    (with-slots (server id) (oref comm kernel)
-      (let ((ws (jupyter-api-get-kernel-ws
-                 server id
-                 :on-message #'jupyter-server--ws-on-message)))
-        (oset comm ws ws)
-        (plist-put (websocket-client-data ws) :comm comm)))))
-
-(cl-defmethod jupyter-comm-stop ((comm jupyter-server-kernel-comm))
-  (when (jupyter-comm-alive-p comm)
-    (websocket-close (oref comm ws))
-    (plist-put (websocket-client-data (oref comm ws)) :comm nil)
-    (slot-makeunbound comm 'ws)))
-
-(cl-defmethod jupyter-comm-alive-p ((comm jupyter-server-kernel-comm))
-  (and (slot-boundp comm 'ws)
-       (eq (plist-get (websocket-client-data (oref comm ws)) :comm) comm)))
-
-(cl-defmethod jupyter-send ((comm jupyter-server-kernel-comm) _event-type &rest event)
+(cl-defmethod jupyter-send ((comm jupyter-server-kernel-comm) event-type &rest event)
   "Use COMM to send an EVENT to the server with type, EVENT-TYPE.
 SERVER will direct EVENT to the right kernel based on the kernel
 ID of the kernel associated with COMM."
-  (unless (jupyter-comm-alive-p comm)
-    (jupyter-comm-start comm))
-  (cl-destructuring-bind (channel msg-type msg &optional msg-id) event
-    (with-slots (ws) comm
-      (websocket-send-text
-       ws (jupyter-encode-raw-message
-              (plist-get (websocket-client-data ws) :session) msg-type
-            :channel (substring (symbol-name channel) 1)
-            :msg-id msg-id
-            :content msg)))))
+  (with-slots (kernel) comm
+    (unless (jupyter-comm-alive-p comm)
+      (jupyter-comm-start comm))
+    (apply #'jupyter-send (oref kernel server) event-type (oref kernel id) event)))
+
+(cl-defmethod jupyter-comm-alive-p ((comm jupyter-server-kernel-comm))
+  "Return non-nil if COMM can receive server events for its associated kernel."
+  (with-slots (kernel) comm
+    (and (jupyter-server-kernel-connected-p
+          (oref kernel server)
+          (oref kernel id))
+         (catch 'member
+           (jupyter-comm-handler-loop (oref kernel server) client
+             (when (eq client comm)
+               (throw 'member t)))))))
+
+;; TODO: Remove the need for these methods, they are remnants from an older
+;; implementation.  They will need to be removed from `jupyter-kernel-client'.
+(cl-defmethod jupyter-channel-alive-p ((comm jupyter-server-kernel-comm) _channel)
+  (jupyter-comm-alive-p comm))
+
+(cl-defmethod jupyter-channels-running-p ((comm jupyter-server-kernel-comm))
+  (jupyter-comm-alive-p comm))
 
 ;;;; `jupyter-server-kernel-manager'
 
 (defclass jupyter-server-kernel-manager (jupyter-kernel-manager)
-  ((comm :type jupyter-server-abstract-kcomm)))
+  ((comm :type jupyter-server-kernel-comm)))
 
 (cl-defmethod jupyter-comm-start ((manager jupyter-server-kernel-manager))
   "Start a websocket connection to MANAGER's kernel.
@@ -409,10 +445,7 @@ MANAGER's COMM slot will be set to the `jupyter-comm-layer'
 receiving events on the websocket when this method returns."
   (with-slots (kernel comm) manager
     (unless (slot-boundp manager 'comm)
-      (oset manager comm
-            (if (object-of-class-p (oref kernel server) 'jupyter-comm-layer)
-                (jupyter-server-ioloop-kernel-comm :kernel kernel)
-              (jupyter-server-kernel-comm :kernel kernel))))
+      (oset manager comm (jupyter-server-kernel-comm :kernel kernel)))
     (unless (jupyter-comm-alive-p comm)
       (jupyter-comm-start comm))))
 
@@ -512,18 +545,6 @@ least the following keys:
 (define-error 'jupyter-server-non-existent
   "The server doesn't exist")
 
-(defun jupyter-server-make-instance (&rest args)
-  "Return a different subclass of `jupyter-server' depending on `jupyter-server-use-zmq'.
-A `jupyter-server-ioloop-comm' object is returned if
-`jupyter-server-use-zmq' is non-nil, a `jupyter-server' is
-returned otherwise. ARGS is passed to the `make-instance'
-invocation for the subclass."
-  (if jupyter-server-use-zmq
-      (progn
-        (require 'jupyter-server-ioloop-comm)
-        (apply #'jupyter-server-ioloop-comm args))
-    (apply #'jupyter-server args)))
-
 (defun jupyter-current-server (&optional ask)
   "Return an existing `jupyter-server' or ASK for a new one.
 If ASK is non-nil, always ask for a URL and return the
@@ -562,7 +583,7 @@ a URL."
                                          (setf (url-type u) "ws")
                                          (url-recreate-url u)))))
              (or (jupyter-find-server url ws-url)
-                 (let ((server (jupyter-server-make-instance :url url :ws-url ws-url)))
+                 (let ((server (jupyter-server :url url :ws-url ws-url)))
                    (if (jupyter-api-server-exists-p server) server
                      (delete-instance server)
                      (signal 'jupyter-server-non-existent (list url)))))))))
@@ -574,7 +595,7 @@ a URL."
               ((and jupyter-current-client
                     (object-of-class-p
                      (oref jupyter-current-client kcomm)
-                     'jupyter-server-abstract-kcomm)
+                     'jupyter-server-kernel-comm)
                     (thread-first jupyter-current-client
                       (oref kcomm)
                       (oref kernel)
