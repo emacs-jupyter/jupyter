@@ -62,8 +62,8 @@
 
 (defvar org-babel-jupyter-session-clients (make-hash-table :test #'equal)
   "A hash table mapping session names to Jupyter clients.
-A key into this table can be constructed for the src-block at
-`point' using `org-babel-jupyter-src-block-session'.")
+`org-babel-jupyter-src-block-session' returns a key into this
+table for the source block at `point'.")
 
 (defvar org-babel-header-args:jupyter '((kernel . :any)
                                         (async . ((yes no))))
@@ -91,11 +91,10 @@ A key into this table can be constructed for the src-block at
        'ob-jupyter (intern (concat "org-babel-execute:" lang)))))
 
 (defun org-babel-jupyter-session-key (params)
-  "Return the session key based on the keys in PARAMS.
+  "Return a string that is the concatenation of the :session and :kernel PARAMS.
 PARAMS is the arguments alist as returned by
-`org-babel-get-src-block-info' and should contain a :kernel key
-and a valid :session key.  The session key is used to access the
-clients in `org-babel-jupyter-session-clients'."
+`org-babel-get-src-block-info'.  The returned string can then be
+used to identify unique Jupyter Org babel sessions."
   (let ((session (alist-get :session params))
         (kernel (alist-get :kernel params)))
     (unless (and session kernel
@@ -185,9 +184,9 @@ path."
 Enable `jupyter-repl-interaction-mode' in the edit buffer
 associated with the session found in INFO.
 
-If the session corresponds to a connection to a notebook server,
-the `default-directory' is set to the root of the directory that
-the notebook serves."
+If the session is a Jupyter TRAMP file name, the
+`default-directory' of the edit buffer is set to the root
+directory the notebook serves."
   (let* ((params (nth 2 info))
          (session (alist-get :session params))
          (client-buffer (org-babel-jupyter-initiate-session session params)))
@@ -605,8 +604,8 @@ SPECS defaults to `jupyter-available-kernelspecs'.  Optional
 argument REFRESH has the same meaning as in
 `jupyter-available-kernelspecs'.
 
-Note, spaces or uppercase characters in the language alias are
-converted into dashes or lowercase characters in the language
+Note, spaces or uppercase characters in the kernel language name
+are converted into dashes or lowercase characters in the language
 alias, e.g.
 
     Wolfram Language -> jupyter-wolfram-language"
