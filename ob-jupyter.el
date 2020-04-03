@@ -38,18 +38,14 @@
   (require 'jupyter-repl) ; For `jupyter-with-repl-buffer'
   (require 'subr-x))
 
-(declare-function org-element-at-point "org-element")
-(declare-function org-link-set-parameters "org" (type &rest parameters))
 (declare-function org-in-src-block-p "org" (&optional inside))
 (declare-function org-element-property "org-element" (property element))
-(declare-function org-element-type "org-element" (element))
 (declare-function org-element-context "org-element" (&optional element))
 (declare-function org-babel-variable-assignments:python "ob-python" (params))
 (declare-function org-babel-expand-body:generic "ob-core" (body params &optional var-lines))
 (declare-function org-export-derived-backend-p "ox" (backend &rest backends))
 
-(declare-function jupyter-server "jupyter-server")
-(declare-function jupyter-find-server "jupyter-server")
+(declare-function jupyter-server-make-instance "jupyter-server")
 (declare-function jupyter-run-server-repl "jupyter-server")
 (declare-function jupyter-connect-server-repl "jupyter-server")
 (declare-function jupyter-server-kernelspecs "jupyter-server")
