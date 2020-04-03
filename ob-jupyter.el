@@ -252,7 +252,7 @@ return nil."
       ;; Language aliases may not exist for the kernels that are accessible on
       ;; the server.
       (org-babel-jupyter-aliases-from-kernelspecs nil specs)
-      (unless (jupyter-guess-kernelspec kernel specs)
+      (unless (jupyter-server-has-kernelspec-p server kernel)
         (error "No kernelspec matching \"%s\" exists at %s" kernel url))
       (if kmodel
           ;; Connecting to an existing kernel

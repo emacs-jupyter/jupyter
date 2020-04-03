@@ -391,6 +391,10 @@ The kernelspecs are returned in the same form as returned by
                                 (cons nil (plist-get spec :spec)))))))
   (plist-get (oref server kernelspecs) :kernelspecs))
 
+(cl-defmethod jupyter-server-has-kernelspec-p ((server jupyter-server) name)
+  "Return non-nil if SERVER can launch kernels with kernelspec NAME."
+  (jupyter-guess-kernelspec name (jupyter-server-kernelspecs server)))
+
 ;;;; `jupyter-server-kernel-comm' methods
 
 (cl-defmethod jupyter-comm-start ((comm jupyter-server-kernel-comm) &rest _ignore)
