@@ -431,14 +431,16 @@ the PARAMS alist."
      (t
       (while (null (jupyter-wait-until-idle req jupyter-long-timeout)))
       (if (jupyter-org-request-inline-block-p req)
-          ;; In the case of synchronous inline results, only the result of the
-          ;; execute-result message will be added to
-          ;; `jupyter-org-request-results', stream results and any display data
-          ;; messages will be displayed in a separate buffer.
+          ;; When evaluating a source block synchronously, only the
+          ;; :execute-result will be in `jupyter-org-request-results' since
+          ;; stream results and any displayed data will be placed in a separate
+          ;; buffer.
           (car (jupyter-org-request-results req))
         (prog1 (jupyter-org-sync-results req)
-          ;; Add after since the initial result params are used in
-          ;; `jupyter-org-client'
+          ;; KLUDGE: The "raw" result parameter is added to the parameters of
+          ;; non-inline synchronous results because `jupyter-org-sync-results'
+          ;; already returns an Org formatted string and
+          ;; `org-babel-insert-result' should not process it.
           (nconc (alist-get :result-params params) (list "raw"))))))))
 
 ;;; Overriding source block languages, language aliases
