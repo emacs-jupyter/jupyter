@@ -199,32 +199,31 @@ the notebook serves."
     (when (jupyter-tramp-file-name-p session)
       (setq default-directory (concat (file-remote-p session) "/")))))
 
-(defun org-babel-prep-session:jupyter (session params &optional delay-eval)
-  "Prepare a Jupyter SESSION according to PARAMS.
-If DELAY-EVAL is non-nil, delay the evaluation of the header
-variables in PARAMS."
-  (let ((buffer (org-babel-jupyter-initiate-session session params))
-        (var-lines (org-babel-variable-assignments:jupyter params)))
-    (with-current-buffer buffer
-      (goto-char (point-max))
-      (when var-lines
-        (jupyter-repl-replace-cell-code
-         (mapconcat #'identity var-lines "\n"))
-        ;; For `org-babel-load-session:jupyter', ensure that the loaded code
-        ;; starts on a new line.
-        (when delay-eval
-          (insert "\n")))
-      (unless delay-eval
-        (jupyter-send-execute-request jupyter-current-client))
-      (current-buffer))))
+(defun org-babel-jupyter--insert-variable-assignments (params)
+  "Insert variable assignment lines from PARAMS into the `current-buffer'.
+Return non-nil if there are variable assignments, otherwise
+return nil."
+  (let ((var-lines (org-babel-variable-assignments:jupyter params)))
+    (prog1 var-lines
+      (jupyter-repl-replace-cell-code (mapconcat #'identity var-lines "\n")))))
+
+(defun org-babel-prep-session:jupyter (session params)
+  "Prepare a Jupyter SESSION according to PARAMS."
+  (with-current-buffer (org-babel-jupyter-initiate-session session params)
+    (goto-char (point-max))
+    (and (org-babel-jupyter--insert-variable-assignments session params)
+         (jupyter-send-execute-request jupyter-current-client))
+    (current-buffer)))
 
 (defun org-babel-load-session:jupyter (session body params)
   "In a Jupyter SESSION, load BODY according to PARAMS."
   (save-window-excursion
-    (let ((buffer (org-babel-prep-session:jupyter session params 'delay-eval)))
-      (with-current-buffer buffer
-        (insert (org-babel-expand-body:jupyter (org-babel-chomp body) params))
-        (current-buffer)))))
+    (with-current-buffer (org-babel-jupyter-initiate-session session params)
+      (goto-char (point-max))
+      (when (org-babel-jupyter--insert-variable-assignments session params)
+        (insert "\n"))
+      (insert (org-babel-expand-body:jupyter (org-babel-chomp body) params))
+      (current-buffer))))
 
 (defun org-babel-jupyter--run-repl (session kernel)
   (let ((remote (file-remote-p session)))
