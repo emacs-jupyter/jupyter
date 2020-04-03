@@ -946,24 +946,32 @@ client local variable.
 
 Methods that extend this generic function should
 `cl-call-next-method' as a last step."
-  (cl-check-type jupyter-current-client jupyter-kernel-client
-                 "Need a client to read an expression")
   (let* ((client jupyter-current-client)
          (jupyter--read-expression-history
           (jupyter-get client 'jupyter-eval-expression-history)))
-    (minibuffer-with-setup-hook
-        (lambda ()
-          (setq jupyter-current-client client)
-          (add-hook 'completion-at-point-functions
-                    'jupyter-completion-at-point nil t)
-          (add-hook 'minibuffer-exit-hook
-                    'jupyter--teardown-minibuffer nil t))
-      (prog1 (read-from-minibuffer
-              (format "Eval (%s): " (jupyter-kernel-language client))
-              nil read-expression-map
-              nil 'jupyter--read-expression-history)
-        (jupyter-set client 'jupyter-eval-expression-history
-                     jupyter--read-expression-history)))))
+    (prog1
+        (jupyter--read-with-completion
+         client "Eval (%s): " jupyter--read-expression-history)
+      (jupyter-set client 'jupyter-eval-expression-history
+                   jupyter--read-expression-history))))
+
+(defun jupyter--read-with-completion (client prompt &optional history)
+  "Read an expression using CLIENT for completion.
+The expression is read from the minibuffer with PROMPT and expression
+history HISTORY."
+  (cl-check-type client jupyter-kernel-client
+                 "Need a client to read an expression")
+  (minibuffer-with-setup-hook
+      (lambda ()
+        (setq jupyter-current-client client)
+        (add-hook 'completion-at-point-functions
+                  'jupyter-completion-at-point nil t)
+        (add-hook 'minibuffer-exit-hook
+                  'jupyter--teardown-minibuffer nil t))
+    (read-from-minibuffer
+     (format prompt (jupyter-kernel-language client))
+     nil read-expression-map
+     nil history)))
 
 (defun jupyter-eval (code &optional mime)
   "Send an execute request for CODE, wait for the execute result.
@@ -1418,6 +1426,16 @@ BUFFER and DETAIL have the same meaning as in `jupyter-inspect'."
   (cl-destructuring-bind (code pos)
       (jupyter-code-context 'inspect)
     (jupyter-inspect code pos buffer detail)))
+
+(cl-defgeneric jupyter-describe (code &optional buffer detail)
+  "Inspect CODE provided interactively.
+Call `jupter-inspect' for CODE which can be interactively supplied by user.
+
+BUFFER and DETAIL have the same meaning a in `jupyter-inspect'."
+  (interactive (list (jupyter--read-with-completion
+                      jupyter-current-client "Describe (%s): ")
+                     nil 0))
+  (jupyter-inspect code nil buffer detail))
 
 (cl-defgeneric jupyter-inspect (code &optional pos buffer detail)
   "Inspect CODE.
