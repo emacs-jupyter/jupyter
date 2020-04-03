@@ -396,20 +396,26 @@ the PARAMS alist."
          (kernel-lang (jupyter-kernel-language jupyter-current-client))
          (vars (org-babel-variable-assignments:jupyter params kernel-lang))
          (code (org-babel-expand-body:jupyter body params vars kernel-lang))
+         (result-params (assq :result-params params))
+         (async-p (or (equal (alist-get :async params) "yes")
+                      (plist-member params :async)))
          (req (jupyter-send-execute-request jupyter-current-client :code code)))
     (when (member "replace" (assq :result-params params))
       (org-babel-jupyter-cleanup-file-links))
+    ;; KLUDGE: Remove the file result-parameter so that
+    ;; `org-babel-insert-result' doesn't attempt to handle it while async
+    ;; results are pending.  Do the same in the synchronous case, but not if
+    ;; link or graphics are also result-parameters, only in Org >= 9.2, since
+    ;; those in combination with file mean to interpret the result as a file
+    ;; link, a useful meaning that doesn't interfere with Jupyter style result
+    ;; insertion.
+    (when (and (member "file" result-params)
+               (or async-p
+                   (not (or (member "link" result-params)
+                            (member "graphics" result-params)))))
+      (org-babel-jupyter--remove-file-param params))
     (cond
-     ((or (equal (alist-get :async params) "yes")
-          (plist-member params :async))
-      ;; TODO: Support :results link in this case as well.  What we can do is
-      ;; set `jupyter-org-request-silent-p' to "none" so that no results are
-      ;; appended, but then we have to remove the ID and insert the link once
-      ;; everything comes in.  Maybe remove `jupyter-org-request-silent-p' and
-      ;; have the meaning of `jupyter-org-request-result-type' to also include
-      ;; silent results and link style results?
-      (when (member "file" (assq :result-params params))
-        (org-babel-jupyter--remove-file-param params))
+     (async-p
       (cl-labels
           ((sync-on-export
             ()
@@ -423,14 +429,6 @@ the PARAMS alist."
             org-babel-jupyter-async-inline-results-pending-indicator
           (jupyter-org-pending-async-results req))))
      (t
-      (let ((result-params (assq :result-params params)))
-        (when (and (member "file" result-params)
-                   ;; In Org >= 9.2 these mean to ignore the results and insert
-                   ;; a link to file so don't remove the file parameters in
-                   ;; these cases since that is useful.
-                   (not (or (member "link" result-params)
-                            (member "graphics" result-params))))
-          (org-babel-jupyter--remove-file-param params)))
       (while (null (jupyter-wait-until-idle req jupyter-long-timeout)))
       (if (jupyter-org-request-inline-block-p req)
           ;; In the case of synchronous inline results, only the result of the
