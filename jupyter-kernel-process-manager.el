@@ -150,30 +150,6 @@ argument of the process."
         (or (null attribs)
             (not (equal atime (nth 4 attribs))))))))
 
-(defun jupyter-write-connection-file (session obj)
-  "Write a connection file based on SESSION to `jupyter-runtime-directory'.
-Return the path to the connection file.
-
-Also register a finalizer on OBJ to delete the file when OBJ is
-garbage collected.  The file is also deleted when Emacs exits if
-it hasn't been already."
-  (cl-check-type session jupyter-session)
-  (cl-check-type obj jupyter-finalized-object)
-  (let* ((temporary-file-directory (jupyter-runtime-directory))
-         (json-encoding-pretty-print t)
-         (file (make-temp-file "emacs-kernel-" nil ".json"))
-         (kill-hook (lambda () (when (and file (file-exists-p file))
-                                 (delete-file file)))))
-    (add-hook 'kill-emacs-hook kill-hook)
-    (jupyter-add-finalizer obj
-      (lambda ()
-        (funcall kill-hook)
-        (remove-hook 'kill-emacs-hook kill-hook)))
-    (prog1 file
-      (with-temp-file file
-        (insert (json-encode-plist
-                 (jupyter-session-conn-info session)))))))
-
 (cl-defmethod jupyter-start-kernel ((kernel jupyter-spec-kernel) &rest _args)
   (cl-destructuring-bind (_name . (resource-dir . spec)) (oref kernel spec)
     ;; FIXME: Cleanup old connection file on kernel restarts.  They will be
