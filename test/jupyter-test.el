@@ -1850,6 +1850,7 @@ next(x"))))))
 
 (ert-deftest jupyter-repl-issue-219 ()
   :tags '(repl)
+  (skip-unless (version<= "27" emacs-version))
   ;; A symptom of the REPL not setting the right text properties is an
   ;; un-terminating loop in `font-lock-default-fontify-region' this test
   ;; catches that.
