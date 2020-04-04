@@ -237,10 +237,10 @@ return nil."
 
 (defun org-babel-jupyter-parse-session (session)
   "Return a session object according to a SESSION string.
-If SESSION ends in \".json\" return a
-`org-babel-jupyter-remote-session' that indicates an Org Babel
-Jupyter client initiates its channels based on a kernel
-connection file.
+If SESSION ends in \".json\", and is not a Jupyter TRAMP file
+name, return a `org-babel-jupyter-remote-session' that indicates
+an Org Babel Jupyter client initiates its channels based on a
+kernel connection file.
 
 If SESSION is a Jupyter TRAMP file name return a
 `org-babel-jupyter-server-session', otherwise if SESSION is a
@@ -252,7 +252,8 @@ to the kernel.
 Otherwise an `org-babel-jupyter-session' is returned which
 indicates that the session is local."
   (cond
-   ((string-suffix-p ".json" session)
+   ((and (string-suffix-p ".json" session)
+         (not (jupyter-tramp-file-name-p session)))
     (org-babel-jupyter-remote-session
      :name session
      :connect-repl-p t))
