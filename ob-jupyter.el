@@ -255,7 +255,7 @@ indicates that the session is local."
    ((string-suffix-p ".json" session)
     (org-babel-jupyter-remote-session
      :name session
-     :connect-repl t))
+     :connect-repl-p t))
    ((file-remote-p session)
     (if (jupyter-tramp-file-name-p session)
         (org-babel-jupyter-server-session :name session)
