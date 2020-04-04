@@ -1848,6 +1848,24 @@ next(x"))))))
             (should (jupyter-request-callbacks req))
             (jupyter-wait-until-idle req)))))))
 
+(ert-deftest jupyter-repl-issue-219 ()
+  :tags '(repl)
+  ;; A symptom of the REPL not setting the right text properties is an
+  ;; un-terminating loop in `font-lock-default-fontify-region' this test
+  ;; catches that.
+  (jupyter-test-with-python-repl client
+    (jupyter-with-repl-buffer client
+      (jupyter-repl-replace-cell-code "l = [1,2,3]")
+      (jupyter-test-repl-ret-sync)
+      (let* ((count 0)
+             (font-lock-extend-region-functions
+              (cons (lambda ()
+                      (when (> (setq count (1+ count)) 100)
+                        (error "Un-terminating `font-lock-extend-region-functions' handling."))
+                      nil)
+                    font-lock-extend-region-functions)))
+        (font-lock-ensure)))))
+
 ;;; `org-mode'
 
 (defvar org-babel-jupyter-resource-directory nil)
