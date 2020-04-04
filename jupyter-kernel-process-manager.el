@@ -29,6 +29,46 @@
 (require 'jupyter-kernel-manager)
 (eval-when-compile (require 'subr-x))
 
+(defmacro jupyter--after-kernel-process-ready (kernel progress &rest body)
+  "Evaluate BODY after KERNEL process is ready.
+Wait for KERNEL to be ready by evaluating a form periodically
+until it returns non-nil, indicating KERNEL is ready.  Timeout
+after `jupyter-long-timeout' seconds.
+
+PROGRESS is a progress string printed while waiting for the
+process to be ready.  It should contain one %S or %s format
+specifier which will be replaced by the `jupyter-kernel-name' of
+KERNEL.
+
+BODY begins with a plist containing the keys :timeout-form and
+:wait-form.  The former is the form evaluated after timing out
+and the latter the form to evaluate periodically to check if
+KERNEL is ready.  A value for :wait-form is required.
+
+If a timeout occurs and KERNEL's process is not alive, raise an
+error.  The error is raised before :timeout-form is evaluated."
+  (declare (indent 2))
+  (let (args)
+    (while (keywordp (car body))
+      (push (pop body) args)
+      (push (pop body) args))
+    (setq args (nreverse args))
+    (let ((timeout-form (list (plist-get args :timeout-form)))
+          (wait-form (list (plist-get args :wait-form))))
+      (cl-assert (not (null (car wait-form))))
+      `(with-slots (process) ,kernel
+         (with-current-buffer (process-buffer process)
+           (jupyter-with-timeout
+               ((format ,progress (jupyter-kernel-name ,kernel))
+                jupyter-long-timeout
+                (unless (process-live-p process)
+                  (error "Kernel process exited:\n%s"
+                         (with-current-buffer (process-buffer process)
+                           (ansi-color-apply (buffer-string)))))
+                ,@timeout-form)
+             ,@wait-form)
+           ,@body)))))
+
 ;;; `jupyter-kernel-process'
 
 (defclass jupyter-kernel-process (jupyter-meta-kernel)
@@ -102,85 +142,67 @@ argument of the process."
          kernel (jupyter-locate-python)
          "-c" "from jupyter_client.kernelapp import main; main()"
          (format "--kernel=%s" (jupyter-kernel-name kernel))
-         args))
-
-(cl-defmethod jupyter-start-kernel :after ((kernel jupyter-command-kernel) &rest _args)
-  "Set the session slot from KERNEL's process output."
-  (with-slots (process) kernel
-    (with-current-buffer (process-buffer process)
-      (jupyter-with-timeout
-          ((format "Launching %s kernel process..." (jupyter-kernel-name kernel))
-           jupyter-long-timeout
-           (if (process-live-p process)
-               (error "\
-`jupyter kernel` output did not show connection file within timeout")
-             (error "Kernel process exited:\n%s"
-                    (ansi-color-apply (buffer-string)))))
-        (and (process-live-p process)
-             (goto-char (point-min))
-             (re-search-forward "Connection file: \\(.+\\)\n" nil t)))
-      (let* ((conn-file (match-string 1))
-             (remote (file-remote-p default-directory))
-             (conn-info (if remote (jupyter-tunnel-connection
-                                    (concat remote conn-file))
-                          (jupyter-read-plist conn-file))))
-        (oset kernel session (jupyter-session
-                              :conn-info conn-info
-                              :key (plist-get conn-info :key)))))))
+         args)
+  (jupyter--after-kernel-process-ready kernel
+      "Launching %s kernel process..."
+    :timeout-form (when (process-live-p (oref kernel process))
+                    (error "\
+`jupyter kernel` output did not show connection file within timeout"))
+    :wait-form (and (process-live-p (oref kernel process))
+                    (goto-char (point-min))
+                    (re-search-forward "Connection file: \\(.+\\)\n" nil t))
+    (let* ((conn-file (match-string 1))
+           (remote (file-remote-p default-directory))
+           (conn-info (if remote (jupyter-tunnel-connection
+                                  (concat remote conn-file))
+                        (jupyter-read-plist conn-file))))
+      (oset kernel session (jupyter-session
+                            :conn-info conn-info
+                            :key (plist-get conn-info :key))))))
 
 (defclass jupyter-spec-kernel (jupyter-kernel-process)
   ()
   :documentation "A Jupyter kernel launched from a kernelspec.")
-
-(defun jupyter--block-until-conn-file-access (atime kernel conn-file)
-  (with-slots (process) kernel
-    (jupyter-with-timeout
-        ((format "Starting %s kernel process..." (jupyter-kernel-name kernel))
-         jupyter-long-timeout
-         ;; If the process is still alive, punt farther down the line.
-         (unless (process-live-p process)
-           (error "Kernel process exited:\n%s"
-                  (with-current-buffer (process-buffer process)
-                    (ansi-color-apply (buffer-string))))))
-      (let ((attribs (file-attributes conn-file)))
-        ;; `file-attributes' can potentially return nil, in this case
-        ;; just assume it has read the connection file so that we can
-        ;; know for sure it is not connected if it fails to respond to
-        ;; any messages we send it.
-        (or (null attribs)
-            (not (equal atime (nth 4 attribs))))))))
 
 (cl-defmethod jupyter-start-kernel ((kernel jupyter-spec-kernel) &rest _args)
   (cl-destructuring-bind (_name . (resource-dir . spec)) (oref kernel spec)
     ;; FIXME: Cleanup old connection file on kernel restarts.  They will be
     ;; cleaned up eventually, but not doing it immediately leaves stale
     ;; connection files.
-    (let ((conn-file (jupyter-write-connection-file
-                      (oref kernel session) kernel))
-          (process-environment
-           (append
-            ;; The first entry takes precedence when duplicated
-            ;; variables are found in `process-environment'
-            (cl-loop
-             for (k v) on (plist-get spec :env) by #'cddr
-             collect (format "%s=%s" (cl-subseq (symbol-name k) 1) v))
-            process-environment)))
-      (let ((atime (nth 4 (file-attributes conn-file))))
-        (apply #'cl-call-next-method
-               kernel (cl-loop
-                       for arg in (append (plist-get spec :argv) nil)
-                       if (equal arg "{connection_file}")
-                       collect (file-local-name conn-file)
-                       else if (equal arg "{resource_dir}")
-                       collect (file-local-name resource-dir)
-                       else collect arg))
-        ;; Windows systems may not have good time resolution when retrieving
-        ;; the last access time of a file so we don't bother with checking that
-        ;; the kernel has read the connection file and leave it to the
-        ;; downstream initialization to ensure that we can communicate with a
-        ;; kernel.
-        (unless (memq system-type '(ms-dos windows-nt cygwin))
-          (jupyter--block-until-conn-file-access atime kernel conn-file))))))
+    (let* ((conn-file (jupyter-write-connection-file
+                       (oref kernel session) kernel))
+           (atime (nth 4 (file-attributes conn-file)))
+           (process-environment
+            (append
+             ;; The first entry takes precedence when duplicated
+             ;; variables are found in `process-environment'
+             (cl-loop
+              for (k v) on (plist-get spec :env) by #'cddr
+              collect (format "%s=%s" (cl-subseq (symbol-name k) 1) v))
+             process-environment)))
+      (apply #'cl-call-next-method
+             kernel (cl-loop
+                     for arg in (append (plist-get spec :argv) nil)
+                     if (equal arg "{connection_file}")
+                     collect (file-local-name conn-file)
+                     else if (equal arg "{resource_dir}")
+                     collect (file-local-name resource-dir)
+                     else collect arg))
+      ;; Windows systems may not have good time resolution when retrieving
+      ;; the last access time of a file so we don't bother with checking that
+      ;; the kernel has read the connection file and leave it to the
+      ;; downstream initialization to ensure that we can communicate with a
+      ;; kernel.
+      (unless (memq system-type '(ms-dos windows-nt cygwin))
+        (jupyter--after-kernel-process-ready kernel
+            "Starting %s kernel process..."
+          :wait-form (let ((attribs (file-attributes conn-file)))
+                       ;; `file-attributes' can potentially return nil, in this case
+                       ;; just assume it has read the connection file so that we can
+                       ;; know for sure it is not connected if it fails to respond to
+                       ;; any messages we send it.
+                       (or (null attribs)
+                           (not (equal atime (nth 4 attribs))))))))))
 
 ;;; `jupyter-kernel-process-manager'
 
