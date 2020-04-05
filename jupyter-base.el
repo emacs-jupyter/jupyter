@@ -502,48 +502,63 @@ following fields:
    ;; seconds
    "sleep 60"))
 
-(defun jupyter-tunnel-connection (conn-file &optional server)
-  "Forward local ports to the remote ports in CONN-FILE.
-CONN-FILE is the path to a Jupyter connection file, SERVER is the
-host that the kernel connection in CONN-FILE is located.  Return a
-copy of the connection plist in CONN-FILE, but with the ports
-replaced by the local ports used for the forwarding.
+(defun jupyter-tunnel-connection (conn-file &optional remote-host)
+  "Forward local ports to the remote ports specified in CONN-FILE.
+CONN-FILE is the path to a Jupyter connection file, the traffic
+on the local ports will be directed to the remote ports listening
+at the ip specified in CONN-FILE on the remote network accessed
+via REMOTE-HOST, an SSH host.
 
-If CONN-FILE is a `tramp' file name, the SERVER argument will be
-ignored and the host will be extracted from the information
-contained in the file name.
+Return a copy of the connection info. in CONN-FILE as a property
+list with the port fields (:iopub_port, :shell_port, ...)
+replaced by the local ports used for the tunneling and the :ip
+field equal to \"127.0.0.1\".
 
-Note only SSH tunnels are currently supported."
-  (catch 'no-tunnels
-    (let ((conn-info (jupyter-read-plist conn-file)))
-      (when (and (file-remote-p conn-file)
-                 (functionp 'tramp-dissect-file-name))
-        (pcase-let (((cl-struct tramp-file-name method user host)
-                     (tramp-dissect-file-name conn-file)))
-          (pcase method
-            ;; TODO: Document this in the README along with the fact that
-            ;; connection files can use /ssh: TRAMP files.
-            ("docker"
-             ;; Assume docker is using the -p argument to publish its exposed
-             ;; ports to the localhost.  The ports used in the container should
-             ;; be the same ports accessible on the local host.  For example, if
-             ;; the shell port is on 1234 in the container, the published port
-             ;; flag should be "-p 1234:1234".
-             (throw 'no-tunnels conn-info))
-            (_
-             (setq server (if user (concat user "@" host)
-                            host))))))
-      (let* ((keys '(:hb_port :shell_port :control_port
-                              :stdin_port :iopub_port))
-             (lports (jupyter-available-local-ports (length keys))))
-        (cl-loop
-         with remoteip = (plist-get conn-info :ip)
-         for (key maybe-rport) on conn-info by #'cddr
-         collect key and if (memq key keys)
-         collect (let ((lport (pop lports)))
-                   (prog1 lport
-                     (jupyter-make-ssh-tunnel lport maybe-rport server remoteip)))
-         else collect maybe-rport)))))
+If CONN-FILE is a remote file, the REMOTE-HOST argument is
+ignored.  Instead, the remote host information is obtained from
+information contained in the remote file name.
+
+If CONN-FILE is a remote file in a Docker container, i.e. it has
+a file name prefixed with /docker:, do not tunnel any ports.
+Assume the ports in CONN-FILE can also be used on localhost for
+connecting to those same ports in the container.  That is, assume
+the container was launched using a --publish argument like
+\"--publish 1234:1234\".  In this case, only the :ip field is
+replaced and set to \"127.0.0.1\"."
+  (catch 'no-tunnels-when-docker-conn-file
+    (when (and (file-remote-p conn-file)
+               (functionp 'tramp-dissect-file-name))
+      (pcase-let (((cl-struct tramp-file-name method user host)
+                   (tramp-dissect-file-name conn-file)))
+        (pcase method
+          ;; TODO: Document this in the README along with the fact that
+          ;; connection files can use /ssh: TRAMP files.
+          ("docker"
+           (throw 'no-tunnels-when-docker-conn-file
+                  (let ((conn-info (jupyter-read-plist conn-file)))
+                    (plist-put conn-info :ip "127.0.0.1")
+                    conn-info)))
+          (_
+           (setq remote-host (if user (concat user "@" host)
+                               host))))))
+    (unless (executable-find "ssh")
+      (error "SSH not found on `exec-path'"))
+    (let* ((port-keys (list :hb_port :shell_port :control_port
+                            :stdin_port :iopub_port))
+           (local-ports (jupyter-available-local-ports (length port-keys)))
+           (conn-info (jupyter-read-plist conn-file)))
+      (cl-loop
+       with remote-ip = (plist-get conn-info :ip)
+       for (key value) on conn-info by #'cddr
+       collect key
+       if (eq key :ip) collect "127.0.0.1"
+       else if (memq key port-keys)
+       collect (let ((remote-port value)
+                     (local-port (pop local-ports)))
+                 (prog1 local-port
+                   (jupyter-make-ssh-tunnel
+                    local-port remote-port remote-host remote-ip)))
+       else collect value))))
 
 ;;; Helper functions
 
