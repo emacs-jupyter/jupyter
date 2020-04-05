@@ -39,6 +39,7 @@
   (require 'subr-x))
 
 (declare-function org-in-src-block-p "org" (&optional inside))
+(declare-function org-element-at-point "org-element")
 (declare-function org-element-property "org-element" (property element))
 (declare-function org-element-context "org-element" (&optional element))
 (declare-function org-babel-variable-assignments:python "ob-python" (params))
