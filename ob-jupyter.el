@@ -206,7 +206,7 @@ return nil."
   "Prepare a Jupyter SESSION according to PARAMS."
   (with-current-buffer (org-babel-jupyter-initiate-session session params)
     (goto-char (point-max))
-    (and (org-babel-jupyter--insert-variable-assignments session params)
+    (and (org-babel-jupyter--insert-variable-assignments params)
          (jupyter-send-execute-request jupyter-current-client))
     (current-buffer)))
 
@@ -215,7 +215,7 @@ return nil."
   (save-window-excursion
     (with-current-buffer (org-babel-jupyter-initiate-session session params)
       (goto-char (point-max))
-      (when (org-babel-jupyter--insert-variable-assignments session params)
+      (when (org-babel-jupyter--insert-variable-assignments params)
         (insert "\n"))
       (insert (org-babel-expand-body:jupyter (org-babel-chomp body) params))
       (current-buffer))))
