@@ -486,8 +486,10 @@ following fields:
          finally return (mapcar (lambda (p) (cadr (process-contact p))) servers))
       (mapc #'delete-process servers))))
 
-(defun jupyter-make-ssh-tunnel (lport rport server remoteip)
-  (or remoteip (setq remoteip "127.0.0.1"))
+(defun jupyter-make-ssh-tunnel (local-port remote-ip remote-port remote-host)
+  "Tunnel LOCAL-PORT to REMOTE-IP:REMOTE-PORT on REMOTE-HOST, an SSH host.
+This uses ssh for the tunneling."
+  (or remote-ip (setq remote-ip "127.0.0.1"))
   (start-process
    "jupyter-ssh-tunnel" nil
    "ssh"
@@ -496,8 +498,8 @@ following fields:
    ;; Wait until the tunnel is open
    "-o ExitOnForwardFailure=yes"
    ;; Local forward
-   "-L" (format "127.0.0.1:%d:%s:%d" lport remoteip rport)
-   server
+   "-L" (format "127.0.0.1:%d:%s:%d" local-port remote-ip remote-port)
+   remote-host
    ;; Close the tunnel if no other connections are made within 60
    ;; seconds
    "sleep 60"))
@@ -557,7 +559,7 @@ replaced and set to \"127.0.0.1\"."
                      (local-port (pop local-ports)))
                  (prog1 local-port
                    (jupyter-make-ssh-tunnel
-                    local-port remote-port remote-host remote-ip)))
+                    local-port remote-ip remote-port remote-host)))
        else collect value))))
 
 ;;; Helper functions
