@@ -234,6 +234,17 @@ If the `current-buffer' is not a REPL, this is identical to
          (accept-process-output nil 1)
          ,@body))))
 
+(defmacro jupyter-test-with-kernel (kernel-name kernel &rest body)
+  "Start a new kernel with name KERNEL-NAME, bind it to KERNEL, evaluate BODY.
+KERNEL will be a `jupyter-command-kernel'."
+  (declare (indent 2))
+  `(let ((,kernel (jupyter-command-kernel
+                   :spec (jupyter-guess-kernelspec ,kernel-name))))
+     (jupyter-start-kernel ,kernel)
+     (unwind-protect
+         (progn ,@body)
+       (jupyter-kill-kernel ,kernel))))
+
 (defmacro jupyter-test-with-kernel-client (kernel client &rest body)
   "Start a new KERNEL client, bind it to CLIENT, evaluate BODY.
 This only starts a single global client unless the variable

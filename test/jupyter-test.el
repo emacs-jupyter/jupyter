@@ -772,6 +772,44 @@
         (delete-file file)))
     (should-not (memq fun kill-emacs-hook))))
 
+;; TODO: Docker test
+(ert-deftest jupyter-tunnel-connection ()
+  :tags '(client ssh)
+  (let ((kernel (jupyter-command-kernel
+                 :spec (jupyter-guess-kernelspec "python"))))
+    (jupyter-start-kernel kernel "--ip=0.0.0.0")
+    (unwind-protect
+        (with-current-buffer (process-buffer (oref kernel process))
+          (goto-char (point-min))
+          (re-search-forward "Connection file: \\(.+\\)\n")
+          ;; Ensure this is required since TRAMP will fail without it
+          ;; on Travis.
+          (require 'files-x)
+          (let* ((method (cdr (assoc "ssh" tramp-methods)))
+                 (conn-file (match-string 1))
+                 (conn-info (jupyter-read-plist conn-file))
+                 (ssh-conn-file (concat "/ssh:localhost:" conn-file))
+                 (ssh-conn-info (jupyter-tunnel-connection ssh-conn-file)))
+            (should (equal (plist-get conn-info :ip) "0.0.0.0"))
+            (should (equal (plist-get ssh-conn-info :ip) "127.0.0.1"))
+            (cl-loop for port in '(:hb_port
+                                   :control_port
+                                   :shell_port
+                                   :iopub_port
+                                   :stdin_port)
+                     do (should-not
+                         (equal (plist-get conn-info port)
+                                (plist-get ssh-conn-info port))))
+            ;; Can we talk to the kernel
+            (let* ((manager (jupyter-kernel-process-manager
+                             :kernel kernel))
+                   (jupyter-current-client
+                    (jupyter-make-client manager 'jupyter-kernel-client)))
+              (jupyter-start-channels jupyter-current-client)
+              (should (equal "2" (jupyter-eval "1 + 1")))
+              (jupyter-stop-channels jupyter-current-client))))
+      (jupyter-kill-kernel kernel))))
+
 (ert-deftest jupyter-client-channels ()
   :tags '(client channels)
   (ert-info ("Starting/stopping channels")
