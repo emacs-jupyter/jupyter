@@ -958,7 +958,7 @@ Methods that extend this generic function should
 (defun jupyter--read-with-completion (client prompt &optional history)
   "Read an expression using CLIENT for completion.
 The expression is read from the minibuffer with PROMPT and expression
-history HISTORY."
+HISTORY."
   (cl-check-type client jupyter-kernel-client
                  "Need a client to read an expression")
   (minibuffer-with-setup-hook
