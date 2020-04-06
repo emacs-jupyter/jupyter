@@ -297,7 +297,7 @@ session."
                      "*")
              'unique)))))))
 
-(cl-defmethod org-babel-jupyter-initiate-client ((session org-babel-jupyter-remote-session) _kernel)
+(cl-defmethod org-babel-jupyter-initiate-client ((session org-babel-jupyter-remote-session) kernel)
   (let ((session-name (org-babel-jupyter-remote-session-name session)))
     (if (org-babel-jupyter-remote-session-connect-repl-p session)
         (jupyter-connect-repl session-name nil nil 'jupyter-org-client)
