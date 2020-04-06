@@ -1040,17 +1040,16 @@ slot.
 The handler methods have the following signature
 
 #+BEGIN_SRC elisp
-(cl-defmethod jupyter-handle-<msg-type> ((client jupyter-kernel-client) req arg1 arg2 ...)
+(cl-defmethod jupyter-handle-<msg-type> ((client jupyter-kernel-client) req msg)
   BODY)
 #+END_SRC
 
-=req= will be the =jupyter-request= object that generated the message. =arg1=,
-=arg2=, ... will be the unwrapped message contents passed to the handler, their
-number of arguments and their order are dependent on the message type.
-Alternatively you may work with the full message property list by accessing the
-=jupyter-request-last-message= slot of the =juptyer-request= object.
+=req= will be the =jupyter-request= object that generated the message. =msg=
+will be the message property list (See [[id:D09FDD89-43A9-41DA-A6E8-6D6C73336981][Message property lists]]) of the
+message whose type is =msg-type=.
 
 See [[id:0E7CA280-8D14-4994-A3C7-C3B7204AC9D2][message callbacks]] for another way of handling received messages.
+
 **** A note on boolean arguments
 
 For message types that have boolean message fields, the symbol in the variable
