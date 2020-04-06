@@ -189,21 +189,22 @@ argument of the process."
                      else if (equal arg "{resource_dir}")
                      collect (file-local-name resource-dir)
                      else collect arg))
-      ;; Windows systems may not have good time resolution when retrieving
-      ;; the last access time of a file so we don't bother with checking that
-      ;; the kernel has read the connection file and leave it to the
-      ;; downstream initialization to ensure that we can communicate with a
-      ;; kernel.
-      (unless (memq system-type '(ms-dos windows-nt cygwin))
-        (jupyter--after-kernel-process-ready kernel
-            "Starting %s kernel process..."
-          :wait-form (let ((attribs (file-attributes conn-file)))
-                       ;; `file-attributes' can potentially return nil, in this case
-                       ;; just assume it has read the connection file so that we can
-                       ;; know for sure it is not connected if it fails to respond to
-                       ;; any messages we send it.
-                       (or (null attribs)
-                           (not (equal atime (nth 4 attribs))))))))))
+      (jupyter--after-kernel-process-ready kernel
+          "Starting %s kernel process..."
+        :wait-form
+        ;; Windows systems may not have good time resolution when retrieving
+        ;; the last access time of a file so we don't bother with checking that
+        ;; the kernel has read the connection file and leave it to the
+        ;; downstream initialization to ensure that we can communicate with a
+        ;; kernel.
+        (or (memq system-type '(ms-dos windows-nt cygwin))
+            (let ((attribs (file-attributes conn-file)))
+              ;; `file-attributes' can potentially return nil, in this case
+              ;; just assume it has read the connection file so that we can
+              ;; know for sure it is not connected if it fails to respond to
+              ;; any messages we send it.
+              (or (null attribs)
+                  (not (equal atime (nth 4 attribs))))))))))
 
 ;;; `jupyter-kernel-process-manager'
 
