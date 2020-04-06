@@ -151,14 +151,15 @@ argument of the process."
     :wait-form (and (process-live-p (oref kernel process))
                     (goto-char (point-min))
                     (re-search-forward "Connection file: \\(.+\\)\n" nil t))
-    (let* ((conn-file (match-string 1))
-           (remote (file-remote-p default-directory))
-           (conn-info (if remote (jupyter-tunnel-connection
-                                  (concat remote conn-file))
-                        (jupyter-read-plist conn-file))))
-      (oset kernel session (jupyter-session
-                            :conn-info conn-info
-                            :key (plist-get conn-info :key))))))
+    (oset kernel session
+          (let ((conn-info (jupyter-read-connection
+                            (concat
+                             (save-match-data
+                               (file-remote-p default-directory))
+                             (match-string 1)))))
+            (jupyter-session
+             :conn-info conn-info
+             :key (plist-get conn-info :key))))))
 
 (defclass jupyter-spec-kernel (jupyter-kernel-process)
   ()
