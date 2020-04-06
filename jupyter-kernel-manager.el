@@ -146,10 +146,7 @@ SLOTS are the slots used to initialize the client with.")
 
 (cl-defmethod jupyter-start-kernel ((manager jupyter-kernel-manager) &rest args)
   "Start MANAGER's kernel."
-  (unless (jupyter-kernel-alive-p manager)
-    (with-slots (kernel) manager
-      (apply #'jupyter-start-kernel kernel args)
-      (jupyter-start-channels manager))))
+  (apply #'jupyter-start-kernel (oref manager kernel) args))
 
 (cl-defgeneric jupyter-shutdown-kernel ((manager jupyter-kernel-manager) &rest args)
   "Shutdown MANAGER's kernel or restart instead if RESTART is non-nil.

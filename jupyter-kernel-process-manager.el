@@ -237,15 +237,17 @@ connect to MANAGER's kernel."
         (jupyter-comm-initialize client (oref kernel session))))))
 
 (cl-defmethod jupyter-start-kernel :after ((manager jupyter-kernel-process-manager) &rest _args)
-  (with-slots (kernel) manager
+  "Some final setup after starting MANAGER's kernel.
+Update the process sentinel of the kernel process to call
+`jupyter-kernel-died' on the managed kernel when the process
+exits.
+
+Also start manager's control channel."
+  (with-slots (kernel control-channel) manager
     (add-function
      :after (process-sentinel (oref kernel process))
-     (jupyter--kernel-died-process-sentinel manager))))
-
-(cl-defmethod jupyter-start-channels ((manager jupyter-kernel-process-manager))
-  "Start a control channel on MANAGER."
-  (with-slots (kernel control-channel) manager
-    (if control-channel (jupyter-start-channel control-channel)
+     (jupyter--kernel-died-process-sentinel manager))
+    (unless control-channel
       (cl-destructuring-bind (&key transport ip control_port &allow-other-keys)
           (jupyter-session-conn-info (oref kernel session))
         (require 'jupyter-zmq-channel)
@@ -254,14 +256,8 @@ connect to MANAGER's kernel."
                'jupyter-zmq-channel
                :type :control
                :session (oref kernel session)
-               :endpoint (format "%s://%s:%d" transport ip control_port)))
-        (jupyter-start-channels manager)))))
-
-(cl-defmethod jupyter-stop-channels ((manager jupyter-kernel-process-manager))
-  "Stop the control channel on MANAGER."
-  (when-let (channel (oref manager control-channel))
-    (jupyter-stop-channel channel)
-    (oset manager control-channel nil)))
+               :endpoint (format "%s://%s:%d" transport ip control_port)))))
+    (jupyter-start-channel control-channel)))
 
 (cl-defmethod jupyter-shutdown-kernel ((manager jupyter-kernel-process-manager) &optional restart timeout)
   "Shutdown MANAGER's kernel with an optional RESTART.
@@ -271,8 +267,6 @@ kernel.  If the kernel has not shutdown within TIMEOUT, forcibly
 kill the kernel subprocess.  After shutdown the MANAGER's control
 channel is stopped unless RESTART is non-nil."
   (when (jupyter-kernel-alive-p manager)
-    ;; FIXME: For some reason the control-channel is nil sometimes
-    (jupyter-start-channels manager)
     (with-slots (control-channel kernel) manager
       (jupyter-send control-channel :shutdown-request
                     (jupyter-message-shutdown-request :restart restart))
@@ -292,7 +286,9 @@ channel is stopped unless RESTART is non-nil."
         (not (jupyter-kernel-alive-p manager)))
       (if restart
           (jupyter-start-kernel manager)
-        (jupyter-stop-channels manager)))))
+        (when-let (channel (oref manager control-channel))
+          (jupyter-stop-channel channel)
+          (oset manager control-channel nil))))))
 
 (cl-defmethod jupyter-interrupt-kernel ((manager jupyter-kernel-process-manager) &optional timeout)
   "Interrupt MANAGER's kernel.
@@ -302,8 +298,6 @@ TIMEOUT for a reply.  Otherwise if the kernel does not specify an
 interrupt mode, send an interrupt signal to the kernel
 subprocess."
   (when (jupyter-kernel-alive-p manager)
-    ;; FIXME: For some reason the control-channel is nil sometimes
-    (jupyter-start-channels manager)
     (with-slots (kernel) manager
       (cl-destructuring-bind (_name _resource-dir . spec) (oref kernel spec)
         (pcase (plist-get spec :interrupt_mode)
