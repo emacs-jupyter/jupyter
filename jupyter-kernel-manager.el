@@ -49,10 +49,7 @@
 
 (cl-defmethod initialize-instance ((kernel jupyter-kernel-lifetime) &optional _slots)
   (cl-call-next-method)
-  (jupyter-add-finalizer kernel
-    (lambda ()
-      (when (jupyter-kernel-alive-p kernel)
-        (jupyter-kill-kernel kernel)))))
+  (jupyter-add-finalizer kernel (lambda () (jupyter-kill-kernel kernel))))
 
 (cl-defgeneric jupyter-kernel-alive-p ((kernel jupyter-kernel-lifetime))
   "Return non-nil if KERNEL is alive.")
