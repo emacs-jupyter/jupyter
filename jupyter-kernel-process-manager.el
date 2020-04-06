@@ -74,13 +74,9 @@ error.  The error is raised before :timeout-form is evaluated."
 (defclass jupyter-kernel-process (jupyter-meta-kernel)
   ((process
     :type process
-    :documentation "The kernel process."))
-  :documentation "A Jupyter kernel process.
-Starts a kernel process using `start-file-process'.
-
-If the kernel was started on a remote host, ensure that local
-tunnels are created when setting the session slot after the
-kernel starts.")
+    :documentation "A kernel process."))
+  :documentation "Control the lifetime of a kernel process by
+implementing `jupyter-kernel-lifetime' using an Emacs PROCESS.")
 
 (cl-defmethod jupyter-kernel-alive-p ((kernel jupyter-kernel-process))
   (and (slot-boundp kernel 'process)
@@ -124,9 +120,19 @@ fatal signal."
       (kill-buffer (process-buffer process))))
   (cl-call-next-method))
 
+;;;; `jupyter-command-kernel'
+
+;; TODO: Rename to `jupyter-app-kernel' to make it more obvious what kind of
+;; process this is.
 (defclass jupyter-command-kernel (jupyter-kernel-process)
   ()
-  :documentation "A Jupyter kernel process using the \"jupyter kernel\" command.")
+  :documentation "Launch a kernel subprocess by name in the same
+way as the `jupyter kernel` shell command.  The
+`jupyter-kernel-name' of the kernel is passed as the --kernel
+argument.
+
+Once the process is launched, the connection file created is then
+used to connect to the kernel from Emacs.")
 
 (cl-defmethod jupyter-start-kernel ((kernel jupyter-command-kernel) &rest args)
   "Start KERNEL, passing ARGS as command line arguments to \"jupyter kernel\".
@@ -144,7 +150,7 @@ argument of the process."
          (format "--kernel=%s" (jupyter-kernel-name kernel))
          args)
   (jupyter--after-kernel-process-ready kernel
-      "Launching %s kernel process..."
+      "Launching `jupyter kernel --kernel=%s` process..."
     :timeout-form (when (process-live-p (oref kernel process))
                     (error "\
 `jupyter kernel` output did not show connection file within timeout"))
@@ -161,11 +167,23 @@ argument of the process."
              :conn-info conn-info
              :key (plist-get conn-info :key))))))
 
+;;;; `jupyter-spec-kernel'
+
 (defclass jupyter-spec-kernel (jupyter-kernel-process)
   ()
-  :documentation "A Jupyter kernel launched from a kernelspec.")
+  :documentation "Launches a kernel process from a kernelspec.")
 
 (cl-defmethod jupyter-start-kernel ((kernel jupyter-spec-kernel) &rest _args)
+  "Launch a kernel process using the SPEC of KERNEL.
+Use the connection info in the SESSION of KERNEL to write a
+connection file to `jupyter-runtime-directory'.  The file is
+deleted either when KERNEL loses scope or when `kill-emacs-hook'
+is run.
+
+Then use the SPEC of KERNEL to launch a kernel process
+substituting the connection file name for {connection_file} in
+the :argv list of SPEC, see
+https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-specs."
   (cl-destructuring-bind (_name . (resource-dir . spec)) (oref kernel spec)
     ;; FIXME: Cleanup old connection file on kernel restarts.  They will be
     ;; cleaned up eventually, but not doing it immediately leaves stale

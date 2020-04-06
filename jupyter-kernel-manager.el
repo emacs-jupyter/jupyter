@@ -45,9 +45,13 @@
 (defclass jupyter-kernel-lifetime (jupyter-finalized-object)
   ()
   :abstract t
-  :documentation "Trait to control the lifetime of a kernel.")
+  :documentation "Interface to control the lifetime of a kernel.
+Objects that implement this interface must implement the methods:
+`jupyter-kernel-alive-p', `jupyter-start-kernel',
+`jupyter-kill-kernel', and optionally `jupyter-kernel-died'.")
 
 (cl-defmethod initialize-instance ((kernel jupyter-kernel-lifetime) &optional _slots)
+  "Setup a finalizer on KERNEL to kill it when KERNEL is garbage collected."
   (cl-call-next-method)
   (jupyter-add-finalizer kernel
     (lambda ()
@@ -61,13 +65,13 @@
   "Start KERNEL.")
 
 (cl-defgeneric jupyter-kill-kernel ((kernel jupyter-kernel-lifetime))
-  "Tell the KERNEL to stop.")
+  "Stop KERNEL.")
 
 (cl-defgeneric jupyter-kernel-died ((kernel jupyter-kernel-lifetime))
   "Called when a KERNEL dies unexpectedly.")
 
 (cl-defmethod jupyter-start-kernel :around ((kernel jupyter-kernel-lifetime) &rest _args)
-  "Error when KERNEL is already alive, otherwise call the next method."
+  "Call the next method unless KERNEL is already alive."
   (unless (jupyter-kernel-alive-p kernel)
     (cl-call-next-method)))
 
@@ -77,6 +81,7 @@
     (cl-call-next-method)))
 
 (cl-defmethod jupyter-kernel-died ((_kernel jupyter-kernel-lifetime))
+  "Do nothing if KERNEL died."
   (ignore))
 
 ;;; `jupyter-meta-kernel'
