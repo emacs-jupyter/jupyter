@@ -76,9 +76,9 @@
 (cl-defmethod jupyter-kernel-died ((_kernel jupyter-kernel-lifetime))
   (ignore))
 
-;;; `jupyter-meta-kernel'
+;;; `jupyter-kernel'
 
-(defclass jupyter-meta-kernel (jupyter-kernel-lifetime)
+(defclass jupyter-kernel (jupyter-kernel-lifetime)
   ((spec
     :type cons
     :initarg :spec
@@ -102,10 +102,10 @@ implementation of `jupyter-kill-kernel'.
 A convenience method, `jupyter-kernel-name', is provided to
 access the name of the kernelspec.")
 
-(cl-defmethod jupyter-kill-kernel ((_kernel jupyter-meta-kernel))
+(cl-defmethod jupyter-kill-kernel ((_kernel jupyter-kernel))
   (ignore))
 
-(cl-defmethod jupyter-kernel-name ((kernel jupyter-meta-kernel))
+(cl-defmethod jupyter-kernel-name ((kernel jupyter-kernel))
   "Return the name of KERNEL."
   (car (oref kernel spec)))
 
@@ -117,7 +117,7 @@ access the name of the kernelspec.")
                                   jupyter-instance-tracker)
   ((tracking-symbol :initform 'jupyter--kernel-managers)
    (kernel
-    :type jupyter-meta-kernel
+    :type jupyter-kernel
     :initarg :kernel
     :documentation "The kernel that is being managed."))
   :abstract t)

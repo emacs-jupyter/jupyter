@@ -71,7 +71,7 @@ error.  The error is raised before :timeout-form is evaluated."
 
 ;;; `jupyter-kernel-process'
 
-(defclass jupyter-kernel-process (jupyter-meta-kernel)
+(defclass jupyter-kernel-process (jupyter-kernel)
   ((process
     :type process
     :documentation "The kernel process."))

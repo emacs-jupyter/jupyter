@@ -127,7 +127,7 @@ Access should be done through `jupyter-available-kernelspecs'.")))
 ;;; `jupyter-server-kernel'
 
 ;; TODO: Add the server as a slot
-(defclass jupyter-server-kernel (jupyter-meta-kernel)
+(defclass jupyter-server-kernel (jupyter-kernel)
   ((server
     :type jupyter-server
     :initarg :server
