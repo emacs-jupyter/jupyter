@@ -298,10 +298,10 @@ session."
              'unique)))))))
 
 (cl-defmethod org-babel-jupyter-initiate-client ((session org-babel-jupyter-remote-session) kernel)
-  (let ((session-name (org-babel-jupyter-remote-session-name session)))
-    (if (org-babel-jupyter-remote-session-connect-repl-p session)
-        (jupyter-connect-repl session-name nil nil 'jupyter-org-client)
-      (let ((default-directory (file-remote-p session-name)))
+  (pcase-let (((cl-struct org-babel-jupyter-remote-session name connect-repl-p) session))
+    (if connect-repl-p
+        (jupyter-connect-repl name nil nil 'jupyter-org-client)
+      (let ((default-directory (file-remote-p name)))
         (org-babel-jupyter-aliases-from-kernelspecs)
         (jupyter-run-repl kernel nil nil 'jupyter-org-client)))))
 
