@@ -6,7 +6,7 @@ changes, etc.  Write a few sentences describing the change and how it affects
 users going forward.
 
 #+NAME: changelog
-#+HEADER: :var PREV_VERSION="afbb9b513410ee6f36a1f2fa1ff8a505862de1ca" VERSION="master"
+#+HEADER: :var PREV_VERSION="v0.8.2" VERSION="master"
 #+BEGIN_SRC shell :results output
 git log --pretty=format:"%s" ${PREV_VERSION}...${VERSION}
 #+END_SRC
