@@ -221,7 +221,7 @@ return nil."
       (insert (org-babel-expand-body:jupyter (org-babel-chomp body) params))
       (current-buffer))))
 
-;;; Initializing session clients
+;;;; Initializing session clients
 
 (cl-defstruct (org-babel-jupyter-session
                (:constructor org-babel-jupyter-session))
@@ -238,7 +238,7 @@ return nil."
 
 (defun org-babel-jupyter-parse-session (session)
   "Return a session object according to a SESSION string.
-If SESSION ends in \".json\", and is not a Jupyter TRAMP file
+If SESSION ends in \".json\", and is not a Jupyter remote file
 name, return a `org-babel-jupyter-remote-session' that indicates
 an Org Babel Jupyter client initiates its channels based on a
 kernel connection file.
@@ -267,15 +267,15 @@ indicates that the session is local."
 
 (cl-defgeneric org-babel-jupyter-initiate-client (session kernel)
   "Launch SESSION's KERNEL, return a `jupyter-org-client' connected to it.
-SESSION is the name of the :session header argument of a source
-block and KERNEL is the name of the kernelspec used to launch a
-kernel.")
+SESSION is the :session header argument of a source block and
+KERNEL is the name of the kernel to launch.")
 
 (cl-defmethod org-babel-jupyter-initiate-client ((_session org-babel-jupyter-session) kernel)
+  "Call `jupyter-run-repl', passing KERNEL as argument."
   (jupyter-run-repl kernel nil nil 'jupyter-org-client))
 
 (cl-defmethod org-babel-jupyter-initiate-client :before ((session org-babel-jupyter-remote-session) _kernel)
-  "Raise an error if SESSION a remote file name without a local name.
+  "Raise an error if SESSION's name is a remote file name without a local name.
 The local name is used as a unique identifier of a remote
 session."
   (unless (not (zerop (length (file-local-name
@@ -283,6 +283,10 @@ session."
     (error "No remote session name")))
 
 (cl-defmethod org-babel-jupyter-initiate-client :around (session _kernel)
+  "Rename the returned client's REPL buffer to include SESSION's name.
+Also set `jupyter-include-other-output' to nil for the session so
+that output produced by other clients do not get handled by the
+client."
   (let ((client (cl-call-next-method)))
     (prog1 client
       (jupyter-set client 'jupyter-include-other-output nil)
@@ -298,6 +302,7 @@ session."
              'unique)))))))
 
 (cl-defmethod org-babel-jupyter-initiate-client ((session org-babel-jupyter-remote-session) kernel)
+  "Initiate a client connected to a remote kernel process."
   (pcase-let (((cl-struct org-babel-jupyter-remote-session name connect-repl-p) session))
     (if connect-repl-p
         (jupyter-connect-repl name nil nil 'jupyter-org-client)
@@ -374,6 +379,8 @@ the host."
   "Initialize a Jupyter SESSION according to PARAMS."
   (if (equal session "none") (error "Need a session to run")
     (org-babel-jupyter-initiate-session-by-key session params)))
+
+;;;;  `org-babel-execute:jupyter'
 
 ;;;###autoload
 (defun org-babel-jupyter-scratch-buffer ()
@@ -559,8 +566,31 @@ See `org-babel-jupyter-override-src-block'."
 (defun org-babel-jupyter-make-language-alias (kernel lang)
   "Similar to `org-babel-make-language-alias' but for Jupyter src-blocks.
 KERNEL should be the name of the default kernel to use for kernel
-LANG.  All necessary org-babel functions for a language with the
-name jupyter-LANG will be aliased to the Jupyter functions."
+LANG, the language of the kernel.
+
+The Org Babel functions `org-babel-FN:jupyter-LANG', where FN is
+one of execute, expand-body, prep-session, edit-prep,
+variable-assignments, or load-session, are aliased to
+`org-babel-FN:jupyter'.  Similarly,
+`org-babel-jupyter-LANG-initiate-session' is aliased to
+`org-babel-jupyter-initiate-session'.
+
+If not already defined, the variable
+`org-babel-default-header-args:jupyter-LANG' is set to the same
+value as `org-babel-header-args:jupyter', which see.  The
+variable `org-babel-default-header-args:jupyter-LANG' is also set
+to
+
+    \((:async . \"no\")
+     \(:kernel . KERNEL))
+
+if that variable does not already have a value.
+
+If LANG has an association in `org-babel-tangle-lang-exts',
+associate the same value with jupyter-LANG, if needed.
+Similarly, associate the same value for LANG in
+`org-src-lang-modes'."
+  ;; Define the `ob' aliases for LANG
   (dolist (fn org-babel-jupyter--babel-ops)
     (let ((sym (intern-soft (concat "org-babel-" fn ":jupyter"))))
       (when (and sym (fboundp sym))
