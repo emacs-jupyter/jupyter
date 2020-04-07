@@ -234,18 +234,29 @@ If the `current-buffer' is not a REPL, this is identical to
          (accept-process-output nil 1)
          ,@body))))
 
+(defmacro jupyter-test-with-kernel (kernel-name kernel &rest body)
+  "Start a new kernel with name KERNEL-NAME, bind it to KERNEL, evaluate BODY.
+KERNEL will be a `jupyter-command-kernel'."
+  (declare (indent 2))
+  `(let ((,kernel (jupyter-command-kernel
+                   :spec (jupyter-guess-kernelspec ,kernel-name))))
+     (jupyter-start-kernel ,kernel)
+     (unwind-protect
+         (progn ,@body)
+       (jupyter-kill-kernel ,kernel))))
+
 (defmacro jupyter-test-with-kernel-client (kernel client &rest body)
   "Start a new KERNEL client, bind it to CLIENT, evaluate BODY.
 This only starts a single global client unless the variable
 `jupyter-test-with-new-client' is non-nil."
   (declare (indent 2) (debug (stringp symbolp &rest form)))
   `(jupyter-test-with-client-cache
-       (lambda (name) (cadr (jupyter-start-new-kernel name)))
-       jupyter-test-global-clients ,kernel ,client
-     (unwind-protect
-         (progn ,@body)
-       (when jupyter-test-with-new-client
-         (jupyter-shutdown-kernel (oref client manager))))))
+    (lambda (name) (cadr (jupyter-start-new-kernel name)))
+    jupyter-test-global-clients ,kernel ,client
+    (unwind-protect
+        (progn ,@body)
+      (when jupyter-test-with-new-client
+        (jupyter-shutdown-kernel (oref client manager))))))
 
 (defmacro jupyter-test-with-python-client (client &rest body)
   "Start a new Python kernel, bind it to CLIENT, evaluate BODY."

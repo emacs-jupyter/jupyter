@@ -2,6 +2,10 @@
 sudo: required
 dist: trusty
 language: nix
+addons:
+  apt:
+    packages:
+    - openssh-server
 matrix:
   # Report build failure/success before allowed failures complete
   fast_finish: true
@@ -9,8 +13,8 @@ matrix:
     - env: EMACS_CI=emacs-snapshot
 env:
   - EMACS_CI=emacs-26-1
-  - EMACS_CI=emacs-26-3
-  - EMACS_CI=emacs-snapshot
+  # - EMACS_CI=emacs-26-3
+  # - EMACS_CI=emacs-snapshot
 install:
   # Install Emacs
   - bash <(curl https://raw.githubusercontent.com/purcell/nix-emacs-ci/master/travis-install)
@@ -37,6 +41,10 @@ before_script:
 script:
   - export PATH=$HOME/.cask/bin:$PATH
   - cd $TRAVIS_BUILD_DIR
+  # Ensure ssh does not prompt for anything
+  - ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa
+  - cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+  - ssh -o StrictHostKeyChecking=no localhost exit
   - make dev
   - make compile
-  - make test
+  - make test TAGS=ssh
