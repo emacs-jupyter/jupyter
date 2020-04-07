@@ -1,6 +1,6 @@
 ;;; jupyter-server-ioloop.el --- Kernel server communication -*- lexical-binding: t -*-
 
-;; Copyright (C) 2019 Nathaniel Nicandro
+;; Copyright (C) 2019-2020 Nathaniel Nicandro
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 03 Apr 2019

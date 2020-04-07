@@ -1,6 +1,6 @@
 ;;; jupyter-tramp-test.el --- Tests for the contents REST API integration with TRAMP -*- lexical-binding: t -*-
 
-;; Copyright (C) 2019 Nathaniel Nicandro
+;; Copyright (C) 2019-2020 Nathaniel Nicandro
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 28 May 2019

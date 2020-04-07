@@ -1,4 +1,23 @@
-* master
+* v0.8.2
+
+- Fix recursive loading error caused by =jupyter-tramp.el= autoloads.
+
+- Consider kernelspecs with spaces and uppercase characters in the kernel's
+  language name.
+
+- In =org-mode=, fixed a bug where inline results where being displayed
+  differently from what they would have been when the results are not inline.
+
+- When =jupyter-repl-echo-eval-p= is non-nil, ensure that any cell code not sent
+  to a kernel yet is preserved.
+
+- In =org-mode=, fix a bug where if the =:session= header argument of Jupyter
+  source blocks is a relative file name with a =.json= suffix
+  and =default-directory= is a remote directory, a file on the local machine
+  would be read.
+
+- Use =org-babel-jupyter-async-inline-results-pending-indicator= as a placeholder
+  when evaluating asynchronous inline source blocks in =org-mode=.
 
 - Integrate better with packages like =polymode= when evaluating source blocks
   in =org-mode= by considering indirect buffers. Thanks to =@dvzubarev= for
@@ -421,42 +440,3 @@
   background of a traceback in the REPL buffer to distinguish it from other
   output. In addition to this face, there is also =jupyter-repl-input-prompt=
   and =jupyter-repl-output-prompt=.
-* How to update this file
-
-Examine the output of
-
-#+NAME: changelog
-#+HEADER: :var PREV_VERSION="afbb9b513410ee6f36a1f2fa1ff8a505862de1ca" VERSION="master"
-#+BEGIN_SRC shell :results output
-git log --pretty=format:"%s" ${PREV_VERSION}...${VERSION}
-#+END_SRC
-
-and filter down to the most notable changes, summarize each one. Be sure to
-update the =VERSION= variables first.
-
-#+RESULTS: changelog
-
-* Update Version header
-
-Update the =Version= in the header of all source files.
-
-#+BEGIN_SRC elisp :results silent :var version="0.8.1"
-(let ((re "^;; Version: \\(\\([0-9]+\\)\\.\\([0-9]+\\)\\.\\([0-9]+\\)\\)" ))
-  (dolist (file (append (directory-files default-directory nil ".el$")
-                        (directory-files (expand-file-name "test" default-directory) t ".el$")))
-    (let* ((buf (find-buffer-visiting file))
-           (kill (null buf)))
-      (unless buf
-        (setq buf (find-file-noselect file)))
-      (with-current-buffer buf
-        (save-excursion
-          (save-restriction
-            (widen)
-            (goto-char (point-min))
-            (when (re-search-forward re nil t)
-              (replace-match version nil nil nil 1))
-            (save-buffer)
-            (when kill
-              (kill-buffer))))))))
-#+END_SRC
-

@@ -1,6 +1,6 @@
 ;;; jupyter-kernel-process-manager.el --- Manage kernel processes directly -*- lexical-binding: t -*-
 
-;; Copyright (C) 2019 Nathaniel Nicandro
+;; Copyright (C) 2019-2020 Nathaniel Nicandro
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 08 Aug 2019

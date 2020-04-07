@@ -1,6 +1,6 @@
 ;;; jupyter-test.el --- Jupyter tests -*- lexical-binding: t -*-
 
-;; Copyright (C) 2018 Nathaniel Nicandro
+;; Copyright (C) 2018-2020 Nathaniel Nicandro
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 08 Jan 2018

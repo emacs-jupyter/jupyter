@@ -1,10 +1,10 @@
 ;;; jupyter.el --- Jupyter -*- lexical-binding: t -*-
 
-;; Copyright (C) 2018 Nathaniel Nicandro
+;; Copyright (C) 2018-2020 Nathaniel Nicandro
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 11 Jan 2018
-;; Version: 0.8.1
+;; Version: 0.8.2
 ;; Package-Requires: ((emacs "26") (zmq "0.10.3") (cl-lib "0.5") (simple-httpd "1.5.0") (websocket "1.9"))
 ;; URL: https://github.com/dzop/emacs-jupyter
 

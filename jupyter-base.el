@@ -1,6 +1,6 @@
 ;;; jupyter-base.el --- Core definitions for Jupyter -*- lexical-binding: t -*-
 
-;; Copyright (C) 2018 Nathaniel Nicandro
+;; Copyright (C) 2018-2020 Nathaniel Nicandro
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 06 Jan 2018
@@ -127,7 +127,7 @@ from the kernel.")
 A longer timeout is needed, for example, when retrieving the
 `jupyter-kernel-info' to allow for the kernel to startup.")
 
-(defconst jupyter-version "0.8.1-dev"
+(defconst jupyter-version "0.8.2"
   "Current version of Jupyter.")
 
 ;;; Macros

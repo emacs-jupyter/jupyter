@@ -1,6 +1,6 @@
 ;;; jupyter-org-extensions.el --- Jupyter Org Extensions -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2018 Nathaniel Nicandro
+;; Copyright (C) 2018-2020 Nathaniel Nicandro
 
 ;; Author: Carlos Garcia C. <carlos@binarycharly.com>
 ;; Created: 01 March 2019

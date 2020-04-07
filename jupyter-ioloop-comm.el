@@ -1,6 +1,6 @@
 ;;; jupyter-ioloop-comm.el --- Communication layer using jupyter-ioloop -*- lexical-binding: t -*-
 
-;; Copyright (C) 2019 Nathaniel Nicandro
+;; Copyright (C) 2019-2020 Nathaniel Nicandro
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 27 Jun 2019

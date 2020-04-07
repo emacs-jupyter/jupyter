@@ -1,6 +1,6 @@
 ;;; jupyter-comm-layer.el --- Kernel communication layer -*- lexical-binding: t -*-
 
-;; Copyright (C) 2019 Nathaniel Nicandro
+;; Copyright (C) 2019-2020 Nathaniel Nicandro
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 06 Apr 2019
