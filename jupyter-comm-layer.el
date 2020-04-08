@@ -155,18 +155,16 @@ called if needed.  This means that a call to
                    thereis (eq (jupyter-weak-ref-resolve ref) obj))
     (push (jupyter-weak-ref obj) (oref comm handlers)))
   ;; Remove any garbage collected handlers
-  (oset comm handlers
-        (cl-remove-if-not #'jupyter-weak-ref-resolve
-                          (oref comm handlers)))
+  (cl-callf2 cl-remove-if-not #'jupyter-weak-ref-resolve
+             (oref comm handlers))
   (unless (jupyter-comm-alive-p comm)
     (jupyter-comm-start comm)))
 
 (cl-defmethod jupyter-comm-remove-handler ((comm jupyter-comm-layer) obj)
-  (oset comm handlers
-        (cl-remove-if (lambda (ref)
-                        (let ((deref (jupyter-weak-ref-resolve ref)))
-                          (or (eq deref obj) (null deref))))
-                      (oref comm handlers))))
+  (cl-callf2 cl-remove-if (lambda (ref)
+                            (let ((deref (jupyter-weak-ref-resolve ref)))
+                              (or (eq deref obj) (null deref))))
+             (oref comm handlers)))
 
 (cl-defmethod jupyter-event-handler ((comm jupyter-comm-layer) event)
   "Broadcast EVENT to all handlers registered to receive them on COMM."
