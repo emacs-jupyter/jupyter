@@ -171,8 +171,8 @@ nil."
 ;;; REPL font lock
 
 (defun jupyter-julia--propertize-repl-mode-char (beg end)
-  (jupyter-repl-cell-cond
-      beg end
+  (jupyter-repl-map-cells beg end
+    (lambda ()
       ;; Handle Julia package prompt so `syntax-ppss' works properly.
       (when (and (eq (char-syntax (char-after (point-min))) ?\))
                  (= (point-min)
@@ -182,7 +182,8 @@ nil."
                       ;; which is why the widen is needed here.
                       (jupyter-repl-cell-code-beginning-position))))
         (put-text-property
-         (point-min) (1+ (point-min)) 'syntax-table '(1 . ?.)))))
+         (point-min) (1+ (point-min)) 'syntax-table '(1 . ?.))))
+    #'ignore))
 
 ;;; `jupyter-repl-after-init'
 

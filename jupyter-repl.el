@@ -264,42 +264,6 @@ The cell is narrowed to the region between and including
                          (jupyter-repl-cell-code-end-position))
        ,@body)))
 
-(defmacro jupyter-repl-cell-cond (beg end input-form &rest output-forms)
-  "Conditionally evaluate INPUT-FORM or OUTPUT-FORMS between BEG and END.
-INPUT-FORM is evaluated for every input cell between BEG and END
-with the buffer narrowed to the region of the input cell.
-
-Similarly, OUTPUT-FORMS is evaluated for every output cell region
-with the buffer narrowed to the output cell.
-
-Note the narrowed regions may not be full input/output cells if
-BEG and END are within an input/output cell."
-  (declare (indent 3) (debug ([&or symbolp form] [&or symbolp form]
-                              form &rest form)))
-  (let ((start (make-symbol "start"))
-        (next (make-symbol "next"))
-        (-end (make-symbol "-end")))
-    `(save-excursion
-       (save-restriction
-         (let ((,start ,beg)
-               (,-end ,end)
-               ,next)
-           (while (/= ,start ,-end)
-             (widen)
-             (cond
-              ((eq (get-text-property ,start 'field) 'cell-code)
-               (setq ,next (min ,-end (field-end ,start t)))
-               (narrow-to-region ,start ,next)
-               ,input-form)
-              (t
-               (setq ,next (or (text-property-any
-                                ,start ,-end 'field 'cell-code)
-                               ,-end))
-               ,@(when output-forms
-                   `((narrow-to-region ,start ,next)
-                     ,@output-forms))))
-             (setq ,start ,next)))))))
-
 (defmacro jupyter-repl-inhibit-undo-when (cond &rest body)
   "Evaluate BODY, disabling undo beforehand if COND is non-nil.
 Undo is re-enabled after BODY is evaluated.
@@ -669,6 +633,33 @@ ARG is the number of cells to move and defaults to 1."
   (ignore-errors (goto-char (jupyter-repl-cell-beginning-position)))
   (jupyter-repl-previous-cell arg)
   (goto-char (jupyter-repl-cell-code-beginning-position)))
+
+(defun jupyter-repl-map-cells (beg end input output)
+  "Call INPUT or OUTPUT on the corresponding cells between BEG and END.
+For every input or output cell between BEG and END, call INPUT or
+OUTPUT, respectively, with the buffer narrowed to the cell.
+INPUT and OUTPUT are functions of no arguments.
+
+Note the narrowed regions may not be full input/output cells if
+BEG and END are within an input/output cell."
+  (declare (indent 2))
+  (save-excursion
+    (save-restriction
+      (let (next)
+        (while (/= beg end)
+          (widen)
+          (cond
+           ((eq (get-text-property beg 'field) 'cell-code)
+            (setq next (min end (field-end beg t)))
+            (narrow-to-region beg next)
+            (funcall input))
+           (t
+            (setq next (or (text-property-any
+                            beg end 'field 'cell-code)
+                           end))
+            (narrow-to-region beg next)
+            (funcall output)))
+          (setq beg next))))))
 
 ;;; Predicates
 
@@ -1779,33 +1770,30 @@ would look like
   "Use FONTIFY-FUN to fontify input cells between BEG and END.
 VERBOSE has the same meaning as in
 `font-lock-fontify-region-function'."
-  (jupyter-repl-cell-cond
-      beg end
-      ;; Ensure that the buffer is narrowed to the actual cell code before
-      ;; calling the REPL language's `major-mode' specific fontification
-      ;; functions since those functions don't know anything about input cells
-      ;; or output cells and may traverse cell boundaries.
-      ;;
-      ;;
-      ;; It is OK that we do not update BEG and END using the return value of
-      ;; this function as long as the default value of
-      ;; `font-lock-extend-region-functions' is used since an input cell always
-      ;; starts at the beginning of a line and ends at the end of a line and
-      ;; does not use the font-lock-multiline property (2018-12-20).
-      (funcall fontify-fun (point-min) (point-max) verbose)
-    ;; Unfontify the region mainly to remove the font-lock-multiline property
-    ;; in the output, e.g. added by markdown.  These regions will get
-    ;; highlighted syntactically in some scenarios.
-    (font-lock-unfontify-region (point-min) (point-max)))
+  (jupyter-repl-map-cells beg end
+    ;; Ensure that the buffer is narrowed to the actual cell code before calling
+    ;; the REPL language's `major-mode' specific fontification functions since
+    ;; those functions don't know anything about input cells or output cells and
+    ;; may traverse cell boundaries.
+    ;;
+    ;; It is OK that we do not update BEG and END using the return value of this
+    ;; function as long as the default value of
+    ;; `font-lock-extend-region-functions' is used since an input cell always
+    ;; starts at the beginning of a line and ends at the end of a line and does
+    ;; not use the font-lock-multiline property (2018-12-20).
+    (lambda ()  (funcall fontify-fun (point-min) (point-max) verbose))
+    ;; Unfontify the region mainly to remove the font-lock-multiline property in
+    ;; the output, e.g. added by markdown.  These regions will get highlighted
+    ;; syntactically in some scenarios.
+    (lambda () (font-lock-unfontify-region (point-min) (point-max))))
   `(jit-lock-bounds ,beg . ,end))
 
 (defun jupyter-repl-syntax-propertize-function (propertize-fun beg end)
   "Use PROPERTIZE-FUN to syntax propertize text between BEG and END."
-  (jupyter-repl-cell-cond
-      beg end
-      ;; See note in `jupyter-repl-font-lock-fontify-region' on why the buffer
-      ;; should be narrowed to the input cell before calling this function.
-      (funcall propertize-fun (point-min) (point-max))
+  (jupyter-repl-map-cells beg end
+    ;; See note in `jupyter-repl-font-lock-fontify-region' on why the buffer
+    ;; should be narrowed to the input cell before calling this function.
+    (lambda () (funcall propertize-fun (point-min) (point-max)))
     ;; Treat parenthesis and string characters as punctuation when parsing the
     ;; syntax of the output.  Although we don't fontify output regions,
     ;; `syntax-ppss' still looks at the whole contents of the buffer.  If there
@@ -1813,12 +1801,13 @@ VERBOSE has the same meaning as in
     ;; interfere with `syntax-ppss'.  Note, this requires
     ;; `parse-sexp-lookup-properties' to be non-nil so that `syntax-ppss' will
     ;; look at the `syntax-table' property.
-    (goto-char (point-min))
-    (skip-syntax-forward "^()\"")
-    (while (not (eobp))
-      (put-text-property (point) (1+ (point)) 'syntax-table '(1 . ?.))
-      (forward-char)
-      (skip-syntax-forward "^()\""))))
+    (lambda ()
+      (goto-char (point-min))
+      (skip-syntax-forward "^()\"")
+      (while (not (eobp))
+        (put-text-property (point) (1+ (point)) 'syntax-table '(1 . ?.))
+        (forward-char)
+        (skip-syntax-forward "^()\"")))))
 
 (defun jupyter-repl-font-lock-syntactic-face-function (face-fun state)
   "Narrow to the input cell, use FACE-FUN to obtain the face given STATE."
