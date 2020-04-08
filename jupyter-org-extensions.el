@@ -65,8 +65,8 @@ blocks could be found in the buffer.
 Distance is line based, not character based.  Also, `point' is
 assumed to not be inside a source block."
   (org-save-outline-visibility nil
-    (save-excursion
-      (or (and (null query)
+    (or (save-excursion
+          (and (null query)
                (cl-loop
                 with start = (line-number-at-pos)
                 with previous = (ignore-errors
@@ -102,12 +102,12 @@ assumed to not be inside a source block."
                   (funcall maybe-return-lang)
                   (setq next (ignore-errors
                                (org-babel-next-src-block)
-                               (point)))))))
-          ;; If all else fails, query for the language to use
-          (let* ((kernelspec (jupyter-completing-read-kernelspec))
-                 (lang (plist-get (cddr kernelspec) :language)))
-            (if (org-babel-jupyter-language-p lang) lang
-              (format "jupyter-%s" lang)))))))
+                               (point))))))))
+        ;; If all else fails, query for the language to use
+        (let* ((kernelspec (jupyter-completing-read-kernelspec))
+               (lang (plist-get (cddr kernelspec) :language)))
+          (if (org-babel-jupyter-language-p lang) lang
+            (format "jupyter-%s" lang))))))
 
 (defun jupyter-org-between-block-end-and-result-p ()
   "If `point' is between a src-block and its result, return the result end.
