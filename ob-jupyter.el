@@ -356,13 +356,12 @@ kernel starts on the remote host /ssh:ec2: with a session name of
 jl.  The remote host must have jupyter installed since the
 \"jupyter kernel\" command will be used to start the kernel on
 the host."
-  (let* ((kernel (alist-get :kernel params))
-         (key (org-babel-jupyter-session-key params))
+  (let* ((key (org-babel-jupyter-session-key params))
          (client (gethash key org-babel-jupyter-session-clients)))
     (unless client
       (setq client (org-babel-jupyter-initiate-client
                     (org-babel-jupyter-parse-session session)
-                    kernel))
+                    (alist-get :kernel params)))
       (puthash key client org-babel-jupyter-session-clients)
       (jupyter-with-repl-buffer client
         (let ((forget-client (lambda () (remhash key org-babel-jupyter-session-clients))))
@@ -393,25 +392,24 @@ the host."
   "Delete the files of image links for the current source block result.
 Do this only if the file exists in
 `org-babel-jupyter-resource-directory'."
-  (when-let* ((result-pos (org-babel-where-is-src-block-result))
-              (link-re (format "^[ \t]*%s[ \t]*$" org-bracket-link-regexp)))
+  (when-let*
+      ((pos (org-babel-where-is-src-block-result))
+       (link-re (format "^[ \t]*%s[ \t]*$" org-bracket-link-regexp))
+       (resource-dir (expand-file-name org-babel-jupyter-resource-directory)))
     (save-excursion
-      (goto-char result-pos)
+      (goto-char pos)
       (forward-line)
       (let ((bound (org-babel-result-end)))
         ;; This assumes that `jupyter-org-client' only emits bracketed links as
         ;; images
         (while (re-search-forward link-re bound t)
-          (when-let* ((link-path
-                       (org-element-property :path (org-element-context)))
-                      (link-dir
-                       (when (file-name-directory link-path)
-                         (expand-file-name (file-name-directory link-path))))
-                      (resource-dir
-                       (expand-file-name org-babel-jupyter-resource-directory)))
-            (when (and (equal link-dir resource-dir)
-                       (file-exists-p link-path))
-              (delete-file link-path))))))))
+          (when-let*
+              ((path (org-element-property :path (org-element-context)))
+               (dir (when (file-name-directory path)
+                      (expand-file-name (file-name-directory path)))))
+            (when (and (equal dir resource-dir)
+                       (file-exists-p path))
+              (delete-file path))))))))
 
 ;; TODO: What is a better way to handle discrepancies between how `org-mode'
 ;; views header arguments and how `emacs-jupyter' views them? Should the
@@ -470,9 +468,9 @@ the PARAMS alist."
             (thread-first (alist-get :session params)
               (org-babel-jupyter-initiate-session params)
               (thread-last (buffer-local-value 'jupyter-current-client))))
-           (kernel-lang (jupyter-kernel-language jupyter-current-client))
-           (vars (org-babel-variable-assignments:jupyter params kernel-lang))
-           (code (org-babel-expand-body:jupyter body params vars kernel-lang)))
+           (lang (jupyter-kernel-language jupyter-current-client))
+           (vars (org-babel-variable-assignments:jupyter params lang))
+           (code (org-babel-expand-body:jupyter body params vars lang)))
       (pcase-let ((`(,req ,maybe-result)
                    (org-babel-jupyter--execute code async-p)))
         ;; KLUDGE: Remove the file result-parameter so that
