@@ -537,12 +537,14 @@ Note only SSH tunnels are currently supported."
 ;;; Helper functions
 
 (defun jupyter-canonicalize-language-string (str)
-  "Return STR with \" \" converted to \"-\" and all characters in lower case."
+  "Return STR with \" \" converted to \"-\".
+The `file-name-nondirectory' of STR will be converted and
+returned if it looks like a file path."
   ;; The call to `file-name-nondirectory' is here to be more robust when
   ;; running on systems like Guix or Nix. Some builders on those kinds of
   ;; systems will indiscriminately replace "python" with something like
   ;; "/gnu/store/.../bin/python" when building the kernelspecs.
-  (downcase (replace-regexp-in-string " " "-" (file-name-nondirectory str))))
+  (replace-regexp-in-string " " "-" (file-name-nondirectory str)))
 
 (defvar server-buffer)
 (defvar jupyter-current-client)

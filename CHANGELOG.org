@@ -1,3 +1,9 @@
+* master
+
+- Fixed regression due to uppercase characters in kernel language
+  names, e.g. R.  =emacs-jupyter= would not work at all with language
+  specific features.
+
 * v0.8.2
 
 - Fix recursive loading error caused by =jupyter-tramp.el= autoloads.

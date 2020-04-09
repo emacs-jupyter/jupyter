@@ -678,7 +678,8 @@
 (ert-deftest jupyter-canonicalize-language-string ()
   :tags '(base env)
   (should (equal (jupyter-canonicalize-language-string "Wolfram Language")
-                 "wolfram-language"))
+                 "Wolfram-Language"))
+  (should (equal (jupyter-canonicalize-language-string "R") "R"))
   (should (equal (jupyter-canonicalize-language-string "/gnu/store/python")
                  "python")))
 

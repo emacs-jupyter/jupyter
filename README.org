@@ -419,10 +419,9 @@ to change the defaults for the =julia= kernel, you can set
 #+END_SRC
 *** Note on the language name provided by a kernelspec
 
-Some kernelspecs use spaces or uppercase characters in the name of the kernel
-language. Those get replaced by dashes or lowercase characters in the language
-name you need to use for the source block, e.g. =Wolfram Language=
-becomes =jupyter-wolfram-language=.
+Some kernelspecs use spaces in the name of the kernel language. Those
+get replaced by dashes in the language name you need to use for the
+source block, e.g. =Wolfram Language= becomes =jupyter-Wolfram-Language=.
 
 *** Integration with =ob-async=
 
@@ -1427,9 +1426,9 @@ kernel language is =julia= for indenting the current line:
   (call-interactively #'julia-latexsub-or-indent))
 #+END_SRC
 
-Note, when spaces or uppercase characters appear in the name of the kernel
-language they become dashes or lowercase characters in the symbol used for
-the =jupyter-lang= context, e.g. =Wolfram Language= becomes =wolfram-language=.
+Note, when spaces appear in the name of the kernel language they
+become dashes in the symbol used for the =jupyter-lang= context,
+e.g. =Wolfram Language= becomes =Wolfram-Language=.
 
 There are many other entry points where methods may be overridden in such a
 way. Below is the full list of methods that can be overridden in this way

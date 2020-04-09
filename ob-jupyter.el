@@ -636,11 +636,10 @@ SPECS defaults to `jupyter-available-kernelspecs'.  Optional
 argument REFRESH has the same meaning as in
 `jupyter-available-kernelspecs'.
 
-Note, spaces or uppercase characters in the kernel language name
-are converted into dashes or lowercase characters in the language
-alias, e.g.
+Note, spaces in the kernel language name are converted into
+dashes in the language alias, e.g.
 
-    Wolfram Language -> jupyter-wolfram-language
+    Wolfram Language -> jupyter-Wolfram-Language
 
 For convenience, after creating a language alias for a kernel
 language LANG, set the :kernel default header argument if not
