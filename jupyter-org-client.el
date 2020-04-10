@@ -898,10 +898,11 @@ the image may still be added, see
   (let* ((overwrite (not (null (alist-get :file params))))
          (file (or (alist-get :file params)
                    (jupyter-org-image-file-name
-                    data (cl-case mime
-                           (:image/png "png")
-                           (:image/jpeg "jpg")
-                           (:image/svg+xml "svg"))))))
+                    data
+                    (cl-case mime
+                      (:image/png "png")
+                      (:image/jpeg "jpg")
+                      (:image/svg+xml "svg"))))))
     (when (or overwrite (not (file-exists-p file)))
       (let ((buffer-file-coding-system
              (if b64-encoded 'binary
@@ -1002,20 +1003,20 @@ passed to Jupyter org-mode source blocks."
                               (alist-get :display params))))
     (when (jupyter-org-request-file req)
       (push (cons :file (jupyter-org-request-file req)) params))
-    (cl-destructuring-bind (data metadata)
-        (jupyter-normalize-data plist metadata)
-      (cond
-       ((jupyter-loop-over-mime
-            (or display-mime-types jupyter-org-mime-types)
-            mime data metadata
-          (jupyter-org-result mime params data metadata)))
-       (t
-        (let ((warning
-               (format
-                "%s did not return requested mimetype(s): %s"
-                (jupyter-message-type (jupyter-request-last-message req))
-                (or display-mime-types jupyter-org-mime-types))))
-          (display-warning 'jupyter warning)))))))
+    (cond
+     ((jupyter-map-mime-bundle (or display-mime-types jupyter-org-mime-types)
+          (jupyter-normalize-data plist metadata)
+        (lambda (mime content)
+          (jupyter-org-result mime
+                              params (plist-get content :data)
+                              (plist-get content :metadata)))))
+     (t
+      (let ((warning
+             (format
+              "%s did not return requested mimetype(s): %s"
+              (jupyter-message-type (jupyter-request-last-message req))
+              (or display-mime-types jupyter-org-mime-types))))
+        (display-warning 'jupyter warning))))))
 
 (cl-defmethod jupyter-org-result ((_mime (eql :application/vnd.jupyter.widget-view+json))
                                   _params _data &optional _metadata)

@@ -182,26 +182,37 @@ returned."
        (set-marker ,beg nil)
        (set-marker ,end nil))))
 
-(defmacro jupyter-loop-over-mime (mime-order mime data metadata &rest bodyforms)
-  "Loop over MIME types in MIME-ORDER.
-MIME-ORDER should evaluate to a list of MIME types to loop over.
+(defun jupyter-map-mime-bundle (mime-types content fun)
+  "For each mime-type in MIME-TYPES, call FUN with its data in CONTENT.
+If the result of evaluating FUN on the data of a mime-type is
+non-nil, return it.  Otherwise, call FUN for the next mime-type.
+Return nil if FUN was evaluated on all mime-types without a
+non-nil result.  FUN is only called on mime-types that have data
+in CONTENT.
 
-MIME will be bound to the MIME type for the current iteration.
-DATA and METADATA are variables that hold the property list of
-MIME data to loop over and any associated metadata, respectively.
+CONTENT is a mime bundle, a property list containing a :data key
+and, optionally, a :metadata key that are themselves property
+lists with mime-type keywords as keys.
 
-Evaluate BODYFORMS with DATA and METADATA temporarily bound to
-the data and metadata of the MIME type for the current iteration.
-If BODYFORMS returns non-nil, return its value.  Otherwise loop
-over the next MIME type in MIME-ORDER that has a non-nil value in
-the DATA property list."
-  (declare (indent 4) (debug ([&or form symbolp listp]
-                              symbolp symbolp symbolp body)))
-  `(cl-loop
-    for ,mime in ,mime-order
-    thereis (let ((,data (plist-get ,data ,mime))
-                  (,metadata (plist-get ,metadata ,mime)))
-              (when ,data ,@bodyforms))))
+A call to FUN looks like this
+
+    \(funcall fun MIME-TYPE '(:data D :metadata M))
+
+where D will be the data associated with MIME-TYPE in CONTENT and
+M is any associated metadata."
+  (declare (indent 2))
+  (cl-destructuring-bind (&key data metadata &allow-other-keys)
+      content
+    (catch 'mime-type
+      (mapc
+       (lambda (mime-type)
+         (let ((d (plist-get data mime-type))
+               (m (plist-get metadata mime-type)))
+           (if d
+               (let ((r (funcall fun mime-type `(:data ,d :metadata ,m))))
+                 (if r (throw 'mime-type r))))))
+       mime-types)
+      nil)))
 
 ;;;; Display buffers
 
@@ -615,27 +626,25 @@ that it should use EDITOR to open files."
     (json-read-from-string string)))
 
 (defun jupyter-normalize-data (plist &optional metadata)
-  "Return a list (DATA META) from PLIST.
-DATA is a property list of mimetype data extracted from PLIST.  If
-PLIST is a message plist, then DATA will be the value of the
-:data key in the messages contents.  If PLIST is not a message
-plist, then DATA is either the :data key of PLIST or PLIST
-itself.
+  "Return a property list (:data DATA :metadata META) from PLIST.
+DATA is a property list of mimetype data extracted from PLIST.
+If PLIST is a message plist, DATA will be the value of the :data
+key in the `jupyter-message-content'.  Otherwise, DATA is either
+the :data key of PLIST or PLIST itself.
 
 A similar extraction process is performed for the :metadata key
 of PLIST which will be the META argument in the return value.  If
 no :metadata key can be found, then META will be METADATA."
-  (list
-   (or
-    ;; Allow for passing message plists
-    (plist-get (jupyter-message-content plist) :data)
-    ;; Allow for passing (jupyter-message-content msg)
-    (plist-get plist :data)
-    ;; Otherwise assume the plist contains mimetypes
-    plist)
-   (or (plist-get (jupyter-message-content plist) :metadata)
-       (plist-get plist :metadata)
-       metadata)))
+  (list :data (or
+               ;; Allow for passing message plists
+               (plist-get (jupyter-message-content plist) :data)
+               ;; Allow for passing (jupyter-message-content msg)
+               (plist-get plist :data)
+               ;; Otherwise assume the plist contains mimetypes
+               plist)
+        :metadata (or (plist-get (jupyter-message-content plist) :metadata)
+                      (plist-get plist :metadata)
+                      metadata)))
 
 (defun jupyter-line-count-greater-p (str n)
   "Return non-nil if STR has more than N lines."

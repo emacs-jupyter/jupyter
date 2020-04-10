@@ -129,17 +129,45 @@
 
 ;;; `jupyter-insert'
 
-(ert-deftest jupyter-loop-over-mime ()
+(ert-deftest jupyter-map-mime-bundle ()
   :tags '(mime)
-  (let ((mimes '(:text/html :text/plain))
-        (data (list :text/plain "foo"))
-        (metadata nil))
-    (ert-info ("No iterations without MIME data")
-      (jupyter-loop-over-mime mimes mime data metadata
-        (should-not (eq mime :text/html))
-        (should (eq mime :text/plain))
-        (should (equal data "foo"))
-        (should (eq metadata nil))))))
+  (let ((res (current-time))
+        (content
+         '(:data
+           (:text/plain
+            1 :text/html 2
+            :text/latex 3)
+           :metadata
+           (:text/plain
+            4 :text/html 5
+            :text/latex 6))))
+    (should
+     (eq
+      res
+      (jupyter-map-mime-bundle
+          '(:text/html :text/latex :text/plain)
+          content
+        (lambda (mime content)
+          (when (eq mime :text/plain)
+            (should (= (plist-get content :data) 1))
+            (should (= (plist-get content :metadata) 4))
+            res)))))
+    (let (called)
+      (should-not
+       (eq
+        res
+        (jupyter-map-mime-bundle
+            '(:text/html :text/latex :mime-without-data) content
+          (lambda (mime content)
+            (pcase mime
+              (:text/latex
+               (should (= (plist-get content :data) 3))
+               (should (= (plist-get content :metadata) 6))
+               (setq called t)
+               nil)
+              (:mime-without-data res)
+              (_ nil))))))
+      (should called))))
 
 (defvar jupyter-nongraphic-mime-types)
 

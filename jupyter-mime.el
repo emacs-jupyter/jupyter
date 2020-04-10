@@ -286,20 +286,25 @@ used instead of `jupyter-mime-types'.
 When no valid mimetype is present, a warning is shown and nil is
 returned."
   (cl-assert plist json-plist)
-  (cl-destructuring-bind (data metadata)
-      (jupyter-normalize-data plist metadata)
-    (or (let ((tick (buffer-modified-tick)))
-          (jupyter-loop-over-mime (if (display-graphic-p) jupyter-mime-types
-                                    jupyter-nongraphic-mime-types)
-              mime data metadata
-            (and (or (jupyter-insert mime data metadata)
+  (let ((content (jupyter-normalize-data plist metadata)))
+    (cond
+     ((let ((tick (buffer-modified-tick)))
+        (jupyter-map-mime-bundle (if (display-graphic-p) jupyter-mime-types
+                                   jupyter-nongraphic-mime-types)
+            content
+          (lambda (mime content)
+            (and (or (jupyter-insert
+                      mime (plist-get content :data)
+                      (plist-get content :metadata))
                      (/= tick (buffer-modified-tick)))
-                 mime)))
-        (prog1 nil
-          (let ((warning
-                 (format "No valid mimetype found: %s"
-                         (cl-loop for (k _v) on data by #'cddr collect k))))
-            (display-warning 'jupyter warning))))))
+                 mime)))))
+     (t
+      (prog1 nil
+        (let ((warning
+               (format "No valid mimetype found: %s"
+                       (cl-loop for (k _v) on (plist-get content :data)
+                                by #'cddr collect k))))
+          (display-warning 'jupyter warning)))))))
 
 ;;; HTML
 
