@@ -953,17 +953,18 @@ and `image' to `:image/png'."
     ;; Iterate the user-specified mimetypes looking for symbols that match a
     ;; symbol in `jupyter-org-mime-types'.  Invalid mimetypes are ignored.
     (delete nil
-            (mapcar (lambda (req-type)
-                 (cond
-                  ((string= req-type "text") :text/plain)
-                  ((string= req-type "image") :image/png)
-                  ((stringp req-type)
-                   (let ((regexp (if (string-match "/" req-type)
-                                     req-type
-                                   (concat "/" req-type "$"))))
-                     (cl-loop for ii in jupyter-org-mime-types
-                              if (string-match regexp (symbol-name ii))
-                              return ii)))))
+            (mapcar
+             (lambda (req-type)
+               (pcase req-type
+                 ("text" :text/plain)
+                 ("image" :image/png)
+                 ((pred stringp)
+                  (let ((regexp (if (string-match "/" req-type)
+                                    req-type
+                                  (concat "/" req-type "$"))))
+                    (cl-loop for ii in jupyter-org-mime-types
+                             if (string-match regexp (symbol-name ii))
+                             return ii)))))
                (split-string req-types)))))
 
 (cl-defmethod jupyter-org-result ((req jupyter-org-request) plist
