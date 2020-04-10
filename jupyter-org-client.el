@@ -1352,7 +1352,8 @@ If KEEP-NEWLINE is non-nil, add a newline before appending
 RESULT."
   ;; Delete the newline that will be re-inserted by the call to
   ;; `org-element-normalize-string'.
-  (delete-char 1)
+  (when (eq (char-after) ?\n)
+    (delete-char 1))
   (setq result (org-element-normalize-string result))
   ;; From `org-element-example-block-interpreter'
   (when (and (not org-src-preserve-indentation)
