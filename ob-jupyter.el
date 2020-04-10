@@ -425,6 +425,31 @@ These parameters are handled internally."
     (setcar fresult "")
     (delq fparam params)))
 
+(defun org-babel-jupyter--execute (code async-p)
+  (let ((req (jupyter-send-execute-request jupyter-current-client :code code)))
+    `(,req
+      ,(cond
+        (async-p
+         (when (bound-and-true-p org-export-current-backend)
+           (jupyter-add-idle-sync-hook
+            'org-babel-after-execute-hook req 'append))
+         (if (jupyter-org-request-inline-block-p req)
+             org-babel-jupyter-async-inline-results-pending-indicator
+           ;; This returns the message ID of REQ as an indicator
+           ;; for the pending results.
+           (jupyter-org-pending-async-results req)))
+        (t
+         (jupyter-idle-sync req)
+         (if (jupyter-org-request-inline-block-p req)
+             ;; When evaluating a source block synchronously, only the
+             ;; :execute-result will be in `jupyter-org-request-results' since
+             ;; stream results and any displayed data will be placed in a separate
+             ;; buffer.
+             (car (jupyter-org-request-results req))
+           ;; This returns an Org formatted string of the collected
+           ;; results.
+           (jupyter-org-sync-results req)))))))
+
 (defvar org-babel-jupyter-current-src-block-params nil
   "The block parameters of the most recently executed Jupyter source block.")
 
@@ -435,60 +460,45 @@ These parameters are handled internally."
   "Execute BODY according to PARAMS.
 BODY is the code to execute for the current Jupyter `:session' in
 the PARAMS alist."
-  (let* ((org-babel-jupyter-current-src-block-params params)
-         (jupyter-current-client
-          (thread-first (alist-get :session params)
-            (org-babel-jupyter-initiate-session params)
-            (thread-last (buffer-local-value 'jupyter-current-client))))
-         (kernel-lang (jupyter-kernel-language jupyter-current-client))
-         (vars (org-babel-variable-assignments:jupyter params kernel-lang))
-         (code (org-babel-expand-body:jupyter body params vars kernel-lang))
-         (result-params (assq :result-params params))
-         (async-p (or (equal (alist-get :async params) "yes")
-                      (plist-member params :async)))
-         (req (jupyter-send-execute-request jupyter-current-client :code code)))
-    (when (member "replace" (assq :result-params params))
+  (let ((result-params (assq :result-params params))
+        (async-p (or (equal (alist-get :async params) "yes")
+                     (plist-member params :async))))
+    (when (member "replace" result-params)
       (org-babel-jupyter-cleanup-file-links))
-    ;; KLUDGE: Remove the file result-parameter so that
-    ;; `org-babel-insert-result' doesn't attempt to handle it while async
-    ;; results are pending.  Do the same in the synchronous case, but not if
-    ;; link or graphics are also result-parameters, only in Org >= 9.2, since
-    ;; those in combination with file mean to interpret the result as a file
-    ;; link, a useful meaning that doesn't interfere with Jupyter style result
-    ;; insertion.
-    (when (and (member "file" result-params)
-               (or async-p
-                   (not (or (member "link" result-params)
-                            (member "graphics" result-params)))))
-      (org-babel-jupyter--remove-file-param params))
-    (cond
-     (async-p
-      (cl-labels
-          ((sync-on-export
-            ()
-            ;; Remove the hook before waiting so it doesn't get called again.
-            (remove-hook 'org-babel-after-execute-hook #'sync-on-export t)
-            (while (null (jupyter-wait-until-idle req jupyter-long-timeout)))))
-        ;; Ensure we convert async blocks to synchronous ones when exporting
-        (when (bound-and-true-p org-export-current-backend)
-          (add-hook 'org-babel-after-execute-hook #'sync-on-export t t))
-        (if (jupyter-org-request-inline-block-p req)
-            org-babel-jupyter-async-inline-results-pending-indicator
-          (jupyter-org-pending-async-results req))))
-     (t
-      (while (null (jupyter-wait-until-idle req jupyter-long-timeout)))
-      (if (jupyter-org-request-inline-block-p req)
-          ;; When evaluating a source block synchronously, only the
-          ;; :execute-result will be in `jupyter-org-request-results' since
-          ;; stream results and any displayed data will be placed in a separate
-          ;; buffer.
-          (car (jupyter-org-request-results req))
-        (prog1 (jupyter-org-sync-results req)
-          ;; KLUDGE: The "raw" result parameter is added to the parameters of
-          ;; non-inline synchronous results because `jupyter-org-sync-results'
-          ;; already returns an Org formatted string and
+    (let* ((org-babel-jupyter-current-src-block-params params)
+           (jupyter-current-client
+            (thread-first (alist-get :session params)
+              (org-babel-jupyter-initiate-session params)
+              (thread-last (buffer-local-value 'jupyter-current-client))))
+           (kernel-lang (jupyter-kernel-language jupyter-current-client))
+           (vars (org-babel-variable-assignments:jupyter params kernel-lang))
+           (code (org-babel-expand-body:jupyter body params vars kernel-lang)))
+      (pcase-let ((`(,req ,maybe-result)
+                   (org-babel-jupyter--execute code async-p)))
+        ;; KLUDGE: Remove the file result-parameter so that
+        ;; `org-babel-insert-result' doesn't attempt to handle it while
+        ;; async results are pending.  Do the same in the synchronous
+        ;; case, but not if link or graphics are also result-parameters,
+        ;; only in Org >= 9.2, since those in combination with file mean
+        ;; to interpret the result as a file link, a useful meaning that
+        ;; doesn't interfere with Jupyter style result insertion.
+        ;;
+        ;; Do this after sending the request since
+        ;; `jupyter-generate-request' still needs access to the :file
+        ;; parameter.
+        (when (and (member "file" result-params)
+                   (or async-p
+                       (not (or (member "link" result-params)
+                                (member "graphics" result-params)))))
+          (org-babel-jupyter--remove-file-param params))
+        (prog1 maybe-result
+          ;; KLUDGE: Add the "raw" result parameter for non-inline
+          ;; synchronous results because an Org formatted string is
+          ;; already returned in that case and
           ;; `org-babel-insert-result' should not process it.
-          (nconc (alist-get :result-params params) (list "raw"))))))))
+          (unless (or async-p
+                      (jupyter-org-request-inline-block-p req))
+            (nconc (alist-get :result-params params) (list "raw"))))))))
 
 ;;; Overriding source block languages, language aliases
 
