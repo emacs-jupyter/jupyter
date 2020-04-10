@@ -981,6 +981,9 @@ those mime types instead."
   (let* ((params (jupyter-org-request-block-params req))
          (display-mime-types (jupyter-org--find-mime-types
                               (alist-get :display params))))
+    ;; Push :file back into PARAMS if it was present in
+    ;; `org-babel-execute:jupyter'.  That function removes it because
+    ;; we don't want `org-babel-insert-result' to handle it.
     (when (jupyter-org-request-file req)
       (push (cons :file (jupyter-org-request-file req)) params))
     (cond
