@@ -2727,39 +2727,41 @@ x
 
 (ert-deftest org-babel-jupyter-override-src-block ()
   :tags '(org)
-  (let* ((lang (symbol-name (cl-gensym)))
+  (let* ((lang (cl-gensym))
          (overriding-funs (cl-set-difference
                            org-babel-jupyter--babel-ops
-                           '("variable-assignments" "expand-body")
-                           :test #'equal)))
-    (set (intern (concat "org-babel-header-args:jupyter-" lang))
-         '((:kernel . "foo")))
-    (unwind-protect
-        (cl-macrolet
-            ((advice-p (not name)
-                       `(,(if not 'should-not 'should)
-                         (advice-member-p 'ob-jupyter (intern ,name)))))
-          (ert-info ("Overriding")
-            (org-babel-jupyter-override-src-block lang)
-            (dolist (fn overriding-funs)
-              (advice-p nil (concat "org-babel-" fn ":" lang)))
-            (advice-p nil (concat "org-babel-" lang "-initiate-session"))
-            (should (equal (symbol-value (intern (concat "org-babel-header-args:" lang)))
-                           '((:kernel . "foo")))))
-          (ert-info ("Restoring")
-            (org-babel-jupyter-restore-src-block lang)
-            (dolist (fn overriding-funs)
-              (advice-p t (concat "org-babel-" fn ":" lang)))
-            (advice-p t (concat "org-babel-" lang "-initiate-session"))
-            (should-not (symbol-value (intern (concat "org-babel-header-args:" lang))))))
-      (dolist (fn org-babel-jupyter--babel-ops)
-        (obarray-remove obarray (intern (concat "org-babel-" fn ":" lang))))
-      (obarray-remove obarray
-                      (intern (concat "org-babel-header-args:" lang)))
-      (obarray-remove obarray
-                      (intern (concat "org-babel-header-args:jupyter-" lang)))
-      (obarray-remove obarray
-                      (intern (concat "org-babel-" lang "-initiate-session"))))))
+                           '(variable-assignments expand-body))))
+	(cl-macrolet
+		((var-symbol
+		  (var lang)
+		  `(org-babel-jupyter--babel-var-symbol ,var ,lang))
+		 (op-symbol
+		  (op lang)
+		  `(org-babel-jupyter--babel-op-symbol ,op ,lang))
+		 (advice-p
+		  (not name)
+		  `(,(if not 'should-not 'should)
+			(advice-member-p 'ob-jupyter ,name))))
+	  (set (var-symbol 'header-args (format "jupyter-%s" lang))
+		   '((:kernel . "foo")))
+	  (unwind-protect
+		  (progn
+			(ert-info ("Overriding")
+			  (org-babel-jupyter-override-src-block lang)
+			  (dolist (fn overriding-funs)
+				(advice-p nil (op-symbol fn lang)))
+			  (should (equal (symbol-value (var-symbol 'header-args lang))
+							 '((:kernel . "foo")))))
+			(ert-info ("Restoring")
+			  (org-babel-jupyter-restore-src-block lang)
+			  (dolist (fn overriding-funs)
+				(advice-p t (op-symbol fn lang)))
+			  (should-not (symbol-value (var-symbol 'header-args lang)))))
+		(dolist (op org-babel-jupyter--babel-ops)
+		  (obarray-remove obarray (op-symbol op lang)))
+		(obarray-remove obarray (var-symbol 'header-args (format "jupyter-%s" lang)))
+		(dolist (op org-babel-jupyter--babel-vars)
+		  (obarray-remove obarray (var-symbol op lang)))))))
 
 (ert-deftest org-babel-jupyter-strip-ansi-escapes ()
   :tags '(org)

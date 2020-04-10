@@ -500,69 +500,105 @@ the PARAMS alist."
 ;;; Overriding source block languages, language aliases
 
 (defvar org-babel-jupyter--babel-ops
-  '("execute" "expand-body" "prep-session" "edit-prep"
-    "variable-assignments" "load-session"))
+  '(execute expand-body prep-session edit-prep
+            variable-assignments load-session
+            initiate))
 
-(defun org-babel-jupyter--override-restore-header-args (lang restore)
-  "Set `org-babel-header-args:LANG' to its Jupyter equivalent.
-`org-babel-header-args:LANG' is set to the value of
-`org-babel-header-args:jupyter-LANG', if the latter exists, when
-RESTORE is nil.  If `org-babel-header-args:LANG' had a value, save
-it as a symbol property of `org-babel-header-args:LANG' for
-restoring it later.
+(defvar org-babel-jupyter--babel-vars
+  '(header-args default-header-args))
 
-If RESTORE is non-nil, set `org-babel-header-args:LANG' to its
-saved value before it was overridden.
+(defun org-babel-jupyter--babel-op-symbol (op lang)
+  (if (eq op 'initiate)
+      (intern (format "org-babel-%s-initiate-session" lang))
+    (intern (format (format "org-babel-%s:%s" op lang)))))
 
-Do the same for `org-babel-default-header-args:LANG'."
-  (dolist (prefix '("org-babel-header-args:"
-                    "org-babel-default-header-args:"))
-    (when-let* ((jupyter-var (intern-soft (concat prefix "jupyter-" lang))))
-      (let ((var (intern-soft (concat prefix lang))))
-        (if restore
-            (set var (get var 'jupyter-restore-value))
-          (if var (put var 'jupyter-restore-value (symbol-value var))
-            (setq var (intern (concat prefix lang))))
-          (set var (symbol-value jupyter-var)))))))
+(defun org-babel-jupyter--babel-var-symbol (var lang)
+  (intern (format "org-babel-%s:%s" var lang)))
 
-(defun org-babel-jupyter--override-restore-src-block (lang restore)
-  (cl-macrolet ((override-restore
-                 (sym jupyter-sym)
-                 `(cond
-                   (restore
-                    (advice-remove ,sym ,jupyter-sym)
-                    ;; The function didn't have a definition, so ensure that
-                    ;; we restore that fact.
-                    (when (eq (symbol-function ,sym) #'ignore)
-                      (fmakunbound ,sym)))
-                   (t
-                    ;; If a language doesn't have a function assigned, set one
-                    ;; so it can be overridden
-                    (unless (fboundp ,sym)
-                      (fset ,sym #'ignore))
-                    (advice-add ,sym :override ,jupyter-sym
-                                '((name . ob-jupyter)))))))
-    (dolist (fn (cl-set-difference
-                 org-babel-jupyter--babel-ops
-                 '("variable-assignments" "expand-body")
-                 :test #'equal))
-      (let ((sym (intern (concat "org-babel-" fn ":" lang))))
-        (override-restore sym (intern (concat "org-babel-" fn ":jupyter-" lang)))))
-    (override-restore (intern (concat "org-babel-" lang "-initiate-session"))
-                      #'org-babel-jupyter-initiate-session))
-  (org-babel-jupyter--override-restore-header-args lang restore))
+(defun org-babel-jupyter--babel-map (alias-action
+                                     var-action)
+  "Loop over Org babel function and variable symbols.
+ALIAS-ACTION and VAR-ACTION are functions of one argument.
+
+When ALIAS-ACTION is called, the argument will be a symbol that
+represents an Org Babel operation that can be defined by a
+language extension to Org Babel, e.g. 'execute.
+
+Similarly VAR-ACTION is called with a symbol representing an Org
+Babel variable that can be defined for a language,
+e.g. 'header-args."
+  (declare (indent 0))
+  (dolist (op org-babel-jupyter--babel-ops)
+    (funcall alias-action op))
+  (dolist (var org-babel-jupyter--babel-vars)
+    (funcall var-action var)))
 
 (defun org-babel-jupyter-override-src-block (lang)
   "Override the built-in `org-babel' functions for LANG.
 This overrides functions like `org-babel-execute:LANG' and
 `org-babel-LANG-initiate-session' to use the machinery of
-jupyter-LANG source blocks."
-  (org-babel-jupyter--override-restore-src-block lang nil))
+jupyter-LANG source blocks.
+
+Also, set `org-babel-header-args:LANG' to the value of
+`org-babel-header-args:jupyter-LANG', if the latter exists.  If
+`org-babel-header-args:LANG' had a value, save it as a symbol
+property of `org-babel-header-args:LANG' for restoring it later.
+Do the same for `org-babel-default-header-args:LANG'."
+  (org-babel-jupyter--babel-map
+    (lambda (op)
+      ;; Only override operations that are not related to a particular
+      ;; language.
+      (unless (memq op '(variable-assignments expand-body))
+        (let ((lang-op
+               (org-babel-jupyter--babel-op-symbol
+                op lang))
+              (jupyter-lang-op
+               (org-babel-jupyter--babel-op-symbol
+                op (format "jupyter-%s" lang))))
+          ;; If a language doesn't have a function assigned, set one so it can
+          ;; be overridden
+          (unless (fboundp lang-op)
+            (fset lang-op #'ignore))
+          (advice-add lang-op :override jupyter-lang-op
+                      '((name . ob-jupyter))))))
+    (lambda (var)
+      (let ((lang-var
+             (org-babel-jupyter--babel-var-symbol
+              var lang))
+            (jupyter-lang-var
+             (org-babel-jupyter--babel-var-symbol
+              var (format "jupyter-%s" lang))))
+        (when (boundp jupyter-lang-var)
+          (when (boundp lang-var)
+            (put lang-var 'jupyter-restore-value (symbol-value lang-var)))
+          (set lang-var (copy-tree (symbol-value jupyter-lang-var))))))))
 
 (defun org-babel-jupyter-restore-src-block (lang)
   "Restore the overridden `org-babel' functions for LANG.
-See `org-babel-jupyter-override-src-block'."
-  (org-babel-jupyter--override-restore-src-block lang t))
+This undoes everything that
+`org-babel-jupyter-override-src-block' did."
+  (org-babel-jupyter--babel-map
+    (lambda (op)
+      ;; Only override operations that are not related to a particular
+      ;; language.
+      (unless (memq op '(variable-assignments expand-body))
+        (let ((lang-op
+               (org-babel-jupyter--babel-op-symbol
+                op lang))
+              (jupyter-lang-op
+               (org-babel-jupyter--babel-op-symbol
+                op (format "jupyter-%s" lang))))
+          (advice-remove lang-op jupyter-lang-op)
+          ;; The function didn't have a definition, so
+          ;; ensure that we restore that fact.
+          (when (eq (symbol-function lang-op) #'ignore)
+            (fmakunbound lang-op)))))
+    (lambda (var)
+      (let ((lang-var
+             (org-babel-jupyter--babel-var-symbol
+              var lang)))
+        (when (boundp lang-var)
+          (set lang-var (get lang-var 'jupyter-restore-value)))))))
 
 (defun org-babel-jupyter-make-language-alias (kernel lang)
   "Similar to `org-babel-make-language-alias' but for Jupyter src-blocks.
@@ -591,32 +627,33 @@ If LANG has an association in `org-babel-tangle-lang-exts',
 associate the same value with jupyter-LANG, if needed.
 Similarly, associate the same value for LANG in
 `org-src-lang-modes'."
-  ;; Define the `ob' aliases for LANG
-  (dolist (fn org-babel-jupyter--babel-ops)
-    (let ((sym (intern-soft (concat "org-babel-" fn ":jupyter"))))
-      (when (and sym (fboundp sym))
-        (defalias (intern (concat "org-babel-" fn ":jupyter-" lang)) sym))))
-  (defalias (intern (concat "org-babel-jupyter-" lang "-initiate-session"))
-    'org-babel-jupyter-initiate-session)
-  (let (var)
-    ;; Set a value for org-babel-header-args:jupyter-LANG if it that variable
-    ;; is not defined already.  That variable defines the extra header
-    ;; arguments that are used by Jupyter and their allowed values.
-    (setq var (concat "org-babel-header-args:jupyter-" lang))
-    (unless (intern-soft var)
-      (let ((ivar (intern var)))
-        (set ivar org-babel-header-args:jupyter)
-        (put ivar 'variable-documentation
-             (get 'org-babel-header-args:jupyter 'variable-documentation))))
-    ;; Now set a default value for those header arguments.
-    (setq var (concat "org-babel-default-header-args:jupyter-" lang))
-    (unless (and (intern-soft var)
-                 (boundp (intern var)))
-      (let ((ivar (intern var)))
-        (set ivar `((:async . "no")
-                    (:kernel . ,kernel)))
-        (put ivar 'variable-documentation
-             (format "Default header arguments for Jupyter %s src-blocks" lang)))))
+  (org-babel-jupyter--babel-map
+    (lambda (op)
+      (defalias (org-babel-jupyter--babel-op-symbol
+                 op (format "jupyter-%s" lang))
+        (org-babel-jupyter--babel-op-symbol
+         op "jupyter")))
+    (lambda (var)
+      (let ((jupyter-var
+             (org-babel-jupyter--babel-var-symbol
+              var "jupyter"))
+            (jupyter-lang-var
+             (org-babel-jupyter--babel-var-symbol
+              var (format "jupyter-%s" lang))))
+        (unless (boundp jupyter-lang-var)
+          (set jupyter-lang-var (copy-tree (symbol-value jupyter-var)))
+          (cond
+           ((eq var 'default-header-args)
+            ;; Needed since the default kernel is not language
+            ;; specific and it needs to be.
+            (setf (alist-get :kernel (symbol-value jupyter-lang-var)) kernel)
+            (put jupyter-lang-var 'variable-documentation
+                 (format
+                  "Default header arguments for Jupyter %s src-blocks"
+                  lang)))
+           (t
+            (put jupyter-lang-var 'variable-documentation
+                 (get jupyter-var 'variable-documentation))))))))
   (when (assoc lang org-babel-tangle-lang-exts)
     (add-to-list 'org-babel-tangle-lang-exts
                  (cons (concat "jupyter-" lang)
