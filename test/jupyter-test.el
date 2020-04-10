@@ -936,6 +936,24 @@
       (should (memq r1 mapped))
       (should-not (memq r2 mapped)))))
 
+(defvar jupyter-test-idle-sync-hook nil)
+
+(ert-deftest jupyter-idle-sync ()
+  :tags '(client hook)
+  (jupyter-test-with-python-client client
+    (let ((req (jupyter-send-execute-request client :code "1 + 1")))
+      (should-not (jupyter-request-idle-received-p req))
+      (jupyter-idle-sync req)
+      (should (jupyter-request-idle-received-p req)))
+    (let ((req (jupyter-send-execute-request client :code "1 + 1")))
+      (should (null jupyter-test-idle-sync-hook))
+      (jupyter-add-idle-sync-hook 'jupyter-test-idle-sync-hook req)
+      (should-not (null jupyter-test-idle-sync-hook))
+      (should-not (jupyter-request-idle-received-p req))
+      (run-hooks 'jupyter-test-idle-sync-hook)
+      (should (jupyter-request-idle-received-p req))
+      (should (null jupyter-test-idle-sync-hook)))))
+
 ;;; IOloop
 
 (ert-deftest jupyter-ioloop-lifetime ()

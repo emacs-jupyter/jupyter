@@ -757,6 +757,27 @@ reporting progress to the user while waiting."
   (declare (indent 1))
   (jupyter-wait-until req msg-type #'identity timeout progress-msg))
 
+(defun jupyter-idle-sync (req)
+  "Return only when REQ has received a status: idle message."
+  (while (null (jupyter-wait-until-idle req jupyter-long-timeout))))
+
+(defun jupyter-add-idle-sync-hook (hook req &optional append)
+  "Add a function to HOOK that waits until REQ receives a status: idle message.
+The function will not return until either a status: idle message
+has been received by REQ or an error is signaled.  APPEND and has
+the same meaning as in `add-hook'.
+
+The function is added to the global value of HOOK.  When the
+function is evaluated, it removes itself from HOOK *before*
+waiting."
+  (cl-check-type req jupyter-request)
+  (cl-labels
+      ((sync-hook
+        ()
+        (remove-hook hook #'sync-hook)
+        (jupyter-idle-sync req)))
+    (add-hook hook #'sync-hook append)))
+
 ;;; Client handlers
 
 (cl-defgeneric jupyter-drop-request ((_client jupyter-kernel-client) _req)
