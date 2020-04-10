@@ -37,12 +37,11 @@
     (setq-local ess-font-lock-keywords 'ess-R-font-lock-keywords))
   (cl-call-next-method))
 
-(cl-defmethod jupyter-org-result ((_mime (eql :text/html)) params data
-                                  &context (jupyter-lang R)
-                                  &optional metadata)
+(cl-defmethod jupyter-org-result ((_mime (eql :text/html)) content params
+                                  &context (jupyter-lang R))
   "If html DATA is an iframe, save it to a separate file and open in browser.
 Otherwise, parse it as normal."
-  (if (plist-get metadata :isolated)
+  (if (plist-get (plist-get content :metadata) :isolated)
       (let ((file (or (alist-get :file params)
                       (jupyter-org-image-file-name data ".html"))))
         (with-temp-file file

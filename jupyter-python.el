@@ -79,9 +79,8 @@ buffer."
 
 ;;; `jupyter-org'
 
-(cl-defmethod jupyter-org-result ((_mime (eql :text/plain))
-                                  &context (jupyter-lang python)
-                                  &optional params &rest _ignore)
+(cl-defmethod jupyter-org-result ((_mime (eql :text/plain)) _content params
+                                  &context (jupyter-lang python))
   (let ((result (cl-call-next-method)))
     (cond
      ((and (stringp result)

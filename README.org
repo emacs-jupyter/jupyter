@@ -1483,9 +1483,8 @@ For a kernel language to extend the behavior of how results are inserted, the
 =:text/plain= results are modified for Python code blocks
 
 #+BEGIN_SRC elisp
-(cl-defmethod jupyter-org-result ((_mime (eql :text/plain))
-                                  &context (jupyter-lang python)
-                                  &rest _ignore)
+(cl-defmethod jupyter-org-result ((_mime (eql :text/plain)) _content _params
+                                  &context (jupyter-lang python))
   (let ((result (cl-call-next-method)))
     (cond
      ((stringp result)

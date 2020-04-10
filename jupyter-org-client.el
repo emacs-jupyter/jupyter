@@ -873,32 +873,34 @@ EXT is used as the extension."
 
 (defvar org-image-actual-width)
 
-(defun jupyter-org--image-result (mime params b64-encoded data &optional metadata)
+(defun jupyter-org--image-result (mime content params &optional b64-encoded)
   "Return an org-element suitable for inserting an image.
-MIME is the image mimetype, PARAMS is the
-`jupyter-org-request-block-params' that caused this result to be
-returned and DATA is the image data.
+MIME is the image mimetype, CONTENT is a property list
 
-If B64-ENCODED is non-nil, DATA assumed to be a base64 encoded
-string and will be decoded before writing to file.
+    (:data D :metadata M)
 
-If PARAMS contains a :file key, it is used as the FILENAME.
-Otherwise a file name is created, see
-`jupyter-org-image-file-name'.  Note, when PARAMS contains a :file
-key any existing file with the file name will be overwritten when
-writing the image data.  This is not the case when a new file name
-is created.
+where D is the image data for MIME and M any metadata.  D is
+written to file and an org-element link to the file is returned.
+
+PARAMS are the `jupyter-org-request-block-params', the ones
+passed to `org-babel-execute:jupyter', of the source block that
+returned D.  If PARAMS contains a :file key, it's value is used
+as the image file name.  Otherwise a file name is created, see
+`jupyter-org-image-file-name'.  In the case that a file exists
+with the same name being used, it is overwritten.
+
+If B64-ENCODED is non-nil, the image data is assumed to be a
+base64 encoded string and will be decoded before writing to file.
 
 If METADATA contains a :width or :height key, then the returned
 org-element will have an ATTR_ORG affiliated keyword containing
 the width or height of the image.  When there is no :width or
-:height key an ATTR_ORG keyword may containing the true size of
-the image may still be added, see
-`jupyter-org-adjust-image-size'."
+:height, an ATTR_ORG keyword containing the true size of the
+image may still be added, see `jupyter-org-adjust-image-size'."
   (let* ((overwrite (not (null (alist-get :file params))))
          (file (or (alist-get :file params)
                    (jupyter-org-image-file-name
-                    data
+                    (plist-get content :data)
                     (cl-case mime
                       (:image/png "png")
                       (:image/jpeg "jpg")
@@ -909,11 +911,11 @@ the image may still be added, see
                buffer-file-coding-system))
             (require-final-newline nil))
         (with-temp-file file
-          (insert data)
+          (insert (plist-get content :data))
           (when b64-encoded
             (base64-decode-region (point-min) (point-max))))))
     (cl-destructuring-bind (&key width height &allow-other-keys)
-        metadata
+        (plist-get content :metadata)
       (when (and jupyter-org-adjust-image-size (null width)
                  (numberp (car-safe org-image-actual-width)))
         (let ((image-width (car (image-size
@@ -923,17 +925,18 @@ the image may still be added, see
             (setq width image-width))))
       (jupyter-org-image-link file width height))))
 
-(cl-defgeneric jupyter-org-result (_mime _params _data &optional _metadata)
+(cl-defgeneric jupyter-org-result (_mime _content _params)
   "Return an `org-element' representing a result.
 Either a string or an `org-element' is a valid return value of
 this method.  The former will be inserted as is, while the latter
 will be inserted by calling `org-element-interpret-data' first.
 
-The returned result should be a representation of a MIME type
-whose value is DATA.
+The returned result should be a representation of a MIME type's
+CONTENT. CONTENT is a property list like
 
-DATA is the data representing the MIME type and METADATA is any
-associated metadata associated with the MIME DATA.
+    '(:data ... :metadata ...)
+
+that contains the data/metadata of the mime type.
 
 As an example, if DATA only contains the mimetype
 `:text/markdown', then the returned results is
@@ -968,35 +971,29 @@ and `image' to `:image/png'."
                              return ii)))))
                (split-string req-types)))))
 
-(cl-defmethod jupyter-org-result ((req jupyter-org-request) plist
-                                  &optional metadata &rest _ignore)
-  "For REQ, return the rendered DATA.
-PLIST is a property list, (:mimetype1 value1 ...), containing the
-different representations of a result returned by a kernel.  Note,
-PLIST can also be a full message property list or a property list
-with a :data and :metadata key.
+(cl-defmethod jupyter-org-result ((req jupyter-org-request) plist &optional metadata)
+  "For REQ, return a rendered form of a message PLIST.
+PLIST and METADATA have the same meaning as in
+`jupyter-normalize-data'.
 
-METADATA is the metadata plist used to render PLIST with, as
-returned by the Jupyter kernel.  METADATA typically contains
-information such as the size of an image to be rendered.
+Given the source block parameters of REQ, loop over the mime
+types in `jupyter-org-mime-types' calling
 
+    (jupyter-org-result MIME CONTENT PARAMS)
 
-Using the `jupyter-org-request-block-params' of REQ, loop over
-the MIME types in `jupyter-org-mime-types' calling
+for each one.  Return the result of the call for the first
+mime-type that has a non-nil result.
 
-    (jupyter-org-result MIME PARAMS DATA METADATA)
+MIME is the current mime-type, CONTENT is a property list
 
-for each MIME type.  Return the result of the first iteration in
-which the above call returns a non-nil value.  PARAMS is the REQ's
-`jupyter-org-request-block-params', DATA and METADATA are the
-data and metadata of the current MIME type.
+    (:data ... :metadata ...)
 
-If PARAMS has a space separated string associated with its
-:display key like \"image/png html plain\", i.e.  MIME subtypes or
-full MIME types, then loop over the corresponding subset of MIME
-types in `jupyter-org-mime-types' in the same order given.  This
-adds support for the :display header argument that can be
-passed to Jupyter org-mode source blocks."
+containing the data of the mime-type and PARAMS are the source
+block parameters.
+
+If the source block parameters have a value for the :display
+header argument, like \"image/png html plain\", then loop over
+those mime types instead."
   (cl-assert plist json-plist)
   (let* ((params (jupyter-org-request-block-params req))
          (display-mime-types (jupyter-org--find-mime-types
@@ -1007,9 +1004,7 @@ passed to Jupyter org-mode source blocks."
      ((jupyter-map-mime-bundle (or display-mime-types jupyter-org-mime-types)
           (jupyter-normalize-data plist metadata)
         (lambda (mime content)
-          (jupyter-org-result mime
-                              params (plist-get content :data)
-                              (plist-get content :metadata)))))
+          (jupyter-org-result mime content params))))
      (t
       (let ((warning
              (format
@@ -1018,34 +1013,30 @@ passed to Jupyter org-mode source blocks."
               (or display-mime-types jupyter-org-mime-types))))
         (display-warning 'jupyter warning))))))
 
-(cl-defmethod jupyter-org-result ((_mime (eql :application/vnd.jupyter.widget-view+json))
-                                  _params _data &optional _metadata)
+(cl-defmethod jupyter-org-result ((_mime (eql :application/vnd.jupyter.widget-view+json)) _content _params)
   ;; TODO: Clickable text to open up a browser
   (jupyter-org-scalar "Widget"))
 
 (defvar org-table-line-regexp)
 
-(cl-defmethod jupyter-org-result ((_mime (eql :text/org)) _params data
-                                  &optional _metadata)
-  (if (string-match-p org-table-line-regexp data)
-      (jupyter-org-table-string data)
-    (jupyter-org-raw-string data)))
+(cl-defmethod jupyter-org-result ((_mime (eql :text/org)) content _params)
+  (let ((data (plist-get content :data)))
+    (if (string-match-p org-table-line-regexp data)
+        (jupyter-org-table-string data)
+      (jupyter-org-raw-string data))))
 
-(cl-defmethod jupyter-org-result ((mime (eql :image/png)) params data
-                                  &optional metadata)
-  (jupyter-org--image-result mime params 'b64-encoded data metadata))
+(cl-defmethod jupyter-org-result ((mime (eql :image/png)) content params)
+  (jupyter-org--image-result mime content params 'b64-encoded))
 
-(cl-defmethod jupyter-org-result ((mime (eql :image/jpeg)) params data
-                                  &optional metadata)
-  (jupyter-org--image-result mime params 'b64-encoded data metadata))
+(cl-defmethod jupyter-org-result ((mime (eql :image/jpeg)) content params)
+  (jupyter-org--image-result mime content params 'b64-encoded))
 
-(cl-defmethod jupyter-org-result ((mime (eql :image/svg+xml)) params data
-                                  &optional metadata)
-  (jupyter-org--image-result mime params nil data metadata))
+(cl-defmethod jupyter-org-result ((mime (eql :image/svg+xml)) content params)
+  (jupyter-org--image-result mime content params))
 
-(cl-defmethod jupyter-org-result ((_mime (eql :text/markdown)) params data
-                                  &optional _metadata)
-  (jupyter-org-export-block-or-pandoc "markdown" data params))
+(cl-defmethod jupyter-org-result ((_mime (eql :text/markdown)) content params)
+  (jupyter-org-export-block-or-pandoc
+   "markdown" (plist-get content :data) params))
 
 (defun jupyter-org--parse-latex-element (data)
   "Return a latex-fragment or latex-environment org-element obtained from DATA.
@@ -1073,24 +1064,23 @@ parsed, wrap DATA in a minipage environment and return it."
 \\begin{flushright}\n" data "\n\\end{flushright}
 \\end{minipage}")))))))
 
-(cl-defmethod jupyter-org-result ((_mime (eql :text/latex)) params data
-                                  &optional _metadata)
+(cl-defmethod jupyter-org-result ((_mime (eql :text/latex)) content params)
   (if (member "raw" (alist-get :result-params params))
-      (jupyter-org--parse-latex-element data)
-    (jupyter-org-export-block-or-pandoc "latex" data params)))
+      (jupyter-org--parse-latex-element (plist-get content :data))
+    (jupyter-org-export-block-or-pandoc
+     "latex" (plist-get content :data) params)))
 
-(cl-defmethod jupyter-org-result ((_mime (eql :text/html)) params data
-                                  &optional _metadata)
-  (jupyter-org-export-block-or-pandoc "html" data params))
+(cl-defmethod jupyter-org-result ((_mime (eql :text/html)) content params)
+  (jupyter-org-export-block-or-pandoc "html" (plist-get content :data) params))
 
-;; NOTE: The order of :around methods is that the more specialized wraps the
-;; more general, this makes sense since it is how the primary methods work as
-;; well.
+;; NOTE: The order of :around methods is that the more specialized
+;; wraps the more general, this makes sense since it is how the
+;; primary methods work as well.
 ;;
-;; Using an :around method to attempt to guarantee that this is called as the
-;; outer most method.  Kernel languages should extend the primary method.
-(cl-defmethod jupyter-org-result :around ((_mime (eql :text/plain)) params _data
-                                          &optional _metadata)
+;; Using an :around method to attempt to guarantee that this is called
+;; as the outer most method.  Kernel languages should extend the
+;; primary method.
+(cl-defmethod jupyter-org-result :around ((_mime (eql :text/plain)) _content params)
   "Do some final transformations of the result.
 Call the next method, if it returns \"scalar\" results, return a
 new \"scalar\" result with the result of calling
@@ -1118,9 +1108,8 @@ new \"scalar\" result with the result of calling
        (org-babel-script-escape result))
       (t result)))))
 
-(cl-defmethod jupyter-org-result ((_mime (eql :text/plain)) _params data
-                                  &optional _metadata)
-  data)
+(cl-defmethod jupyter-org-result ((_mime (eql :text/plain)) content _params)
+  (plist-get content :data))
 
 ;;;; Helper functions
 
