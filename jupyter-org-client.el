@@ -1263,9 +1263,9 @@ is a stream result.  Otherwise return nil."
 Return nil if CONTEXT does not represent a previous stream result
 already present in the buffer or if RESULT is not a stream
 result."
-  (when (and (jupyter-org--stream-result-p result)
-             (not (jupyter-org--first-result-context-p context)))
-    (jupyter-org--stream-context-p context)))
+  (and (jupyter-org--stream-result-p result)
+       (not (jupyter-org--first-result-context-p context))
+       (jupyter-org--stream-context-p context)))
 
 ;; Adapted from `jupyter-handle-control-codes'
 (defun jupyter-org--handle-control-codes (beg end)
