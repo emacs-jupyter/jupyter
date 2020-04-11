@@ -1241,6 +1241,10 @@ Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
      (jupyter-repl-insert-prompt 'in))))
 
 (cl-defgeneric jupyter-indent-line ()
+  "Indent the current line.
+This method is called by the `indent-line-function' of a Jupyter
+REPL buffer and is used to indent a line according to the
+`major-mode' of the REPL kernel's language."
   (call-interactively #'indent-for-tab-command))
 
 (defun jupyter-repl-indent-line ()
