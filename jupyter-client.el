@@ -784,7 +784,7 @@ received for it and it is not the most recently sent request."
             (jupyter-drop-request client req)
           (remhash (jupyter-request-id req) requests)))))
 
-(defsubst jupyter--run-handler-p (req msg)
+(defsubst jupyter--request-allows-handler-p (req msg)
   "Return non-nil if REQ doesn't inhibit the handler for MSG."
   (let* ((ihandlers (and req (jupyter-request-inhibited-handlers req)))
          (type (and (listp ihandlers)
@@ -831,7 +831,7 @@ nil is returned otherwise."
       (:stdin . ,(handler-alist
                   :input-reply :input-request)))))
 
-(defun jupyter--handler-dispatch (client channel msg req)
+(defun jupyter--run-handler (client channel msg req)
   (when (jupyter-handle-message-p client channel msg)
     (let* ((msg-type (jupyter-message-type msg))
            (channel-handlers
@@ -902,8 +902,8 @@ completed, requests from CLIENT's request table."
         (unwind-protect
             (jupyter--run-callbacks req msg)
           (unwind-protect
-              (when (jupyter--run-handler-p req msg)
-                (jupyter--handler-dispatch client channel msg req))
+              (when (jupyter--request-allows-handler-p req msg)
+                (jupyter--run-handler client channel msg req))
             (when (jupyter--message-completes-request-p msg)
               ;; Order matters here.  We want to remove idle requests *before*
               ;; setting another request idle to account for idle messages
@@ -915,8 +915,8 @@ completed, requests from CLIENT's request table."
         (when (and (or (jupyter-get client 'jupyter-include-other-output)
                        ;; Always handle a startup message
                        (jupyter-message-status-starting-p msg))
-                   (jupyter--run-handler-p req msg))
-          (jupyter--handler-dispatch client channel msg req)))))))
+                   (jupyter--request-allows-handler-p req msg))
+          (jupyter--run-handler client channel msg req)))))))
 
 ;;; STDIN handlers
 
