@@ -31,29 +31,27 @@
 
 (declare-function org-babel-python-table-or-string "ob-python")
 
-(cl-defmethod jupyter-handle-error :after ((client jupyter-repl-client)
-                                           req ename _evalue _traceback
+(cl-defmethod jupyter-handle-error :after ((client jupyter-repl-client) req msg
                                            &context (jupyter-lang python)
                                            (major-mode jupyter-repl-mode))
   "Add spacing between the first occurance of ENAME and \"Traceback\".
 Do this only when the traceback of REQ was inserted into the REPL
 buffer."
-  (unless (eq (jupyter-message-parent-type
-               (jupyter-request-last-message req))
-              :comm-msg)
+  (unless (eq (jupyter-message-parent-type msg) :comm-msg)
     (jupyter-with-repl-buffer client
-      (save-excursion
-        (jupyter-repl-goto-cell req)
-        (goto-char (jupyter-repl-cell-code-end-position))
-        (when (and (search-forward ename nil t)
-                   (looking-at "Traceback"))
-          (let ((len (- fill-column
-                        jupyter-repl-prompt-margin-width
-                        (- (point) (line-beginning-position))
-                        (- (line-end-position) (point)))))
-            (insert-and-inherit
-             (propertize (make-string (if (> len 4) len 4) ? )
-                         'read-only t))))))))
+      (jupyter-with-message-content msg (ename)
+        (save-excursion
+          (jupyter-repl-goto-cell req)
+          (goto-char (jupyter-repl-cell-code-end-position))
+          (when (and (search-forward ename nil t)
+                     (looking-at "Traceback"))
+            (let ((len (- fill-column
+                          jupyter-repl-prompt-margin-width
+                          (- (point) (line-beginning-position))
+                          (- (line-end-position) (point)))))
+              (insert-and-inherit
+               (propertize (make-string (if (> len 4) len 4) ? )
+                           'read-only t)))))))))
 
 (cl-defmethod jupyter-insert :around ((msg cons)
                                       &context (jupyter-lang python)
