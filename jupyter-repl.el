@@ -854,37 +854,24 @@ lines, truncate it to something less than
   (jupyter-repl-previous-cell)
   (jupyter-repl-replace-cell-code (plist-get pl :text)))
 
-(cl-defmethod jupyter-handle-execute-reply ((client jupyter-repl-client)
-                                            _req
-                                            _status
-                                            _execution-count
-                                            _user-expressions
-                                            payload)
+(cl-defmethod jupyter-handle-execute-reply ((client jupyter-repl-client) _req msg)
   (jupyter-with-repl-buffer client
-    (when payload
-      (jupyter-handle-payload payload))))
+    (jupyter-with-message-content msg (payload)
+      (when payload
+        (jupyter-handle-payload payload)))))
 
-(cl-defmethod jupyter-handle-execute-result ((client jupyter-repl-client)
-                                             req
-                                             _execution-count
-                                             data
-                                             metadata)
+(cl-defmethod jupyter-handle-execute-result ((client jupyter-repl-client) req msg)
   ;; Only handle our results
   (when req
     (jupyter-repl-append-output client req
       (jupyter-repl-insert-prompt 'out)
-      (jupyter-insert data metadata))))
+      (jupyter-with-message-content msg (data metadata)
+        (jupyter-insert data metadata)))))
 
-(cl-defmethod jupyter-handle-display-data ((client jupyter-repl-client)
-                                           req
-                                           data
-                                           metadata
-                                           transient)
+(cl-defmethod jupyter-handle-display-data ((client jupyter-repl-client) req msg)
   (let ((clear (prog1 (oref client wait-to-clear)
                  (oset client wait-to-clear nil)))
-        (req (if (eq (jupyter-message-parent-type
-                      (jupyter-request-last-message req))
-                     :comm-msg)
+        (req (if (eq (jupyter-message-parent-type msg) :comm-msg)
                  ;; For comm messages which produce a `:display-data' message,
                  ;; the request is assumed to be the most recently completed
                  ;; one.
@@ -895,31 +882,29 @@ lines, truncate it to something less than
                      (jupyter-repl-cell-request)))
                req)))
     (jupyter-repl-append-output client req
-      (cl-destructuring-bind (&key display_id &allow-other-keys)
-          transient
-        (if display_id
-            (jupyter-insert display_id data metadata)
-          (let ((inhibit-redisplay (not debug-on-error)))
-            (when clear
-              (jupyter-repl-clear-last-cell-output client)
-              ;; Prevent slight flickering of prompt margin and text, this is
-              ;; needed in addition to `inhibit-redisplay'.  It also seems that
-              ;; it can be placed anywhere within this let and it will prevent
-              ;; flickering.
-              (sit-for 0.1 t))
-            (jupyter-insert data metadata)))))))
+      (jupyter-with-message-content msg (data metadata transient)
+        (cl-destructuring-bind (&key display_id &allow-other-keys)
+            transient
+          (if display_id
+              (jupyter-insert display_id data metadata)
+            (let ((inhibit-redisplay (not debug-on-error)))
+              (when clear
+                (jupyter-repl-clear-last-cell-output client)
+                ;; Prevent slight flickering of prompt margin and text, this is
+                ;; needed in addition to `inhibit-redisplay'.  It also seems that
+                ;; it can be placed anywhere within this let and it will prevent
+                ;; flickering.
+                (sit-for 0.1 t))
+              (jupyter-insert data metadata))))))))
 
-(cl-defmethod jupyter-handle-update-display-data ((client jupyter-repl-client)
-                                                  _req
-                                                  data
-                                                  metadata
-                                                  transient)
-  (cl-destructuring-bind (&key display_id &allow-other-keys)
-      transient
-    (unless display_id
-      (error "No display ID in `:update-display-data' message"))
-    (jupyter-with-repl-buffer client
-      (jupyter-update-display display_id data metadata))))
+(cl-defmethod jupyter-handle-update-display-data ((client jupyter-repl-client) _req msg)
+  (jupyter-with-message-content msg (data metadata transient)
+    (cl-destructuring-bind (&key display_id &allow-other-keys)
+        transient
+      (unless display_id
+        (error "No display ID in `:update-display-data' message"))
+      (jupyter-with-repl-buffer client
+        (jupyter-update-display display_id data metadata)))))
 
 (defun jupyter-repl-clear-last-cell-output (client)
   "In CLIENT's REPL buffer, clear the output of the last completed cell."
@@ -931,21 +916,21 @@ lines, truncate it to something less than
                      (jupyter-repl-next-cell)
                      (point)))))
 
-(cl-defmethod jupyter-handle-clear-output ((client jupyter-repl-client)
-                                           req
-                                           wait)
-  (unless (oset client wait-to-clear (eq wait t))
+(cl-defmethod jupyter-handle-clear-output ((client jupyter-repl-client) _req msg)
+  (unless (oset client wait-to-clear
+                (jupyter-with-message-content msg (wait)
+                  (eq wait t)))
     (cond
-     ((eq (jupyter-message-parent-type
-           (jupyter-request-last-message req))
-          :comm-msg)
+     ((eq (jupyter-message-parent-type msg) :comm-msg)
       (with-current-buffer (jupyter-get-buffer-create "output")
         (erase-buffer)))
      (t
       (jupyter-repl-clear-last-cell-output client)))))
 
-(cl-defmethod jupyter-handle-status ((client jupyter-repl-client) req execution-state)
-  (when (equal execution-state "idle")
+(cl-defmethod jupyter-handle-status ((client jupyter-repl-client) req msg)
+  (when (equal "idle"
+               (jupyter-with-message-content msg (execution-state)
+                 execution-state))
     (jupyter-with-repl-buffer client
       (save-excursion
         (when (ignore-errors
@@ -970,35 +955,34 @@ buffer to display TEXT."
         (fill-region pos (point)))
       (jupyter-display-current-buffer-reuse-window))))
 
-(cl-defmethod jupyter-handle-stream ((client jupyter-repl-client) req name text)
-  (if (null req)
-      (jupyter-repl-display-other-output client name text)
-    (cond
-     ((eq (jupyter-message-parent-type
-           (jupyter-request-last-message req))
-          :comm-msg)
-      (jupyter-with-display-buffer "output" req
-        (jupyter-insert-ansi-coded-text text)
-        (jupyter-display-current-buffer-reuse-window)))
-     (t
-      (jupyter-repl-append-output client req
-        (jupyter-insert-ansi-coded-text text))))))
+(cl-defmethod jupyter-handle-stream ((client jupyter-repl-client) req msg)
+  (jupyter-with-message-content msg (name text)
+    (if (null req)
+        (jupyter-repl-display-other-output client name text)
+      (cond
+       ((eq (jupyter-message-parent-type
+             (jupyter-request-last-message req))
+            :comm-msg)
+        (jupyter-with-display-buffer "output" req
+          (jupyter-insert-ansi-coded-text text)
+          (jupyter-display-current-buffer-reuse-window)))
+       (t
+        (jupyter-repl-append-output client req
+          (jupyter-insert-ansi-coded-text text)))))))
 
-(cl-defmethod jupyter-handle-error ((client jupyter-repl-client)
-                                    req _ename _evalue traceback)
+(cl-defmethod jupyter-handle-error ((client jupyter-repl-client) req msg)
   (when req
-    (cond
-     ((eq (jupyter-message-parent-type
-           (jupyter-request-last-message req))
-          :comm-msg)
-      (jupyter-display-traceback traceback))
-     (t
-      (jupyter-repl-append-output client req
-        (jupyter-with-insertion-bounds
-            beg end (jupyter-insert-ansi-coded-text
-                     (concat (mapconcat #'identity traceback "\n") "\n"))
-          (font-lock-prepend-text-property
-           beg end 'font-lock-face 'jupyter-repl-traceback)))))))
+    (jupyter-with-message-content msg (traceback)
+      (cond
+       ((eq (jupyter-message-parent-type msg) :comm-msg)
+        (jupyter-display-traceback traceback))
+       (t
+        (jupyter-repl-append-output client req
+          (jupyter-with-insertion-bounds
+              beg end (jupyter-insert-ansi-coded-text
+                       (concat (mapconcat #'identity traceback "\n") "\n"))
+            (font-lock-prepend-text-property
+             beg end 'font-lock-face 'jupyter-repl-traceback))))))))
 
 (defun jupyter-repl-history--rotate (n)
   "Rotate the REPL history ring N times.
@@ -1120,27 +1104,28 @@ elements."
           (error "Beginning of history")
         (jupyter-repl-replace-cell-code code)))))
 
-(cl-defmethod jupyter-handle-history-reply ((client jupyter-repl-client) _req history)
+(cl-defmethod jupyter-handle-history-reply ((client jupyter-repl-client) _req msg)
   (jupyter-with-repl-buffer client
-    (cl-loop for elem across history
+    (cl-loop for elem across (jupyter-with-message-content msg (history) history)
              for input-output = (aref elem 2)
              do (ring-remove+insert+extend jupyter-repl-history input-output))))
 
-(cl-defmethod jupyter-handle-is-complete-reply ((client jupyter-repl-client) _req status indent)
+(cl-defmethod jupyter-handle-is-complete-reply ((client jupyter-repl-client) _req msg)
   (jupyter-with-repl-buffer client
-    (pcase status
-      ("complete"
-       (jupyter-send-execute-request client))
-      ("incomplete"
-       (insert "\n")
-       (if (= (length indent) 0) (jupyter-repl-indent-line)
-         (insert indent)))
-      ("invalid"
-       ;; Force an execute to produce a traceback
-       (jupyter-send-execute-request client))
-      ("unknown"
-       ;; Let the kernel decide if the code is complete
-       (jupyter-send-execute-request client)))))
+    (jupyter-with-message-content msg (status indent)
+      (pcase status
+        ("complete"
+         (jupyter-send-execute-request client))
+        ("incomplete"
+         (insert "\n")
+         (if (= (length indent) 0) (jupyter-repl-indent-line)
+           (insert indent)))
+        ("invalid"
+         ;; Force an execute to produce a traceback
+         (jupyter-send-execute-request client))
+        ("unknown"
+         ;; Let the kernel decide if the code is complete
+         (jupyter-send-execute-request client))))))
 
 (defun jupyter-repl--insert-banner-and-prompt (client)
   (jupyter-with-repl-buffer client
@@ -1153,7 +1138,7 @@ elements."
     (jupyter-repl-insert-prompt 'in)
     (jupyter-repl-update-cell-count 1)))
 
-(cl-defmethod jupyter-handle-shutdown-reply ((client jupyter-repl-client) _req restart)
+(cl-defmethod jupyter-handle-shutdown-reply ((client jupyter-repl-client) _req msg)
   (jupyter-with-repl-buffer client
     (jupyter-repl-without-continuation-prompts
      (goto-char (point-max))
@@ -1166,13 +1151,14 @@ elements."
        (unless shutdown-handled-p
          (jupyter-repl-newline)
          (jupyter-repl-newline)
-         ;; TODO: Add a slot mentioning that the kernel is shutdown so that we can
-         ;; block sending requests or delay until it has restarted.
-         (insert (propertize (concat "kernel " (if restart "restart" "shutdown"))
-                             'read-only t 'font-lock-face 'warning))
-         (jupyter-repl-newline)
-         (when restart
-           (jupyter-repl--insert-banner-and-prompt client)))))))
+         (jupyter-with-message-content msg (restart)
+           ;; TODO: Add a slot mentioning that the kernel is shutdown so that we can
+           ;; block sending requests or delay until it has restarted.
+           (insert (propertize (concat "kernel " (if restart "restart" "shutdown"))
+                               'read-only t 'font-lock-face 'warning))
+           (jupyter-repl-newline)
+           (when restart
+             (jupyter-repl--insert-banner-and-prompt client))))))))
 
 (defun jupyter-repl-ret (&optional force)
   "Send the current cell code to the kernel.

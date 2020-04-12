@@ -168,15 +168,13 @@ See also the docstring of `org-image-actual-width' for more details."
 
 ;;;; Stream
 
-(cl-defmethod jupyter-handle-stream ((_client jupyter-org-client)
-                                     (req jupyter-org-request)
-                                     _name
-                                     text)
-  (if (jupyter-org-request-inline-block-p req)
-      (jupyter-with-display-buffer "org-results" req
-        (insert (ansi-color-apply text))
-        (pop-to-buffer (current-buffer)))
-    (jupyter-org--add-result req text)))
+(cl-defmethod jupyter-handle-stream ((_client jupyter-org-client) (req jupyter-org-request) msg)
+  (jupyter-with-message-content msg (text)
+    (if (jupyter-org-request-inline-block-p req)
+        (jupyter-with-display-buffer "org-results" req
+          (insert (ansi-color-apply text))
+          (pop-to-buffer (current-buffer)))
+      (jupyter-org--add-result req text))))
 
 ;;;; Errors
 
@@ -242,91 +240,80 @@ to."
 
 (defvar org-font-lock-hook)
 
-(cl-defmethod jupyter-handle-error ((_client jupyter-org-client)
-                                    (req jupyter-org-request)
-                                    _ename
-                                    _evalue
-                                    traceback)
-  (setq traceback (org-element-normalize-string
-                   (mapconcat #'identity traceback "\n")))
-  (cond
-   ((or (jupyter-org-request-inline-block-p req)
-        (jupyter-org-request-silent-p req))
-    ;; Remove old inline results when an error happens since, if this was not
-    ;; done, it would look like the code which caused the error produced the
-    ;; old result.
-    (when (jupyter-org-request-inline-block-p req)
-      (org-with-point-at (jupyter-org-request-marker req)
-        (org-babel-remove-inline-result)))
-    (jupyter-with-display-buffer "traceback" 'reset
-      (jupyter-insert-ansi-coded-text traceback)
-      (goto-char (point-min))
-      (when (jupyter-org-request-silent-p req)
-        (insert (jupyter-org--goto-error-string req) "\n\n"))
-      (pop-to-buffer (current-buffer))))
-   (t
-    ;; The keymap property in the string returned by
-    ;; `jupyter-org--goto-error-string' gets removed by font-lock so ensure it
-    ;; is re-added.
-    (unless (memq 'jupyter-org-add-error-keymap org-font-lock-hook)
-      (add-hook 'org-font-lock-hook 'jupyter-org-add-error-keymap nil t))
-    (setq traceback (ansi-color-apply traceback))
-    (jupyter-org--add-result
-     req (jupyter-org-comment
-          (with-temp-buffer
-            (insert traceback)
-            (jupyter-org--goto-error-string req))))
-    (jupyter-org--add-result req traceback))))
+(cl-defmethod jupyter-handle-error ((_client jupyter-org-client) (req jupyter-org-request) msg)
+  (jupyter-with-message-content msg (traceback)
+    (setq traceback (org-element-normalize-string
+                     (mapconcat #'identity traceback "\n")))
+    (cond
+     ((or (jupyter-org-request-inline-block-p req)
+          (jupyter-org-request-silent-p req))
+      ;; Remove old inline results when an error happens since, if this was not
+      ;; done, it would look like the code which caused the error produced the
+      ;; old result.
+      (when (jupyter-org-request-inline-block-p req)
+        (org-with-point-at (jupyter-org-request-marker req)
+          (org-babel-remove-inline-result)))
+      (jupyter-with-display-buffer "traceback" 'reset
+        (jupyter-insert-ansi-coded-text traceback)
+        (goto-char (point-min))
+        (when (jupyter-org-request-silent-p req)
+          (insert (jupyter-org--goto-error-string req) "\n\n"))
+        (pop-to-buffer (current-buffer))))
+     (t
+      ;; The keymap property in the string returned by
+      ;; `jupyter-org--goto-error-string' gets removed by font-lock so ensure it
+      ;; is re-added.
+      (unless (memq 'jupyter-org-add-error-keymap org-font-lock-hook)
+        (add-hook 'org-font-lock-hook 'jupyter-org-add-error-keymap nil t))
+      (setq traceback (ansi-color-apply traceback))
+      (jupyter-org--add-result
+       req (jupyter-org-comment
+            (with-temp-buffer
+              (insert traceback)
+              (jupyter-org--goto-error-string req))))
+      (jupyter-org--add-result req traceback)))))
 
 ;;;; Execute result
 
-(cl-defmethod jupyter-handle-execute-result ((client jupyter-org-client)
-                                             (req jupyter-org-request)
-                                             _execution-count
-                                             data
-                                             metadata)
+(cl-defmethod jupyter-handle-execute-result ((client jupyter-org-client) (req jupyter-org-request) msg)
   (unless (eq (jupyter-org-request-result-type req) 'output)
-    (cond
-     ((jupyter-org-request-inline-block-p req)
-      ;; For inline results, only text/plain results are allowed at the moment.
-      ;;
-      ;; TODO: Handle all of the different macro types for inline results, see
-      ;; `org-babel-insert-result'.
-      (setq data `(:text/plain ,(plist-get data :text/plain)))
-      (let ((result (let ((r (jupyter-org-result req data metadata)))
-                      (if (stringp r) r
-                        (or (org-element-property :value r) "")))))
-        (if (jupyter-org-request-async-p req)
-            (org-with-point-at (jupyter-org-request-marker req)
-              (org-babel-insert-result
-               result (jupyter-org-request-block-params req)
-               nil nil (jupyter-kernel-language client)))
-          ;; The results are returned in `org-babel-execute:jupyter' in the
-          ;; synchronous case
-          (jupyter-org--add-result req result))))
-     (t
-      (jupyter-org--add-result req (jupyter-org-result req data metadata))))))
+    (jupyter-with-message-content msg (data metadata)
+      (cond
+       ((jupyter-org-request-inline-block-p req)
+        ;; For inline results, only text/plain results are allowed at the moment.
+        ;;
+        ;; TODO: Handle all of the different macro types for inline results, see
+        ;; `org-babel-insert-result'.
+        (setq data `(:text/plain ,(plist-get data :text/plain)))
+        (let ((result (let ((r (jupyter-org-result req data metadata)))
+                        (if (stringp r) r
+                          (or (org-element-property :value r) "")))))
+          (if (jupyter-org-request-async-p req)
+              (org-with-point-at (jupyter-org-request-marker req)
+                (org-babel-insert-result
+                 result (jupyter-org-request-block-params req)
+                 nil nil (jupyter-kernel-language client)))
+            ;; The results are returned in `org-babel-execute:jupyter' in the
+            ;; synchronous case
+            (jupyter-org--add-result req result))))
+       (t
+        (jupyter-org--add-result req (jupyter-org-result req data metadata)))))))
 
 ;;;; Display data
 
-(cl-defmethod jupyter-handle-display-data ((_client jupyter-org-client)
-                                           (req jupyter-org-request)
-                                           data
-                                           metadata
-                                           ;; TODO: Add request objects as text
-                                           ;; properties of source code blocks
-                                           ;; to implement display IDs.  Or how
-                                           ;; can #+NAME be used as a display
-                                           ;; ID?
-                                           _transient)
+(cl-defmethod jupyter-handle-display-data ((_client jupyter-org-client) (req jupyter-org-request) msg)
+  ;; TODO: Add request objects as text properties of source code blocks to
+  ;; implement display IDs.  Or how can #+NAME be used as a display ID?
+  ;;
   ;; Only the data of the execute-result message is inserted into the buffer
   ;; for inline code blocks.
-  (if (jupyter-org-request-inline-block-p req)
-      (jupyter-with-display-buffer "org-results" req
-        (jupyter-insert data metadata)
-        (pop-to-buffer (current-buffer))
-        (set-window-point (get-buffer-window (current-buffer)) (point-min)))
-    (jupyter-org--add-result req (jupyter-org-result req data metadata))))
+  (jupyter-with-message-content msg (data metadata)
+    (if (jupyter-org-request-inline-block-p req)
+        (jupyter-with-display-buffer "org-results" req
+          (jupyter-insert data metadata)
+          (pop-to-buffer (current-buffer))
+          (set-window-point (get-buffer-window (current-buffer)) (point-min)))
+      (jupyter-org--add-result req (jupyter-org-result req data metadata)))))
 
 ;;;; Execute reply
 
@@ -347,21 +334,17 @@ to."
       (forward-line)
       (insert (org-element-normalize-string (plist-get pl :text))))))
 
-(cl-defmethod jupyter-handle-execute-reply ((_client jupyter-org-client)
-                                            (req jupyter-org-request)
-                                            status
-                                            _execution-count
-                                            _user-expressions
-                                            payload)
-  (when payload
-    (org-with-point-at (jupyter-org-request-marker req)
-      (jupyter-handle-payload payload)))
-  (if (equal status "ok")
-      (message "Code block evaluation complete.")
-    (message "An error occurred when evaluating code block."))
-  (when (jupyter-org-request-async-p req)
-    (jupyter-org--clear-request-id req)
-    (run-hooks 'org-babel-after-execute-hook)))
+(cl-defmethod jupyter-handle-execute-reply ((_client jupyter-org-client) (req jupyter-org-request) msg)
+  (jupyter-with-message-content msg (status payload)
+    (when payload
+      (org-with-point-at (jupyter-org-request-marker req)
+        (jupyter-handle-payload payload)))
+    (if (equal status "ok")
+        (message "Code block evaluation complete.")
+      (message "An error occurred when evaluating code block."))
+    (when (jupyter-org-request-async-p req)
+      (jupyter-org--clear-request-id req)
+      (run-hooks 'org-babel-after-execute-hook))))
 
 ;;; Completion in code blocks
 
