@@ -27,7 +27,6 @@
 ;;; Code:
 
 (require 'zmq)
-(require 'jupyter-zmq-channel-comm)
 (require 'jupyter-env)
 (require 'jupyter-client)
 (require 'jupyter-repl)
@@ -705,28 +704,24 @@
 ;;; Client
 
 ;; TODO: Different values of the session argument
-;; TODO: Update for new `jupyter-channel-ioloop-comm'
+;;
+;; FIXME: Re-work after refactoring the kernelspec -> connectable kernel code paths.
 (ert-deftest jupyter-comm-initialize ()
   :tags '(client init)
   (skip-unless nil)
-  ;; The default comm is a jupyter-channel-ioloop-comm
-  (let ((conn-info (jupyter-test-conn-info-plist))
-        (client (jupyter-kernel-client)))
-    (oset client kcomm (jupyter-zmq-channel-comm))
-    (jupyter-comm-initialize client conn-info)
-    ;; kcomm by default is a `jupyter-channel-ioloop-comm'
-    (with-slots (session kcomm) client
-      (ert-info ("Client session")
+  (jupyter-test-with-python-client client
+	(with-slots (session kcomm) client
+	  (ert-info ("Client session")
         (should (string= (jupyter-session-key session)
                          (plist-get conn-info :key)))
         (should (equal (jupyter-session-conn-info session)
-                       conn-info)))
-      (ert-info ("Heartbeat channel initialized")
+					   conn-info)))
+	  (ert-info ("Heartbeat channel initialized")
         (should (eq session (oref (oref kcomm hb) session)))
         (should (string= (oref (oref kcomm hb) endpoint)
                          (format "tcp://127.0.0.1:%d"
                                  (plist-get conn-info :hb_port)))))
-      (ert-info ("Shell, iopub, stdin initialized")
+	  (ert-info ("Shell, iopub, stdin initialized")
         (cl-loop
          for channel in '(:shell :iopub :stdin)
          for port_sym = (intern (concat (symbol-name channel) "_port"))
@@ -775,24 +770,28 @@
 (ert-deftest jupyter-client-channels ()
   :tags '(client channels)
   (ert-info ("Starting/stopping channels")
-    (let ((conn-info (jupyter-test-conn-info-plist))
-          (client (jupyter-kernel-client)))
-      (oset client kcomm (jupyter-zmq-channel-comm))
-      (jupyter-comm-initialize client conn-info)
-      (cl-loop
-       for channel in '(:hb :shell :iopub :stdin)
-       for alive-p = (jupyter-channel-alive-p client channel)
-       do (should-not alive-p))
-      (jupyter-start-channels client)
-      (cl-loop
-       for channel in '(:hb :shell :iopub :stdin)
-       for alive-p = (jupyter-channel-alive-p client channel)
-       do (should alive-p))
-      (jupyter-stop-channels client)
-      (cl-loop
-       for channel in '(:hb :shell :iopub :stdin)
-       for alive-p = (jupyter-channel-alive-p client channel)
-       do (should-not alive-p)))))
+	;; FIXME: Without a new client, I'm getting
+	;;
+	;;   (zmq-EFSM "Operation cannot be accomplished in current state")
+	;;
+	;; on the `jupyter-connect-repl' test pretty consistently.
+	(let ((jupyter-test-with-new-client t))
+	  (jupyter-test-with-python-client client
+		(jupyter-stop-channels client)
+		(cl-loop
+		 for channel in '(:hb :shell :iopub :stdin)
+		 for alive-p = (jupyter-channel-alive-p client channel)
+		 do (should-not alive-p))
+		(jupyter-start-channels client)
+		(cl-loop
+		 for channel in '(:hb :shell :iopub :stdin)
+		 for alive-p = (jupyter-channel-alive-p client channel)
+		 do (should alive-p))
+		(jupyter-stop-channels client)
+		(cl-loop
+		 for channel in '(:hb :shell :iopub :stdin)
+		 for alive-p = (jupyter-channel-alive-p client channel)
+		 do (should-not alive-p))))))
 
 (ert-deftest jupyter-inhibited-handlers ()
   :tags '(client handlers)
