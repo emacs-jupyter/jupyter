@@ -86,9 +86,13 @@
              (thread-yield)
              (thread-yield))))))
 
+(if (functionp 'thread-live-p)
+    (defalias 'jupyter--thread-live-p #'thread-live-p)
+  (defalias 'jupyter--thread-live-p #'thread-alive-p))
+
 (cl-defmethod jupyter-comm-stop ((comm jupyter-zmq-channel-comm))
   (when (and (slot-boundp comm 'thread)
-             (thread-alive-p (oref comm thread)))
+             (jupyter--thread-live-p (oref comm thread)))
     (thread-signal (oref comm thread) 'quit nil)
     (slot-makeunbound comm 'thread))
   (jupyter-stop-channel (oref comm hb))
