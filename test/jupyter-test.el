@@ -828,7 +828,7 @@
            (req (jupyter-send-kernel-info-request client)))
       (should (equal (jupyter-request-inhibited-handlers req)
                      '(:stream)))
-      (should-not (jupyter--run-handler-p
+      (should-not (jupyter--request-allows-handler-p
                    req (jupyter-test-message
                         req :stream (list :name "stdout" :text "foo"))))
       (setq jupyter-inhibit-handlers '(:foo))
