@@ -471,9 +471,6 @@ receiving events on the websocket when this method returns."
   (with-slots (kernel) manager
     (jupyter-api-interrupt-kernel (oref kernel server) (oref kernel id))))
 
-(cl-defmethod jupyter-kill-kernel ((manager jupyter-server-kernel-manager))
-  (jupyter-shutdown-kernel manager))
-
 (cl-defmethod jupyter-shutdown-kernel ((manager jupyter-server-kernel-manager) &optional restart _timeout)
   (with-slots (kernel) manager
     (let ((server (oref kernel server)))

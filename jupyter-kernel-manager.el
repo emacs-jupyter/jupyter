@@ -155,9 +155,6 @@ SLOTS are the slots used to initialize the client with.")
   "Shutdown MANAGER's kernel or restart instead if RESTART is non-nil.
 Wait until TIMEOUT before forcibly shutting down the kernel.")
 
-(cl-defmethod jupyter-kill-kernel ((manager jupyter-kernel-manager))
-  (jupyter-shutdown-kernel manager))
-
 (cl-defgeneric jupyter-interrupt-kernel ((manager jupyter-kernel-manager) &rest args)
   "Interrupt MANAGER's kernel.
 When the kernel has an interrupt mode of \"message\" send an
