@@ -118,6 +118,11 @@
 
 ;;;; Channel querying methods
 
+(cl-defmethod jupyter-comm-alive-p ((comm jupyter-channel-ioloop-comm))
+  (cl-loop
+   for channel in '(:shell :iopub :stdin :hb)
+   thereis (jupyter-channel-alive-p comm channel)))
+
 (cl-defmethod jupyter-channel-alive-p ((comm jupyter-channel-ioloop-comm) channel)
   (if (eq channel :hb)
       (and (slot-boundp comm 'hb)
@@ -126,12 +131,6 @@
       (and ioloop (jupyter-ioloop-alive-p ioloop)
            (jupyter-proxy-channel-alive-p
             (plist-get (oref comm channels) channel))))))
-
-(cl-defmethod jupyter-channels-running-p ((comm jupyter-channel-ioloop-comm))
-  "Are any channels of CLIENT running?"
-  (cl-loop
-   for channel in '(:shell :iopub :stdin :hb)
-   thereis (jupyter-channel-alive-p comm channel)))
 
 ;;;; Channel start/stop methods
 

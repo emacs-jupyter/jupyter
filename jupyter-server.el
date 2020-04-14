@@ -435,9 +435,6 @@ ID of the kernel associated with COMM."
 (cl-defmethod jupyter-channel-alive-p ((comm jupyter-server-kernel-comm) _channel)
   (jupyter-comm-alive-p comm))
 
-(cl-defmethod jupyter-channels-running-p ((comm jupyter-server-kernel-comm))
-  (jupyter-comm-alive-p comm))
-
 ;;;; `jupyter-server-kernel-manager'
 
 (defclass jupyter-server-kernel-manager (jupyter-kernel-manager)
