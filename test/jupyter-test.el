@@ -1900,6 +1900,27 @@ next(x"))))))
     (should (org-babel-jupyter-session-p session))
     (should (equal (org-babel-jupyter-session-name session) "foo/bar"))))
 
+(ert-deftest org-babel-jupyter-initiate-session-by-key ()
+  :tags '(org)
+  (jupyter-org-test
+   (let ((session (make-temp-name "jupyter")))
+     (save-excursion
+       (insert
+        (format "#+begin_src jupyter-python :session %s\n1+1\n#+end_src\n"
+                session)))
+     (let* ((params (nth 2 (org-babel-get-src-block-info)))
+            (key (org-babel-jupyter-session-key params)))
+       (should-not (gethash key org-babel-jupyter-session-clients))
+       (let ((buffer (org-babel-jupyter-initiate-session-by-key
+                      session params))
+             (client (gethash key org-babel-jupyter-session-clients)))
+         (should (bufferp buffer))
+         (should client)
+         (should (object-of-class-p client 'jupyter-repl-client))
+         (should (eq buffer (oref client buffer)))
+         (jupyter-test-kill-buffer buffer)
+         (should-not (gethash key org-babel-jupyter-session-clients)))))))
+
 (ert-deftest ob-jupyter-no-results ()
   :tags '(org)
   (jupyter-org-test-src-block "1 + 1;" ""))

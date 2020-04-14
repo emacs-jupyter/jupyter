@@ -1,5 +1,10 @@
 * master
 
+- Fixed a regression that appears when executing an =org-mode= source
+  block of a previously created session.  A new connection to the
+  session was being created before execution instead of using the old
+  connection.  See #240.
+
 - Fixed regression due to uppercase characters in kernel language
   names, e.g. R.  =emacs-jupyter= would not work at all with language
   specific features.

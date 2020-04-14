@@ -371,8 +371,9 @@ the host."
                     (org-babel-jupyter-parse-session session)
                     kernel))
       (puthash key client org-babel-jupyter-session-clients)
-      (let ((forget-client (lambda () (remhash key org-babel-jupyter-session-clients))))
-        (add-hook 'kill-buffer-hook forget-client nil t)))
+      (jupyter-with-repl-buffer client
+        (let ((forget-client (lambda () (remhash key org-babel-jupyter-session-clients))))
+          (add-hook 'kill-buffer-hook forget-client nil t))))
     (oref client buffer)))
 
 (defun org-babel-jupyter-initiate-session (&optional session params)
