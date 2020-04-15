@@ -37,6 +37,7 @@
 (declare-function tramp-file-name-user "tramp")
 (declare-function tramp-file-name-host "tramp")
 (declare-function jupyter-message-content "jupyter-messages" (msg))
+(declare-function jupyter-new-uuid "jupyter-messages")
 
 ;;; Custom variables
 
@@ -385,8 +386,6 @@ will be called when OBJ is garbage collected."
   (push (make-finalizer finalizer) (oref obj finalizers)))
 
 ;;; Session object definition
-
-(declare-function jupyter-new-uuid "jupyter-messages")
 
 (cl-defstruct (jupyter-session
                (:constructor nil)
