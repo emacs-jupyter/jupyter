@@ -462,7 +462,7 @@ following fields:
                through calls to `jupyter-add-callback' on the request."
   (id "")
   (time (current-time))
-  (idle-received-p nil)
+  (idle-p nil)
   (last-message nil)
   (inhibited-handlers nil)
   (callbacks))

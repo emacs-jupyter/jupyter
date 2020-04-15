@@ -545,7 +545,7 @@ back."
     ;; "last-sent" is an alias for the other.
     (or (> (hash-table-count requests) 2)
         (when-let* ((last-sent (gethash "last-sent" requests)))
-          (not (jupyter-request-idle-received-p last-sent))))))
+          (not (jupyter-request-idle-p last-sent))))))
 
 (defsubst jupyter-last-sent-request (client)
   "Return the most recent `jupyter-request' made by CLIENT."
@@ -557,7 +557,7 @@ back."
   (cl-check-type client jupyter-kernel-client)
   (maphash (lambda (k v)
              (unless (or (equal k "last-sent")
-                         (jupyter-request-idle-received-p v))
+                         (jupyter-request-idle-p v))
                (funcall function v)))
            (oref client requests)))
 
@@ -672,7 +672,7 @@ multiple callbacks you would do
       :execute-reply (lambda (msg) ...)
       :execute-result (lambda (msg) ...))"
   (declare (indent 1))
-  (if (jupyter-request-idle-received-p req)
+  (if (jupyter-request-idle-p req)
       (error "Request already received idle message")
     (while (and msg-type cb)
       (cl-check-type cb function "Callback should be a function")
@@ -739,7 +739,7 @@ within TIMEOUT.  Note that if no TIMEOUT is given, it defaults to
 
 If PROGRESS-MSG is non-nil, it is a message string to display for
 reporting progress to the user while waiting."
-  (or (jupyter-request-idle-received-p req)
+  (or (jupyter-request-idle-p req)
       (jupyter-wait-until req :status
         #'jupyter-message-status-idle-p timeout progress-msg)))
 
@@ -796,7 +796,7 @@ received for it and it is not the most recently sent request."
     (cl-loop
      with last-sent = (gethash "last-sent" requests)
      for req in (hash-table-values requests)
-     when (and (jupyter-request-idle-received-p req)
+     when (and (jupyter-request-idle-p req)
                (not (eq req last-sent)))
      do (unwind-protect
             (jupyter-drop-request client req)
@@ -928,7 +928,7 @@ completed, requests from CLIENT's request table."
               ;; coming in out of order, e.g. before their respective reply
               ;; messages.
               (jupyter--drop-idle-requests client)
-              (setf (jupyter-request-idle-received-p req) t)))))
+              (setf (jupyter-request-idle-p req) t)))))
        (t
         (when (and (or (jupyter-get client 'jupyter-include-other-output)
                        ;; Always handle a startup message
@@ -1883,7 +1883,7 @@ Run FUN when the completions are available."
        (- (point) (length prefix)) (point)
        (completion-table-dynamic
         (lambda (_)
-          (when (and req (not (jupyter-request-idle-received-p req))
+          (when (and req (not (jupyter-request-idle-p req))
                      (not (eq (jupyter-message-type
                                (jupyter-request-last-message req))
                               :complete-reply)))
