@@ -432,40 +432,25 @@ fields:
 (cl-defstruct (jupyter-request
                (:constructor nil)
                (:constructor jupyter-request))
-  "A `jupyter-request' encapsulates the current status of a
-request to a kernel.  A `jupyter-request' consists of the
-following fields:
+  "Represents a request made to a kernel.
+Requests sent by a client always return something that can be
+interpreted as a `jupyter-request'.  It holds the state of a
+request as the kernel and client communicate messages between
+each other.  A client has a request table to keep track of all
+requests that are not considered idle.  The most recent idle
+request is also kept track of.
 
-- ID :: A UUID to match a `jupyter-request' to the received
-        messages of a kernel.
-
-- TIME :: The time at which the request was made.
-
-- IDLE-RECEIVED-P :: A flag variable that is set to t when a
-                    `jupyter-kernel-client' has received the
-                    status: idle message for the request.
-
-- LAST-MESSAGE :: The raw message property list of the last
-                  message received by the kernel in response to
-                  this request.
-
-- INHIBITED-HANDLERS :: A list of handler message types to
-                        prevent the running of that particular
-                        handler.  If set to t, disable all
-                        handlers for this request.  Note this
-                        should not be set directly, dynamically
-                        bind `jupyter-inhibit-handlers' before
-                        making the request.
-
-- CALLBACKS :: An alist mapping message types to their
-               corresponding callbacks.  This alist is modified
-               through calls to `jupyter-add-callback' on the request."
+Each request contains: a message ID, a time sent, a last message
+received by the client that sent it, a list of message types that
+tell the client to not call the handler methods of those types,
+and an alist mapping message types to callback functions a client
+should call."
   (id "")
-  (time (current-time))
+  (time (current-time) :read-only t)
   (idle-p nil)
   (last-message nil)
   (inhibited-handlers nil)
-  (callbacks))
+  (callbacks nil))
 
 ;;; Connecting to a kernel's channels
 
