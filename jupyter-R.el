@@ -42,8 +42,9 @@
   "If html DATA is an iframe, save it to a separate file and open in browser.
 Otherwise, parse it as normal."
   (if (plist-get (plist-get content :metadata) :isolated)
-      (let ((file (or (alist-get :file params)
-                      (jupyter-org-image-file-name data ".html"))))
+      (let* ((data (plist-get content :data))
+             (file (or (alist-get :file params)
+                       (jupyter-org-image-file-name data ".html"))))
         (with-temp-file file
           (insert data))
         (browse-url-of-file file)
