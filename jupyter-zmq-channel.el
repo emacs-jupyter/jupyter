@@ -105,49 +105,33 @@ the ROUTING-ID of the socket.  Return the created socket."
   (not (null (oref channel socket))))
 
 (cl-defmethod jupyter-send ((channel jupyter-zmq-channel) type message &optional msg-id)
-  (jupyter-send (oref channel session) (oref channel socket) type message msg-id))
+  "Send a message on a ZMQ based Jupyter channel.
+CHANNEL is the channel to send MESSAGE on.  TYPE is a Jupyter
+message type, like :kernel-info-request.  Return the message ID
+of the sent message."
+  (cl-destructuring-bind (id . msg)
+      (jupyter-encode-message (oref channel session) type
+        :msg-id msg-id
+        :content message)
+    (prog1 id
+      (zmq-send-multipart (oref channel socket) msg))))
 
 (cl-defmethod jupyter-recv ((channel jupyter-zmq-channel) &optional dont-wait)
+  "Receive a message on CHANNEL.
+Return a cons cell (IDENTS . MSG) where IDENTS are the ZMQ
+message identities, as a list, and MSG is the received message.
+
+If DONT-WAIT is non-nil, return immediately without waiting for a
+message if one isn't already available."
   (condition-case nil
-      (jupyter-recv (oref channel session) (oref channel socket)
-                    (when dont-wait zmq-DONTWAIT))
+      (let ((session (oref channel session))
+            (msg (zmq-recv-multipart (oref channel socket)
+                                     (and dont-wait zmq-DONTWAIT))))
+        (when msg
+          (cl-destructuring-bind (idents . parts)
+              (jupyter--split-identities msg)
+            (cons idents (jupyter-decode-message session parts)))))
     (zmq-EAGAIN nil)))
-
-(cl-defmethod jupyter-send ((session jupyter-session)
-                            socket
-                            type
-                            message
-                            &optional
-                            msg-id
-                            flags)
-  "For SESSION, send a message on SOCKET.
-TYPE is message type of MESSAGE, one of the keys in
-`jupyter-message-types'.  MESSAGE is the message content.
-Optionally supply a MSG-ID to the message, if this is nil a new
-message ID will be generated.  FLAGS has the same meaning as in
-`zmq-send'.  Return the message ID of the sent message."
-  (declare (indent 1))
-  (cl-destructuring-bind (id . msg)
-      (jupyter-encode-message session type
-        :msg-id msg-id :content message)
-    (prog1 id
-      (zmq-send-multipart socket msg flags))))
-
-(cl-defmethod jupyter-recv ((session jupyter-session) socket &optional flags)
-  "For SESSION, receive a message on SOCKET with FLAGS.
-FLAGS is passed to SOCKET according to `zmq-recv'.  Return a cons cell
-
-    (IDENTS . MSG)
-
-where IDENTS are the ZMQ identities associated with MSG and MSG
-is the message property list whose fields can be accessed through
-calls to `jupyter-message-content', `jupyter-message-parent-id',
-and other such functions."
-  (let ((msg (zmq-recv-multipart socket flags)))
-    (when msg
-      (cl-destructuring-bind (idents . parts)
-          (jupyter--split-identities msg)
-        (cons idents (jupyter-decode-message session parts))))))
 
 ;;; Heartbeat channel
 
