@@ -46,7 +46,6 @@
 (declare-function org-babel-expand-body:generic "ob-core" (body params &optional var-lines))
 (declare-function org-export-derived-backend-p "ox" (backend &rest backends))
 
-(declare-function jupyter-server-make-instance "jupyter-server")
 (declare-function jupyter-run-server-repl "jupyter-server")
 (declare-function jupyter-connect-server-repl "jupyter-server")
 (declare-function jupyter-server-kernelspecs "jupyter-server")
@@ -314,7 +313,7 @@ client."
   (require 'jupyter-server)
   (let* ((session (org-babel-jupyter-server-session-name session))
          (server (or (jupyter-tramp-server-from-file-name session)
-                     (jupyter-server-make-instance
+                     (jupyter-server
                       :url (jupyter-tramp-url-from-file-name session)))))
     (unless (jupyter-server-has-kernelspec-p server kernel)
       (error "No kernelspec matching \"%s\" exists at %s"
