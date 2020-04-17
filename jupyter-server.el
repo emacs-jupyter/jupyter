@@ -150,7 +150,6 @@ Access should be done through `jupyter-available-kernelspecs'.")))
 
 (cl-defmethod jupyter-start-kernel ((kernel jupyter-server-kernel) &rest _ignore)
   (with-slots (server spec) kernel
-    (jupyter-server--verify-kernelspec server spec)
     (cl-destructuring-bind (&key id &allow-other-keys)
         (jupyter-api-start-kernel server (jupyter-kernelspec-name spec))
       (oset kernel id id))))
@@ -354,19 +353,6 @@ with default `jupyter-api-authentication-method'"))
   "Return non-nil if COMM has a WebSocket connection to a kernel with ID."
   (and (jupyter-comm-alive-p comm)
        (member id (process-get (oref (oref comm ioloop) process) :kernel-ids))))
-
-(defun jupyter-server--verify-kernelspec (server spec)
-  (cl-destructuring-bind (name . kspec) spec
-    (let ((server-spec (assoc name (jupyter-server-kernelspecs server))))
-      (unless server-spec
-        (error "No kernelspec matching %s on server @ %s"
-               name (oref server url)))
-      (when (cl-loop
-             with sspec = (cddr server-spec)
-             for (k v) on sspec by #'cddr
-             thereis (not (equal (plist-get kspec k) v)))
-        (error "%s kernelspec doesn't match one on server @ %s"
-               name (oref server url))))))
 
 (cl-defmethod jupyter-server-kernelspecs ((server jupyter-server) &optional refresh)
   "Return the kernelspecs on SERVER.
