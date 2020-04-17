@@ -373,20 +373,28 @@ CLIENT defaults to `jupyter-current-client'."
 (defun jupyter--connection-info (info-or-session)
   "Return the connection plist according to INFO-OR-SESSION.
 See `jupyter-comm-initialize'."
-  (cond
-   ((jupyter-session-p info-or-session)
-    (jupyter-session-conn-info info-or-session))
-   ((json-plist-p info-or-session) info-or-session)
-   ((stringp info-or-session)
-    (if (file-remote-p info-or-session)
-        ;; TODO: Don't tunnel if a tunnel already exists
-        (jupyter-tunnel-connection info-or-session)
-      (unless (file-exists-p info-or-session)
-        (error "File does not exist (%s)" info-or-session))
-      (jupyter-read-plist info-or-session)))
-   (t (signal 'wrong-type-argument
-              (list info-or-session
-                    '(or jupyter-session-p json-plist-p stringp))))))
+  (let ((conn-info (cond
+                    ((jupyter-session-p info-or-session)
+                     (jupyter-session-conn-info info-or-session))
+                    ((json-plist-p info-or-session) info-or-session)
+                    ((stringp info-or-session)
+                     (if (file-remote-p info-or-session)
+                         ;; TODO: Don't tunnel if a tunnel already exists
+                         (jupyter-tunnel-connection info-or-session)
+                       (unless (file-exists-p info-or-session)
+                         (error "File does not exist (%s)" info-or-session))
+                       (jupyter-read-plist info-or-session)))
+                    (t (signal 'wrong-type-argument
+                               (list info-or-session
+                                     '(or jupyter-session-p json-plist-p stringp)))))))
+    ;; Also validate the signature scheme here.
+    (cl-destructuring-bind (&key key signature_scheme &allow-other-keys)
+        conn-info
+      (when (and (> (length key) 0)
+                 (not (functionp
+                       (intern (concat "jupyter-" signature_scheme)))))
+        (error "Unsupported signature scheme: %s" signature_scheme)))
+    conn-info))
 
 ;; FIXME: This requires that CLIENT is communicating with a kernel using a
 ;; `jupyter-channel-ioloop-comm' object.
@@ -415,12 +423,6 @@ found at
 http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
   (let ((session (and (jupyter-session-p info-or-session) info-or-session))
         (conn-info (jupyter--connection-info info-or-session)))
-    (cl-destructuring-bind (&key key signature_scheme &allow-other-keys)
-        conn-info
-      (when (and (> (length key) 0)
-                 (not (functionp
-                       (intern (concat "jupyter-" signature_scheme)))))
-        (error "Unsupported signature scheme: %s" signature_scheme)))
     (oset client session
           (or (copy-sequence session)
               (jupyter-session
