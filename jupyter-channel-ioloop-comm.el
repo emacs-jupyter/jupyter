@@ -89,7 +89,8 @@
 (cl-defmethod jupyter-comm-start ((comm jupyter-channel-ioloop-comm))
   (with-slots (ioloop session) comm
     (unless (jupyter-ioloop-alive-p ioloop)
-      (jupyter-ioloop-start ioloop session comm))
+      (jupyter-channel-ioloop-set-session ioloop (oref comm session))
+      (cl-call-next-method))
     (cl-loop
      for channel in '(:hb :shell :iopub :stdin)
      do (jupyter-start-channel comm channel))))

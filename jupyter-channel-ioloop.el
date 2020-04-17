@@ -91,7 +91,7 @@
   (jupyter-ioloop-add-teardown ioloop
     (mapc #'jupyter-stop-channel jupyter-channel-ioloop-channels)))
 
-(defun jupyter-channel-ioloop--set-session (ioloop session)
+(defun jupyter-channel-ioloop-set-session (ioloop session)
   "In the IOLOOP, set SESSION as the `jupyter-channel-ioloop-session'.
 Add a form to IOLOOP's setup that sets the variable
 `jupyter-channel-ioloop-session' to a `jupyter-session' based on
@@ -107,26 +107,6 @@ sets `jupyter-channel-ioloop-session' via `setq' before doing so."
                                  (eq (cadr f) 'jupyter-channel-ioloop-session)))
                      setup)))
       (oref ioloop setup)))
-
-(cl-defmethod jupyter-ioloop-start ((ioloop jupyter-channel-ioloop)
-                                    (session jupyter-session)
-                                    obj &key buffer)
-  "Start IOLOOP, using SESSION to set the `jupyter-channel-ioloop-session'.
-Add setup forms to IOLOOP that will initialize the
-`jupyter-channel-ioloop-session' variable to a `jupyter-session'
-based on SESSION's id and key.  Also add
-`jupyter-ioloop-recv-messages' to `jupyter-ioloop-post-hook'.  In
-addition add the events send, start-channel, and stop-channel
-that the parent Emacs process can send to the IOLOOP.  See
-`jupyter-channel-ioloop-add-send-event',
-`jupyter-channel-ioloop-add-start-channel-event', and
-`jupyter-ioloop-add-stop-channel-event'.
-
-After doing the above initialization, start the IOLOOP.  OBJ and
-BUFFER have the same meaning as in the method definition for
-`jupyter-ioloop'."
-  (jupyter-channel-ioloop--set-session ioloop session)
-  (cl-call-next-method ioloop obj :buffer buffer))
 
 ;;; Channel events
 
