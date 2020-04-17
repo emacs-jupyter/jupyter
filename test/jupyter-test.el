@@ -961,7 +961,7 @@
   (let ((ioloop (jupyter-ioloop))
         (jupyter-default-timeout 2))
     (should-not (process-live-p (oref ioloop process)))
-    (jupyter-ioloop-start ioloop :tag1)
+    (jupyter-ioloop-start ioloop #'ignore)
     (should (equal (jupyter-ioloop-last-event ioloop) '(start)))
     (with-slots (process) ioloop
       (should (process-live-p process))
@@ -973,17 +973,17 @@
 (defvar jupyter-ioloop-test-handler-called nil
   "Flag variable used for testing the `juyter-ioloop'.")
 
-(cl-defmethod jupyter-ioloop-handler ((_ioloop jupyter-ioloop)
-                                      (_tag (eql :test))
-                                      (event (head test)))
-  (should (equal (cadr event) "message"))
-  (setq jupyter-ioloop-test-handler-called t))
+(defun jupyter-test-ioloop-start (ioloop)
+  (jupyter-ioloop-start
+   ioloop (lambda (event)
+            (should (equal (cadr event) "message"))
+            (setq jupyter-ioloop-test-handler-called t))))
 
 (ert-deftest jupyter-ioloop-wait-until ()
   :tags '(ioloop)
   (let ((ioloop (jupyter-ioloop)))
     (should-not (jupyter-ioloop-last-event ioloop))
-    (jupyter-ioloop-start ioloop :test)
+    (jupyter-test-ioloop-start ioloop)
     (should (equal (jupyter-ioloop-last-event ioloop) '(start)))
     (jupyter-ioloop-stop ioloop)))
 
@@ -994,13 +994,13 @@
       (setq jupyter-ioloop-test-handler-called nil)
       (jupyter-ioloop-add-callback ioloop
         `(lambda () (zmq-prin1 (list 'test "message"))))
-      (jupyter-ioloop-start ioloop :test)
+      (jupyter-test-ioloop-start ioloop)
       (jupyter-ioloop-stop ioloop)
       (should jupyter-ioloop-test-handler-called)))
   (ert-info ("Callback added after starting the ioloop")
     (let ((ioloop (jupyter-ioloop)))
       (setq jupyter-ioloop-test-handler-called nil)
-      (jupyter-ioloop-start ioloop :test)
+      (jupyter-test-ioloop-start ioloop)
       (should (process-live-p (oref ioloop process)))
       (jupyter-ioloop-add-callback ioloop
         `(lambda () (zmq-prin1 (list 'test "message"))))
@@ -1014,7 +1014,7 @@
     (setq jupyter-ioloop-test-handler-called nil)
     (jupyter-ioloop-add-setup ioloop
       (zmq-prin1 (list 'test "message")))
-    (jupyter-ioloop-start ioloop :test)
+    (jupyter-test-ioloop-start ioloop)
     (jupyter-ioloop-stop ioloop)
     (should jupyter-ioloop-test-handler-called)))
 
@@ -1024,7 +1024,7 @@
     (setq jupyter-ioloop-test-handler-called nil)
     (jupyter-ioloop-add-teardown ioloop
       (zmq-prin1 (list 'test "message")))
-    (jupyter-ioloop-start ioloop :test)
+    (jupyter-test-ioloop-start ioloop)
     (jupyter-ioloop-stop ioloop)
     (should jupyter-ioloop-test-handler-called)))
 
@@ -1035,7 +1035,7 @@
     (jupyter-ioloop-add-event ioloop test (data)
       "Echo DATA back to the parent process."
       (list 'test data))
-    (jupyter-ioloop-start ioloop :test)
+    (jupyter-test-ioloop-start ioloop)
     (jupyter-send ioloop 'test "message")
     (jupyter-ioloop-stop ioloop)
     (should jupyter-ioloop-test-handler-called)))

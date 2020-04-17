@@ -36,21 +36,15 @@
   ((ioloop :type jupyter-ioloop))
   :abstract t)
 
-;; Fall back method that catches IOLoop events that have not been handled by
-;; the communication layer already.
-(cl-defmethod jupyter-ioloop-handler ((_ioloop jupyter-ioloop)
-                                      (comm jupyter-ioloop-comm)
-                                      event)
-  (unless (memq (car event) '(start quit))
-    (jupyter-event-handler comm event)))
-
 (cl-defmethod jupyter-send ((comm jupyter-ioloop-comm) &rest event)
   (apply #'jupyter-send (oref comm ioloop) event))
 
 (cl-defmethod jupyter-comm-start ((comm jupyter-ioloop-comm))
   (with-slots (ioloop) comm
     (unless (jupyter-ioloop-alive-p ioloop)
-      (jupyter-ioloop-start ioloop comm))))
+      (jupyter-ioloop-start
+       ioloop (lambda (event)
+                (jupyter-event-handler comm event))))))
 
 (cl-defmethod jupyter-comm-stop ((comm jupyter-ioloop-comm))
   (with-slots (ioloop) comm
