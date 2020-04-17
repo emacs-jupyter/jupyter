@@ -41,15 +41,6 @@
 (defvar jupyter--kernelspecs (make-hash-table :test #'equal :size 5)
   "An alist matching kernel names to their kernelspec directories.")
 
-(defun jupyter-read-kernelspec (dir)
-  "Return the kernelspec found in DIR.
-If DIR contains a \"kernel.json\" file, assume that it is the
-kernelspec of a kernel and return the plist created by a call to
-`jupyter-read-plist'."
-  (let ((file (expand-file-name "kernel.json" dir)))
-    (if (file-exists-p file) (jupyter-read-plist file)
-      (error "No kernel.json file found in %s" dir))))
-
 (defun jupyter-available-kernelspecs (&optional refresh)
   "Get the available kernelspecs.
 Return an alist mapping kernel names to (DIRECTORY . PLIST) pairs
@@ -146,29 +137,6 @@ Optional argument REFRESH has the same meaning as in
     (nth (- (length display-names)
             (length (member name display-names)))
          specs)))
-
-;; TODO: Define a kernel-spec mode alist mapping languages
-;; to the modes that they may use.
-(defun jupyter-kernelspecs-for-mode (&optional mode refresh)
-  "Attempt to find available kernelspecs for MODE.
-MODE should be a major mode symbol and defaults to `major-mode'.
-REFRESH has the same meaning as in
-`jupyter-available-kernelspecs'.  Return a list of available
-kernelspecs or nil if none could be found.  Note that this does
-not mean that no kernel exists for MODE.
-
-Currently this just concatenates the kernelspec language name
-with `-mode' to see if `major-mode' is equivalent.  This is
-sufficient for `python' and `julia' kernels using their standard
-major modes, but most likely will fail for other cases."
-  (cl-loop
-   for kernelspec in (jupyter-available-kernelspecs refresh)
-   for (_kernel . (_dir . spec)) = kernelspec
-   for language = (plist-get spec :language)
-   ;; attempt to match the major mode to a spec
-   if (eq (intern (concat language "-mode"))
-          (or mode major-mode))
-   collect kernelspec))
 
 (provide 'jupyter-kernelspec)
 
