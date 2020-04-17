@@ -699,11 +699,12 @@ variable in their configurations without having to also set the
 :kernel header argument since it is common for only one per
 language to exist on someone's system."
   (cl-loop
-   with specs = (or specs
-                    (with-demoted-errors "Error retrieving kernelspecs: %S"
-                      (jupyter-available-kernelspecs refresh)))
-   for (kernel . (_dir . spec)) in specs
-   for lang = (jupyter-canonicalize-language-string (plist-get spec :language))
+   for spec in (or specs
+                   (with-demoted-errors "Error retrieving kernelspecs: %S"
+                     (jupyter-available-kernelspecs refresh)))
+   for kernel = (jupyter-kernelspec-name spec)
+   for lang = (jupyter-canonicalize-language-string
+               (plist-get (jupyter-kernelspec-plist spec) :language))
    unless (member lang languages) collect lang into languages and
    do (org-babel-jupyter-make-language-alias kernel lang)
    ;; KLUDGE: The :kernel header argument is always set, even when we aren't

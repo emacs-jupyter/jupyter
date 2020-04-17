@@ -216,7 +216,7 @@ If the `current-buffer' is not a REPL, this is identical to
         (cl-callf2 delq saved ,saved-sym))
        (let* ((,spec (progn (jupyter-error-if-no-kernelspec ,kernel)
                             (car (jupyter-find-kernelspecs ,kernel))))
-              (,saved (cdr (assoc (car ,spec) ,saved-sym)))
+              (,saved (cdr (assoc (jupyter-kernelspec-name ,spec) ,saved-sym)))
               (,client (if (and ,saved (not jupyter-test-with-new-client))
                            ,saved
                          ;; Want a fresh kernel, so shutdown the cached one
@@ -225,9 +225,9 @@ If the `current-buffer' is not a REPL, this is identical to
                                (jupyter-shutdown-kernel (oref ,saved manager))
                              (jupyter-send-shutdown-request ,saved))
                            (jupyter-stop-channels ,saved))
-                         (let ((client (,client-fun (car ,spec))))
+                         (let ((client (,client-fun (jupyter-kernelspec-name ,spec))))
                            (prog1 client
-                             (let ((el (cons (car ,spec) client)))
+                             (let ((el (cons (jupyter-kernelspec-name ,spec) client)))
                                (push el ,saved-sym)))))))
          ;; See the note about increasing timeouts during CI testing at the top
          ;; of jupyter-test.el
@@ -399,7 +399,7 @@ The only difference between them will be their names."
   "Return the IPython kernel version string corresponding to SPEC.
 Assumes that SPEC is a kernelspec for a Python kernel and
 extracts the IPython kernel's semver."
-  (let* ((cmd (aref (plist-get spec :argv) 0))
+  (let* ((cmd (aref (plist-get (jupyter-kernelspec-plist spec) :argv) 0))
          (process-environment
           (append
            (cl-loop for (key val) on (plist-get spec :env) by #'cddr

@@ -2128,6 +2128,11 @@ command on the host."
                      t nil t))
   (or client-class (setq client-class 'jupyter-repl-client))
   (jupyter-error-if-not-client-class-p client-class 'jupyter-repl-client)
+  (unless (called-interactively-p 'interactive)
+    (or (when-let* ((spec (car (jupyter-find-kernelspecs kernel-name)))
+                    (name (jupyter-kernelspec-name spec)))
+          (setq kernel-name name))
+        (error "No kernel found for prefix (%s)" kernel-name)))
   ;; For `jupyter-start-new-kernel', we don't require this at top-level since
   ;; there are many ways to interact with a kernel, e.g. through a notebook
   ;; server, and we don't want to load any unnecessary files.

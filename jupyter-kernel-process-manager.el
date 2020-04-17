@@ -166,7 +166,7 @@ argument of the process."
   :documentation "A Jupyter kernel launched from a kernelspec.")
 
 (cl-defmethod jupyter-start-kernel ((kernel jupyter-spec-kernel) &rest _args)
-  (cl-destructuring-bind (_name . (resource-dir . spec)) (oref kernel spec)
+  (pcase-let (((cl-struct jupyter-kernelspec resource-directory plist) (oref kernel spec)))
     ;; FIXME: Cleanup old connection file on kernel restarts.  They will be
     ;; cleaned up eventually, but not doing it immediately leaves stale
     ;; connection files.
@@ -178,16 +178,16 @@ argument of the process."
              ;; The first entry takes precedence when duplicated
              ;; variables are found in `process-environment'
              (cl-loop
-              for (k v) on (plist-get spec :env) by #'cddr
+              for (k v) on (plist-get plist :env) by #'cddr
               collect (format "%s=%s" (cl-subseq (symbol-name k) 1) v))
              process-environment)))
       (apply #'cl-call-next-method
              kernel (cl-loop
-                     for arg in (append (plist-get spec :argv) nil)
+                     for arg in (append (plist-get plist :argv) nil)
                      if (equal arg "{connection_file}")
                      collect (file-local-name conn-file)
                      else if (equal arg "{resource_dir}")
-                     collect (file-local-name resource-dir)
+                     collect (file-local-name resource-directory)
                      else collect arg))
       (jupyter--after-kernel-process-ready kernel
           "Starting %s kernel process..."

@@ -152,7 +152,7 @@ Access should be done through `jupyter-available-kernelspecs'.")))
   (with-slots (server spec) kernel
     (jupyter-server--verify-kernelspec server spec)
     (cl-destructuring-bind (&key id &allow-other-keys)
-        (jupyter-api-start-kernel server (car spec))
+        (jupyter-api-start-kernel server (jupyter-kernelspec-name spec))
       (oset kernel id id))))
 
 (cl-defmethod jupyter-kill-kernel ((_kernel jupyter-server-kernel))
@@ -356,7 +356,7 @@ with default `jupyter-api-authentication-method'"))
        (member id (process-get (oref (oref comm ioloop) process) :kernel-ids))))
 
 (defun jupyter-server--verify-kernelspec (server spec)
-  (cl-destructuring-bind (name _ . kspec) spec
+  (cl-destructuring-bind (name . kspec) spec
     (let ((server-spec (assoc name (jupyter-server-kernelspecs server))))
       (unless server-spec
         (error "No kernelspec matching %s on server @ %s"
@@ -385,10 +385,10 @@ The kernelspecs are returned in the same form as returned by
                  (cl-loop
                   with specs = (plist-get specs :kernelspecs)
                   for (_ spec) on specs by #'cddr
-                  ;; Uses the same format as `jupyter-available-kernelspecs'
-                  ;;     (name dir . spec)
-                  collect (cons (plist-get spec :name)
-                                (cons nil (plist-get spec :spec)))))))
+                  for name = (plist-get spec :name)
+                  collect (make-jupyter-kernelspec
+                           :name name
+                           :plist (plist-get spec :spec))))))
   (plist-get (oref server kernelspecs) :kernelspecs))
 
 (cl-defmethod jupyter-server-has-kernelspec-p ((server jupyter-server) name)
@@ -622,7 +622,7 @@ is used as determined by `jupyter-current-server'."
   (interactive (list (jupyter-current-server current-prefix-arg)))
   (let* ((specs (jupyter-server-kernelspecs server))
          (spec (jupyter-completing-read-kernelspec specs)))
-    (jupyter-api-start-kernel server (car spec))))
+    (jupyter-api-start-kernel server (jupyter-kernelspec-name spec))))
 
 ;;; REPL
 
@@ -717,15 +717,16 @@ the same meaning as in `jupyter-connect-repl'."
            t nil t)))
   (or client-class (setq client-class 'jupyter-repl-client))
   (jupyter-error-if-not-client-class-p client-class 'jupyter-repl-client)
-  (let* ((specs (jupyter-server-kernelspecs server))
-         (manager
+  (let* ((manager
           (or (jupyter-server-find-manager server kernel-id)
               (let ((model (jupyter-api-get-kernel server kernel-id)))
                 (jupyter-server-kernel-manager
                  :kernel (jupyter-server-kernel
                           :id kernel-id
                           :server server
-                          :spec (assoc (plist-get model :name) specs))))))
+                          :spec (car (jupyter-find-kernelspecs
+                                      (plist-get model :name)
+                                      (jupyter-server-kernelspecs server))))))))
          (client (jupyter-make-client manager client-class)))
     (jupyter-start-channels client)
     (jupyter-bootstrap-repl client repl-name associate-buffer display)))

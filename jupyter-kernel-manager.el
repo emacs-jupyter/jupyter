@@ -80,7 +80,7 @@
 
 (defclass jupyter-kernel (jupyter-kernel-lifetime)
   ((spec
-    :type cons
+    :type jupyter-kernelspec
     :initarg :spec
     :documentation "The kernelspec for this kernel.
 SPEC is in the same format as one of the elements returned by
@@ -107,7 +107,7 @@ access the name of the kernelspec.")
 
 (cl-defmethod jupyter-kernel-name ((kernel jupyter-kernel))
   "Return the name of KERNEL."
-  (car (oref kernel spec)))
+  (jupyter-kernelspec-name (oref kernel spec)))
 
 ;;; `jupyter-kernel-manager'
 
