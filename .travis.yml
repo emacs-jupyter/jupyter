@@ -37,6 +37,10 @@ before_script:
 script:
   - export PATH=$HOME/.cask/bin:$PATH
   - cd $TRAVIS_BUILD_DIR
+  # Ensure ssh does not prompt for anything
+  - ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa
+  - cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+  - ssh -o StrictHostKeyChecking=no localhost exit
   - make dev
   - make compile
   - make test
