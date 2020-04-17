@@ -163,7 +163,7 @@ websocket.")
   (cl-callf2 delq ws jupyter-server-connected-kernels))
 
 (defun jupyter-server-ioloop--connect (kernel-id)
-  (let ((ws (jupyter-api-get-kernel-ws
+  (let ((ws (jupyter-api-kernel-websocket
              jupyter-server-rest-client kernel-id
              :on-error #'jupyter-server-ioloop--on-error
              :on-message #'jupyter-server-ioloop--on-message)))

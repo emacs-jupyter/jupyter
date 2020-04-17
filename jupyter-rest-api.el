@@ -815,7 +815,7 @@ request."
 
 ;;;; Kernel websocket
 
-(defun jupyter-api-get-kernel-ws (client id &rest plist)
+(defun jupyter-api-kernel-websocket (client id &rest plist)
   "Return a websocket using CLIENT's ws-url slot.
 ID identifies the kernel to connect to, PLIST will be passed to
 the call to `websocket-open' to initialize the websocket.

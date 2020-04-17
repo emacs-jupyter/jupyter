@@ -184,14 +184,14 @@
     (should cookies-copied-before-write)
     (should cookies-written)))
 
-(ert-deftest jupyter-api-get-kernel-ws ()
+(ert-deftest jupyter-api-kernel-websocket ()
   :tags '(rest)
   (jupyter-test-rest-api-with-notebook client
     (cl-destructuring-bind (&key id &allow-other-keys)
         (jupyter-api-start-kernel client)
       (unwind-protect
           (let ((kernel-id id)
-                (ws (jupyter-api-get-kernel-ws client id)))
+                (ws (jupyter-api-kernel-websocket client id)))
             (unwind-protect
                 (cl-destructuring-bind (&key id session &allow-other-keys)
                     (websocket-client-data ws)
