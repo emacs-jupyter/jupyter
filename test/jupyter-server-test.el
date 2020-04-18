@@ -115,7 +115,7 @@
                                  jupyter-api-request-headers))))))
 
 (ert-deftest jupyter-api-copy-cookies-for-websocket ()
-  :tags '(rest)
+  :tags '(rest server)
   (let* (url-cookie-storage
          (port (jupyter-test-ensure-notebook-server))
          (host (format "localhost:%s" port)))
@@ -185,7 +185,7 @@
     (should cookies-written)))
 
 (ert-deftest jupyter-api-kernel-websocket ()
-  :tags '(rest)
+  :tags '(rest server)
   (jupyter-test-rest-api-with-notebook client
     (cl-destructuring-bind (&key id &allow-other-keys)
         (jupyter-api-start-kernel client)
@@ -202,12 +202,12 @@
         (jupyter-api-shutdown-kernel client id)))))
 
 (ert-deftest jupyter-api-server-accessible-p ()
-  :tags '(rest)
+  :tags '(rest server)
   (jupyter-test-rest-api-with-notebook client
     (should (jupyter-api-server-accessible-p client))))
 
 (ert-deftest jupyter-api-request-xsrf-cookie ()
-  :tags '(rest)
+  :tags '(rest server)
   (jupyter-test-rest-api-with-notebook client
     (let ((url (oref client url)))
       (should-not (jupyter-api-xsrf-header-from-cookies url))
@@ -215,7 +215,7 @@
       (should (jupyter-api-xsrf-header-from-cookies url)))))
 
 (ert-deftest jupyter-api-authenticate ()
-  :tags '(rest)
+  :tags '(rest server)
   (cl-letf (((symbol-function #'url-cookie-write-file) #'ignore))
     (ert-info ("Password authentication")
       (let ((jupyter-test-notebook nil)

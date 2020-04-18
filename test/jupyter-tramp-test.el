@@ -29,7 +29,7 @@
 (require 'jupyter-tramp)
 
 (ert-deftest jupyter-tramp-file-name-p ()
-  :tags '(tramp)
+  :tags '(tramp server)
   (should-not (jupyter-tramp-file-name-p "foobar"))
   (should-not (jupyter-tramp-file-name-p "/foobar"))
   (should-not (jupyter-tramp-file-name-p "/ssh::foobar"))
@@ -38,7 +38,7 @@
   (should (equal (jupyter-tramp-file-name-p "/jpys::/foobar") "jpys")))
 
 (ert-deftest jupyter-tramp-file-directory-p ()
-  :tags '(tramp)
+  :tags '(tramp server)
   (jupyter-test-at-temporary-directory
     (let* ((tfile (make-temp-file "file-directory-p"))
            (tdir (make-temp-file "file-directory-p" 'directory))
@@ -54,7 +54,7 @@
         (delete-file tfile)))))
 
 (ert-deftest jupyter-tramp-file-writable-p ()
-  :tags '(tramp)
+  :tags '(tramp server)
   (jupyter-test-at-temporary-directory
     (let* ((tname (make-temp-name "file-writable-p"))
            (jpyfile (expand-file-name tname "/jpy::/")))
@@ -64,7 +64,7 @@
       (should (file-writable-p jpyfile)))))
 
 (ert-deftest jupyter-tramp-make-directory ()
-  :tags '(tramp)
+  :tags '(tramp server)
   (jupyter-test-at-temporary-directory
     (let* ((tdir (make-temp-name "make-directory"))
            (jpydir (expand-file-name tdir "/jpy::/")))
@@ -79,7 +79,7 @@
           (delete-directory tdir))))))
 
 (ert-deftest jupyter-tramp-file-local-copy ()
-  :tags '(tramp)
+  :tags '(tramp server)
   (jupyter-test-at-temporary-directory
     (let* ((tfile (make-temp-file "file-local-copy"))
            (jpyfile (expand-file-name (file-name-nondirectory tfile) "/jpy::/")))
@@ -100,7 +100,7 @@
         (delete-file tfile)))))
 
 (ert-deftest jupyter-tramp-rename-file ()
-  :tags '(tramp)
+  :tags '(tramp server)
   (jupyter-test-at-temporary-directory
     (let* ((tfile (make-temp-file "rename-file"))
            (tnewname (jupyter-new-uuid))
@@ -135,7 +135,7 @@
           (ignore-errors (delete-file tfile)))))))
 
 (ert-deftest jupyter-tramp-copy-file ()
-  :tags '(tramp)
+  :tags '(tramp server)
   (jupyter-test-at-temporary-directory
     (cl-macrolet
         ((file-contents
@@ -173,7 +173,7 @@
           (check-copy jpy1 jpy2 c1))))))
 
 (ert-deftest jupyter-tramp-delete-file ()
-  :tags '(tramp)
+  :tags '(tramp server)
   (jupyter-test-at-temporary-directory
     (let* ((tfile (make-temp-file "delete-file"))
            (tdir (make-temp-file "delete-file" 'directory))
@@ -198,7 +198,7 @@
           (delete-directory tdir))))))
 
 (ert-deftest jupyter-delete-directory ()
-  :tags '(tramp)
+  :tags '(tramp server)
   (jupyter-test-at-temporary-directory
     (let* ((tfile (make-temp-file "delete-directory"))
            (tdir (make-temp-file "delete-directory" 'directory))
@@ -234,7 +234,7 @@
           (delete-directory tdir t))))))
 
 (ert-deftest jupyter-tramp-file-attributes ()
-  :tags '(tramp)
+  :tags '(tramp server)
   (jupyter-test-at-temporary-directory
     (let* ((file (make-temp-file "file-attributes"))
            (jpyfile (expand-file-name
@@ -266,7 +266,7 @@
         (delete-file file)))))
 
 (ert-deftest jupyter-tramp-expand-file-name ()
-  :tags '(tramp)
+  :tags '(tramp server)
   (should (equal "/foo" (tramp-drop-volume-letter (expand-file-name "/foo" "/jpy:h:/foo"))))
   (should (equal "~/foo" (abbreviate-file-name (expand-file-name "~/foo" "/jpy:h:/foo"))))
   (should (equal "/jpy:h:/foo/bar" (expand-file-name "bar" "/jpy:h:/foo")))
@@ -281,14 +281,14 @@
 
 ;; TODO
 (ert-deftest jupyter-tramp-file-name-all-completions ()
-  :tags '(tramp))
+  :tags '(tramp server))
 
 ;; TODO
 (ert-deftest jupyter-tramp-file-remote-p ()
-  :tags '(tramp))
+  :tags '(tramp server))
 
 (ert-deftest jupyter-tramp-write-region ()
-  :tags '(tramp)
+  :tags '(tramp server)
   (jupyter-test-at-temporary-directory
     (let* ((file (make-temp-file "write-region"))
            (jpyfile (expand-file-name
