@@ -123,6 +123,53 @@ it hasn't been already."
         (insert (json-encode-plist
                  (jupyter-session-conn-info session)))))))
 
+(defun jupyter-session-with-random-ports ()
+  "Return a `jupyter-session' with random channel ports.
+The session can be used to write a connection file, see
+`jupyter-write-connection-file'."
+  ;; The actual work of making the connection file is left up to the
+  ;; `jupyter kernel` shell command.  This is done to support
+  ;; launching remote kernels via TRAMP.  The Jupyter suite of shell
+  ;; commands probably exist on the remote system, so we rely on them
+  ;; to figure out a set of open ports on the remote.
+  (with-temp-buffer
+    ;; NOTE: On Windows, apparently the "jupyter kernel" command uses something
+    ;; like an exec shell command to start the process which launches the kernel,
+    ;; but exec like commands on Windows start a new process instead of replacing
+    ;; the current one which results in the process we start here exiting after
+    ;; the new process is launched.  We call python directly to avoid this.
+    (let ((process (start-file-process
+                    "jupyter-session-with-random-ports" (current-buffer)
+                    (jupyter-locate-python) "-c"
+                    "from jupyter_client.kernelapp import main; main()")))
+      (set-process-query-on-exit-flag process nil)
+      (jupyter-with-timeout
+          (nil jupyter-long-timeout
+               (error "`jupyter kernel` failed to show connection file path"))
+        (and (process-live-p process)
+             (goto-char (point-min))
+             (re-search-forward "Connection file: \\(.+\\)\n" nil t)))
+      (let* ((conn-file (concat
+                        (save-match-data
+                          (file-remote-p default-directory))
+                        (match-string 1)))
+            (conn-info (jupyter-read-connection conn-file)))
+        ;; Tell the `jupyter kernel` process to shutdown itself and
+        ;; the launched kernel.
+        (interrupt-process process)
+        ;; Wait until the connection file is cleaned up before
+        ;; forgetting about the process completely.
+        (jupyter-with-timeout
+            (nil jupyter-default-timeout
+                 (delete-file conn-file))
+          (file-exists-p conn-file))
+        (delete-process process)
+        (let ((new-key (jupyter-new-uuid)))
+          (plist-put conn-info :key new-key)
+          (jupyter-session
+           :conn-info conn-info
+           :key new-key))))))
+
 (provide 'jupyter-env)
 
 ;;; jupyter-env.el ends here

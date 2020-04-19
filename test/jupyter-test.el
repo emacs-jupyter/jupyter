@@ -700,6 +700,65 @@
                 (jupyter-stop-channels jupyter-current-client)))
           (jupyter-shutdown-kernel manager))))))
 
+(ert-deftest jupyter-session-with-random-ports ()
+  :tags '(kernel)
+  (let ((session (jupyter-session-with-random-ports)))
+    (should (jupyter-session-p session))
+    (let ((process-exists
+           (cl-loop
+            for p in (process-list)
+            thereis (string= (process-name p)
+                             "jupyter-session-with-random-ports"))))
+      (should-not process-exists))
+    (cl-destructuring-bind (&key hb_port stdin_port
+                                 control_port shell_port iopub_port
+                                 &allow-other-keys)
+        (jupyter-session-conn-info session)
+      ;; Verify the ports are open for us
+      (cl-loop
+       for port in (list hb_port stdin_port
+                         control_port shell_port iopub_port)
+       for proc = (make-network-process
+                   :name "jupyter-test"
+                   :server t
+                   :host "127.0.0.1"
+                   :service port)
+       do (delete-process proc)))))
+
+(ert-deftest jupyter-expand-environment-variables ()
+  :tags '(kernel)
+  (let ((process-environment
+         (append (list "FOO=bar")
+                 process-environment)))
+    (should (string= (jupyter-expand-environment-variables "xy") "xy"))
+    (should (string= (jupyter-expand-environment-variables "${FOO}xy") "barxy"))
+    (should (string= (jupyter-expand-environment-variables "x${FOO}y") "xbary"))
+    (should (string= (jupyter-expand-environment-variables "xy${FOO}") "xybar"))
+    (should (string= (jupyter-expand-environment-variables "${FOO}x${FOO}y") "barxbary"))))
+
+(ert-deftest jupyter-process-environment ()
+  :tags '(kernel)
+  (let ((process-environment
+         (append (list "FOO=bar")
+                 process-environment)))
+    (should (equal (jupyter-process-environment
+                    (make-jupyter-kernelspec
+                     :plist '(:env (:ONE "x" :TWO "x${FOO}"))))
+                   '("ONE=x" "TWO=xbar")))))
+
+(ert-deftest jupyter-kernel-argv ()
+  :tags '(kernel)
+  (should (equal (jupyter-kernel-argv
+                  (make-jupyter-kernelspec
+                   :resource-directory "/ssh::~"
+                   :plist '(:argv
+                            ["python" "-c" "kernel" "{connection_file}"
+                             "{resource_dir}"]
+                            :env (:ONE "x" :TWO "x${FOO}")))
+
+                  "/ssh::conn-file.json")
+                 '("python" "-c" "kernel" "conn-file.json" "~"))))
+
 ;;; Environment
 
 (ert-deftest jupyter-canonicalize-language-string ()

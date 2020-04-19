@@ -155,6 +155,52 @@ Optional argument REFRESH has the same meaning as in
             (length (member name display-names)))
          specs)))
 
+(defun jupyter-expand-environment-variables (var)
+  "Return VAR with all environment variables expanded.
+VAR is a string, if VAR contains a sequence of characters like
+${ENV_VAR}, substitute it with the value of ENV_VAR in
+`process-environment'."
+  (let ((expanded "")
+        (start 0))
+    (while (string-match "\\${\\([^}]+\\)}" var start)
+      (cl-callf concat expanded
+        (substring var start (match-beginning 0))
+        (getenv (match-string 1 var)))
+      (setq start (match-end 0)))
+    (cl-callf concat expanded (substring var start))))
+
+(defun jupyter-process-environment (kernelspec)
+  "Return a list of environment variables contained in KERNELSPEC.
+The list of environment variables have the same form as the
+entries in `process-environment'.
+
+The environment variables returned are constructed from those in
+the :env key of KERNELSPEC's property list."
+  (cl-loop
+   with env = (plist-get (jupyter-kernelspec-plist kernelspec) :env)
+   for (k v) on env by #'cddr
+   collect (format "%s=%s" (cl-subseq (symbol-name k) 1)
+                   (jupyter-expand-environment-variables v))))
+
+(defun jupyter-kernel-argv (kernelspec conn-file)
+  "Return a list of process arguments contained in KERNELSPEC.
+The process arguments are the ones that should be passed to
+kernel processes launched using KERNELSPEC.
+
+CONN-FILE is the file name of a connection file, containing the
+IP address and ports (among other things), a
+launched kernel should connect to."
+  (cl-loop
+   with argv = (plist-get (jupyter-kernelspec-plist kernelspec) :argv)
+   for arg in (append argv nil)
+   if (equal arg "{connection_file}")
+   collect (file-local-name conn-file)
+   else if (equal arg "{resource_dir}")
+   collect (file-local-name
+            (jupyter-kernelspec-resource-directory
+             kernelspec))
+   else collect arg))
+
 (provide 'jupyter-kernelspec)
 
 ;;; jupyter-kernelspec.el ends here
