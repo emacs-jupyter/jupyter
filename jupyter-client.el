@@ -35,6 +35,10 @@
 (require 'jupyter-comm-layer)
 (require 'jupyter-mime)
 (require 'jupyter-messages)
+(require 'jupyter-kernel)
+(require 'jupyter-kernelspec)
+
+(declare-function jupyter-connect "jupyter-connection")
 
 (defface jupyter-eval-overlay
   '((((class color) (min-colors 88) (background light))
@@ -635,6 +639,44 @@ back."
   "Is CLIENT still connected to its kernel?"
   (or (null (slot-exists-p (oref client kcomm) 'hb))
       (jupyter-hb-beating-p (oref client kcomm))))
+
+;;; Mapping kernelspecs to connected clients
+
+(cl-defmethod jupyter-client ((kernel string) &optional client-class)
+  "Return a client connected to KERNEL.
+KERNEL is the name of the kernelspec as returned by the
+
+    jupyter kernelspec list
+
+shell command.
+
+The returned client will be an instance of CLIENT-CLASS which
+defaults to `jupyter-kernel-client'."
+  (jupyter-client (jupyter-get-kernelspec kernel) client-class))
+
+(cl-defmethod jupyter-client ((spec jupyter-kernelspec) &optional client-class)
+  "Return a client connected to kernel created from SPEC.
+SPEC is a kernelspec that will be used to initialize a new
+kernel whose kernelspec if SPEC.
+
+The returned client will be an instance of CLIENT-CLASS which
+defaults to `jupyter-kernel-client'."
+  (jupyter-client (jupyter-kernel :spec spec) client-class))
+
+(cl-defmethod jupyter-client ((kernel jupyter-kernel) &optional client-class)
+  "Return a client connected to KERNEL.
+The returned client will be an instance of CLIENT-CLASS which
+defaults to `jupyter-kernel-client'."
+  (or client-class (setq client-class 'jupyter-kernel-client))
+  (cl-assert (child-of-class-p client-class 'jupyter-kernel-client))
+  (let ((client (make-instance client-class)))
+    (jupyter-connect kernel client)
+    (cl-assert (not (null (jupyter-kernel-info client))) nil
+            "Kernel did not respond to :kernel-info request")
+    ;; If the connection can resolve the kernel's heartbeat channel,
+    ;; start monitoring it now.
+    (jupyter-hb-unpause client)
+    client))
 
 ;;; Message callbacks
 
