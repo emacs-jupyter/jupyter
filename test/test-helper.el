@@ -89,14 +89,16 @@ handling a message is always
 (cl-defmethod initialize-instance ((client jupyter-echo-client) &optional _slots)
   (cl-call-next-method)
   (oset client messages (make-ring 10))
-  (oset client kcomm (jupyter-channel-ioloop-comm
-                      :ioloop-class 'jupyter-zmq-channel-ioloop))
+  (oset client kcomm (jupyter-channel-ioloop-comm))
   (with-slots (kcomm) client
-    (oset kcomm hb (jupyter-hb-channel))
-    (oset kcomm channels
-          (list :stdin (make-jupyter-proxy-channel)
-                :shell (make-jupyter-proxy-channel)
-                :iopub (make-jupyter-proxy-channel)))))
+    (oset kcomm conn
+          (make-jupyter-connection
+           :hb (jupyter-hb-channel)
+           :start #'ignore
+           :stop #'ignore
+           :send #'ignore
+           :alive-p #'ignore))
+    (oset kcomm hb (jupyter-connection-hb (oref kcomm conn)))))
 
 (cl-defmethod jupyter-send ((client jupyter-echo-client)
                             channel

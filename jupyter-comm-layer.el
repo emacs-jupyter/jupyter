@@ -132,11 +132,6 @@ called if needed.  This means that a call to
 (cl-defgeneric jupyter-comm-initialize ((comm jupyter-comm-layer) &rest _ignore)
   "Initialize communication on COMM.")
 
-(cl-defmethod jupyter-comm-initialize ((comm jupyter-comm-layer) &rest _ignore)
-  "Raise an error if COMM is already alive."
-  (when (jupyter-comm-alive-p comm)
-    (error "Can't initialize a live comm")))
-
 ;; TODO: Figure out a better interface for these channel methods or just make
 ;; them unnecessary.  The design of `jupyter-comm-layer' only deals with
 ;; "events" and the channel abstraction is an implementation detail that
