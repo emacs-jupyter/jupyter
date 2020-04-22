@@ -1472,11 +1472,7 @@ value."
 (defun jupyter-repl-interrupt-kernel ()
   "Interrupt the kernel if possible."
   (interactive)
-  (if (not (jupyter-client-has-manager-p))
-      (user-error "Can only interrupt managed kernels")
-    (message "Interrupting kernel")
-    (jupyter-interrupt-kernel
-     (oref jupyter-current-client manager))))
+  (jupyter-interrupt-kernel jupyter-current-client))
 
 (defun jupyter-repl-restart-kernel (&optional shutdown client)
   "Restart the kernel `jupyter-current-client' is connected to.
@@ -1505,34 +1501,29 @@ the kernel `jupyter-current-client' is connected to."
     (jupyter-with-repl-buffer client
       (setq jupyter-repl-use-builtin-is-complete nil)))
   (jupyter-hb-pause client)
-  (let ((manager (oref client manager)))
+  ;; FIXME: Get rid of this
+  (let ((restart (not shutdown)))
     (cond
-     ((and (not shutdown)
-           (jupyter-client-has-manager-p client)
-           (not (jupyter-kernel-alive-p manager)))
+     ((and restart
+           (not (jupyter-kernel-alive-p client)))
       (message "Starting dead kernel...")
       (jupyter-repl--insert-banner-and-prompt client))
      (t
-      (message "%s kernel..." (if shutdown "Shutting down"
-                                "Restarting"))
-      (if manager (jupyter-shutdown-kernel manager (not shutdown))
-        ;; NOTE: It's not possible to restart a kernel without a kernel manager
-        ;; unless the kernel is able to restart on its own.
-        (when (and (null (jupyter-wait-until-received :shutdown-reply
-                           (let ((jupyter-inhibit-handlers '(not :shutdown-reply)))
-                             (jupyter-send-shutdown-request client
-                               :restart (not shutdown)))))
-                   (not shutdown))
-          ;; Handle the case of a restart that does not send a shutdown-reply
-          ;;
-          ;; TODO: Clean up the logic of when to insert a new prompt.  We insert
-          ;; a new prompt before we know if the kernel is ready, but this should
-          ;; be done after we know if the kernel is ready or not, e.g. on the
-          ;; next status: starting message.
-          (message "Kernel did not send shutdown-reply")
-          (jupyter-repl--insert-banner-and-prompt client)))))
-    (unless shutdown
-      (jupyter-hb-unpause client))))
+      (message "%s kernel..." (if restart "Restarting"
+                                "Shutting down"))
+      (when (and (not (jupyter-shutdown-kernel client)) restart)
+        ;; Handle the case of a restart that does not send a shutdown-reply
+        ;;
+        ;; TODO: Clean up the logic of when to insert a new prompt.  We insert
+        ;; a new prompt before we know if the kernel is ready, but this should
+        ;; be done after we know if the kernel is ready or not, e.g. on the
+        ;; next status: starting message.  Generalize the stuff in
+        ;; `jupyter-start-new-kernel' that handles the status: starting message
+        ;; so its easier to hook into that message.
+        (message "Client's kernel may not have been shutdown")
+        (jupyter-repl--insert-banner-and-prompt client)))))
+  (when restart
+    (jupyter-hb-unpause client)))
 
 ;;; Isearch
 ;; Adapted from isearch in `comint', see `comint-history-isearch-search' for

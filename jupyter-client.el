@@ -617,6 +617,23 @@ defaults to `jupyter-kernel-client'."
     (jupyter-hb-unpause client)
     client))
 
+;;; Shutdown and interrupt a kernel
+
+(cl-defmethod jupyter-shutdown-kernel ((client jupyter-kernel-client))
+  "Shutdown the kernel CLIENT is connected to.
+After CLIENT shuts down the kernel it is connected to, it is no
+longer connected to a kernel."
+  (when-let* ((kernel (and (slot-boundp client 'kernel)
+                           (oref client kernel))))
+    (jupyter-wait-until-idle (jupyter-send-shutdown-request client))
+    (jupyter-shutdown kernel)))
+
+(cl-defmethod jupyter-interrupt-kernel ((client jupyter-kernel-client))
+  "Interrupt the kernel CLIENT is connected to."
+  (when-let* ((kernel (and (slot-boundp client 'kernel)
+                           (oref client kernel))))
+    (jupyter-interrupt kernel)))
+
 ;;; Message callbacks
 
 (defsubst jupyter--run-callbacks (req msg)
