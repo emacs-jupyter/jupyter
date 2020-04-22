@@ -272,7 +272,7 @@
           (cl-destructuring-bind (manager client)
               (jupyter-server-start-new-kernel server "python")
             (unwind-protect
-                (let ((id (oref (oref manager kernel) id))
+                (let ((id (jupyter-server-kernel-id (oref manager kernel)))
                       (jupyter-current-client client))
                   (should (equal (jupyter-eval "1 + 1") "2"))
                   (let (url-cookie-storage)
@@ -293,26 +293,7 @@
       (when (process-live-p (car jupyter-test-notebook))
         (delete-process (car jupyter-test-notebook))))))
 
-(ert-deftest jupyter--server-kernel ()
-  :tags '(kernel server)
-  (jupyter-test-with-notebook server
-    (let ((kernel (jupyter--server-kernel
-                   :server server
-                   :spec (jupyter-guess-kernelspec
-                          "python" (jupyter-server-kernelspecs server)))))
-      (should (slot-boundp kernel 'server))
-      (should (eq (oref kernel server) server))
-      (should-not (slot-boundp kernel 'id))
-      (should-not (jupyter-kernel-alive-p kernel))
-      (jupyter-start-kernel kernel)
-      (should (slot-boundp kernel 'id))
-      (let ((id (oref kernel id)))
-        (unwind-protect
-            (progn
-              (should (jupyter-api-get-kernel server id))
-              (should (jupyter-kernel-alive-p kernel)))
-         (jupyter-api-shutdown-kernel server id))))))
-
+;; FIXME: Revisit after transition
 (ert-deftest jupyter-server-kernel-manager ()
   :tags '(server)
   (jupyter-test-with-notebook server
@@ -342,14 +323,15 @@
                      (thread-first jupyter-current-client
                        (oref manager)
                        (oref kernel))))
-            (should (jupyter-comm-alive-p (oref jupyter-current-client kcomm)))
+            (should (jupyter-channels-running-p jupyter-current-client))
             (should (eq (oref client manager) manager))
-            (should (slot-boundp manager 'comm))
-            (should (jupyter-comm-alive-p (oref manager comm)))
-            (should (slot-boundp client 'kcomm))
-            (should (eq (oref manager comm) (oref client kcomm)))
-            (jupyter-comm-handler-loop (oref client kcomm) c
-              (should (eq c client)))
+            ;; FIXME: Remove after the transition away from a manager class
+            ;; (should (slot-boundp manager 'comm))
+            ;; (should (jupyter-comm-alive-p (oref manager comm)))
+            ;; (should (slot-boundp client 'kcomm))
+            ;; (should (eq (oref manager comm) (oref client kcomm)))
+            ;; (jupyter-comm-handler-loop (oref client kcomm) c
+            ;;   (should (eq c client)))
             (should (equal (jupyter-eval "1 + 1") "2")))
         (jupyter-shutdown-kernel manager)))))
 
@@ -364,7 +346,7 @@
                      (thread-first jupyter-current-client
                        (oref manager)
                        (oref kernel))))
-            (should (jupyter-comm-alive-p (oref jupyter-current-client kcomm)))
+            (should (jupyter-channels-running-p jupyter-current-client))
             (should (equal (jupyter-eval "1 + 1") "2")))
         (jupyter-test-kill-buffer (current-buffer))))))
 
@@ -381,7 +363,7 @@
                        (thread-first jupyter-current-client
                          (oref manager)
                          (oref kernel))))
-              (should (jupyter-comm-alive-p (oref jupyter-current-client kcomm)))
+              (should (jupyter-channels-running-p jupyter-current-client))
               (should (equal (jupyter-eval "1 + 1") "2")))
           (jupyter-test-kill-buffer (current-buffer)))))))
 
@@ -501,10 +483,9 @@
              ("id1" . "name1"))))
          (server (jupyter-server :url "http://localhost:8882"))
          (client (jupyter-kernel-client)))
-    (oset client kcomm (jupyter-server-kernel-comm
-                        :kernel (jupyter--server-kernel
-                                 :id "id1"
-                                 :server server)))
+    (oset client kernel (jupyter-server-kernel
+                         :id "id1"
+                         :server server))
     (jupyter-server-name-client-kernel client "foo")
     (should (equal jupyter-server-kernel-names
                    '(("http://localhost:8882"

@@ -63,8 +63,6 @@
 (require 'jupyter-kernel-manager)
 (require 'ring)
 
-(declare-function jupyter-start-new-kernel "jupyter-kernel-process-manager")
-
 ;; TODO: Define `jupyter-kernel-manager-after-restart-hook' to update the
 ;; execution count after a restart.  More generally, define more ways to hook
 ;; into differnt events of the client/kernel interaction.
@@ -2141,6 +2139,32 @@ command on the host."
       (jupyter-start-new-kernel kernel-name client-class)
     (jupyter-bootstrap-repl client repl-name associate-buffer display)))
 
+(defun jupyter--connection-info (info-or-session)
+  "Return the connection plist according to INFO-OR-SESSION.
+See `jupyter-comm-initialize'."
+  (let ((conn-info (cond
+                    ((jupyter-session-p info-or-session)
+                     (jupyter-session-conn-info info-or-session))
+                    ((json-plist-p info-or-session) info-or-session)
+                    ((stringp info-or-session)
+                     (if (file-remote-p info-or-session)
+                         ;; TODO: Don't tunnel if a tunnel already exists
+                         (jupyter-tunnel-connection info-or-session)
+                       (unless (file-exists-p info-or-session)
+                         (error "File does not exist (%s)" info-or-session))
+                       (jupyter-read-plist info-or-session)))
+                    (t (signal 'wrong-type-argument
+                               (list info-or-session
+                                     '(or jupyter-session-p json-plist-p stringp)))))))
+    ;; Also validate the signature scheme here.
+    (cl-destructuring-bind (&key key signature_scheme &allow-other-keys)
+        conn-info
+      (when (and (> (length key) 0)
+                 (not (functionp
+                       (intern (concat "jupyter-" signature_scheme)))))
+        (error "Unsupported signature scheme: %s" signature_scheme)))
+    conn-info))
+
 ;;;###autoload
 (defun jupyter-connect-repl (file-or-plist &optional repl-name associate-buffer client-class display)
   "Run a Jupyter REPL using a kernel's connection FILE-OR-PLIST.
@@ -2165,12 +2189,27 @@ interactively, DISPLAY the new REPL buffer as well."
   (let ((client (make-instance client-class)))
     ;; FIXME: See note in `jupyter-make-client'
     (require 'jupyter-channel-ioloop-comm)
-    (oset client kcomm (make-instance
-                        'jupyter-channel-ioloop-comm))
-    (jupyter-comm-initialize client file-or-plist)
-    (jupyter-start-channels client)
-    (jupyter-hb-unpause client)
-    (jupyter-bootstrap-repl client repl-name associate-buffer display)))
+    (let ((session (and (jupyter-session-p file-or-plist)
+                        file-or-plist))
+          (conn-info (jupyter--connection-info file-or-plist)))
+      (or session
+          (setq session (jupyter-session
+                         :key (plist-get conn-info :key)
+                         :conn-info conn-info)))
+      ;; TODO: Make a (session kernel) association for caching
+      ;; TODO: Do not set client slots outside of jupyter-client
+      (let ((conn (make-jupyter-async-connection
+                   session (lambda (event)
+                             (jupyter-event-handler client event)))))
+        (oset client session session)
+        (oset client kernel
+              (make-jupyter-kernel
+               :session session
+               :connection conn))
+        (jupyter-start conn))
+      (jupyter-start-channels client)
+      (jupyter-hb-unpause client)
+      (jupyter-bootstrap-repl client repl-name associate-buffer display))))
 
 (provide 'jupyter-repl)
 

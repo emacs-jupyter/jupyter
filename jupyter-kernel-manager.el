@@ -40,45 +40,9 @@
   "Jupyter kernel manager"
   :group 'jupyter)
 
-;;; `jupyter-kernel-lifetime'
-
-(defclass jupyter-kernel-lifetime (jupyter-finalized-object)
-  ()
-  :abstract t
-  :documentation "Trait to control the lifetime of a kernel.")
-
-(cl-defmethod initialize-instance ((kernel jupyter-kernel-lifetime) &optional _slots)
-  (cl-call-next-method)
-  (jupyter-add-finalizer kernel (lambda () (jupyter-kill-kernel kernel))))
-
-(cl-defgeneric jupyter-kernel-alive-p ((kernel jupyter-kernel-lifetime))
-  "Return non-nil if KERNEL is alive.")
-
-(cl-defgeneric jupyter-start-kernel ((kernel jupyter-kernel-lifetime) &rest args)
-  "Start KERNEL.")
-
-(cl-defgeneric jupyter-kill-kernel ((kernel jupyter-kernel-lifetime))
-  "Tell the KERNEL to stop.")
-
-(cl-defgeneric jupyter-kernel-died ((kernel jupyter-kernel-lifetime))
-  "Called when a KERNEL dies unexpectedly.")
-
-(cl-defmethod jupyter-start-kernel :around ((kernel jupyter-kernel-lifetime) &rest _args)
-  "Error when KERNEL is already alive, otherwise call the next method."
-  (unless (jupyter-kernel-alive-p kernel)
-    (cl-call-next-method)))
-
-(cl-defmethod jupyter-kill-kernel :around ((kernel jupyter-kernel-lifetime))
-  "Call the next method only when KERNEL is alive."
-  (when (jupyter-kernel-alive-p kernel)
-    (cl-call-next-method)))
-
-(cl-defmethod jupyter-kernel-died ((_kernel jupyter-kernel-lifetime))
-  (ignore))
-
 ;;; `jupyter-kernel'
 
-(defclass jupyter--kernel (jupyter-kernel-lifetime)
+(defclass jupyter--kernel ()
   ((spec
     :type jupyter-kernelspec
     :initarg :spec
@@ -102,22 +66,57 @@ implementation of `jupyter-kill-kernel'.
 A convenience method, `jupyter-kernel-name', is provided to
 access the name of the kernelspec.")
 
-(cl-defmethod jupyter-kill-kernel ((_kernel jupyter--kernel))
+(cl-defmethod jupyter-kernel-alive-p (obj)
+  "Return non-nil if KERNEL is alive."
+  (if (and (eieio-object-p obj)
+           (slot-exists-p obj 'kernel))
+      (jupyter-kernel-alive-p (oref obj kernel))
+    (jupyter-alive-p obj)))
+
+(cl-defmethod jupyter-start-kernel (kernel &rest _args)
+  "Start KERNEL."
+  (jupyter-launch kernel))
+
+(cl-defgeneric jupyter-kill-kernel (kernel)
+  "Stop KERNEL."
+  (jupyter-shutdown kernel))
+
+(cl-defgeneric jupyter-kernel-died (kernel)
+  "Called when a KERNEL dies unexpectedly.")
+
+(cl-defmethod jupyter-start-kernel :around (kernel &rest _args)
+  "Call the next method unless KERNEL is already alive."
+  (unless (jupyter-kernel-alive-p kernel)
+    (cl-call-next-method)))
+
+(cl-defmethod jupyter-kill-kernel :around (kernel)
+  "Call the next method only when KERNEL is alive."
+  (when (jupyter-kernel-alive-p kernel)
+    (cl-call-next-method)))
+
+(cl-defmethod jupyter-kernel-died (_kernel)
+  "Do nothing if KERNEL died."
+  (ignore))
+
+(cl-defmethod jupyter-kill-kernel (_kernel)
   (ignore))
 
 (cl-defmethod jupyter-kernel-name ((kernel jupyter--kernel))
   "Return the name of KERNEL."
-  (jupyter-kernelspec-name (oref kernel spec)))
+  (jupyter-kernelspec-name (jupyter-kernel-spec kernel)))
+
+(cl-defmethod jupyter-kernel-name ((kernel jupyter-kernel))
+  "Return the name of KERNEL."
+  (jupyter-kernelspec-name (jupyter-kernel-spec kernel)))
 
 ;;; `jupyter-kernel-manager'
 
 (defvar jupyter--kernel-managers nil)
 
-(defclass jupyter-kernel-manager (jupyter-kernel-lifetime
-                                  jupyter-instance-tracker)
+(defclass jupyter-kernel-manager (jupyter-instance-tracker)
   ((tracking-symbol :initform 'jupyter--kernel-managers)
    (kernel
-    :type jupyter--kernel
+    :type jupyter-kernel
     :initarg :kernel
     :documentation "The kernel that is being managed."))
   :abstract t)
@@ -135,29 +134,33 @@ SLOTS are the slots used to initialize the client with.")
   (unless (child-of-class-p class 'jupyter-kernel-client)
     (signal 'wrong-type-argument (list '(subclass jupyter-kernel-client) class))))
 
-(cl-defmethod jupyter-make-client (manager class &rest slots)
-  "Return an instance of CLASS using SLOTS and its manager slot set to MANAGER."
-  (let ((client (apply #'make-instance class slots)))
-    (prog1 client
-      (oset client manager manager))))
+(cl-defmethod jupyter-make-client (manager class &rest _slots)
+  "Return an instance of CLASS using SLOTS.
+CLASS is a subclass of `jupyter-kernel-client'.  Return the
+instance already connected to MANAGER's kernel."
+  (let ((client (jupyter-client (oref manager kernel) class)))
+    (oset client manager manager)
+    client))
 
-(cl-defmethod jupyter-start-kernel ((manager jupyter-kernel-manager) &rest args)
+(cl-defmethod jupyter-start-kernel ((manager jupyter-kernel-manager) &rest _args)
   "Start MANAGER's kernel."
-  (apply #'jupyter-start-kernel (oref manager kernel) args))
+  (jupyter-launch (oref manager kernel)))
 
-(cl-defgeneric jupyter-shutdown-kernel ((manager jupyter-kernel-manager) &rest args)
-  "Shutdown MANAGER's kernel or restart instead if RESTART is non-nil.
-Wait until TIMEOUT before forcibly shutting down the kernel.")
+;; FIXME: Specify the arguments.  See the method implementation for
+;; `jupyter-rest-api' why this isn't done.
+(cl-defgeneric jupyter-shutdown-kernel ((manager jupyter-kernel-manager) &rest _args)
+  "Shutdown MANAGER's kernel or restart it if RESTART is non-nil.
+Wait until TIMEOUT before forcibly shutting down the kernel."
+  (jupyter-shutdown (oref manager kernel)))
 
-(cl-defgeneric jupyter-interrupt-kernel ((manager jupyter-kernel-manager) &rest args)
-  "Interrupt MANAGER's kernel.
-When the kernel has an interrupt mode of \"message\" send an
-interrupt request and wait until TIMEOUT for a reply.")
+(cl-defgeneric jupyter-interrupt-kernel ((manager jupyter-kernel-manager) &rest _args)
+  "Interrupt MANAGER's kernel."
+  (jupyter-interrupt (oref manager kernel)))
 
 (cl-defmethod jupyter-kernel-alive-p ((manager jupyter-kernel-manager))
   "Is MANGER's kernel alive?"
   (and (slot-boundp manager 'kernel)
-       (jupyter-kernel-alive-p (oref manager kernel))))
+       (jupyter-alive-p (oref manager kernel))))
 
 (provide 'jupyter-kernel-manager)
 

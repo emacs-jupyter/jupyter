@@ -32,13 +32,15 @@
 
 (eval-when-compile (require 'subr-x))
 (require 'jupyter-base)
-(require 'jupyter-comm-layer)
 (require 'jupyter-mime)
 (require 'jupyter-messages)
 (require 'jupyter-kernel)
 (require 'jupyter-kernelspec)
 
 (declare-function jupyter-connect "jupyter-connection")
+(declare-function jupyter-disconnect "jupyter-connection")
+(declare-function jupyter-connected-p "jupyter-connection")
+(declare-function jupyter-connection-hb "jupyter-connection")
 
 (defface jupyter-eval-overlay
   '((((class color) (min-colors 88) (background light))
@@ -213,9 +215,9 @@ client is expecting a reply from the kernel.")
 initializing this client.  When `jupyter-start-channels' is
 called, this will be set to the kernel info plist returned
 from an initial `:kernel-info-request'.")
-   (kcomm
-    :type jupyter-comm-layer
-    :documentation "The process which receives events from channels.")
+   (kernel
+    :type jupyter-kernel
+    :documentation "The kernel this client communicates with.")
    (session
     :type jupyter-session
     :documentation "The session for this client.")
@@ -374,68 +376,6 @@ CLIENT defaults to `jupyter-current-client'."
        (jupyter-clients))
       (error "No client found for session (%s)" session-id)))
 
-(defun jupyter--connection-info (info-or-session)
-  "Return the connection plist according to INFO-OR-SESSION.
-See `jupyter-comm-initialize'."
-  (let ((conn-info (cond
-                    ((jupyter-session-p info-or-session)
-                     (jupyter-session-conn-info info-or-session))
-                    ((json-plist-p info-or-session) info-or-session)
-                    ((stringp info-or-session)
-                     (if (file-remote-p info-or-session)
-                         ;; TODO: Don't tunnel if a tunnel already exists
-                         (jupyter-tunnel-connection info-or-session)
-                       (unless (file-exists-p info-or-session)
-                         (error "File does not exist (%s)" info-or-session))
-                       (jupyter-read-plist info-or-session)))
-                    (t (signal 'wrong-type-argument
-                               (list info-or-session
-                                     '(or jupyter-session-p json-plist-p stringp)))))))
-    ;; Also validate the signature scheme here.
-    (cl-destructuring-bind (&key key signature_scheme &allow-other-keys)
-        conn-info
-      (when (and (> (length key) 0)
-                 (not (functionp
-                       (intern (concat "jupyter-" signature_scheme)))))
-        (error "Unsupported signature scheme: %s" signature_scheme)))
-    conn-info))
-
-;; FIXME: This requires that CLIENT is communicating with a kernel using a
-;; `jupyter-channel-ioloop-comm' object.
-(cl-defmethod jupyter-comm-initialize ((client jupyter-kernel-client) info-or-session)
-  "Initialize CLIENT with connection INFO-OR-SESSION.
-INFO-OR-SESSION can be a file name, a plist, or a
-`jupyter-session' object that will be used to initialize CLIENT's
-connection.
-
-When INFO-OR-SESSION is a file name, read the contents of the
-file as a JSON plist and create a new `jupyter-session' from it.
-For remote files, create a new `jupyter-session' based on the
-plist returned from `jupyter-tunnel-connection'.
-
-When INFO-OR-SESSION is a plist, use it to create a new
-`jupyter-session'.
-
-Finally, when INFO-OR-SESSION is a `jupyter-session' it is used
-as the session for CLIENT.
-
-The session object will then be used to initialize the client
-connection and will be accessible as the session slot of CLIENT.
-
-The necessary keys and values to initialize a connection can be
-found at
-http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files."
-  (let ((session (and (jupyter-session-p info-or-session) info-or-session))
-        (conn-info (jupyter--connection-info info-or-session)))
-    (oset client session
-          (or (copy-sequence session)
-              (jupyter-session
-               :key (plist-get conn-info :key)
-               :conn-info conn-info)))
-    (jupyter-comm-initialize
-     (oref client kcomm)
-     (oref client session))))
-
 ;;; Client local variables
 
 (defmacro jupyter-with-client-buffer (client &rest body)
@@ -526,7 +466,9 @@ response to the sent message, see `jupyter-add-callback' and
       ;; passwords, clearing the password string using `clear-string' happens
       ;; *after* the call to `jupyter-send'.
       (run-at-time 0 nil (lambda () (message "SENDING: %s %s %s" type msg-id message))))
-    (jupyter-send (oref client kcomm) 'send channel type message msg-id)
+    (jupyter--send
+     (jupyter-kernel-connection (oref client kernel))
+     'send channel type message msg-id)
     ;; Anything sent to stdin is a reply not a request so don't add it as a
     ;; pending request
     (unless (eq channel :stdin)
@@ -613,32 +555,38 @@ back."
 ;;; Starting communication with a kernel
 
 (cl-defmethod jupyter-start-channels ((client jupyter-kernel-client))
-  (jupyter-comm-add-handler (oref client kcomm) client))
+  (jupyter-connect client (oref client kernel)))
 
 (cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
   "Stop any running channels of CLIENT."
-  (when (slot-boundp client 'kcomm)
-    (jupyter-comm-remove-handler (oref client kcomm) client)))
+  (jupyter-disconnect client (oref client kernel)))
 
 (cl-defmethod jupyter-channels-running-p ((client jupyter-kernel-client))
   "Are any channels of CLIENT running?"
-  (jupyter-comm-alive-p (oref client kcomm)))
+  (and (slot-boundp client 'kernel)
+       (jupyter-connected-p (oref client kernel) client)))
 
 (cl-defmethod jupyter-channel-alive-p ((client jupyter-kernel-client) channel)
-  (jupyter-channel-alive-p (oref client kcomm) channel))
+  (and (slot-boundp client 'kernel)
+       (jupyter-connected-p (oref client kernel) client)
+       (jupyter-alive-p (jupyter-kernel-connection (oref client kernel)) channel)))
 
 (cl-defmethod jupyter-hb-pause ((client jupyter-kernel-client))
-  (when (slot-exists-p (oref client kcomm) 'hb)
-    (jupyter-hb-pause (oref client kcomm))))
+  (let ((conn (jupyter-kernel-connection (oref client kernel))))
+    (when (jupyter-connection-hb conn)
+      (jupyter-hb-pause (jupyter-connection-hb conn)))))
 
 (cl-defmethod jupyter-hb-unpause ((client jupyter-kernel-client))
-  (when (slot-exists-p (oref client kcomm) 'hb)
-    (jupyter-hb-unpause (oref client kcomm))))
+  (let ((conn (jupyter-kernel-connection (oref client kernel))))
+    (when (jupyter-connection-hb conn)
+      (jupyter-hb-pause (jupyter-connection-hb conn)))))
 
 (cl-defmethod jupyter-hb-beating-p ((client jupyter-kernel-client))
   "Is CLIENT still connected to its kernel?"
-  (or (null (slot-exists-p (oref client kcomm) 'hb))
-      (jupyter-hb-beating-p (oref client kcomm))))
+  (and (slot-boundp client 'kernel)
+       (let ((conn (jupyter-kernel-connection (oref client kernel))))
+         (or (null (jupyter-connection-hb conn))
+             (jupyter-hb-beating-p (jupyter-connection-hb conn))))))
 
 ;;; Mapping kernelspecs to connected clients
 

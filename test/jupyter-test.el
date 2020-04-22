@@ -66,32 +66,6 @@
                        (jupyter-request-id req)))
         (should (equal (jupyter-message-get (caddr msgs) :execution_state) "idle"))))))
 
-;;;; Comm layer
-
-(ert-deftest jupyter-comm-layer ()
-  :tags '(mock comm)
-  (let ((comm (jupyter-mock-comm-layer))
-        (obj (make-jupyter-mock-comm-obj)))
-    (jupyter-comm-add-handler comm obj)
-    (should (= (length (oref comm handlers)) 1))
-    (should (eq (jupyter-weak-ref-resolve (car (oref comm handlers))) obj))
-    (should (= (oref comm alive) 1))
-    (jupyter-comm-add-handler comm obj)
-    (should (= (length (oref comm handlers)) 1))
-    (should (eq (jupyter-weak-ref-resolve (car (oref comm handlers))) obj))
-    (should (= (oref comm alive) 1))
-
-    (should-not (jupyter-mock-comm-obj-event obj))
-    (jupyter-event-handler comm '(event))
-    ;; Events are handled in a timer, not right away
-    (sleep-for 0.01)
-    (should (equal (jupyter-mock-comm-obj-event obj) '(event)))
-
-    (jupyter-comm-remove-handler comm obj)
-    (should (= (length (oref comm handlers)) 0))
-    (should-not (oref comm alive))
-    (jupyter-comm-remove-handler comm obj)))
-
 ;;; Callbacks
 
 (ert-deftest jupyter-wait-until-idle ()
@@ -636,93 +610,9 @@
              (lambda (_) nil)))
     (should-error (jupyter-locate-python))))
 
-(cl-defun jupyter-local-tcp-conn-info (&key
-                                       (kernel-name "python")
-                                       (signature-scheme "hmac-sha256")
-                                       (key (jupyter-new-uuid))
-                                       (hb-port 0)
-                                       (stdin-port 0)
-                                       (control-port 0)
-                                       (shell-port 0)
-                                       (iopub-port 0))
-  "Return a connection info plist used to connect to a kernel.
-
-The :transport key is set to \"tcp\" and the :ip key will be
-\"127.0.0.1\".
-
-The plist has the standard keys found in the jupyter spec.  See
-http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files.
-A port number of 0 for a channel means to use a randomly assigned
-port for that channel."
-  (unless (or (= (length key) 0)
-              (equal signature-scheme "hmac-sha256"))
-    (error "Only hmac-sha256 signing is currently supported"))
-  (append
-   (list :kernel_name kernel-name
-         :transport "tcp"
-         :ip "127.0.0.1")
-   (when (> (length key) 0)
-     (list :signature_scheme signature-scheme
-           :key key))
-   (let ((ports (jupyter-available-local-ports
-                 (cl-loop
-                  with nports = 0
-                  for p in (list hb-port stdin-port
-                                 control-port shell-port
-                                 iopub-port)
-                  when (zerop p) do (cl-incf nports)
-                  finally return nports))))
-     (cl-loop
-      for (channel . port) in `((:hb_port . ,hb-port)
-                                (:stdin_port . ,stdin-port)
-                                (:control_port . ,control-port)
-                                (:shell_port . ,shell-port)
-                                (:iopub_port . ,iopub-port))
-      collect channel and if (= port 0)
-      collect (pop ports) else collect port))))
-
-(ert-deftest jupyter-kernel-lifetime ()
-  :tags '(kernel)
-  (let* ((conn-info (jupyter-local-tcp-conn-info))
-         (kernel (jupyter--kernel-process
-                  :spec (jupyter-guess-kernelspec "python")
-                  :session (jupyter-session
-                            :key (plist-get conn-info :key)
-                            :conn-info conn-info))))
-    (should-not (jupyter-kernel-alive-p kernel))
-    (jupyter-start-kernel kernel)
-    (should (jupyter-kernel-alive-p kernel))
-    (jupyter-kill-kernel kernel)
-    (should-not (jupyter-kernel-alive-p kernel))
-    (setq conn-info (jupyter-local-tcp-conn-info))
-    (ert-info ("`jupyter-kernel-manager'")
-      ;; TODO: Should the manager create a session if one isn't present?
-      (oset kernel session (jupyter-session
-                            :key (plist-get conn-info :key)
-                            :conn-info conn-info))
-      (let* ((manager (jupyter-kernel-process-manager :kernel kernel))
-             (control-channel (oref manager control-channel))
-             process)
-        (should-not (jupyter-kernel-alive-p manager))
-        (should-not control-channel)
-        (jupyter-start-kernel manager)
-        (setq process (oref kernel process))
-        (setq control-channel (oref manager control-channel))
-        (should (jupyter-zmq-channel-p control-channel))
-        (should (jupyter-kernel-alive-p manager))
-        (should (jupyter-kernel-alive-p kernel))
-        (jupyter-shutdown-kernel manager)
-        (ert-info ("Kernel shutdown is clean")
-          (should-not (process-live-p process))
-          (should (zerop (process-exit-status process)))
-          (should-not (jupyter-kernel-alive-p manager))
-          (should-not (jupyter-kernel-alive-p kernel)))
-        (setq control-channel (oref manager control-channel))
-        (should-not (jupyter-zmq-channel-p control-channel))))))
-
 (ert-deftest jupyter-kernel-process ()
   :tags '(kernel)
-  (let ((kernel (jupyter--kernel-process
+  (let ((kernel (jupyter-kernel-process
                  :spec (jupyter-guess-kernelspec "python"))))
     (ert-info ("Session set after kernel starts")
       (should-not (jupyter-kernel-alive-p kernel))
@@ -732,7 +622,7 @@ port for that channel."
       (jupyter-kill-kernel kernel)
       (should-not (jupyter-kernel-alive-p kernel)))
     (ert-info ("Can we communicate?")
-      (let ((manager (jupyter-kernel-process-manager :kernel kernel)))
+      (let ((manager (jupyter-kernel-manager :kernel kernel)))
         (jupyter-start-kernel manager)
         (unwind-protect
             (let ((jupyter-current-client

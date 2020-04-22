@@ -27,12 +27,11 @@
 ;;; Code:
 
 (require 'zmq)
-(require 'jupyter-client)
-(require 'jupyter-repl)
 (require 'jupyter-zmq-channel-ioloop)
-(require 'jupyter-channel-ioloop-comm)
+(require 'jupyter-connection)
+(require 'jupyter-kernel-process)
+(require 'jupyter-repl)
 (require 'jupyter-org-client)
-(require 'jupyter-kernel-process-manager)
 (require 'org-element)
 (require 'subr-x)
 (require 'cl-lib)
@@ -89,16 +88,14 @@ handling a message is always
 (cl-defmethod initialize-instance ((client jupyter-echo-client) &optional _slots)
   (cl-call-next-method)
   (oset client messages (make-ring 10))
-  (oset client kcomm (jupyter-channel-ioloop-comm))
-  (with-slots (kcomm) client
-    (oset kcomm conn
-          (make-jupyter-connection
-           :hb (jupyter-hb-channel)
-           :start #'ignore
-           :stop #'ignore
-           :send #'ignore
-           :alive-p #'ignore))
-    (oset kcomm hb (jupyter-connection-hb (oref kcomm conn)))))
+  (oset client kernel
+        (make-jupyter-kernel
+         :connection (make-jupyter-connection
+                      :hb (jupyter-hb-channel)
+                      :start #'ignore
+                      :stop #'ignore
+                      :send #'ignore
+                      :alive-p #'ignore))))
 
 (cl-defmethod jupyter-send ((client jupyter-echo-client)
                             channel
@@ -131,30 +128,6 @@ handling a message is always
 (cl-defmethod jupyter-handle-message ((client jupyter-echo-client) _channel msg)
   (ring-insert+extend (oref client messages) msg 'grow)
   (cl-call-next-method))
-
-;;; `jupyter-mock-comm-layer'
-
-(defclass jupyter-mock-comm-layer (jupyter-comm-layer
-                                   jupyter-comm-autostop)
-  ((alive :initform nil)))
-
-(cl-defmethod jupyter-comm-alive-p ((comm jupyter-mock-comm-layer))
-  (oref comm alive))
-
-(cl-defmethod jupyter-comm-start ((comm jupyter-mock-comm-layer))
-  (unless (oref comm alive)
-    (oset comm alive 0))
-  (cl-incf (oref comm alive)))
-
-(cl-defmethod jupyter-comm-stop ((comm jupyter-mock-comm-layer))
-  (cl-decf (oref comm alive))
-  (when (zerop (oref comm alive))
-    (oset comm alive nil)))
-
-(cl-defstruct jupyter-mock-comm-obj event)
-
-(cl-defmethod jupyter-event-handler ((obj jupyter-mock-comm-obj) event)
-  (setf (jupyter-mock-comm-obj-event obj) event))
 
 ;;; Macros
 
@@ -242,7 +215,10 @@ This only starts a single global client unless the variable
 `jupyter-test-with-new-client' is non-nil."
   (declare (indent 2) (debug (stringp symbolp &rest form)))
   `(jupyter-test-with-client-cache
-       (lambda (name) (cadr (jupyter-start-new-kernel name)))
+    (lambda (name) (jupyter-make-client
+               (jupyter-kernel-manager
+                :kernel (jupyter-kernel-process :spec name))
+               'jupyter-kernel-client))
        jupyter-test-global-clients ,kernel ,client
      (unwind-protect
          (progn ,@body)
@@ -358,14 +334,14 @@ For `url-retrieve', the callback will be called with a nil status."
 (defmacro jupyter-test-with-server-kernel (server name kernel &rest body)
   (declare (indent 3))
   (let ((id (make-symbol "id")))
-    `(let ((,kernel (jupyter--server-kernel
+    `(let ((,kernel (jupyter-server-kernel
                      :server server
                      :spec (jupyter-guess-kernelspec
                             ,name (jupyter-server-kernelspecs ,server)))))
-       (let ((,id (jupyter-start-kernel kernel)))
-         (unwind-protect
-             (progn ,@body)
-           (jupyter-api-shutdown-kernel ,server ,id))))))
+       (jupyter-launch ,kernel)
+       (unwind-protect
+           (progn ,@body)
+         (jupyter-shutdown ,kernel)))))
 
 (defmacro jupyter-test-with-some-kernelspecs (names &rest body)
   "Execute BODY in the context where extra kernelspecs with NAMES are available.

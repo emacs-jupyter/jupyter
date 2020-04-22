@@ -31,6 +31,8 @@
 (require 'jupyter-base)
 (require 'jupyter-kernelspec)
 
+(declare-function jupyter-disconnect "jupyter-connection")
+
 (defgroup jupyter-kernel nil
   "Kernels"
   :group 'jupyter)
