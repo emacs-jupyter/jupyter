@@ -546,9 +546,17 @@ these changes.
 See `jupyter-tunnel-connection' for more details on creating
 tunnels.  For more information on connection files, see
 https://jupyter-client.readthedocs.io/en/stable/kernels.html#connection-files"
-  (if (file-remote-p conn-file)
-      (jupyter-tunnel-connection conn-file)
-    (jupyter-read-plist conn-file)))
+  (let ((conn-info (if (file-remote-p conn-file)
+                       (jupyter-tunnel-connection conn-file)
+                     (jupyter-read-plist conn-file))))
+    ;; Also validate the signature scheme here.
+    (cl-destructuring-bind (&key key signature_scheme &allow-other-keys)
+        conn-info
+      (when (and (> (length key) 0)
+                 (not (functionp
+                       (intern (concat "jupyter-" signature_scheme)))))
+        (error "Unsupported signature scheme: %s" signature_scheme)))
+    conn-info))
 
 ;;; Helper functions
 

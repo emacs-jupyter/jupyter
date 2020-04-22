@@ -2109,67 +2109,29 @@ command on the host."
   (let ((client (jupyter-client (jupyter-kernel-process :spec kernel-name) client-class)))
     (jupyter-bootstrap-repl client repl-name associate-buffer display)))
 
-(defun jupyter--connection-info (info-or-session)
-  "Return the connection plist according to INFO-OR-SESSION.
-See `jupyter-comm-initialize'."
-  (let ((conn-info (cond
-                    ((jupyter-session-p info-or-session)
-                     (jupyter-session-conn-info info-or-session))
-                    ((json-plist-p info-or-session) info-or-session)
-                    ((stringp info-or-session)
-                     (if (file-remote-p info-or-session)
-                         ;; TODO: Don't tunnel if a tunnel already exists
-                         (jupyter-tunnel-connection info-or-session)
-                       (unless (file-exists-p info-or-session)
-                         (error "File does not exist (%s)" info-or-session))
-                       (jupyter-read-plist info-or-session)))
-                    (t (signal 'wrong-type-argument
-                               (list info-or-session
-                                     '(or jupyter-session-p json-plist-p stringp)))))))
-    ;; Also validate the signature scheme here.
-    (cl-destructuring-bind (&key key signature_scheme &allow-other-keys)
-        conn-info
-      (when (and (> (length key) 0)
-                 (not (functionp
-                       (intern (concat "jupyter-" signature_scheme)))))
-        (error "Unsupported signature scheme: %s" signature_scheme)))
-    conn-info))
-
 ;;;###autoload
-(defun jupyter-connect-repl (file-or-plist &optional repl-name associate-buffer client-class display)
-  "Run a Jupyter REPL using a kernel's connection FILE-OR-PLIST.
-FILE-OR-PLIST can be either a file holding the connection
-information or a property list of connection information.
+(defun jupyter-connect-repl (file &optional repl-name associate-buffer client-class display)
+  "Run a Jupyter REPL using a kernel's connection FILE.
+Return the REPL client connected to the kernel.  When called
+interactively, DISPLAY the new REPL buffer as well.  With a
+prefix argument give a new REPL-NAME for the REPL.
+
+FILE is the name of a connection file that will be read.
 ASSOCIATE-BUFFER has the same meaning as in `jupyter-run-repl'.
-
-With a prefix argument give a new REPL-NAME for the REPL.
-
 Optional argument CLIENT-CLASS is the class of the client that
 will be used to initialize the REPL and should be a class symbol
-like the symbol `jupyter-repl-client', which is the default.
-
-Return the REPL client connected to the kernel.  When called
-interactively, DISPLAY the new REPL buffer as well."
+like the symbol `jupyter-repl-client', which is the default. "
   (interactive (list (read-file-name "Connection file: ")
                      (when current-prefix-arg
                        (read-string "REPL Name: "))
                      t nil t))
   (or client-class (setq client-class 'jupyter-repl-client))
   (jupyter-error-if-not-client-class-p client-class 'jupyter-repl-client)
-  (let ((client (make-instance client-class)))
-    (let* ((session (and (jupyter-session-p file-or-plist)
-                         file-or-plist))
-           (kernel (if session
-                       (make-jupyter-kernel
-                        :session (let ((conn-info
-                                        (jupyter--connection-info file-or-plist)))
-                                   (jupyter-session
-                                    :conn-info conn-info
-                                    :key (plist-get conn-info :key))))
-                     (jupyter-kernel :conn-info file-or-plist))))
-      (jupyter-connect client kernel)
-      (jupyter-hb-unpause client)
-      (jupyter-bootstrap-repl client repl-name associate-buffer display))))
+  (let ((client (make-instance client-class))
+        (kernel (jupyter-kernel :conn-info file)))
+    (jupyter-connect client kernel)
+    (jupyter-hb-unpause client)
+    (jupyter-bootstrap-repl client repl-name associate-buffer display)))
 
 (provide 'jupyter-repl)
 
