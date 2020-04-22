@@ -2101,13 +2101,10 @@ command on the host."
                      t nil t))
   (or client-class (setq client-class 'jupyter-repl-client))
   (jupyter-error-if-not-client-class-p client-class 'jupyter-repl-client)
-  (unless (called-interactively-p 'interactive)
-    (or (when-let* ((spec (car (jupyter-find-kernelspecs kernel-name)))
-                    (name (jupyter-kernelspec-name spec)))
-          (setq kernel-name name))
-        (error "No kernel found for prefix (%s)" kernel-name)))
-  (let ((client (jupyter-client (jupyter-kernel-process :spec kernel-name) client-class)))
-    (jupyter-bootstrap-repl client repl-name associate-buffer display)))
+  (jupyter-bootstrap-repl
+   ;; TODO: Just make this `jupyter-kernelspec'
+   (jupyter-client (jupyter-guess-kernelspec kernel-name) client-class)
+   repl-name associate-buffer display))
 
 ;;;###autoload
 (defun jupyter-connect-repl (file &optional repl-name associate-buffer client-class display)
@@ -2127,11 +2124,9 @@ like the symbol `jupyter-repl-client', which is the default. "
                      t nil t))
   (or client-class (setq client-class 'jupyter-repl-client))
   (jupyter-error-if-not-client-class-p client-class 'jupyter-repl-client)
-  (let ((client (make-instance client-class))
-        (kernel (jupyter-kernel :conn-info file)))
-    (jupyter-connect client kernel)
-    (jupyter-hb-unpause client)
-    (jupyter-bootstrap-repl client repl-name associate-buffer display)))
+  (jupyter-bootstrap-repl
+   (jupyter-client (jupyter-kernel :conn-info file) client-class)
+   repl-name associate-buffer display))
 
 (provide 'jupyter-repl)
 
