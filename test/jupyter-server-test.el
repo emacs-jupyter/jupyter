@@ -329,10 +329,10 @@
       (when (process-live-p (car jupyter-test-notebook))
         (delete-process (car jupyter-test-notebook))))))
 
-(ert-deftest jupyter-server-kernel ()
+(ert-deftest jupyter--server-kernel ()
   :tags '(kernel server)
   (jupyter-test-with-notebook server
-    (let ((kernel (jupyter-server-kernel
+    (let ((kernel (jupyter--server-kernel
                    :server server
                    :spec (jupyter-guess-kernelspec
                           "python" (jupyter-server-kernelspecs server)))))
@@ -352,7 +352,7 @@
 (ert-deftest jupyter-server-kernel-manager ()
   :tags '(server)
   (jupyter-test-with-notebook server
-    (let* ((kernel (jupyter-server-kernel
+    (let* ((kernel (jupyter--server-kernel
                     :server server
                     :spec (jupyter-guess-kernelspec
                            "python" (jupyter-server-kernelspecs server))))
@@ -538,7 +538,7 @@
          (server (jupyter-server :url "http://localhost:8882"))
          (client (jupyter-kernel-client)))
     (oset client kcomm (jupyter-server-kernel-comm
-                        :kernel (jupyter-server-kernel
+                        :kernel (jupyter--server-kernel
                                  :id "id1"
                                  :server server)))
     (jupyter-server-name-client-kernel client "foo")

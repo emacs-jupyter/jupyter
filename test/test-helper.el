@@ -356,7 +356,7 @@ For `url-retrieve', the callback will be called with a nil status."
 (defmacro jupyter-test-with-server-kernel (server name kernel &rest body)
   (declare (indent 3))
   (let ((id (make-symbol "id")))
-    `(let ((,kernel (jupyter-server-kernel
+    `(let ((,kernel (jupyter--server-kernel
                      :server server
                      :spec (jupyter-guess-kernelspec
                             ,name (jupyter-server-kernelspecs ,server)))))

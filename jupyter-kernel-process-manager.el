@@ -71,7 +71,7 @@ error.  The error is raised before :timeout-form is evaluated."
 
 ;;; `jupyter-kernel-process'
 
-(defclass jupyter-kernel-process (jupyter-kernel)
+(defclass jupyter--kernel-process (jupyter--kernel)
   ((process
     :type process
     :documentation "The kernel process."))
@@ -82,11 +82,11 @@ If the kernel was started on a remote host, ensure that local
 tunnels are created when setting the session slot after the
 kernel starts.")
 
-(cl-defmethod jupyter-kernel-alive-p ((kernel jupyter-kernel-process))
+(cl-defmethod jupyter-kernel-alive-p ((kernel jupyter--kernel-process))
   (and (slot-boundp kernel 'process)
        (process-live-p (oref kernel process))))
 
-(cl-defmethod jupyter-start-kernel ((kernel jupyter-kernel-process) &rest args)
+(cl-defmethod jupyter-start-kernel ((kernel jupyter--kernel-process) &rest args)
   "Start a KERNEL process with ARGS."
   (let ((name (jupyter-kernel-name kernel)))
     (when jupyter--debug
@@ -113,18 +113,18 @@ fatal signal."
                              (jupyter-weak-ref-resolve ref)))
         (jupyter-kernel-died kernel)))))
 
-(cl-defmethod jupyter-start-kernel :after ((kernel jupyter-kernel-process) &rest _args)
+(cl-defmethod jupyter-start-kernel :after ((kernel jupyter--kernel-process) &rest _args)
   (setf (process-sentinel (oref kernel process))
         (jupyter--kernel-died-process-sentinel kernel)))
 
-(cl-defmethod jupyter-kill-kernel ((kernel jupyter-kernel-process))
+(cl-defmethod jupyter-kill-kernel ((kernel jupyter--kernel-process))
   (with-slots (process) kernel
     (delete-process process)
     (when (buffer-live-p (process-buffer process))
       (kill-buffer (process-buffer process))))
   (cl-call-next-method))
 
-(defclass jupyter-command-kernel (jupyter-kernel-process)
+(defclass jupyter-command-kernel (jupyter--kernel-process)
   ()
   :documentation "A Jupyter kernel process using the \"jupyter kernel\" command.")
 
@@ -161,7 +161,7 @@ argument of the process."
              :conn-info conn-info
              :key (plist-get conn-info :key))))))
 
-(defclass jupyter-spec-kernel (jupyter-kernel-process)
+(defclass jupyter-spec-kernel (jupyter--kernel-process)
   ()
   :documentation "A Jupyter kernel launched from a kernelspec.")
 
@@ -313,7 +313,7 @@ subprocess."
                            (jupyter-kernel-name kernel)))
                (jupyter-recv control-channel 'dont-wait))))
           (_
-           (if (object-of-class-p kernel 'jupyter-kernel-process)
+           (if (object-of-class-p kernel 'jupyter--kernel-process)
                (interrupt-process (oref kernel process) t)
              (warn "Can't interrupt kernel"))))))))
 

@@ -127,7 +127,7 @@ Access should be done through `jupyter-available-kernelspecs'.")))
 ;;; `jupyter-server-kernel'
 
 ;; TODO: Add the server as a slot
-(defclass jupyter-server-kernel (jupyter-kernel)
+(defclass jupyter--server-kernel (jupyter--kernel)
   ((server
     :type jupyter-server
     :initarg :server
@@ -137,7 +137,7 @@ Access should be done through `jupyter-available-kernelspecs'.")))
     :initarg :id
     :documentation "The kernel ID.")))
 
-(cl-defmethod jupyter-kernel-alive-p ((kernel jupyter-server-kernel))
+(cl-defmethod jupyter-kernel-alive-p ((kernel jupyter--server-kernel))
   (and (slot-boundp kernel 'id)
        (slot-boundp kernel 'server)
        ;; TODO: Cache this call
@@ -148,18 +148,18 @@ Access should be done through `jupyter-available-kernelspecs'.")))
           (unless (= (nth 1 err) 404)    ; Not Found
             (signal (car err) (cdr err)))))))
 
-(cl-defmethod jupyter-start-kernel ((kernel jupyter-server-kernel) &rest _ignore)
+(cl-defmethod jupyter-start-kernel ((kernel jupyter--server-kernel) &rest _ignore)
   (with-slots (server spec) kernel
     (cl-destructuring-bind (&key id &allow-other-keys)
         (jupyter-api-start-kernel server (jupyter-kernelspec-name spec))
       (oset kernel id id))))
 
-(cl-defmethod jupyter-kill-kernel ((_kernel jupyter-server-kernel))
+(cl-defmethod jupyter-kill-kernel ((_kernel jupyter--server-kernel))
   ;; The notebook server already takes care of forcing shutdown of a kernel.
   (ignore))
 
 (defclass jupyter-server-kernel-comm (jupyter-comm-layer)
-  ((kernel :type jupyter-server-kernel :initarg :kernel)))
+  ((kernel :type jupyter--server-kernel :initarg :kernel)))
 
 (cl-defmethod jupyter-comm-id ((comm jupyter-server-kernel-comm))
   (let* ((kernel (oref comm kernel))
@@ -638,7 +638,7 @@ the kernel whose class is CLIENT-CLASS.  Note that the client’s
 see ‘jupyter-make-client’."
   (or client-class (setq client-class 'jupyter-kernel-client))
   (let* ((specs (jupyter-server-kernelspecs server))
-         (kernel (jupyter-server-kernel
+         (kernel (jupyter--server-kernel
                   :server server
                   :spec (jupyter-guess-kernelspec kernel-name specs)))
          (manager (jupyter-server-kernel-manager :kernel kernel)))
@@ -707,7 +707,7 @@ the same meaning as in `jupyter-connect-repl'."
           (or (jupyter-server-find-manager server kernel-id)
               (let ((model (jupyter-api-get-kernel server kernel-id)))
                 (jupyter-server-kernel-manager
-                 :kernel (jupyter-server-kernel
+                 :kernel (jupyter--server-kernel
                           :id kernel-id
                           :server server
                           :spec (car (jupyter-find-kernelspecs
