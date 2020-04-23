@@ -31,6 +31,11 @@
 (require 'jupyter-kernelspec)
 (eval-when-compile (require 'subr-x))
 
+(defvar jupyter--kernel-processes '()
+  "The list of kernel processes launched.
+This list is periodically cleaned up when a new process is
+launched and when Emacs exits.")
+
 ;;; `jupyter-kernel-process'
 
 (defclass jupyter--kernel-process (jupyter--kernel)
@@ -47,6 +52,13 @@ kernel starts.")
 (cl-defmethod jupyter-kernel-alive-p ((kernel jupyter--kernel-process))
   (and (slot-boundp kernel 'process)
        (process-live-p (oref kernel process))))
+
+(defun jupyter--gc-kernel-processes ()
+  (setq jupyter--kernel-processes
+        (cl-loop for p in jupyter--kernel-processes
+                 if (process-live-p p) collect p
+                 and when (buffer-live-p (process-buffer p))
+                 do (kill-buffer (process-buffer p)))))
 
 (defun jupyter--start-kernel-process (name kernelspec conn-file)
   (let* ((process-name (format "jupyter-kernel-%s" name))
@@ -85,6 +97,8 @@ kernel starts.")
             ;; any messages we send it.
             (or (null attribs)
                 (not (equal atime (nth 4 attribs)))))))
+    (jupyter--gc-kernel-processes)
+    (push process jupyter--kernel-processes)
     process))
 
 (defun jupyter--kernel-died-process-sentinel (kernel)
