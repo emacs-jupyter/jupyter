@@ -639,7 +639,7 @@
 (ert-deftest jupyter-kernel-lifetime ()
   :tags '(kernel)
   (let* ((conn-info (jupyter-local-tcp-conn-info))
-         (kernel (jupyter-spec-kernel
+         (kernel (jupyter--kernel-process
                   :spec (jupyter-guess-kernelspec "python")
                   :session (jupyter-session
                             :key (plist-get conn-info :key)
@@ -675,9 +675,9 @@
         (setq control-channel (oref manager control-channel))
         (should-not (jupyter-zmq-channel-p control-channel))))))
 
-(ert-deftest jupyter-command-kernel ()
+(ert-deftest jupyter-kernel-process ()
   :tags '(kernel)
-  (let ((kernel (jupyter-command-kernel
+  (let ((kernel (jupyter--kernel-process
                  :spec (jupyter-guess-kernelspec "python"))))
     (ert-info ("Session set after kernel starts")
       (should-not (jupyter-kernel-alive-p kernel))
