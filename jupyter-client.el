@@ -624,16 +624,16 @@ back."
   (jupyter-channel-alive-p (oref client kcomm) channel))
 
 (cl-defmethod jupyter-hb-pause ((client jupyter-kernel-client))
-  (when (cl-typep (oref client kcomm) 'jupyter-hb-comm)
+  (when (slot-exists-p (oref client kcomm) 'hb)
     (jupyter-hb-pause (oref client kcomm))))
 
 (cl-defmethod jupyter-hb-unpause ((client jupyter-kernel-client))
-  (when (cl-typep (oref client kcomm) 'jupyter-hb-comm)
+  (when (slot-exists-p (oref client kcomm) 'hb)
     (jupyter-hb-unpause (oref client kcomm))))
 
 (cl-defmethod jupyter-hb-beating-p ((client jupyter-kernel-client))
   "Is CLIENT still connected to its kernel?"
-  (or (null (cl-typep (oref client kcomm) 'jupyter-hb-comm))
+  (or (null (slot-exists-p (oref client kcomm) 'hb))
       (jupyter-hb-beating-p (oref client kcomm))))
 
 ;;; Message callbacks

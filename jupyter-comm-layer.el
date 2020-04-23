@@ -179,23 +179,6 @@ called if needed.  This means that a call to
              (zerop (length (oref comm handlers))))
     (jupyter-comm-stop comm)))
 
-;;; `jupyter-hb-comm'
-;; If the communication layer can talk to a heartbeat channel, then it should
-;; add this class as a parent class.
-
-(defclass jupyter-hb-comm ()
-  ((hb :type jupyter-hb-channel))
-  :abstract t)
-
-(cl-defmethod jupyter-hb-beating-p ((comm jupyter-hb-comm))
-  (jupyter-hb-beating-p (oref comm hb)))
-
-(cl-defmethod jupyter-hb-pause ((comm jupyter-hb-comm))
-  (jupyter-hb-pause (oref comm hb)))
-
-(cl-defmethod jupyter-hb-unpause ((comm jupyter-hb-comm))
-  (jupyter-hb-unpause (oref comm hb)))
-
 (provide 'jupyter-comm-layer)
 
 ;;; jupyter-comm-layer.el ends here

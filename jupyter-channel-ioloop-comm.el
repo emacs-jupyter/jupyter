@@ -152,9 +152,9 @@
 (cl-defstruct jupyter-proxy-channel endpoint alive-p)
 
 (defclass jupyter-channel-ioloop-comm (jupyter-ioloop-comm
-                                       jupyter-hb-comm
                                        jupyter-comm-autostop)
   ((conn :type jupyter-connection)
+   (hb :type jupyter-channel)
    (session :type jupyter-session)))
 
 (cl-defmethod jupyter-comm-id ((comm jupyter-channel-ioloop-comm))
@@ -166,7 +166,7 @@
   (let ((conn (make-jupyter-async-connection
                session (lambda (event) (jupyter-event-handler comm event)))))
     (oset comm conn conn)
-    (oset comm hb (jupyter-connection-hb (oref comm conn)))))
+    (oset comm hb (jupyter-connection-hb conn))))
 
 (cl-defmethod jupyter-comm-start ((comm jupyter-channel-ioloop-comm))
   (jupyter-start (oref comm conn)))
@@ -192,6 +192,17 @@
 
 (cl-defmethod jupyter-start-channel ((comm jupyter-channel-ioloop-comm) channel)
   (jupyter-start (oref comm conn) channel))
+
+;;;; HB channel methods
+
+(cl-defmethod jupyter-hb-beating-p ((comm jupyter-channel-ioloop-comm))
+  (jupyter-hb-beating-p (oref comm hb)))
+
+(cl-defmethod jupyter-hb-pause ((comm jupyter-channel-ioloop-comm))
+  (jupyter-hb-pause (oref comm hb)))
+
+(cl-defmethod jupyter-hb-unpause ((comm jupyter-channel-ioloop-comm))
+  (jupyter-hb-unpause (oref comm hb)))
 
 (provide 'jupyter-channel-ioloop-comm)
 
