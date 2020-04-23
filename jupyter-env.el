@@ -102,23 +102,13 @@ This function always returns the `file-local-name' of the path."
      finally (error "No `python' found in search paths"))
     (file-local-name path)))
 
-(cl-defmethod jupyter-write-connection-file ((session jupyter-session) (obj jupyter-finalized-object))
+(defun jupyter-write-connection-file (session)
   "Write a connection file based on SESSION to `jupyter-runtime-directory'.
-Return the path to the connection file.
-
-Also register a finalizer on OBJ to delete the file when OBJ is
-garbage collected.  The file is also deleted when Emacs exits if
-it hasn't been already."
+Return the path to the connection file."
+  (cl-check-type session jupyter-session)
   (let* ((temporary-file-directory (jupyter-runtime-directory))
          (json-encoding-pretty-print t)
-         (file (make-temp-file "emacs-kernel-" nil ".json"))
-         (kill-hook (lambda () (when (and file (file-exists-p file))
-                            (delete-file file)))))
-    (add-hook 'kill-emacs-hook kill-hook)
-    (jupyter-add-finalizer obj
-      (lambda ()
-        (funcall kill-hook)
-        (remove-hook 'kill-emacs-hook kill-hook)))
+         (file (make-temp-file "emacs-kernel-" nil ".json")))
     (prog1 file
       (with-temp-file file
         (insert (json-encode-plist

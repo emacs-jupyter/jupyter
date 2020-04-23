@@ -636,6 +636,51 @@
              (lambda (_) nil)))
     (should-error (jupyter-locate-python))))
 
+(cl-defun jupyter-local-tcp-conn-info (&key
+                                       (kernel-name "python")
+                                       (signature-scheme "hmac-sha256")
+                                       (key (jupyter-new-uuid))
+                                       (hb-port 0)
+                                       (stdin-port 0)
+                                       (control-port 0)
+                                       (shell-port 0)
+                                       (iopub-port 0))
+  "Return a connection info plist used to connect to a kernel.
+
+The :transport key is set to \"tcp\" and the :ip key will be
+\"127.0.0.1\".
+
+The plist has the standard keys found in the jupyter spec.  See
+http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files.
+A port number of 0 for a channel means to use a randomly assigned
+port for that channel."
+  (unless (or (= (length key) 0)
+              (equal signature-scheme "hmac-sha256"))
+    (error "Only hmac-sha256 signing is currently supported"))
+  (append
+   (list :kernel_name kernel-name
+         :transport "tcp"
+         :ip "127.0.0.1")
+   (when (> (length key) 0)
+     (list :signature_scheme signature-scheme
+           :key key))
+   (let ((ports (jupyter-available-local-ports
+                 (cl-loop
+                  with nports = 0
+                  for p in (list hb-port stdin-port
+                                 control-port shell-port
+                                 iopub-port)
+                  when (zerop p) do (cl-incf nports)
+                  finally return nports))))
+     (cl-loop
+      for (channel . port) in `((:hb_port . ,hb-port)
+                                (:stdin_port . ,stdin-port)
+                                (:control_port . ,control-port)
+                                (:shell_port . ,shell-port)
+                                (:iopub_port . ,iopub-port))
+      collect channel and if (= port 0)
+      collect (pop ports) else collect port))))
+
 (ert-deftest jupyter-kernel-lifetime ()
   :tags '(kernel)
   (let* ((conn-info (jupyter-local-tcp-conn-info))
@@ -831,28 +876,19 @@
 
 (ert-deftest jupyter-write-connection-file ()
   :tags '(client)
-  (skip-unless (not (memq system-type '(ms-dos windows-nt cygwin))))
-  (let (file fun)
-    (let* ((session (jupyter-session
-                     :conn-info (jupyter-local-tcp-conn-info)))
-           (client (jupyter-kernel-client))
-           (hook (copy-sequence kill-emacs-hook)))
-      (setq file (jupyter-write-connection-file session client))
-      (should (file-exists-p file))
-      (should-not (equal kill-emacs-hook hook))
-      (setq fun (car (cl-set-difference kill-emacs-hook hook)))
-      (should-not (memq fun hook)))
-    (garbage-collect)
-    (garbage-collect)
-    (garbage-collect)
-    (garbage-collect)
-    (unwind-protect
-        ;; This fails on Windows, probably has something to do with the file
-        ;; handle still being opened somehow.
-        (should-not (file-exists-p file))
-      (when (file-exists-p file)
-        (delete-file file)))
-    (should-not (memq fun kill-emacs-hook))))
+  (let* ((conn-info '(:kernel_name "python"
+                      :transport "tcp" :ip "127.0.0.1"
+                      :signature_scheme "hmac-sha256"
+                      :key "00a2cadb-3da7-45d2-b394-dbd01b5f80eb"
+                      :hb_port 45473 :stdin_port 40175
+                      :control_port 36301
+                      :shell_port 39263 :iopub_port 36731))
+         (conn-file (jupyter-write-connection-file
+                     (jupyter-session
+                      :conn-info conn-info))))
+    (should (file-exists-p conn-file))
+    (should (string= (file-name-directory conn-file) (jupyter-runtime-directory)))
+    (should (equal (jupyter-read-plist conn-file) conn-info))))
 
 (ert-deftest jupyter-client-channels ()
   :tags '(client channels)

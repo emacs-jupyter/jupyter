@@ -33,8 +33,19 @@
 
 (defvar jupyter--kernel-processes '()
   "The list of kernel processes launched.
+Elements look like (PROCESS CONN-FILE) where PROCESS is a kernel
+process and CONN-FILE the associated connection file.
+
 This list is periodically cleaned up when a new process is
 launched and when Emacs exits.")
+
+(defun jupyter-delete-connection-files ()
+  "Delete all connection files created by Emacs."
+  (cl-loop for (_ conn-file) in jupyter--kernel-processes
+           do (when (file-exists-p conn-file)
+                (delete-file conn-file))))
+
+(add-hook 'kill-emacs-hook #'jupyter-delete-connection-files)
 
 ;;; `jupyter-kernel-process'
 
@@ -55,8 +66,11 @@ kernel starts.")
 
 (defun jupyter--gc-kernel-processes ()
   (setq jupyter--kernel-processes
-        (cl-loop for p in jupyter--kernel-processes
-                 if (process-live-p p) collect p
+        (cl-loop for (p conn-file) in jupyter--kernel-processes
+                 if (process-live-p p) collect (list p conn-file)
+                 else do (delete-process p)
+                 (when (file-exists-p conn-file)
+                   (delete-file conn-file))
                  and when (buffer-live-p (process-buffer p))
                  do (kill-buffer (process-buffer p)))))
 
@@ -98,7 +112,7 @@ kernel starts.")
             (or (null attribs)
                 (not (equal atime (nth 4 attribs)))))))
     (jupyter--gc-kernel-processes)
-    (push process jupyter--kernel-processes)
+    (push (list process conn-file) jupyter--kernel-processes)
     process))
 
 (defun jupyter--kernel-died-process-sentinel (kernel)
@@ -122,7 +136,7 @@ fatal signal."
   (let ((proc (jupyter--start-kernel-process
                (jupyter-kernel-name kernel)
                (oref kernel spec)
-               (jupyter-write-connection-file (oref kernel session) kernel))))
+               (jupyter-write-connection-file (oref kernel session)))))
     (oset kernel process proc)
     (setf (process-sentinel proc)
           (jupyter--kernel-died-process-sentinel kernel))))
@@ -245,51 +259,6 @@ subprocess."
 
 (defun jupyter--error-if-no-kernel-info (client)
   (jupyter-kernel-info client))
-
-(cl-defun jupyter-local-tcp-conn-info (&key
-                                       (kernel-name "python")
-                                       (signature-scheme "hmac-sha256")
-                                       (key (jupyter-new-uuid))
-                                       (hb-port 0)
-                                       (stdin-port 0)
-                                       (control-port 0)
-                                       (shell-port 0)
-                                       (iopub-port 0))
-  "Return a connection info plist used to connect to a kernel.
-
-The :transport key is set to \"tcp\" and the :ip key will be
-\"127.0.0.1\".
-
-The plist has the standard keys found in the jupyter spec.  See
-http://jupyter-client.readthedocs.io/en/latest/kernels.html#connection-files.
-A port number of 0 for a channel means to use a randomly assigned
-port for that channel."
-  (unless (or (= (length key) 0)
-              (equal signature-scheme "hmac-sha256"))
-    (error "Only hmac-sha256 signing is currently supported"))
-  (append
-   (list :kernel_name kernel-name
-         :transport "tcp"
-         :ip "127.0.0.1")
-   (when (> (length key) 0)
-     (list :signature_scheme signature-scheme
-           :key key))
-   (let ((ports (jupyter-available-local-ports
-                 (cl-loop
-                  with nports = 0
-                  for p in (list hb-port stdin-port
-                                 control-port shell-port
-                                 iopub-port)
-                  when (zerop p) do (cl-incf nports)
-                  finally return nports))))
-     (cl-loop
-      for (channel . port) in `((:hb_port . ,hb-port)
-                                (:stdin_port . ,stdin-port)
-                                (:control_port . ,control-port)
-                                (:shell_port . ,shell-port)
-                                (:iopub_port . ,iopub-port))
-      collect channel and if (= port 0)
-      collect (pop ports) else collect port))))
 
 (defun jupyter-start-new-kernel (kernel-name &optional client-class)
   "Start a managed Jupyter kernel.
