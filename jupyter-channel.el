@@ -26,6 +26,8 @@
 
 ;;; Code:
 
+(require 'eieio)
+
 (defclass jupyter-channel ()
   ((type
     :type keyword
