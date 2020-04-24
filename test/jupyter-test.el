@@ -780,13 +780,13 @@
       (jupyter-runtime-directory)
       (should dir-created)
       (setq dir-created nil)
-      (should (equal jupyter-runtime-directory "foo"))
+      (should (equal jupyter-runtime-directory "foo/"))
       (let ((default-directory "/ssh:foo:/"))
-        (should (equal (jupyter-runtime-directory) "/ssh:foo:foo"))
+        (should (equal (jupyter-runtime-directory) "/ssh:foo:foo/"))
         (ert-info ("Variable definition is always local")
           (setq jupyter-runtime-directory nil)
           (jupyter-runtime-directory)
-          (should (equal jupyter-runtime-directory "foo")))))))
+          (should (equal jupyter-runtime-directory "foo/")))))))
 
 ;;; Client
 

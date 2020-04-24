@@ -60,14 +60,15 @@ to the local runtime directory if it is nil."
   (unless jupyter-runtime-directory
     (setq jupyter-runtime-directory
           (let ((default-directory (expand-file-name "~" user-emacs-directory)))
-            (jupyter-command "--runtime-dir"))))
+            (file-name-as-directory (jupyter-command "--runtime-dir")))))
   (let ((dir (if (file-remote-p default-directory)
                  (jupyter-command "--runtime-dir")
                jupyter-runtime-directory)))
     (unless dir
       (error "Can't obtain runtime directory from jupyter shell command"))
-    (prog1 (setq dir (concat (file-remote-p default-directory) dir))
-      (make-directory dir 'parents))))
+    (setq dir (concat (file-remote-p default-directory) dir))
+    (make-directory dir 'parents)
+    (file-name-as-directory dir)))
 
 (defun jupyter-locate-python ()
   "Return the path to the python executable in use by Jupyter.
