@@ -257,42 +257,6 @@
 
 ;;; Server
 
-;; And `jupyter-server-kernel-comm'
-(ert-deftest jupyter-server ()
-  :tags '(server)
-  (jupyter-test-with-notebook server
-    (ert-info ("`jupyter-comm-layer' methods")
-      (when (jupyter-comm-alive-p server)
-        (jupyter-comm-stop server))
-      (should-not (jupyter-comm-alive-p server))
-      (jupyter-comm-start server)
-      (should (jupyter-comm-alive-p server)))
-    (jupyter-test-with-server-kernel server "python" kernel
-      (should (oref kernel id))
-      (let ((id (oref kernel id)))
-        (should (jupyter-api-get-kernel server id))
-        (ert-info ("Connecting kernel comm to server")
-          (let ((kcomm (jupyter-server-kernel-comm
-                        :kernel kernel)))
-            (should-not (jupyter-server-kernel-connected-p server id))
-            (jupyter-comm-add-handler server kcomm)
-            (should (jupyter-server-kernel-connected-p server id))
-            (should (jupyter-comm-alive-p kcomm))
-            (jupyter-comm-stop kcomm)
-            (should-not (jupyter-comm-alive-p kcomm))
-            (should (jupyter-comm-alive-p server))))
-        (ert-info ("Connecting kernel comm starts server comm if necessary")
-          (let ((kcomm (jupyter-server-kernel-comm
-                        :kernel kernel)))
-            (jupyter-comm-stop server)
-            (should-not (jupyter-comm-alive-p server))
-            (should-not (jupyter-server-kernel-connected-p server id))
-            (jupyter-comm-start kcomm)
-            (should (jupyter-comm-alive-p server))
-            (should (jupyter-server-kernel-connected-p server id))
-            (should (jupyter-comm-alive-p kcomm))
-            (jupyter-comm-stop kcomm)))))))
-
 (ert-deftest jupyter-server-reauthentication ()
   :tags '(server)
   (let ((jupyter-test-notebook nil)
