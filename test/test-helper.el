@@ -199,7 +199,8 @@ If the `current-buffer' is not a REPL, this is identical to
                            (if (oref ,saved manager)
                                (jupyter-shutdown-kernel (oref ,saved manager))
                              (jupyter-send-shutdown-request ,saved))
-                           (jupyter-stop-channels ,saved))
+                           ;; FIXME: This will be removed after the transition
+                           (ignore-errors (jupyter-stop-channels ,saved)))
                          (let ((client (,client-fun (jupyter-kernelspec-name ,spec))))
                            (prog1 client
                              (let ((el (cons (jupyter-kernelspec-name ,spec) client)))

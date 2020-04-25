@@ -296,6 +296,7 @@
 ;; FIXME: Revisit after transition
 (ert-deftest jupyter-server-kernel-manager ()
   :tags '(server)
+  (skip-unless nil)
   (jupyter-test-with-notebook server
     (let* ((kernel (jupyter--server-kernel
                     :server server
