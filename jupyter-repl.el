@@ -57,7 +57,7 @@
 (eval-when-compile (require 'subr-x))
 (require 'jupyter-base)
 (require 'jupyter-mime)
-(require 'jupyter-client)
+(require 'jupyter-connection)
 (require 'jupyter-kernelspec)
 (require 'jupyter-widget-client)
 (require 'jupyter-kernel-manager)
@@ -2178,27 +2178,17 @@ interactively, DISPLAY the new REPL buffer as well."
   (or client-class (setq client-class 'jupyter-repl-client))
   (jupyter-error-if-not-client-class-p client-class 'jupyter-repl-client)
   (let ((client (make-instance client-class)))
-    ;; FIXME: See note in `jupyter-make-client'
-    (require 'jupyter-channel-ioloop-comm)
-    (let ((session (and (jupyter-session-p file-or-plist)
-                        file-or-plist))
-          (conn-info (jupyter--connection-info file-or-plist)))
-      (or session
-          (setq session (jupyter-session
-                         :key (plist-get conn-info :key)
-                         :conn-info conn-info)))
-      ;; TODO: Make a (session kernel) association for caching
-      ;; TODO: Do not set client slots outside of jupyter-client
-      (let ((conn (make-jupyter-async-connection
-                   session (lambda (event)
-                             (jupyter-event-handler client event)))))
-        (oset client session session)
-        (oset client kernel
-              (make-jupyter-kernel
-               :session session
-               :connection conn))
-        (jupyter-start conn))
-      (jupyter-start-channels client)
+    (let* ((session (and (jupyter-session-p file-or-plist)
+                         file-or-plist))
+           (kernel (if session
+                       (make-jupyter-kernel
+                        :session (let ((conn-info
+                                        (jupyter--connection-info file-or-plist)))
+                                   (jupyter-session
+                                    :conn-info conn-info
+                                    :key (plist-get conn-info :key))))
+                     (jupyter-kernel :conn-info file-or-plist))))
+      (jupyter-connect client kernel)
       (jupyter-hb-unpause client)
       (jupyter-bootstrap-repl client repl-name associate-buffer display))))
 
