@@ -1469,9 +1469,7 @@ value."
 ;;; Kernel management
 
 (defun jupyter-repl-interrupt-kernel ()
-  "Interrupt the kernel if possible.
-A kernel can be interrupted if it was started using a kernel
-manager.  See `jupyter-start-new-kernel'."
+  "Interrupt the kernel if possible."
   (interactive)
   (if (not (jupyter-client-has-manager-p))
       (user-error "Can only interrupt managed kernels")
@@ -1529,9 +1527,7 @@ the kernel `jupyter-current-client' is connected to."
           ;; TODO: Clean up the logic of when to insert a new prompt.  We insert
           ;; a new prompt before we know if the kernel is ready, but this should
           ;; be done after we know if the kernel is ready or not, e.g. on the
-          ;; next status: starting message.  Generalize the stuff in
-          ;; `jupyter-start-new-kernel' that handles the status: starting message
-          ;; so its easier to hook into that message.
+          ;; next status: starting message.
           (message "Kernel did not send shutdown-reply")
           (jupyter-repl--insert-banner-and-prompt client)))))
     (unless shutdown
@@ -2108,9 +2104,9 @@ ASSOCIATE-BUFFER is set to t.  If the `current-buffer's
 `major-mode' does not correspond to the language of the kernel
 started, ASSOCIATE-BUFFER has no effect.
 
-Optional argument CLIENT-CLASS is the class that will be passed
-to `jupyter-start-new-kernel' and should be a class symbol like
-the symbol `jupyter-repl-client', which is the default.
+Optional argument CLIENT-CLASS is a subclass of
+`jupyter-repl-client' that the REPL client will be an instance
+of.  The default is `jupyter-repl-client'.
 
 When called interactively, DISPLAY the new REPL buffer.
 Otherwise, in a non-interactive call, return the REPL client
@@ -2131,12 +2127,7 @@ command on the host."
                     (name (jupyter-kernelspec-name spec)))
           (setq kernel-name name))
         (error "No kernel found for prefix (%s)" kernel-name)))
-  ;; For `jupyter-start-new-kernel', we don't require this at top-level since
-  ;; there are many ways to interact with a kernel, e.g. through a notebook
-  ;; server, and we don't want to load any unnecessary files.
-  (require 'jupyter-kernel-process-manager)
-  (cl-destructuring-bind (_manager client)
-      (jupyter-start-new-kernel kernel-name client-class)
+  (let ((client (jupyter-client (jupyter-kernel-process :spec kernel-name) client-class)))
     (jupyter-bootstrap-repl client repl-name associate-buffer display)))
 
 (defun jupyter--connection-info (info-or-session)
