@@ -557,7 +557,7 @@ back."
   (and (slot-boundp client 'kernel)
        (jupyter-connected-p (oref client kernel) client)))
 
-(cl-defmethod jupyter-channel-alive-p ((client jupyter-kernel-client) channel)
+(cl-defmethod jupyter-alive-p ((client jupyter-kernel-client) channel)
   (and (slot-boundp client 'kernel)
        (jupyter-connected-p (oref client kernel) client)
        (jupyter-alive-p (jupyter-kernel-connection (oref client kernel)) channel)))
@@ -1423,7 +1423,7 @@ STR is displayed after the region."
   :silent nil
   :store-history t
   :user-expressions nil
-  :allow-stdin (jupyter-channel-alive-p client :stdin)
+  :allow-stdin (jupyter-alive-p client :stdin)
   :stop-on-error nil
   (jupyter-server-mode-set-client client))
 

@@ -503,16 +503,16 @@
                    :type :shell
                    :endpoint (format "tcp://127.0.0.1:%s" port))))
     (ert-info ("Starting the channel")
-      (should-not (jupyter-channel-alive-p channel))
-      (jupyter-start-channel channel :identity "foo")
-      (should (jupyter-channel-alive-p channel))
+      (should-not (jupyter-alive-p channel))
+      (jupyter-start channel :identity "foo")
+      (should (jupyter-alive-p channel))
       (should (equal (zmq-socket-get (oref channel socket)
                                      zmq-ROUTING-ID)
                      "foo")))
     (ert-info ("Stopping the channel")
       (let ((sock (oref channel socket)))
-        (jupyter-stop-channel channel)
-        (should-not (jupyter-channel-alive-p channel))
+        (jupyter-stop channel)
+        (should-not (jupyter-alive-p channel))
         ;; Ensure the socket was disconnected
         (should-error (zmq-send sock "foo" zmq-NOBLOCK) :type 'zmq-EAGAIN)))))
 
@@ -526,13 +526,13 @@
          (died-cb-called nil)
          (jupyter-hb-max-failures 1))
     (oset channel time-to-dead 0.1)
-    (should-not (jupyter-channel-alive-p channel))
+    (should-not (jupyter-alive-p channel))
     (should-not (jupyter-hb-beating-p channel))
     (should (oref channel paused))
     (oset channel beating t)
-    (jupyter-start-channel channel)
+    (jupyter-start channel)
     (jupyter-hb-on-kernel-dead channel (lambda () (setq died-cb-called t)))
-    (should (jupyter-channel-alive-p channel))
+    (should (jupyter-alive-p channel))
     ;; `jupyter-hb-unpause' needs to explicitly called
     (should (oref channel paused))
     (jupyter-hb-unpause channel)
@@ -543,7 +543,7 @@
     (should (oref channel paused))
     (should-not (oref channel beating))
     (should died-cb-called)
-    (should (jupyter-channel-alive-p channel))
+    (should (jupyter-alive-p channel))
     (should-not (jupyter-hb-beating-p channel))))
 
 ;;; GC
@@ -797,17 +797,17 @@
 		(jupyter-stop-channels client)
 		(cl-loop
 		 for channel in '(:hb :shell :iopub :stdin)
-		 for alive-p = (jupyter-channel-alive-p client channel)
+		 for alive-p = (jupyter-alive-p client channel)
 		 do (should-not alive-p))
 		(jupyter-start-channels client)
 		(cl-loop
 		 for channel in '(:hb :shell :iopub :stdin)
-		 for alive-p = (jupyter-channel-alive-p client channel)
+		 for alive-p = (jupyter-alive-p client channel)
 		 do (should alive-p))
 		(jupyter-stop-channels client)
 		(cl-loop
 		 for channel in '(:hb :shell :iopub :stdin)
-		 for alive-p = (jupyter-channel-alive-p client channel)
+		 for alive-p = (jupyter-alive-p client channel)
 		 do (should-not alive-p))))))
 
 (ert-deftest jupyter-inhibited-handlers ()
@@ -1089,13 +1089,13 @@
     (let* ((channel (object-assoc :shell :type jupyter-channel-ioloop-channels))
            (socket (oref channel socket)))
       (ert-info ("Verify the requested channel stops")
-        (should (jupyter-channel-alive-p channel))
+        (should (jupyter-alive-p channel))
         (should (progn (zmq-poller-modify
                         jupyter-ioloop-poller
                         (oref channel socket) (list zmq-POLLIN zmq-POLLOUT))
                        t))
         (jupyter-test-ioloop-eval-event ioloop `(list 'stop-channel :shell))
-        (should-not (jupyter-channel-alive-p channel)))
+        (should-not (jupyter-alive-p channel)))
       (ert-info ("Ensure the channel was removed from the poller")
         (should-error
          (zmq-poller-modify jupyter-ioloop-poller socket (list zmq-POLLIN))

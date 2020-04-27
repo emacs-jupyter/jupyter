@@ -30,7 +30,7 @@
 ;; a timer which periodically pings the kernel depending on how its configured.
 ;; In order for communication to occur on the other channels, one of
 ;; `jupyter-send' or `jupyter-recv' must be called after starting the channel
-;; with `jupyter-start-channel'.
+;; with `jupyter-start'.
 
 ;;; Code:
 
@@ -78,10 +78,10 @@ the ROUTING-ID of the socket.  Return the created socket."
       (error "Invalid channel type (%s)" ctype))
     (jupyter-connect-endpoint sock-type endpoint identity)))
 
-(cl-defmethod jupyter-start-channel ((channel jupyter-zmq-channel)
+(cl-defmethod jupyter-start ((channel jupyter-zmq-channel)
                                      &key (identity (jupyter-session-id
                                                      (oref channel session))))
-  (unless (jupyter-channel-alive-p channel)
+  (unless (jupyter-alive-p channel)
     (let ((socket (jupyter-connect-channel
                    (oref channel type) (oref channel endpoint) identity)))
       (oset channel socket socket)
@@ -92,8 +92,8 @@ the ROUTING-ID of the socket.  Return the created socket."
                (jupyter-ioloop-environment-p))
       (jupyter-ioloop-poller-add (oref channel socket) zmq-POLLIN))))
 
-(cl-defmethod jupyter-stop-channel ((channel jupyter-zmq-channel))
-  (when (jupyter-channel-alive-p channel)
+(cl-defmethod jupyter-stop ((channel jupyter-zmq-channel))
+  (when (jupyter-alive-p channel)
     (when (and (functionp 'jupyter-ioloop-environment-p)
                (jupyter-ioloop-environment-p))
       (jupyter-ioloop-poller-remove (oref channel socket)))
@@ -101,7 +101,7 @@ the ROUTING-ID of the socket.  Return the created socket."
       (zmq-disconnect socket (zmq-socket-get socket zmq-LAST-ENDPOINT)))
     (oset channel socket nil)))
 
-(cl-defmethod jupyter-channel-alive-p ((channel jupyter-zmq-channel))
+(cl-defmethod jupyter-alive-p ((channel jupyter-zmq-channel))
   (not (null (oref channel socket))))
 
 (cl-defmethod jupyter-send ((channel jupyter-zmq-channel) type message &optional msg-id)
@@ -174,13 +174,13 @@ pause the heartbeat channel use `jupyter-hb-pause', to unpause
 use `jupyter-hb-unpause'."))
   :documentation "A base class for heartbeat channels.")
 
-(cl-defmethod jupyter-channel-alive-p ((channel jupyter-hb-channel))
+(cl-defmethod jupyter-alive-p ((channel jupyter-hb-channel))
   "Return non-nil if CHANNEL is alive."
   (zmq-socket-p (oref channel socket)))
 
 (defun jupyter-hb--pingable-p (channel)
   (and (not (oref channel paused))
-       (jupyter-channel-alive-p channel)))
+       (jupyter-alive-p channel)))
 
 (cl-defmethod jupyter-hb-beating-p ((channel jupyter-hb-channel))
   "Return non-nil if CHANNEL is reachable."
@@ -194,14 +194,14 @@ use `jupyter-hb-unpause'."))
 (cl-defmethod jupyter-hb-unpause ((channel jupyter-hb-channel))
   "Un-pause checking for heatbeat events on CHANNEL."
   (when (oref channel paused)
-    (if (jupyter-channel-alive-p channel)
+    (if (jupyter-alive-p channel)
         ;; Consume a pending message from the kernel if there is one.  We send a
         ;; ping and then schedule a timer which fires TIME-TO-DEAD seconds
         ;; later to receive the ping back from the kernel and start the process
         ;; all over again.  If the channel is paused before TIME-TO-DEAD
         ;; seconds, there may still be a ping from the kernel waiting.
         (ignore-errors (zmq-recv (oref channel socket) zmq-DONTWAIT))
-      (jupyter-start-channel channel))
+      (jupyter-start channel))
     (oset channel paused nil)
     (jupyter-hb--send-ping channel)))
 
@@ -230,8 +230,8 @@ seconds has elapsed without the kernel sending a ping back."
                (if (oref channel beating)
                    (jupyter-hb--send-ping channel)
                  ;; Reset the socket
-                 (jupyter-stop-channel channel)
-                 (jupyter-start-channel channel)
+                 (jupyter-stop channel)
+                 (jupyter-start channel)
                  (or failed-count (setq failed-count 0))
                  (if (< failed-count jupyter-hb-max-failures)
                      (jupyter-hb--send-ping channel (1+ failed-count))

@@ -137,7 +137,7 @@ request on KERNEL's control channel if its kernelspec has an
                             (jupyter-session-conn-info session)
                           (format "%s://%s:%d" transport ip control_port)))))
         ;; TODO: `with-live-jupyter-channel'
-        (jupyter-start-channel channel)
+        (jupyter-start channel)
         (jupyter-send channel :interrupt-request
                       (jupyter-message-interrupt-request))
         (jupyter-with-timeout
@@ -147,7 +147,7 @@ request on KERNEL's control channel if its kernelspec has an
              (message "No interrupt reply from kernel (%s)"
                       (jupyter-kernel-name kernel)))
           (jupyter-recv channel 'dont-wait))
-        (jupyter-stop-channel channel)))))
+        (jupyter-stop channel)))))
 
 (provide 'jupyter-kernel)
 

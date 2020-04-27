@@ -72,10 +72,10 @@ is possible."
   "Return non-nil if CONN is live."
   (funcall (jupyter-connection-alive-p conn) channel))
 
-(defun jupyter-start (conn &optional channel)
+(cl-defmethod jupyter-start ((conn jupyter-connection) &optional channel)
   (funcall (jupyter-connection-start conn) channel))
 
-(defun jupyter-stop (conn &optional channel)
+(cl-defmethod jupyter-stop ((conn jupyter-connection) &optional channel)
   (funcall (jupyter-connection-stop conn) channel))
 
 (defun jupyter-conn-id (conn)

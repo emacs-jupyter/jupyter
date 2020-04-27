@@ -44,15 +44,15 @@
  Typical endpoints look like \"tcp://127.0.0.1:5555\"."))
   :abstract t)
 
-(cl-defgeneric jupyter-start-channel ((channel jupyter-channel) &key identity)
+(cl-defmethod jupyter-start ((channel jupyter-channel) &key identity)
   "Start a Jupyter CHANNEL using IDENTITY as the routing ID.
 If CHANNEL is already alive, do nothing.")
 
-(cl-defgeneric jupyter-stop-channel ((channel jupyter-channel))
+(cl-defmethod jupyter-stop ((channel jupyter-channel))
   "Stop a Jupyter CHANNEL.
 If CHANNEL is already stopped, do nothing.")
 
-(cl-defgeneric jupyter-channel-alive-p ((channel jupyter-channel))
+(cl-defmethod jupyter-alive-p ((channel jupyter-channel))
   "Return non-nil if a CHANNEL is alive.")
 
 (cl-defgeneric jupyter-send (channel type message &optional msg-id)

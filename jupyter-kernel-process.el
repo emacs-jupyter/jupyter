@@ -101,14 +101,14 @@ used for initialization."
 (defun jupyter--channel-alive-p (ioloop chgroup channel)
   (if (eq channel :hb)
       (let ((hb (plist-get chgroup channel)))
-        (and hb (jupyter-channel-alive-p hb)))
+        (and hb (jupyter-alive-p hb)))
     (and ioloop (jupyter-ioloop-alive-p ioloop)
          (jupyter--proxy-channel-alive-p
           (plist-get chgroup channel)))))
 
 (defun jupyter--start-channel (ioloop chgroup channel)
   (unless (jupyter--channel-alive-p ioloop chgroup channel)
-    (if (eq channel :hb) (jupyter-start-channel (plist-get chgroup channel))
+    (if (eq channel :hb) (jupyter-start (plist-get chgroup channel))
       (let ((endpoint (jupyter--proxy-channel-endpoint
                        (plist-get chgroup channel))))
         (jupyter-send ioloop 'start-channel channel endpoint)
@@ -120,7 +120,7 @@ used for initialization."
 
 (defun jupyter--stop-channel (ioloop chgroup channel)
   (when (jupyter--channel-alive-p ioloop chgroup channel)
-    (if (eq channel :hb) (jupyter-stop-channel (plist-get chgroup channel))
+    (if (eq channel :hb) (jupyter-stop (plist-get chgroup channel))
       (jupyter-send ioloop 'stop-channel channel)
       ;; Verify that the channel stops
       (jupyter-with-timeout

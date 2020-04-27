@@ -199,7 +199,7 @@ For example suppose we define an argument type, jupyter-channel:
 and define an event like
 
     (jupyter-ioloop-add-event ioloop stop-channel ((channel jupyter-channel))
-      (jupyter-stop-channel channel))
+      (jupyter-stop channel))
 
 Finally after adding other events and starting the ioloop we send
 an event like
