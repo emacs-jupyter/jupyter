@@ -31,13 +31,13 @@
 (require 'jupyter-kernel)
 (require 'jupyter-rest-api)
 (require 'jupyter-server-ioloop)
+(require 'jupyter-connection)
 
 (defgroup jupyter-server-kernel nil
   "Kernel behind a Jupyter server"
   :group 'jupyter)
 
 ;;; `jupyter-server'
-
 
 (defvar-local jupyter-current-server nil
   "The `jupyter-server' associated with the current buffer.
@@ -53,13 +53,64 @@ Used in, e.g. a `jupyter-server-kernel-list-mode' buffer.")
 (defclass jupyter-server (jupyter-rest-client
                           eieio-instance-tracker)
   ((tracking-symbol :initform 'jupyter--servers)
-   (ioloop :type jupyter-ioloop)
+   (conn :type jupyter-connection)
    (handlers :type list :initform nil)
    (kernelspecs
     :type json-plist
     :initform nil
     :documentation "Kernelspecs for the kernels available behind this gateway.
 Access should be done through `jupyter-available-kernelspecs'.")))
+
+(cl-defstruct jupyter-server--event-handler id fn)
+
+(cl-defmethod initialize-instance ((server jupyter-server) &optional _slots)
+  (cl-call-next-method)
+  (let (ioloop)
+    (oset
+     server conn
+     (make-jupyter-connection
+      :alive-p
+      (lambda (&rest _)
+        (and ioloop
+             (jupyter-ioloop-alive-p ioloop)))
+      :send
+      (lambda (&rest event)
+        (apply #'jupyter-send ioloop event))
+      :start
+      (lambda (&rest _)
+        (when (and ioloop (jupyter-ioloop-alive-p ioloop))
+          (jupyter-ioloop-stop ioloop))
+        (setq ioloop (jupyter-server-ioloop
+                      :url (oref server url)
+                      :ws-url (oref server ws-url)
+                      :ws-headers (jupyter-api-auth-headers server)))
+        ;; Write the cookies to file so that they can be
+        ;; read by the subprocess.
+        (url-cookie-write-file)
+        (jupyter-ioloop-start
+         ioloop
+         (lambda (event)
+           (let ((event-type (car event))
+                 (event-kid (cadr event)))
+             (pcase event-type
+               ('connect-channels
+                (cl-callf append (process-get (oref ioloop process) :kernel-ids)
+                  (list event-kid)))
+               ('disconnect-channels
+                (cl-callf2 remove event-kid
+                           (process-get (oref ioloop process) :kernel-ids)))
+               (_
+                (setq event (cons event-type (cddr event)))
+                (cl-loop
+                 for handler in (oref server handlers)
+                 when (string= event-kid
+                               (jupyter-server--event-handler-id handler))
+                 do (funcall
+                     (jupyter-server--event-handler-fn handler)
+                     event))))))))
+      :stop
+      (lambda (&rest _)
+        (jupyter-ioloop-stop ioloop))))))
 
 (defun jupyter-servers ()
   "Return a list of all `jupyter-server's."
@@ -69,22 +120,20 @@ Access should be done through `jupyter-available-kernelspecs'.")))
   "Forget `jupyter-servers' that are no longer accessible at their hosts."
   (dolist (server (jupyter-servers))
     (unless (jupyter-api-server-exists-p server)
-      (when (jupyter-ioloop-alive-p (oref server ioloop))
-        (jupyter-ioloop-stop (oref server ioloop)))
+      (jupyter-stop (oref server conn))
       (jupyter-api-delete-cookies (oref server url))
       (delete-instance server))))
-
 
 (defun jupyter-server--refresh-comm (server)
   "Stop and then start SERVER communication.
 Reconnect the previously connected kernels when starting."
-  (when (jupyter-ioloop-alive-p (oref server ioloop))
+  (when (jupyter-alive-p (oref server conn))
     (let ((connected (cl-remove-if-not
                       (apply-partially #'jupyter-server-kernel-connected-p server)
                       (mapcar (lambda (kernel) (plist-get kernel :id))
                               (jupyter-api-get-kernel server)))))
-      (jupyter-ioloop-stop (oref server ioloop))
-      (jupyter-server--start-comm server)
+      (jupyter-stop (oref server conn))
+      (jupyter-start (oref server conn))
       (while connected
         (jupyter-server--connect-channels server (pop connected))))))
 
@@ -130,8 +179,6 @@ The kernelspecs are returned in the same form as returned by
 (cl-defmethod jupyter-server-has-kernelspec-p ((server jupyter-server) name)
   "Return non-nil if SERVER can launch kernels with kernelspec NAME."
   (jupyter-guess-kernelspec name (jupyter-server-kernelspecs server)))
-
-
 
 ;;; Kernel definition
 
@@ -179,83 +226,6 @@ Call the next method if ARGS does not contain :server."
                                 (oref server url))))))
       (apply #'jupyter-server-kernel args))))
 
-;;;; Kernel management 
-
-(cl-defmethod jupyter-launch ((kernel jupyter-server-kernel))
-  "Launch KERNEL based on its kernelspec.
-When KERNEL does not have an ID yet, launch KERNEL on SERVER
-using its SPEC."
-  (pcase-let
-	  (((cl-struct jupyter-server-kernel server id spec session) kernel))
-	(unless session
-	  (and id (setq id (or (jupyter-server-kernel-id-from-name server id) id)))
-	  (if id
-          ;; When KERNEL already has an ID before it has a session,
-          ;; assume we are connecting to an already launched kernel.  In
-          ;; this case, make sure the KERNEL's SPEC is the same as the
-          ;; one being connected to.
-          ;;
-          ;; Note, this also has the side effect of raising an error
-          ;; when the ID does not match one on the server.
-		  (unless spec
-			(let ((model (jupyter-api-get-kernel server id)))
-			  (setf (jupyter-kernel-spec kernel) 
-					(jupyter-guess-kernelspec
-					 (plist-get model :name)
-					 (jupyter-server-kernelspecs server)))))
-		(let ((plist (jupyter-api-start-kernel
-					  server (jupyter-kernelspec-name spec))))
-		  (setf (jupyter-server-kernel-id kernel) (plist-get plist :id))))
-      ;; TODO: Replace with the real session object
-	  (setf (jupyter-kernel-session kernel) (jupyter-session))))
-  (cl-call-next-method))
-
-(cl-defmethod jupyter-shutdown ((kernel jupyter-server-kernel))
-  (pcase-let
-      (((cl-struct jupyter-server-kernel server id session) kernel))
-    (cl-call-next-method)
-    (when session
-      (jupyter-api-shutdown-kernel server id))))
-
-(cl-defmethod jupyter-interrupt ((kernel jupyter-server-kernel))
-  (pcase-let (((cl-struct jupyter-server-kernel server id) kernel))
-    (jupyter-api-interrupt-kernel server id)))
-
-(cl-defstruct jupyter-server--event-handler id fn)
-
-(defun jupyter-server--start-comm (server)
-  (unless (and (slot-boundp server 'ioloop)
-               (jupyter-ioloop-alive-p (oref server ioloop)))
-    ;; Write the cookies to file so that they can be read
-    ;; by the subprocess.
-    (url-cookie-write-file)
-    (let ((ioloop (jupyter-server-ioloop
-                   :url (oref server url)
-                   :ws-url (oref server ws-url)
-                   :ws-headers (jupyter-api-auth-headers server))))
-      (oset server ioloop ioloop)
-      (jupyter-ioloop-start
-       ioloop
-       (lambda (event)
-         (let ((event-type (car event))
-               (event-kid (cadr event)))
-           (pcase event-type
-             ('connect-channels
-              (cl-callf append (process-get (oref ioloop process) :kernel-ids)
-                (list event-kid)))
-             ('disconnect-channels
-              (cl-callf2 remove event-kid
-                         (process-get (oref ioloop process) :kernel-ids)))
-             (_
-              (setq event (cons event-type (cddr event)))
-              (cl-loop
-               for handler in (oref server handlers)
-               when (string= event-kid
-                             (jupyter-server--event-handler-id handler))
-               do (funcall
-                   (jupyter-server--event-handler-fn handler)
-                   event))))))))))
-
 ;;; Client connection
 
 (defun jupyter-server--connect-channels (server id)
@@ -273,11 +243,15 @@ using its SPEC."
               'disconnect-channels #'identity)
     (error "Timeout when disconnecting websocket for kernel id %s" id)))
 
+(cl-defmethod jupyter-connection :before ((kernel jupyter-server-kernel) &rest _)
+  (pcase-let (((cl-struct jupyter-server-kernel server id) kernel))
+    (unless (jupyter-alive-p (oref server conn))
+      (jupyter-start (oref server conn)))))
+
 (cl-defmethod jupyter-connection ((kernel jupyter-server-kernel) (handler function))
   (pcase-let* (((cl-struct jupyter-server-kernel server id) kernel)
                (-handler (make-jupyter-server--event-handler
                           :id id :fn handler)))
-    (jupyter-server--start-comm server)
     (make-jupyter-connection
      :id (lambda ()
            (or (jupyter-server-kernel-name server id)
@@ -296,6 +270,47 @@ using its SPEC."
      :alive-p (lambda (&optional _channel)
                 (and (jupyter-server-kernel-connected-p server id)
                      (memq -handler (oref server handlers)))))))
+
+;;; Kernel management
+
+(cl-defmethod jupyter-launch ((kernel jupyter-server-kernel))
+  "Launch KERNEL based on its kernelspec.
+When KERNEL does not have an ID yet, launch KERNEL on SERVER
+using its SPEC."
+  (pcase-let (((cl-struct jupyter-server-kernel server id spec session) kernel))
+	(unless session
+	  (and id (setq id (or (jupyter-server-kernel-id-from-name server id) id)))
+	  (if id
+          ;; When KERNEL already has an ID before it has a session,
+          ;; assume we are connecting to an already launched kernel.  In
+          ;; this case, make sure the KERNEL's SPEC is the same as the
+          ;; one being connected to.
+          ;;
+          ;; Note, this also has the side effect of raising an error
+          ;; when the ID does not match one on the server.
+		  (unless spec
+			(let ((model (jupyter-api-get-kernel server id)))
+			  (setf (jupyter-kernel-spec kernel)
+					(jupyter-guess-kernelspec
+					 (plist-get model :name)
+					 (jupyter-server-kernelspecs server)))))
+		(let ((plist (jupyter-api-start-kernel
+					  server (jupyter-kernelspec-name spec))))
+          (setf (jupyter-server-kernel-id kernel) (plist-get plist :id))
+		  (sit-for 1)))
+      ;; TODO: Replace with the real session object
+	  (setf (jupyter-kernel-session kernel) (jupyter-session))))
+  (cl-call-next-method))
+
+(cl-defmethod jupyter-shutdown ((kernel jupyter-server-kernel))
+  (pcase-let (((cl-struct jupyter-server-kernel server id session) kernel))
+    (cl-call-next-method)
+    (when session
+      (jupyter-api-shutdown-kernel server id))))
+
+(cl-defmethod jupyter-interrupt ((kernel jupyter-server-kernel))
+  (pcase-let (((cl-struct jupyter-server-kernel server id) kernel))
+    (jupyter-api-interrupt-kernel server id)))
 
 (provide 'jupyter-server-kernel)
 
