@@ -185,7 +185,7 @@ If the `current-buffer' is not a REPL, this is identical to
        (cl-loop
         for saved in (copy-sequence ,saved-sym)
         for client = (cdr saved)
-        when (and client (slot-boundp client 'manager)
+        when (and client (oref client manager)
                   (not (jupyter-kernel-alive-p (oref client manager))))
         do (jupyter-stop-channels client)
         (cl-callf2 delq saved ,saved-sym))
@@ -196,7 +196,7 @@ If the `current-buffer' is not a REPL, this is identical to
                            ,saved
                          ;; Want a fresh kernel, so shutdown the cached one
                          (when ,saved
-                           (if (slot-boundp ,saved 'manager)
+                           (if (oref ,saved manager)
                                (jupyter-shutdown-kernel (oref ,saved manager))
                              (jupyter-send-shutdown-request ,saved))
                            (jupyter-stop-channels ,saved))
