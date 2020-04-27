@@ -1169,10 +1169,8 @@
 
 (ert-deftest jupyter-repl-client-predicates ()
   :tags '(repl)
-  (should-not (jupyter-client-has-manager-p))
   (should-not (jupyter-repl-connected-p))
   (jupyter-test-with-python-repl client
-    (should (jupyter-client-has-manager-p))
     (should (jupyter-repl-connected-p))))
 
 (ert-deftest jupyter-repl-cell-predicates ()

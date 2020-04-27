@@ -341,14 +341,6 @@ method is called."
 
 ;;; Initializing a `jupyter-kernel-client'
 
-(defun jupyter-client-has-manager-p (&optional client)
-  "Return non-nil if CLIENT's kernel has a kernel manager.
-CLIENT defaults to `jupyter-current-client'."
-  (or client (setq client jupyter-current-client))
-  (when client
-    (cl-check-type client jupyter-kernel-client)
-    (and (oref client manager) t)))
-
 (cl-defmethod initialize-instance ((client jupyter-kernel-client) &optional _slots)
   (cl-call-next-method)
   (let ((buffer (generate-new-buffer " *jupyter-kernel-client*")))
@@ -361,9 +353,8 @@ CLIENT defaults to `jupyter-current-client'."
 
 (cl-defmethod jupyter-kernel-alive-p ((client jupyter-kernel-client))
   "Return non-nil if the kernel CLIENT is connected to is alive."
-  (or (and (jupyter-client-has-manager-p client)
-           (jupyter-kernel-alive-p (oref client manager)))
-      (jupyter-hb-beating-p client)))
+  (and (jupyter-hb-beating-p client)
+       (jupyter-alive-p (oref client kernel))))
 
 (defun jupyter-clients ()
   "Return a list of all `jupyter-kernel-client' objects."

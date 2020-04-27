@@ -1383,10 +1383,11 @@ the REPL to disable that mode in those buffers.  See
       (when (y-or-n-p (format "Jupyter REPL (%s) still connected.  Kill it? "
                               (buffer-name (current-buffer))))
         (prog1 t
-          (jupyter-stop-channels jupyter-current-client)
-          (when (and (jupyter-client-has-manager-p)
-                     (yes-or-no-p (format "Shutdown the client's kernel? ")))
-            (jupyter-shutdown-kernel (oref jupyter-current-client manager))))))))
+          (let ((kernel (oref jupyter-current-client kernel)))
+            (jupyter-stop-channels jupyter-current-client)
+            (when (and (zerop (length (jupyter-kernel-clients kernel)))
+                       (yes-or-no-p (format "Shutdown the client's kernel? ")))
+              (jupyter-shutdown-kernel jupyter-current-client))))))))
 
 (defun jupyter-repl-error-before-major-mode-change ()
   "Error if attempting to change the `major-mode' in a REPL buffer."
