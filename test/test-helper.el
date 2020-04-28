@@ -381,8 +381,7 @@ extracts the IPython kernel's semver."
   (let* ((cmd (aref (plist-get (jupyter-kernelspec-plist spec) :argv) 0))
          (process-environment
           (append
-           (cl-loop for (key val) on (plist-get spec :env) by #'cddr
-                    collect (concat (substring (symbol-name key) 1) "=" val))
+           (jupyter-process-environment spec)
            process-environment))
          (version
           (with-temp-buffer
