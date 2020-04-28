@@ -667,13 +667,11 @@ see the documentation on the --NotebookApp.password argument."
  (lambda ()
    (ignore-errors (delete-directory jupyter-test-temporary-directory))
    (ignore-errors (delete-process (car jupyter-test-notebook)))
-   (cl-loop for server in (jupyter-servers)
-            do (ignore-errors (jupyter-comm-stop server)))
    (cl-loop
     for client in (jupyter-clients)
-    do (ignore-errors (jupyter-stop-channels client))
-    (when (oref client manager)
-      (ignore-errors (jupyter-shutdown-kernel (oref client manager)))))
+    do (ignore-errors (jupyter-shutdown-kernel client)))
+   (cl-loop for server in (jupyter-servers)
+            do (ignore-errors (jupyter-ioloop-stop (oref server ioloop))))
    (cl-loop
     for sock being the hash-keys of jupyter-test-zmq-sockets do
     (ignore-errors
