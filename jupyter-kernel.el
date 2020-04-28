@@ -59,20 +59,34 @@
   "Return non-nil if KERNEL has been launched."
   (and (jupyter-kernel-session kernel) t))
 
-(defun jupyter-kernel (&rest args)
+(cl-defgeneric jupyter-kernel (&rest args)
   "Return a kernel constructed from ARGS.
-ARGS are keyword arguments."
-  (if (plist-get args :conn-info)
-      (make-jupyter-kernel
-       :session (let ((conn-info
-                       (if (stringp (plist-get args :conn-info))
-                           (jupyter-read-connection
-                            (plist-get args :conn-file))
-                         (plist-get args :conn-info))))
-                  (jupyter-session
-                   :conn-info conn-info
-                   :key (plist-get conn-info :key))))
-    (error "Implement")))
+ARGS are keyword arguments used to initialize the returned
+kernel.
+
+The default implementation will return a `jupyter-kernel' with a
+session initialized from the value of :conn-info in ARGS, either
+the name of a connection file to read or itself a connection
+property list (see `jupyter-read-connection').  A client can
+connect to the returned kernel using `jupyter-client'.
+
+This method can be extended with extra primary methods for the
+purposes of handling different forms of ARGS that do not just
+need the default behavior."
+  (let ((conn-info (plist-get args :conn-info)))
+    (cond
+     (conn-info
+      (when (stringp conn-info)
+        (setq conn-info (jupyter-read-connection conn-info)))
+      (apply #'make-jupyter-kernel
+             :session (jupyter-session
+                       :conn-info conn-info
+                       :key (plist-get conn-info :key))
+             (cl-loop
+              for (k v) on args by #'cddr
+              unless (eq k :conn-info) collect k and collect v)))
+     (t
+      (cl-call-next-method)))))
 
 ;;; Kernel management
 

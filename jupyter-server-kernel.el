@@ -156,24 +156,28 @@ The kernelspecs are returned in the same form as returned by
          (cl-call-next-method))))
 
 (defun jupyter-server-kernel (&rest args)
-  "Return a representation of a kernel on a Jupyter server.
-ARGS is a property list used to initialize the returned
-`jupyter-server-kernel'.  The following keys of ARGS are handled
-specially:
-
-  - If :spec is present and it is the name of a kernelspec, then
-    the SPEC of the returned kernel will be the one associated
-    with that name on the server."
-  (cl-assert (jupyter-server-p (plist-get args :server)))
-  (when (stringp (plist-get args :spec))
-    (let ((server (plist-get args :server))
-          (name (plist-get args :spec)))
-      (plist-put args :spec
-                 (or (jupyter-guess-kernelspec
-                      name (jupyter-server-kernelspecs server))
-                     (error "No kernelspec matching %s @ %s" name
-                            (oref server url))))))
+  "Return a `jupyter-server-kernel' initialized with ARGS."
   (apply #'make-jupyter-server-kernel args))
+
+(cl-defmethod jupyter-kernel :extra "server" (&rest args)
+  "Return a representation of a kernel on a Jupyter server.
+If ARGS contains a :server key, return a `jupyter-server-kernel'
+initialized using ARGS.  If ARGS contains a :spec key whose value
+is the name of a kernelspec, the returned kernel's spec slot will
+be set to the corresponding `jupyter-kernelspec'.
+
+Call the next method if ARGS does not contain :server."
+  (let ((server (plist-get args :server)))
+    (if (not server) (cl-call-next-method)
+      (cl-assert (object-of-class-p server 'jupyter-server))
+      (let ((spec (plist-get args :spec)))
+        (when (stringp spec)
+          (plist-put args :spec
+                     (or (jupyter-guess-kernelspec
+                          spec (jupyter-server-kernelspecs server))
+                         (error "No kernelspec matching %s @ %s" spec
+                                (oref server url))))))
+      (apply #'jupyter-server-kernel args))))
 
 ;;;; Kernel management 
 
@@ -251,6 +255,8 @@ using its SPEC."
                do (funcall
                    (jupyter-server--event-handler-fn handler)
                    event))))))))))
+
+;;; Client connection
 
 (defun jupyter-server--connect-channels (server id)
   (jupyter-send (oref server ioloop) 'connect-channels id)

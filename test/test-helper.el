@@ -218,7 +218,7 @@ This only starts a single global client unless the variable
   `(jupyter-test-with-client-cache
     (lambda (name) (jupyter-make-client
                (jupyter-kernel-manager
-                :kernel (jupyter-kernel-process :spec name))
+                :kernel (jupyter-kernel :spec name))
                'jupyter-kernel-client))
        jupyter-test-global-clients ,kernel ,client
      (unwind-protect

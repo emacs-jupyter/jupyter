@@ -329,10 +329,7 @@ the kernel whose class is CLIENT-CLASS.  Note that the client’s
 see ‘jupyter-make-client’."
   (require 'jupyter-server-kernel)
   (or client-class (setq client-class 'jupyter-kernel-client))
-  (let* ((specs (jupyter-server-kernelspecs server))
-         (kernel (jupyter-server-kernel
-                  :server server
-                  :spec (jupyter-guess-kernelspec kernel-name specs)))
+  (let* ((kernel (jupyter-kernel :server server :spec kernel-name))
          (manager (jupyter-server-kernel-manager :kernel kernel)))
     (let ((client (jupyter-make-client manager client-class)))
       (list manager client))))
@@ -386,17 +383,10 @@ the same meaning as in `jupyter-connect-repl'."
                       (y-or-n-p "Name REPL? "))
              (read-string "REPL Name: "))
            t nil t)))
-  (require 'jupyter-server-kernel)
   (or client-class (setq client-class 'jupyter-repl-client))
   (jupyter-error-if-not-client-class-p client-class 'jupyter-repl-client)
-  (let* ((manager
-          ;; TODO: Move to making `jupyter-server-kernel' and the
-          ;; other one return singleton kernels?
-          (or (jupyter-server-find-kernel server kernel-id)
-              (jupyter-server-kernel-manager
-               :kernel (jupyter-server-kernel
-                        :id kernel-id
-                        :server server))))
+  (let* ((manager (jupyter-server-kernel-manager
+                   :kernel (jupyter-kernel :server server :id kernel-id)))
          (client (jupyter-make-client manager client-class)))
     (jupyter-bootstrap-repl client repl-name associate-buffer display)))
 

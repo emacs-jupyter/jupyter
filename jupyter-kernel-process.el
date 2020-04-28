@@ -48,36 +48,35 @@
          (cl-call-next-method))))
 
 (defun jupyter-kernel-process (&rest args)
-  "Return a representation of a kernel process.
-Return a `jupyter-kernel-process' with ARGS being the slot values
-used for initialization."
-  (let ((kernel (apply #'make-jupyter-kernel-process args))
-        (session (pcase (plist-get args :session)
-                   ((and (pred stringp) (pred file-exists-p) `,conn-file)
-                    (let ((conn-info (jupyter-read-connection conn-file)))
-                      (jupyter-session
-                       :conn-info conn-info
-                       :key (plist-get conn-info :key))))
-                   ((and (pred jupyter-session-p) `,session)
-                    session)
-                   (_
-                    (prog1 (jupyter-session-with-random-ports)
-                      ;; This is here for stability when running
-                      ;; the tests.  Sometimes the kernel ports are
-                      ;; not set up fast enough due to the hack
-                      ;; done in
-                      ;; `jupyter-session-with-random-ports'.  The
-                      ;; effect seems to be messages that are sent
-                      ;; but never received by the kernel.
-                      (sit-for 0.2)))))
-        (spec (pcase (plist-get args :spec)
-                ((and (pred stringp) `,name)
-                 (or (jupyter-guess-kernelspec name)
-                     (error "No kernelspec matching name (%s)" name)))
-                (`,spec spec))))
-    (setf (jupyter-kernel-session kernel) session)
-    (setf (jupyter-kernel-spec kernel) spec)
-    kernel))
+  "Return a `jupyter-kernel-process' initialized with ARGS."
+  (apply #'make-jupyter-kernel-process args))
+
+(cl-defmethod jupyter-kernel :extra "process" (&rest args)
+  "Return a representation of a kernel based on an Emacs process.
+If ARGS contains a :spec key, return a `jupyter-kernel-process'
+initialized using ARGS.  If the value is the name of a
+kernelspec, the returned kernel's spec slot will be set to the
+corresponding `jupyter-kernelspec'.  The session of the returned
+kernel will be initialized with the return value of
+`jupyter-session-with-random-ports'.
+
+Call the next method if ARGS does not contain :spec."
+  (let ((spec (plist-get args :spec)))
+    (if (not spec) (cl-call-next-method)
+      (when (stringp spec)
+        (plist-put args :spec
+                   (or (jupyter-guess-kernelspec spec)
+                       (error "No kernelspec matching name (%s)" spec))))
+      (apply #'jupyter-kernel-process
+             :session (prog1 (jupyter-session-with-random-ports)
+                        ;; This is here for stability when running the
+                        ;; tests.  Sometimes the kernel ports are not
+                        ;; set up fast enough due to the hack done in
+                        ;; `jupyter-session-with-random-ports'.  The
+                        ;; effect seems to be messages that are sent but
+                        ;; never received by the kernel.
+                        (sit-for 0.2))
+             args))))
 
 ;;; Client connection
 
