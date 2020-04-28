@@ -353,8 +353,8 @@ method is called."
 
 (cl-defmethod jupyter-kernel-alive-p ((client jupyter-kernel-client))
   "Return non-nil if the kernel CLIENT is connected to is alive."
-  (and (jupyter-hb-beating-p client)
-       (jupyter-alive-p (oref client kernel))))
+  (and (slot-boundp client 'kernel)
+       (jupyter-connected-p (oref client kernel) client)))
 
 (defun jupyter-clients ()
   "Return a list of all `jupyter-kernel-client' objects."
