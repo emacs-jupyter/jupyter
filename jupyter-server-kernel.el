@@ -65,7 +65,8 @@ Access should be done through `jupyter-available-kernelspecs'.")))
 
 (cl-defmethod initialize-instance ((server jupyter-server) &optional _slots)
   (cl-call-next-method)
-  (let (ioloop)
+  (let (ioloop
+        (kernel-ids '()))
     (oset
      server conn
      (make-jupyter-connection
@@ -93,12 +94,8 @@ Access should be done through `jupyter-available-kernelspecs'.")))
            (let ((event-type (car event))
                  (event-kid (cadr event)))
              (pcase event-type
-               ('connect-channels
-                (cl-callf append (process-get (oref ioloop process) :kernel-ids)
-                  (list event-kid)))
-               ('disconnect-channels
-                (cl-callf2 remove event-kid
-                           (process-get (oref ioloop process) :kernel-ids)))
+               ('connect-channels (push event-kid kernel-ids))
+               ('disconnect-channels (pop event-kid kernel-ids))
                (_
                 (setq event (cons event-type (cddr event)))
                 (cl-loop
@@ -107,7 +104,13 @@ Access should be done through `jupyter-available-kernelspecs'.")))
                                (jupyter-server--event-handler-id handler))
                  do (funcall
                      (jupyter-server--event-handler-fn handler)
-                     event))))))))
+                     event)))))))
+        ;; Re-connect kernels if there were some
+        (when kernel-ids
+          (let ((connected kernel-ids))
+            (setq kernel-ids nil)
+            (while connected
+              (jupyter-server--connect-channels server (pop connected))))))
       :stop
       (lambda (&rest _)
         (jupyter-ioloop-stop ioloop))))))
@@ -124,19 +127,6 @@ Access should be done through `jupyter-available-kernelspecs'.")))
       (jupyter-api-delete-cookies (oref server url))
       (delete-instance server))))
 
-(defun jupyter-server--refresh-comm (server)
-  "Stop and then start SERVER communication.
-Reconnect the previously connected kernels when starting."
-  (when (jupyter-alive-p (oref server conn))
-    (let ((connected (cl-remove-if-not
-                      (apply-partially #'jupyter-server-kernel-connected-p server)
-                      (mapcar (lambda (kernel) (plist-get kernel :id))
-                              (jupyter-api-get-kernel server)))))
-      (jupyter-stop (oref server conn))
-      (jupyter-start (oref server conn))
-      (while connected
-        (jupyter-server--connect-channels server (pop connected))))))
-
 (cl-defmethod jupyter-api-request :around ((server jupyter-server) _method &rest _plist)
   (condition-case nil
       (cl-call-next-method)
@@ -146,12 +136,8 @@ Reconnect the previously connected kernels when starting."
        (error "Unauthenticated request, can't attempt re-authentication \
 with default `jupyter-api-authentication-method'"))
      (prog1 (cl-call-next-method)
-       (jupyter-server--refresh-comm server)))))
-
-(cl-defmethod jupyter-server-kernel-connected-p ((comm jupyter-server) id)
-  "Return non-nil if COMM has a WebSocket connection to a kernel with ID."
-  (and (jupyter-ioloop-alive-p (oref comm ioloop))
-       (member id (process-get (oref (oref comm ioloop) process) :kernel-ids))))
+       (jupyter-stop (oref server conn))
+       (jupyter-start (oref server conn))))))
 
 (cl-defmethod jupyter-server-kernelspecs ((server jupyter-server) &optional refresh)
   "Return the kernelspecs on SERVER.
@@ -230,11 +216,9 @@ Call the next method if ARGS does not contain :server."
 
 (defun jupyter-server--connect-channels (server id)
   (jupyter-send (oref server ioloop) 'connect-channels id)
-  (unless (jupyter-server-kernel-connected-p server id)
-    (jupyter-with-timeout
-        (nil jupyter-default-timeout
-             (error "Timeout when connecting websocket to kernel id %s" id))
-      (jupyter-server-kernel-connected-p server id))))
+  (unless (jupyter-ioloop-wait-until (oref server ioloop)
+              'connect-channels #'identity)
+    (error "Timeout when connecting websocket to kernel id %s" id)))
 
 (defun jupyter-server--disconnect-channels (server id)
   ;; from the comm-remove-handler of a server
@@ -268,8 +252,7 @@ Call the next method if ARGS does not contain :server."
              (apply #'jupyter-send (oref server ioloop)
                     (car event) id (cdr event)))
      :alive-p (lambda (&optional _channel)
-                (and (jupyter-server-kernel-connected-p server id)
-                     (memq -handler (oref server handlers)))))))
+                (memq -handler (oref server handlers))))))
 
 ;;; Kernel management
 
