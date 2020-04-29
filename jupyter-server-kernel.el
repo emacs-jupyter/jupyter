@@ -76,7 +76,10 @@ Access should be done through `jupyter-available-kernelspecs'.")))
              (jupyter-ioloop-alive-p ioloop)))
       :send
       (lambda (&rest event)
-        (apply #'jupyter-send ioloop event))
+        (apply #'jupyter-send ioloop event)
+        (unless (jupyter-ioloop-wait-until ioloop
+                    (car event) #'identity)
+          (error "Timeout when sending server event: %s" event)))
       :start
       (lambda (&rest _)
         (when (and ioloop (jupyter-ioloop-alive-p ioloop))
@@ -215,17 +218,14 @@ Call the next method if ARGS does not contain :server."
 ;;; Client connection
 
 (defun jupyter-server--connect-channels (server id)
-  (jupyter-send (oref server ioloop) 'connect-channels id)
-  (unless (jupyter-ioloop-wait-until (oref server ioloop)
-              'connect-channels #'identity)
-    (error "Timeout when connecting websocket to kernel id %s" id)))
+  (unless (jupyter-alive-p (oref server conn))
+    (jupyter-start (oref server conn)))
+  (jupyter--send (oref server conn) 'connect-channels id))
 
 (defun jupyter-server--disconnect-channels (server id)
-  ;; from the comm-remove-handler of a server
-  (jupyter-send (oref server ioloop) 'disconnect-channels id)
-  (unless (jupyter-ioloop-wait-until (oref server ioloop)
-              'disconnect-channels #'identity)
-    (error "Timeout when disconnecting websocket for kernel id %s" id)))
+  (unless (jupyter-alive-p (oref server conn))
+    (jupyter-start (oref server conn)))
+  (jupyter--send (oref server conn) 'disconnect-channels id))
 
 (cl-defmethod jupyter-connection :before ((kernel jupyter-server-kernel) &rest _)
   (pcase-let (((cl-struct jupyter-server-kernel server id) kernel))
