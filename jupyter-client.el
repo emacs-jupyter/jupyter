@@ -397,11 +397,16 @@ If it does not contain a valid value, raise an error."
     (apply req content)))
 
 (cl-defmethod jupyter-send ((client jupyter-kernel-client) (type symbol) &rest content)
-  "Send a message on CLIENT's CHANNEL.
-Return a `jupyter-request' representing the sent message.  CHANNEL
-is one of the channel keywords, either (:stdin or :shell).
-TYPE is one of the `jupyter-message-types'.  MESSAGE is the
-message sent on CHANNEL.
+  "Send a message to the kernel CLIENT is connected to.
+Return a `jupyter-request' representing the sent message.
+
+TYPE is one of the message type keywords in
+`jupyter-message-types' that can be sent on either the stdin or
+shell channels of a kernel.
+
+CONTENT is a property list representing the message contents to
+send.  As a special case if the first element of CONTENT is a
+string, it is used as the message ID of the request.
 
 Note that you can manipulate how to handle messages received in
 response to the sent message, see `jupyter-add-callback' and

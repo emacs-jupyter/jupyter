@@ -116,7 +116,7 @@ callbacks."
                (if (memq msg-type '(:comm-info-request))
                    '(:comm-msg :status :comm-info-reply)
                  '(:comm-msg)))
-              (req (jupyter-send client channel msg-type content msg-id)))
+              (req (jupyter-send client msg-type msg-id content)))
          (jupyter-add-callback req
            '(:comm-open :comm-close :comm-info-reply :comm-msg :status)
            (apply-partially #'jupyter-widgets-send-message client)))))))
