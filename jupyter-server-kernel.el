@@ -217,21 +217,6 @@ Call the next method if ARGS does not contain :server."
 
 ;;; Client connection
 
-(defun jupyter-server--connect-channels (server id)
-  (unless (jupyter-alive-p (oref server conn))
-    (jupyter-start (oref server conn)))
-  (jupyter--send (oref server conn) 'connect-channels id))
-
-(defun jupyter-server--disconnect-channels (server id)
-  (unless (jupyter-alive-p (oref server conn))
-    (jupyter-start (oref server conn)))
-  (jupyter--send (oref server conn) 'disconnect-channels id))
-
-(cl-defmethod jupyter-connection :before ((kernel jupyter-server-kernel) &rest _)
-  (pcase-let (((cl-struct jupyter-server-kernel server id) kernel))
-    (unless (jupyter-alive-p (oref server conn))
-      (jupyter-start (oref server conn)))))
-
 (cl-defmethod jupyter-connection ((kernel jupyter-server-kernel) (handler function))
   (pcase-let* (((cl-struct jupyter-server-kernel server id) kernel)
                (-handler (make-jupyter-server--event-handler
@@ -242,11 +227,11 @@ Call the next method if ARGS does not contain :server."
                (format "kid=%s" (truncate-string-to-width id 9 nil nil "…"))))
      :start (lambda (&optional channel)
               (if channel (error "Can't start individual channels")
-                (jupyter-server--connect-channels server id)
+                (jupyter-send (oref server conn) 'connect-channels id)
                 (cl-callf2 cl-adjoin -handler (oref server handlers))))
      :stop (lambda (&optional channel)
              (if channel (error "Can't stop individual channels")
-               (jupyter-server--disconnect-channels server id)
+               (jupyter-send (oref server conn) 'disconnect-channels id)
                (cl-callf2 delq -handler (oref server handlers))))
      :send (lambda (&rest event)
              (apply #'jupyter-send (oref server ioloop)
