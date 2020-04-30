@@ -102,19 +102,16 @@ HANDLER.")
      handler))
    (t (cl-call-next-method))))
 
-(cl-defgeneric jupyter-connect (client kernel)
-  "Connect CLIENT to KERNEL's channels, return CLIENT.
+(cl-defgeneric jupyter-connect (&rest args)
+  "Connect ARGS.")
 
-Once a client has been connected to a kernel, or a kernel to a
-client, messages can be passed between the two.
+(cl-defgeneric jupyter-disconnect (&rest args)
+  "Disconnect ARGS.")
 
-If CLIENT is already connected to another kernel, it is
-disconnected before connecting to KERNEL.")
-
-(cl-defmethod jupyter-connect ((client jupyter-kernel-client) (kernel jupyter-kernel))
+(cl-defmethod jupyter-connect ((kernel jupyter-kernel))
   (unless (jupyter-alive-p kernel)
     (jupyter-launch kernel))
-  (when (null (jupyter-kernel-connection kernel))
+  (unless (jupyter-kernel-connection kernel)
     (setf (jupyter-kernel-connection kernel)
           (jupyter-connection
            kernel (lambda (event)
@@ -125,10 +122,25 @@ disconnected before connecting to KERNEL.")
                               (jupyter--show-event event))
                           (cl-destructuring-bind (_ channel _idents . msg) event
                             (jupyter-handle-message c channel msg))))))))
-  (when (slot-boundp client 'kernel)
-    (jupyter-disconnect client (oref client kernel)))
-  (unless (jupyter-alive-p (jupyter-kernel-connection kernel))
-    (jupyter-start (jupyter-kernel-connection kernel)))
+  (let ((conn (jupyter-kernel-connection kernel)))
+    (unless (jupyter-alive-p conn)
+      (jupyter-start conn))))
+
+(cl-defmethod jupyter-disconnect ((kernel jupyter-kernel))
+  (let ((conn (jupyter-kernel-connection kernel)))
+    (when (and conn (jupyter-alive-p conn))
+      (jupyter-stop conn))))
+
+(cl-defmethod jupyter-connect ((client jupyter-kernel-client) (kernel jupyter-kernel))
+  "Connect CLIENT to KERNEL's channels, return CLIENT.
+
+Once a client has been connected to a kernel, or a kernel to a
+client, messages can be passed between the two.
+
+If CLIENT is already connected to another kernel, it is
+disconnected before connecting to KERNEL."
+  (jupyter-disconnect client)
+  (jupyter-connect kernel)
   ;; Make the connection.  This involves setting the kernel slot of
   ;; CLIENT (which the functions `jupyter-(dis)?connect' are the sole
   ;; modifiers) to KERNEL and ensuring KERNEL calls CLIENT's message
@@ -144,35 +156,32 @@ disconnected before connecting to KERNEL.")
   (jupyter-connect client kernel))
 
 ;; TODO: Re-implement comm-autostop for a jupyter-kernel-process by extending this method
-(cl-defgeneric jupyter-disconnect ((client jupyter-kernel-client) (kernel jupyter-kernel))
+(cl-defmethod jupyter-disconnect ((client jupyter-kernel-client))
   "Disconnect CLIENT from KERNEL's channels.
 CLIENT will no longer be able to communicate with KERNEL after it
 has been disconnected."
-  (when (jupyter-connected-p client kernel)
+  (when (slot-boundp client 'kernel)
     (cl-callf2 delq client (jupyter-kernel-clients (oref client kernel)))
     (slot-makeunbound client 'kernel)
+    ;; FIXME: This is here because `jupyter-widget-client' uses
+    ;; `jupyter-find-client-for-session'.
     (slot-makeunbound client 'session)))
-
-(cl-defmethod jupyter-disconnect ((kernel jupyter-kernel) (client jupyter-kernel-client))
-  (jupyter-disconnect client kernel))
 
 (cl-defgeneric jupyter-connected-p ((kernel jupyter-kernel) (client jupyter-kernel-client))
   "Return non-nil if KERNEL and CLIENT are connected.
 If they are connected, messages can be communicated between
 them."
-  (and (jupyter-alive-p kernel)
-       (jupyter-alive-p (jupyter-kernel-connection kernel))
-       (slot-boundp client 'kernel)
+  (and (slot-boundp client 'kernel)
        (eq (oref client kernel) kernel)
        (progn
          (cl-assert (memq client (jupyter-kernel-clients kernel)))
          t)))
 
-(cl-defmethod jupyter-connected-p ((client jupyter-kernel-client))
-  (jupyter-connected-p (oref client kernel) client))
-
 (cl-defmethod jupyter-connected-p ((client jupyter-kernel-client) (kernel jupyter-kernel))
   (jupyter-connected-p kernel client))
+
+(cl-defmethod jupyter-connected-p ((client jupyter-kernel-client))
+  (jupyter-connected-p (oref client kernel) client))
 
 (provide 'jupyter-connection)
 

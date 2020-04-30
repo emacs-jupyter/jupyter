@@ -353,8 +353,7 @@ method is called."
 
 (cl-defmethod jupyter-kernel-alive-p ((client jupyter-kernel-client))
   "Return non-nil if the kernel CLIENT is connected to is alive."
-  (and (slot-boundp client 'kernel)
-       (jupyter-connected-p (oref client kernel) client)))
+  (jupyter-connected-p client))
 
 (defun jupyter-clients ()
   "Return a list of all `jupyter-kernel-client' objects."
@@ -550,16 +549,15 @@ back."
 
 (cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
   "Stop any running channels of CLIENT."
-  (jupyter-disconnect client (oref client kernel)))
+  (jupyter-disconnect client))
 
 (cl-defmethod jupyter-channels-running-p ((client jupyter-kernel-client))
   "Are any channels of CLIENT running?"
   (and (slot-boundp client 'kernel)
-       (jupyter-connected-p (oref client kernel) client)))
+       (jupyter-connected-p client)))
 
 (cl-defmethod jupyter-alive-p ((client jupyter-kernel-client) channel)
-  (and (slot-boundp client 'kernel)
-       (jupyter-connected-p (oref client kernel) client)
+  (and (jupyter-connected-p client)
        (jupyter-alive-p (jupyter-kernel-connection (oref client kernel)) channel)))
 
 (cl-defmethod jupyter-hb-pause ((client jupyter-kernel-client))
