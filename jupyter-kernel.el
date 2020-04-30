@@ -42,11 +42,6 @@
   (spec (make-jupyter-kernelspec)
         :type jupyter-kernelspec
         :documentation "The kernelspec of this kernel.")
-  ;; TODO: Remove require cycle so that I can have
-  ;; `jupyter-connection' be the type and `make-jupyter-connection'
-  ;; the default value.
-  (connection nil
-              :documentation "Kernel communication.")
   ;; FIXME: Remove this slot, used by `jupyter-widget-client'.
   (session nil :type jupyter-session)
   (clients nil

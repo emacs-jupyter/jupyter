@@ -37,9 +37,6 @@
 (require 'jupyter-kernel)
 (require 'jupyter-kernelspec)
 
-(declare-function jupyter-connect "jupyter-connection")
-(declare-function jupyter-disconnect "jupyter-connection")
-(declare-function jupyter-connected-p "jupyter-connection")
 (declare-function jupyter-connection-hb "jupyter-connection")
 
 (defface jupyter-eval-overlay
@@ -215,9 +212,8 @@ client is expecting a reply from the kernel.")
 initializing this client.  When `jupyter-start-channels' is
 called, this will be set to the kernel info plist returned
 from an initial `:kernel-info-request'.")
-   (kernel
-    :type jupyter-kernel
-    :documentation "The kernel this client communicates with.")
+   (conn
+    :documentation "A `jupyter-connection' representing the client-kernel connection.")
    (session
     :type jupyter-session
     :documentation "The session for this client.")
@@ -314,7 +310,8 @@ method is called."
 
 (cl-defmethod jupyter-kernel-alive-p ((client jupyter-kernel-client))
   "Return non-nil if the kernel CLIENT is connected to is alive."
-  (jupyter-connected-p client))
+  (and (slot-boundp client 'conn)
+       (jupyter-alive-p (oref client conn))))
 
 (defun jupyter-clients ()
   "Return a list of all `jupyter-kernel-client' objects."
@@ -427,7 +424,7 @@ response to the sent message, see `jupyter-add-callback' and
     (let ((channel (if (memq type '(:input-reply :input-request)) :stdin :shell))
           (requests (oref client requests)))
       (cl-call-next-method
-       (jupyter-kernel-connection (oref client kernel))
+       (oref client conn)
        'send channel content id)
       ;; Anything sent to stdin is a reply not a request so consider
       ;; the "request" completed.
@@ -526,27 +523,26 @@ back."
 
 (cl-defmethod jupyter-channels-running-p ((client jupyter-kernel-client))
   "Are any channels of CLIENT running?"
-  (and (slot-boundp client 'kernel)
-       (jupyter-connected-p client)))
+  (jupyter-alive-p client))
 
-(cl-defmethod jupyter-alive-p ((client jupyter-kernel-client) channel)
-  (and (jupyter-connected-p client)
-       (jupyter-alive-p (jupyter-kernel-connection (oref client kernel)) channel)))
+(cl-defmethod jupyter-alive-p ((client jupyter-kernel-client) &optional channel)
+  (and (slot-boundp client 'conn)
+       (jupyter-alive-p (oref client conn) channel)))
 
 (cl-defmethod jupyter-hb-pause ((client jupyter-kernel-client))
-  (let ((conn (jupyter-kernel-connection (oref client kernel))))
+  (with-slots (conn) client
     (when (jupyter-connection-hb conn)
       (jupyter-hb-pause (jupyter-connection-hb conn)))))
 
 (cl-defmethod jupyter-hb-unpause ((client jupyter-kernel-client))
-  (let ((conn (jupyter-kernel-connection (oref client kernel))))
+  (with-slots (conn) client
     (when (jupyter-connection-hb conn)
       (jupyter-hb-pause (jupyter-connection-hb conn)))))
 
 (cl-defmethod jupyter-hb-beating-p ((client jupyter-kernel-client))
   "Is CLIENT still connected to its kernel?"
-  (and (slot-boundp client 'kernel)
-       (let ((conn (jupyter-kernel-connection (oref client kernel))))
+  (and (slot-boundp client 'conn)
+       (with-slots (conn) client
          (or (null (jupyter-connection-hb conn))
              (jupyter-hb-beating-p (jupyter-connection-hb conn))))))
 
@@ -579,8 +575,9 @@ The returned client will be an instance of CLIENT-CLASS which
 defaults to `jupyter-kernel-client'."
   (or client-class (setq client-class 'jupyter-kernel-client))
   (cl-assert (child-of-class-p client-class 'jupyter-kernel-client))
-  (let ((client (make-instance client-class)))
-    (jupyter-connect kernel client)
+  (let ((client (make-instance client-class))
+        (conn (jupyter-connection kernel client)))
+    (jupyter-start conn)
     (let ((kinfo (jupyter-kernel-info client)))
       (unless kinfo
         (jupyter-stop conn)

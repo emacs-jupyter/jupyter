@@ -22,13 +22,11 @@
 
 ;;; Commentary:
 
-;; Define the `jupyter-connect' function which does the work of
-;; connecting to a kernel's channels in Emacs and ensuring
-;; communication between a client and a kernel it would like to
-;; connect to works.
-;;
-;; The auxiliary method `jupyter-connection' needs to be extended to
-;; define how the above procedure works.
+;; This file defines the `jupyter-connection' method which takes a
+;; kernel and a client and returns an instance of the
+;; `jupyter-connection' struct type, representing the set of IO
+;; actions and state transformations required to establish
+;; communication between a kernel and a client.
 
 ;;; Code:
 
@@ -86,12 +84,14 @@ is possible."
     (jupyter-start conn))
   (apply (jupyter-connection-send conn) msg))
 
-;;;; `jupyter-connection' and `jupyter-connect'
+;;;; `jupyter-connection'
 
 (cl-defgeneric jupyter-connection (kernel handler)
   "Return a `jupyter-connection' to KERNEL.
 When messages are received from KERNEL they are passed to
 HANDLER.")
+
+(declare-function jupyter-kernel-process "ext:jupyter-kernel-process")
 
 (cl-defmethod jupyter-connection ((kernel jupyter-kernel) (handler function))
   (cond
@@ -102,86 +102,72 @@ HANDLER.")
      handler))
    (t (cl-call-next-method))))
 
-(cl-defgeneric jupyter-connect (&rest args)
-  "Connect ARGS.")
+(defvar jupyter--kernel-connections (make-hash-table :weakness 'key))
 
-(cl-defgeneric jupyter-disconnect (&rest args)
-  "Disconnect ARGS.")
-
-(cl-defmethod jupyter-connect ((kernel jupyter-kernel))
-  (unless (jupyter-alive-p kernel)
-    (jupyter-launch kernel))
-  (unless (jupyter-kernel-connection kernel)
-    (setf (jupyter-kernel-connection kernel)
-          (jupyter-connection
-           kernel (lambda (event)
-                    (cl-loop
-                     for c in (jupyter-kernel-clients kernel)
-                     do (if (eq (car event) 'sent)
-                            (when jupyter--debug
-                              (jupyter--show-event event))
-                          (cl-destructuring-bind (_ channel _idents . msg) event
-                            (jupyter-handle-message c channel msg))))))))
-  (let ((conn (jupyter-kernel-connection kernel)))
-    (unless (jupyter-alive-p conn)
-      (jupyter-start conn))))
-
-(cl-defmethod jupyter-disconnect ((kernel jupyter-kernel))
-  (let ((conn (jupyter-kernel-connection kernel)))
-    (when (and conn (jupyter-alive-p conn))
-      (jupyter-stop conn))))
-
-(cl-defmethod jupyter-connect ((client jupyter-kernel-client) (kernel jupyter-kernel))
-  "Connect CLIENT to KERNEL's channels, return CLIENT.
-
-Once a client has been connected to a kernel, or a kernel to a
-client, messages can be passed between the two.
-
-If CLIENT is already connected to another kernel, it is
-disconnected before connecting to KERNEL."
-  (jupyter-disconnect client)
-  (jupyter-connect kernel)
-  ;; Make the connection.  This involves setting the kernel slot of
-  ;; CLIENT (which the functions `jupyter-(dis)?connect' are the sole
-  ;; modifiers) to KERNEL and ensuring KERNEL calls CLIENT's message
-  ;; handler, see the above function.
-  (cl-pushnew client (jupyter-kernel-clients kernel))
-  (oset client kernel kernel)
-  ;; FIXME: This is here because `jupyter-widget-client' uses
-  ;; `jupyter-find-client-for-session'.
-  (oset client session (jupyter-kernel-session kernel))
-  client)
-
-(cl-defmethod jupyter-connect ((kernel jupyter-kernel) (client jupyter-kernel-client))
-  (jupyter-connect client kernel))
-
-;; TODO: Re-implement comm-autostop for a jupyter-kernel-process by extending this method
-(cl-defmethod jupyter-disconnect ((client jupyter-kernel-client))
-  "Disconnect CLIENT from KERNEL's channels.
-CLIENT will no longer be able to communicate with KERNEL after it
-has been disconnected."
-  (when (slot-boundp client 'kernel)
-    (cl-callf2 delq client (jupyter-kernel-clients (oref client kernel)))
-    (slot-makeunbound client 'kernel)
-    ;; FIXME: This is here because `jupyter-widget-client' uses
-    ;; `jupyter-find-client-for-session'.
-    (slot-makeunbound client 'session)))
-
-(cl-defgeneric jupyter-connected-p ((kernel jupyter-kernel) (client jupyter-kernel-client))
-  "Return non-nil if KERNEL and CLIENT are connected.
-If they are connected, messages can be communicated between
-them."
-  (and (slot-boundp client 'kernel)
-       (eq (oref client kernel) kernel)
-       (progn
-         (cl-assert (memq client (jupyter-kernel-clients kernel)))
-         t)))
-
-(cl-defmethod jupyter-connected-p ((client jupyter-kernel-client) (kernel jupyter-kernel))
-  (jupyter-connected-p kernel client))
-
-(cl-defmethod jupyter-connected-p ((client jupyter-kernel-client))
-  (jupyter-connected-p (oref client kernel) client))
+(cl-defmethod jupyter-connection ((kernel jupyter-kernel) (client jupyter-kernel-client))
+  (let ((kcomm (jupyter--kernel-connection kernel))
+        (conn nil)
+        (connect (lambda ()
+                   (cl-pushnew client (jupyter-kernel-clients kernel))
+                   (oset client conn conn)
+                   ;; FIXME: This is here because `jupyter-widget-client' uses
+                   ;; `jupyter-find-client-for-session'.
+                   (oset client session (jupyter-kernel-session kernel))))
+        (disconnect (lambda ()
+                      (cl-callf2 delq client (jupyter-kernel-clients kernel))
+                      (slot-makeunbound client 'conn)
+                      (slot-makeunbound client 'session)))
+        (alive-p (lambda (&rest _)
+                   (and (jupyter-alive-p kcomm)
+                        (slot-boundp client 'conn) (eq conn (oref client conn))
+                        (memq client (jupyter-kernel-clients kernel))))))
+    (setq conn
+          (make-jupyter-connection
+           :id (jupyter-connection-id kcomm)
+           :hb (jupyter-connection-hb kcomm)
+           :start
+           (lambda (&rest _)
+             (unless (jupyter-alive-p kernel)
+               (jupyter-launch kernel))
+             (unless kcomm
+               (setq kcomm
+                     (or
+                      (gethash kernel jupyter--kernel-connections)
+                      (puthash
+                       kernel
+                       (jupyter-connection
+                        kernel
+                        (lambda (event)
+                          (cl-loop
+                           for c in (jupyter-kernel-clients kernel) do
+                           (if (eq (car event) 'sent)
+                               (when jupyter--debug
+                                 (jupyter--show-event event))
+                             (cl-destructuring-bind (_ channel _idents . msg)
+                                 event
+                               (jupyter-handle-message c channel msg))))))
+                       jupyter--kernel-connections))))
+             (unless (jupyter-alive-p kcomm)
+               (jupyter-start kcomm))
+             (cl-pushnew client (jupyter-kernel-clients kernel))
+             (oset client conn conn)
+             ;; FIXME: This is here because `jupyter-widget-client' uses
+             ;; `jupyter-find-client-for-session'.
+             (oset client session (jupyter-kernel-session kernel)))
+           ;; TODO: Re-implement comm-autostop
+           :stop (lambda (&rest _)
+                   (cl-callf2 delq client (jupyter-kernel-clients kernel))
+                   (slot-makeunbound client 'conn)
+                   (slot-makeunbound client 'session))
+           :send (lambda (&rest event)
+                   (apply #'jupyter-send kcomm event))
+           :alive-p (lambda (&rest _)
+                      (and kcomm (slot-boundp client 'conn)
+                           (eq conn (oref client conn))
+                           (jupyter-alive-p kcomm)
+                           (memq client (jupyter-kernel-clients kernel))))))))
+(cl-defmethod jupyter-connection ((client jupyter-kernel-client) (kernel jupyter-kernel))
+  (jupyter-connection kernel client))
 
 (provide 'jupyter-connection)
 
