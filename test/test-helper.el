@@ -97,12 +97,8 @@ handling a message is always
                       :send #'ignore
                       :alive-p #'ignore))))
 
-(cl-defmethod jupyter-send ((client jupyter-echo-client)
-                            channel
-                            type
-                            message
-                            &optional _flags)
-  (let ((req (jupyter-request :id (jupyter-new-uuid))))
+(cl-defmethod jupyter-send ((client jupyter-echo-client) (type symbol) &rest content)
+  (let ((req (jupyter-request :type type :content content)))
     (if (string-match "request" (symbol-name type))
         (setq type (intern (replace-match "reply" nil nil (symbol-name type))))
       (error "Not a request message type (%s)" type))
@@ -198,7 +194,7 @@ If the `current-buffer' is not a REPL, this is identical to
                          (when ,saved
                            (if (oref ,saved manager)
                                (jupyter-shutdown-kernel (oref ,saved manager))
-                             (jupyter-send-shutdown-request ,saved))
+                             (jupyter-send ,saved :shutdown-request))
                            ;; FIXME: This will be removed after the transition
                            (ignore-errors (jupyter-stop-channels ,saved)))
                          (let ((client (,client-fun (jupyter-kernelspec-name ,spec))))

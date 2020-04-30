@@ -443,12 +443,14 @@ each other.  A client has a request table to keep track of all
 requests that are not considered idle.  The most recent idle
 request is also kept track of.
 
-Each request contains: a message ID, a time sent, a last message
-received by the client that sent it, a list of message types that
-tell the client to not call the handler methods of those types,
-and an alist mapping message types to callback functions a client
-should call."
-  (id "")
+Each request contains: a message ID, a request type, a request
+message, a time sent, a last message received by the client that
+sent it, a list of message types that tell the client to not call
+the handler methods of those types, and an alist mapping message
+types to callback functions a client should call."
+  (id (jupyter-new-uuid) :read-only t)
+  (type nil :read-only t)
+  (content nil :read-only t)
   (time (current-time) :read-only t)
   (idle-p nil)
   (last-message nil)

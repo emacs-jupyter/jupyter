@@ -150,8 +150,7 @@ request on KERNEL's control channel if its kernelspec has an
                           (format "%s://%s:%d" transport ip control_port)))))
         ;; TODO: `with-live-jupyter-channel'
         (jupyter-start channel)
-        (jupyter-send channel :interrupt-request
-                      (jupyter-message-interrupt-request))
+        (jupyter-send channel :interrupt-request '())
         (jupyter-with-timeout
             ((format "Interrupting %s kernel"
                      (jupyter-kernel-name kernel))

@@ -169,7 +169,7 @@ For example to prevent a client from calling its :execute-reply
 handler:
 
     (let ((jupyter-inhibit-handlers '(:execute-reply)))
-      (jupyter-send-execute-request client ...))
+      (jupyter-send client :execute-request ...)))
 
 In addition, if the first element of the list is the symbol
 `not', then inhibit handlers not in the list.
@@ -300,45 +300,6 @@ method is called."
      ,(or doc (format "A :%s handler." type))
      ,@body))
 
-;; FIXME: Remove the need to call `jupyter-message-*' functions by
-;; introducing some kind of property list defaults mechanism (e.g. by
-;; appending the defaults to the property list passed to
-;; `jupyter-send-*').
-;;
-;; - Document the :inhibit-handlers key
-;; - Document that client is bound to the kernel client in BODY
-(defmacro define--jupyter-client-sender (type &optional doc &rest body)
-  (declare (indent 2) (doc-string 2))
-  (when doc
-    (unless (stringp doc)
-      (setq body (cons doc body)
-            doc nil)))
-  (let (defaults)
-    (while (keywordp (car body))
-      (push (pop body) defaults)
-      (push (pop body) defaults))
-    (cl-callf nreverse defaults)
-    (cl-labels ((keyword-name (k) (intern (substring (symbol-name k) 1)))
-                (as-keyword
-                 (k) (if (keywordp k) k
-                       (intern (format ":%s" k)))))
-      `(cl-defgeneric ,(intern (format "jupyter-send-%s" type))
-           ((client jupyter-kernel-client)
-            &key (inhibit-handlers nil)
-            ,@(cl-loop for (k v) on defaults by #'cddr
-                       collect (list (keyword-name k) v)))
-         ,(or doc (format "Send an :%s message." type))
-         (declare (indent 1))
-         (let ((jupyter-inhibit-handlers
-                (or inhibit-handlers jupyter-inhibit-handlers))
-               (msg
-                (,(intern (format "jupyter-message-%s" type))
-                 ,@(cl-loop
-                    for (k _) on defaults by #'cddr
-                    nconc (list k (keyword-name k))))))
-           (prog1 (jupyter-send client :shell ,(as-keyword type) msg)
-             ,@body))))))
-
 ;;; Initializing a `jupyter-kernel-client'
 
 (cl-defmethod initialize-instance ((client jupyter-kernel-client) &optional _slots)
@@ -433,11 +394,12 @@ If it does not contain a valid value, raise an error."
        unless (plist-member jupyter-message-types msg-type)
        do (error "Not a valid message type (`%s')" msg-type))))
 
-(cl-defmethod jupyter-send ((client jupyter-kernel-client)
-                            channel
-                            type
-                            message
-                            &optional msg-id)
+;; FIXME: Remove the need for this
+(defun jupyter--merge-message-defaults (type content)
+  (let ((req (intern (concat "jupyter-" (substring (symbol-name type) 1)))))
+    (apply req content)))
+
+(cl-defmethod jupyter-send ((client jupyter-kernel-client) (type symbol) &rest content)
   "Send a message on CLIENT's CHANNEL.
 Return a `jupyter-request' representing the sent message.  CHANNEL
 is one of the channel keywords, either (:stdin or :shell).
@@ -449,25 +411,36 @@ response to the sent message, see `jupyter-add-callback' and
 `jupyter-request-inhibited-handlers'."
   (declare (indent 1))
   (jupyter-verify-inhibited-handlers)
-  (let ((msg-id (or msg-id (jupyter-new-uuid))))
+  (pcase-let* ((req
+                (jupyter-request
+                 :id (if (stringp (car content)) (pop content)
+                       (jupyter-new-uuid))
+                 :type type
+                 :content (jupyter--merge-message-defaults type content)))
+               ((cl-struct jupyter-request id) req))
     (when jupyter--debug
       ;; The logging of messages is deferred until the next command loop for
       ;; security reasons.  When sending :input-reply messages that read
       ;; passwords, clearing the password string using `clear-string' happens
       ;; *after* the call to `jupyter-send'.
-      (run-at-time 0 nil (lambda () (message "SENDING: %s %s %s" type msg-id message))))
-    (jupyter--send
-     (jupyter-kernel-connection (oref client kernel))
-     'send channel type message msg-id)
-    ;; Anything sent to stdin is a reply not a request so don't add it as a
-    ;; pending request
-    (unless (eq channel :stdin)
-      (let ((req (jupyter-generate-request client message))
-            (requests (oref client requests)))
-        (setf (jupyter-request-id req) msg-id)
-        (setf (jupyter-request-inhibited-handlers req) jupyter-inhibit-handlers)
-        (puthash msg-id req requests)
-        (puthash "last-sent" req requests)))))
+      (run-at-time 0 nil (lambda () (message "SENDING: %s %s %s" type id content))))
+    (let ((channel (if (memq type '(:input-reply :input-request)) :stdin :shell))
+          (requests (oref client requests)))
+      (cl-call-next-method
+       (jupyter-kernel-connection (oref client kernel))
+       'send channel content id)
+      ;; Anything sent to stdin is a reply not a request so consider
+      ;; the "request" completed.
+      (setf (jupyter-request-idle-p req) (eq channel :stdin))
+      (setf (jupyter-request-inhibited-handlers req) jupyter-inhibit-handlers)
+      (puthash id req requests)
+      (puthash "last-sent" req requests))))
+
+(cl-defmethod jupyter-send :after ((client jupyter-kernel-client) (_type (eql :execute-request)) &rest _content)
+  (jupyter-server-mode-set-client client))
+
+(cl-defmethod jupyter-send ((type symbol) &rest content)
+  (apply #'cl-call-next-method jupyter-current-client type content))
 
 ;;; Pending requests
 
@@ -625,7 +598,7 @@ After CLIENT shuts down the kernel it is connected to, it is no
 longer connected to a kernel."
   (when-let* ((kernel (and (slot-boundp client 'kernel)
                            (oref client kernel))))
-    (jupyter-wait-until-idle (jupyter-send-shutdown-request client))
+    (jupyter-wait-until-idle (jupyter-send client :shutdown-request))
     (jupyter-shutdown kernel)))
 
 (cl-defmethod jupyter-interrupt-kernel ((client jupyter-kernel-client))
@@ -680,7 +653,7 @@ interpreted as additional CALLBACKS to add to REQ.  So to add
 multiple callbacks you would do
 
     (jupyter-add-callback
-        (jupyter-send-execute-request client :code \"1 + 2\")
+        (jupyter-send client (jupyter-execute-request :code \"1 + 2\"))
       :status (lambda (msg) ...)
       :execute-reply (lambda (msg) ...)
       :execute-result (lambda (msg) ...))"
@@ -968,10 +941,7 @@ user.  Otherwise `read-from-minibuffer' is used."
                          (with-timeout-unsuspend timeout-spec)))
                    (quit ""))))
       (unwind-protect
-          (jupyter-send
-           client :stdin
-           :input-reply (jupyter-message-input-reply
-                         :value value))
+          (jupyter-send client :input-reply :value value)
         (when (eq password t)
           (clear-string value)))
       value)))
@@ -1048,8 +1018,8 @@ text/plain representation."
   (interactive (list (jupyter-read-expression) nil))
   (let ((msg (jupyter-wait-until-received :execute-result
                (let* ((jupyter-inhibit-handlers t)
-                      (req (jupyter-send-execute-request jupyter-current-client
-                             :code code :store-history nil)))
+                      (req (jupyter-send jupyter-current-client
+                            :execute-request :code code :store-history nil)))
                  (prog1 req
                    (jupyter-add-callback req
                      :execute-reply
@@ -1202,8 +1172,8 @@ current buffer that STR was extracted from.")
   (cl-check-type jupyter-current-client jupyter-kernel-client
                  "Not a valid client")
   (let ((jupyter-inhibit-handlers '(not :input-request))
-        (req (jupyter-send-execute-request jupyter-current-client
-               :code str :store-history nil)))
+        (req (jupyter-send jupyter-current-client
+              :execute-request :code str :store-history nil)))
     (prog1 req
       (jupyter-eval-add-callbacks req beg end))))
 
@@ -1418,15 +1388,6 @@ STR is displayed after the region."
 
 ;;;;; Handlers
 
-(define--jupyter-client-sender execute-request
-  :code nil
-  :silent nil
-  :store-history t
-  :user-expressions nil
-  :allow-stdin (jupyter-alive-p client :stdin)
-  :stop-on-error nil
-  (jupyter-server-mode-set-client client))
-
 (define-jupyter-client-handler execute-reply)
 
 (cl-defgeneric jupyter-handle-payload ((source symbol) _payload)
@@ -1493,8 +1454,8 @@ DETAIL is the detail level to use for the request and defaults to
     (error "Need a valid `jupyter-current-client'"))
   (let ((client jupyter-current-client)
         (msg (jupyter-wait-until-received :inspect-reply
-               (jupyter-send-inspect-request jupyter-current-client
-                 :code code :pos pos :detail detail)
+               (jupyter-send jupyter-current-client
+                :inspect-request :code code :pos pos :detail detail)
                ;; Longer timeout for the Julia kernel
                jupyter-long-timeout)))
     (if msg
@@ -1536,18 +1497,9 @@ DETAIL is the detail level to use for the request and defaults to
                        (symbol-at-point)))))
       (message "Inspect timed out"))))
 
-(define--jupyter-client-sender inspect-request
-  :code nil
-  :pos 0
-  :detail 0)
-
 (define-jupyter-client-handler inspect-reply)
 
 ;;;; Completion
-
-(define--jupyter-client-sender complete-request
-  :code nil
-  :pos 0)
 
 (define-jupyter-client-handler complete-reply)
 
@@ -1847,9 +1799,8 @@ Run FUN when the completions are available."
   (cl-destructuring-bind (code pos)
       (jupyter-code-context 'completion)
     (let ((req (let ((jupyter-inhibit-handlers t))
-                 (jupyter-send-complete-request
-                     jupyter-current-client
-                   :code code :pos pos))))
+                 (jupyter-send jupyter-current-client
+                  :complete-request :code code :pos pos))))
       (prog1 req
         (jupyter-add-callback req :complete-reply fun)))))
 
@@ -1966,45 +1917,15 @@ snippet text property, if any, and if `yasnippet' is available."
 
 ;;;; History
 
-(define--jupyter-client-sender history-request
-  :output nil
-  :raw nil
-  :hist-access-type "tail"
-  :session nil
-  :start nil
-  :stop nil
-  :n 10
-  :pattern nil
-  :unique nil)
-
 (define-jupyter-client-handler history-reply)
 
 ;;;; Is Complete
-
-(define--jupyter-client-sender is-complete-request
-  :code nil)
 
 (define-jupyter-client-handler is-complete-reply)
 
 ;;;; Comms
 
-(define--jupyter-client-sender comm-info-request
-  :target-name nil)
-
 (define-jupyter-client-handler comm-info-reply)
-
-(define--jupyter-client-sender comm-open
-  :id nil
-  :target-name nil
-  :data nil)
-
-(define--jupyter-client-sender comm-msg
-  :id nil
-  :data nil)
-
-(define--jupyter-client-sender comm-close
-  :id nil
-  :data nil)
 
 ;;;; Kernel info
 
@@ -2030,12 +1951,12 @@ name are changed to \"-\" and all uppercase characters lowered."
   (cl-check-type client jupyter-kernel-client)
   (or (oref client kernel-info)
       (let* ((jupyter-inhibit-handlers t)
-             (req (jupyter-send-kernel-info-request client))
              (msg (jupyter-wait-until-received :kernel-info-reply
+                    (jupyter-send client :kernel-info-request)
                     ;; Go to great lengths to ensure we have waited long
                     ;; enough.  When communicating with slow to start kernels
                     ;; behind a kernel server this is necessary.
-                    req (* 3 jupyter-long-timeout) "Requesting kernel info...")))
+                    (* 3 jupyter-long-timeout) "Requesting kernel info...")))
         (unless msg
           (error "Kernel did not respond to kernel-info request"))
         (prog1 (oset client kernel-info (jupyter-message-content msg))
@@ -2087,14 +2008,9 @@ CLIENT is a kernel client."
          (support (intern (format "jupyter-%s" lang))))
     (require support nil t)))
 
-(define--jupyter-client-sender kernel-info-request)
-
 (define-jupyter-client-handler kernel-info-reply)
 
 ;;;; Shutdown
-
-(define--jupyter-client-sender shutdown-request
-  :restart nil)
 
 (define-jupyter-client-handler shutdown-reply)
 

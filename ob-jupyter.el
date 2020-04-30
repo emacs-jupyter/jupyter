@@ -208,7 +208,7 @@ return nil."
   (with-current-buffer (org-babel-jupyter-initiate-session session params)
     (goto-char (point-max))
     (and (org-babel-jupyter--insert-variable-assignments params)
-         (jupyter-send-execute-request jupyter-current-client))
+         (jupyter-repl-execute-cell jupyter-current-client))
     (current-buffer)))
 
 (defun org-babel-load-session:jupyter (session body params)
@@ -428,7 +428,9 @@ These parameters are handled internally."
     (delq fparam params)))
 
 (defun org-babel-jupyter--execute (code async-p)
-  (let ((req (jupyter-send-execute-request jupyter-current-client :code code)))
+  (let ((req (jupyter-send jupyter-current-client
+              (jupyter-execute-request
+               :code code))))
     `(,req
       ,(cond
         (async-p
