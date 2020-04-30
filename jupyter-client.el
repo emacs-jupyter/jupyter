@@ -608,8 +608,10 @@ defaults to `jupyter-kernel-client'."
   (cl-assert (child-of-class-p client-class 'jupyter-kernel-client))
   (let ((client (make-instance client-class)))
     (jupyter-connect kernel client)
-    (cl-assert (not (null (jupyter-kernel-info client))) nil
-            "Kernel did not respond to :kernel-info request")
+    (let ((kinfo (jupyter-kernel-info client)))
+      (unless kinfo
+        (jupyter-stop conn)
+        (error "Kernel did not respond to :kernel-info request")))
     ;; If the connection can resolve the kernel's heartbeat channel,
     ;; start monitoring it now.
     (jupyter-hb-unpause client)
