@@ -103,9 +103,7 @@ and the process it represents no longer exists.
 The default implementation of this method disconnects all
 connected clients of KERNEL and sets KERNEL's session slot to
 nil."
-  (cl-loop
-   for client in (jupyter-kernel-clients kernel)
-   do (jupyter-disconnect client kernel))
+  (jupyter-stop (jupyter-kernel-connection kernel))
   (setf (jupyter-kernel-session kernel) nil))
 
 (cl-defmethod jupyter-shutdown :before ((kernel jupyter-kernel))

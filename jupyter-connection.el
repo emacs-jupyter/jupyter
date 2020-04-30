@@ -104,6 +104,25 @@ HANDLER.")
 
 (defvar jupyter--kernel-connections (make-hash-table :weakness 'key))
 
+(defun jupyter-kernel-connection (kernel)
+  "Return the `jupyter-connection' associated with KERNEL."
+  (or (gethash kernel jupyter--kernel-connections)
+      (puthash
+       kernel (jupyter-connection
+               kernel
+               (lambda (event)
+                 (cl-loop
+                  for client in (jupyter-kernel-clients kernel) do
+                  (if (eq (car event) 'sent)
+                      (when jupyter--debug
+                        (jupyter--show-event event))
+                    (cl-destructuring-bind (_ channel _idents . msg) event
+                      (jupyter-handle-message client channel msg))))))
+       jupyter--kernel-connections)))
+
+;; TODO: Reason about any reference cycles I'm creating.  When will
+;; the connection be garbage collected if the client holds a reference
+;; to the connection?
 (cl-defmethod jupyter-connection ((kernel jupyter-kernel) (client jupyter-kernel-client))
   (let ((kcomm (jupyter--kernel-connection kernel))
         (conn nil)
@@ -129,43 +148,15 @@ HANDLER.")
            (lambda (&rest _)
              (unless (jupyter-alive-p kernel)
                (jupyter-launch kernel))
-             (unless kcomm
-               (setq kcomm
-                     (or
-                      (gethash kernel jupyter--kernel-connections)
-                      (puthash
-                       kernel
-                       (jupyter-connection
-                        kernel
-                        (lambda (event)
-                          (cl-loop
-                           for c in (jupyter-kernel-clients kernel) do
-                           (if (eq (car event) 'sent)
-                               (when jupyter--debug
-                                 (jupyter--show-event event))
-                             (cl-destructuring-bind (_ channel _idents . msg)
-                                 event
-                               (jupyter-handle-message c channel msg))))))
-                       jupyter--kernel-connections))))
              (unless (jupyter-alive-p kcomm)
                (jupyter-start kcomm))
-             (cl-pushnew client (jupyter-kernel-clients kernel))
-             (oset client conn conn)
-             ;; FIXME: This is here because `jupyter-widget-client' uses
-             ;; `jupyter-find-client-for-session'.
-             (oset client session (jupyter-kernel-session kernel)))
+             (funcall connect))
            ;; TODO: Re-implement comm-autostop
-           :stop (lambda (&rest _)
-                   (cl-callf2 delq client (jupyter-kernel-clients kernel))
-                   (slot-makeunbound client 'conn)
-                   (slot-makeunbound client 'session))
-           :send (lambda (&rest event)
-                   (apply #'jupyter-send kcomm event))
-           :alive-p (lambda (&rest _)
-                      (and kcomm (slot-boundp client 'conn)
-                           (eq conn (oref client conn))
-                           (jupyter-alive-p kcomm)
-                           (memq client (jupyter-kernel-clients kernel))))))))
+           :stop
+           (lambda (&rest _)
+             (funcall disconnect))
+           :send (jupyter-connection-send kcomm)
+           :alive-p alive-p))))
 (cl-defmethod jupyter-connection ((client jupyter-kernel-client) (kernel jupyter-kernel))
   (jupyter-connection kernel client))
 
