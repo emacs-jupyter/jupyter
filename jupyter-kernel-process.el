@@ -169,8 +169,7 @@ Call the next method if ARGS does not contain :spec."
                (cl-loop
                 for channel in channels
                 do (jupyter--stop-channel ioloop chgroup channel))
-               (jupyter-ioloop-stop ioloop))
-             (jupyter-ioloop-stop ioloop))
+               (jupyter-ioloop-stop ioloop)))
      :send (lambda (&rest event)
              (apply #'jupyter-send ioloop event))
      :alive-p (lambda (&optional channel)
