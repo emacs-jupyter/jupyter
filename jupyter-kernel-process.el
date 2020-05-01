@@ -128,23 +128,17 @@ Call the next method if ARGS does not contain :spec."
         (not (jupyter--channel-alive-p ioloop chgroup channel))))))
 
 (cl-defmethod jupyter-connection ((kernel jupyter-kernel-process) (handler function))
-  (require 'jupyter-zmq-channel-ioloop)
-  (let* ((session (jupyter-kernel-session kernel))
-         (channels '(:hb :shell :iopub :stdin))
-         (chgroup (jupyter--make-channel-group session))
-         (ioloop (make-instance 'jupyter-zmq-channel-ioloop)))
-    (jupyter-channel-ioloop-set-session ioloop session)
-    ;; session and ioloop are in the context of the connection and are
-    ;; thus not accessible outside of it, therefore no other parts of
-    ;; Emacs-Jupyter have to consider them.
-    (make-jupyter-connection
-     :hb (plist-get chgroup :hb)
-     :id (lambda ()
-           (format "session=%s" (truncate-string-to-width
-                                 (jupyter-session-id session)
-                                 9 nil nil "…")))
-     :start (lambda (&optional channel)
-              (unless (jupyter-ioloop-alive-p ioloop)
+  (let* ((channels '(:hb :shell :iopub :stdin))
+         (ioloop nil)
+         (chgroup nil)
+         (start-ioloop
+          (lambda ()
+            (unless (and ioloop (jupyter-ioloop-alive-p ioloop))
+              (require 'jupyter-zmq-channel-ioloop)
+              (let ((session (jupyter-kernel-session kernel)))
+                (setq ioloop (make-instance 'jupyter-zmq-channel-ioloop)
+                      chgroup (jupyter--make-channel-group session))
+                (jupyter-channel-ioloop-set-session ioloop session)
                 (jupyter-ioloop-start
                  ioloop (lambda (event)
                           (pcase (car event)
@@ -159,7 +153,18 @@ Call the next method if ARGS does not contain :spec."
                                     (plist-get chgroup (cadr event)))
                                    nil))
                             (_
-                             (funcall handler event))))))
+                             (funcall handler event))))))))))
+    ;; session and ioloop are in the context of the connection and are
+    ;; thus not accessible outside of it, therefore no other parts of
+    ;; Emacs-Jupyter have to consider them.
+    (make-jupyter-connection
+     :hb (plist-get chgroup :hb)
+     :id (lambda ()
+           (format "session=%s" (truncate-string-to-width
+                                 (jupyter-session-id session)
+                                 9 nil nil "…")))
+     :start (lambda (&optional channel)
+              (funcall start-ioloop)
               (if channel (jupyter--start-channel ioloop chgroup channel)
                 (cl-loop
                  for channel in channels
