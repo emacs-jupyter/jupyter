@@ -351,6 +351,3 @@ using its SPEC."
 (provide 'jupyter-server-kernel)
 
 ;;; jupyter-server-kernel.el ends here
-
-
-

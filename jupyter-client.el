@@ -2021,11 +2021,8 @@ CLIENT is a kernel client."
     (remhash id (oref client comms))))
 
 (define-jupyter-client-handler comm-msg)
-
 (define-jupyter-client-handler stream)
-
 (define-jupyter-client-handler execute-input)
-
 (define-jupyter-client-handler execute-result)
 
 (defun jupyter-display-traceback (traceback)
@@ -2050,11 +2047,8 @@ CLIENT is a kernel client."
   (equal (jupyter-execution-state client) "busy"))
 
 (define-jupyter-client-handler status)
-
 (define-jupyter-client-handler clear-output)
-
 (define-jupyter-client-handler display-data)
-
 (define-jupyter-client-handler update-display-data)
 
 (provide 'jupyter-client)
