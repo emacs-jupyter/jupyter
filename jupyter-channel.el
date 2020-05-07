@@ -46,22 +46,27 @@
 
 (cl-defmethod jupyter-start ((channel jupyter-channel) &key identity)
   "Start a Jupyter CHANNEL using IDENTITY as the routing ID.
-If CHANNEL is already alive, do nothing.")
+If CHANNEL is already alive, do nothing."
+  (cl-call-next-method))
 
 (cl-defmethod jupyter-stop ((channel jupyter-channel))
   "Stop a Jupyter CHANNEL.
-If CHANNEL is already stopped, do nothing.")
+If CHANNEL is already stopped, do nothing."
+  (cl-call-next-method))
 
 (cl-defmethod jupyter-alive-p ((channel jupyter-channel))
-  "Return non-nil if a CHANNEL is alive.")
+  "Return non-nil if a CHANNEL is alive."
+  (cl-call-next-method))
 
-(cl-defgeneric jupyter-send (channel type message &optional msg-id)
-  "On CHANNEL send MESSAGE which has message TYPE and optionally a MSG-ID.")
+(cl-defmethod jupyter-send (channel type message &optional msg-id)
+  "On CHANNEL send MESSAGE which has message TYPE and optionally a MSG-ID."
+  (cl-call-next-method))
 
-(cl-defgeneric jupyter-recv (channel &optional dont-wait)
+(cl-defmethod jupyter-recv (channel &optional dont-wait)
   "Receive a message on CHANNEL.
 If DONT-WAIT is non-nil, return nil immediately if there is no
-message available to receive.")
+message available to receive."
+  (cl-call-next-method))
 
 (provide 'jupyter-channel)
 
