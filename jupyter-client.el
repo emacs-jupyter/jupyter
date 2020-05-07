@@ -798,12 +798,7 @@ received for it and it is not the most recently sent request."
     (not (or (eq ihandlers t)
              (if (eq (car ihandlers) 'not) (not type) type)))))
 
-(defun jupyter-handle-message-p (client channel msg)
-  "Return non-nil if CLIENT should handle a MSG received on CHANNEL.
-Run CLIENT's CHANNEL hook, jupyter-CHANNEL-message-hook,
-passing (CLIENT MSG) as arguments to the hook functions.  If all
-of the hook functions return nil, then MSG should be handled.
-nil is returned otherwise."
+(defsubst jupyter--channel-hook-allows-handler-p (client channel msg)
   (jupyter-with-client-buffer client
     (let ((hook (pcase channel
                   (:iopub 'jupyter-iopub-message-hook)
@@ -837,8 +832,9 @@ nil is returned otherwise."
       (:stdin . ,(handler-alist
                   :input-reply :input-request)))))
 
-(defun jupyter--run-handler (client channel msg req)
-  (when (jupyter-handle-message-p client channel msg)
+(defun jupyter--run-handler-maybe (client channel msg req)
+  (when (and (jupyter--request-allows-handler-p req msg)
+             (jupyter--channel-hook-allows-handler-p client channel msg))
     (let* ((msg-type (jupyter-message-type msg))
            (channel-handlers
             (or (alist-get channel jupyter--client-handlers)
@@ -908,8 +904,7 @@ completed, requests from CLIENT's request table."
         (unwind-protect
             (jupyter--run-callbacks req msg)
           (unwind-protect
-              (when (jupyter--request-allows-handler-p req msg)
-                (jupyter--run-handler client channel msg req))
+              (jupyter--run-handler-maybe client channel msg req)
             (when (jupyter--message-completes-request-p msg)
               ;; Order matters here.  We want to remove idle requests *before*
               ;; setting another request idle to account for idle messages
@@ -917,12 +912,10 @@ completed, requests from CLIENT's request table."
               ;; messages.
               (jupyter--drop-idle-requests client)
               (setf (jupyter-request-idle-p req) t)))))
-       (t
-        (when (and (or (jupyter-get client 'jupyter-include-other-output)
-                       ;; Always handle a startup message
-                       (jupyter-message-status-starting-p msg))
-                   (jupyter--request-allows-handler-p req msg))
-          (jupyter--run-handler client channel msg req)))))))
+       ((or (jupyter-get client 'jupyter-include-other-output)
+            ;; Always handle a startup message
+            (jupyter-message-status-starting-p msg))
+        (jupyter--run-handler-maybe client channel msg req))))))
 
 ;;; STDIN handlers
 
