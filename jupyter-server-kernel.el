@@ -206,6 +206,7 @@ The kernelspecs are returned in the same form as returned by
 (cl-defstruct (jupyter-server-kernel
                (:include jupyter-kernel))
   (server jupyter-current-server
+          :read-only t
           :documentation "The kernel server.")
   (id nil
       :type (or null string)
