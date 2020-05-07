@@ -67,16 +67,7 @@ Call the next method if ARGS does not contain :spec."
         (plist-put args :spec
                    (or (jupyter-guess-kernelspec spec)
                        (error "No kernelspec matching name (%s)" spec))))
-      (apply #'jupyter-kernel-process
-             :session (prog1 (jupyter-session-with-random-ports)
-                        ;; This is here for stability when running the
-                        ;; tests.  Sometimes the kernel ports are not
-                        ;; set up fast enough due to the hack done in
-                        ;; `jupyter-session-with-random-ports'.  The
-                        ;; effect seems to be messages that are sent but
-                        ;; never received by the kernel.
-                        (sit-for 0.2))
-             args))))
+      (apply #'jupyter-kernel-process args))))
 
 ;;; Client connection
 
