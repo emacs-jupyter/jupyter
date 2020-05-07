@@ -126,9 +126,9 @@ nil."
 (cl-defgeneric jupyter-interrupt ((kernel jupyter-kernel))
   "Interrupt KERNEL.
 
-The default implementation of this method sends an interrupt
-request on KERNEL's control channel if its kernelspec has an
-:interrupt_mode of \"message\"."
+The default implementation sends an interrupt request on KERNEL's
+control channel if the KERNEL's spec. has an :interrupt_mode
+equal to \"message\"."
   (pcase-let* (((cl-struct jupyter-kernel spec session) kernel)
                ((cl-struct jupyter-kernelspec plist) spec))
     (when (string= (plist-get plist :interrupt_mode) "message")
@@ -137,10 +137,7 @@ request on KERNEL's control channel if its kernelspec has an
               'jupyter-zmq-channel
               :type :control
               :session session
-              :endpoint (cl-destructuring-bind (&key transport ip control_port
-                                                     &allow-other-keys)
-                            (jupyter-session-conn-info session)
-                          (format "%s://%s:%d" transport ip control_port)))))
+              :endpoint (plist-get (jupyter-session-endpoints session) :control))))
         ;; TODO: `with-live-jupyter-channel'
         (jupyter-start channel)
         (jupyter-send channel :interrupt-request '())
