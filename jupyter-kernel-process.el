@@ -80,108 +80,111 @@ Call the next method if ARGS does not contain :spec."
 
 ;;; Client connection
 
-(cl-defstruct jupyter--proxy-channel endpoint alive-p)
-
-(defun jupyter--make-channel-group (session)
-  (let ((endpoints (jupyter-session-endpoints session)))
-    (append
-     (list 'channel-group t
-           :hb (make-instance
-                'jupyter-hb-channel
-                :session session
-                :endpoint (plist-get endpoints :hb)))
-     (cl-loop
-      for channel in '(:control :shell :iopub :stdin)
-      collect channel
-      collect (make-jupyter--proxy-channel
-               :endpoint (plist-get endpoints channel)
-               :alive-p nil)))))
-
-(defun jupyter--channel-alive-p (ioloop chgroup channel)
-  (if (eq channel :hb)
-      (let ((hb (plist-get chgroup channel)))
-        (and hb (jupyter-alive-p hb)))
-    (and ioloop (jupyter-ioloop-alive-p ioloop)
-         (jupyter--proxy-channel-alive-p
-          (plist-get chgroup channel)))))
-
-(defun jupyter--start-channel (ioloop chgroup channel)
-  (unless (jupyter--channel-alive-p ioloop chgroup channel)
-    (if (eq channel :hb) (jupyter-start (plist-get chgroup channel))
-      (let ((endpoint (jupyter--proxy-channel-endpoint
-                       (plist-get chgroup channel))))
-        (jupyter-send ioloop 'start-channel channel endpoint)
-        ;; Verify that the channel starts
-        (jupyter-with-timeout
-            (nil jupyter-default-timeout
-                 (error "Channel not started in ioloop subprocess (%s)" channel))
-          (jupyter--channel-alive-p ioloop chgroup channel))))))
-
-(defun jupyter--stop-channel (ioloop chgroup channel)
-  (when (jupyter--channel-alive-p ioloop chgroup channel)
-    (if (eq channel :hb) (jupyter-stop (plist-get chgroup channel))
-      (jupyter-send ioloop 'stop-channel channel)
-      ;; Verify that the channel stops
-      (jupyter-with-timeout
-          (nil jupyter-default-timeout
-               (error "Channel not stopped in ioloop subprocess (%s)" channel))
-        (not (jupyter--channel-alive-p ioloop chgroup channel))))))
-
-(cl-defmethod jupyter-connection ((kernel jupyter-kernel-process) (handler function))
-  (let* ((channels '(:hb :shell :iopub :stdin))
+(cl-defmethod jupyter-connection ((session jupyter-session))
+  (let* ((channels '(:control :shell :iopub :stdin))
+         (ch-group (let ((endpoints (jupyter-session-endpoints session)))
+                     (cl-loop
+                      for ch in channels
+                      collect ch
+                      collect (list :endpoint (plist-get endpoints ch)
+                                    :alive-p nil))))
+         (hb nil)
          (ioloop nil)
-         (chgroup nil)
-         (start-ioloop
+         (handlers '()))
+    (cl-macrolet ((continue-after
+                   (cond on-timeout)
+                   `(jupyter-with-timeout
+                        (nil jupyter-default-timeout ,on-timeout)
+                      ,cond)))
+      (cl-labels ((ch-alive-p
+                   (ch)
+                   (and ioloop (jupyter-ioloop-alive-p ioloop)
+                        (plist-get (plist-get ch-group ch) :alive-p)))
+                  (ch-start
+                   (ch)
+                   (unless (ch-alive-p ch)
+                     (jupyter-send ioloop 'start-channel ch (plist-get ch :endpoint))
+                     (continue-after
+                      (ch-alive-p ch)
+                      (error "Channel not started: %s" ch))))
+                  (ch-stop
+                   (ch)
+                   (when (ch-alive-p ch)
+                     (jupyter-send ioloop 'stop-channel ch)
+                     (continue-after
+                      (not (ch-alive-p ch))
+                      (error "Channel not stopped: %s" ch))))
+                  (start
+                   ()
+                   (unless ioloop
+                     (require 'jupyter-zmq-channel-ioloop)
+                     (setq ioloop (make-instance 'jupyter-zmq-channel-ioloop))
+                     (jupyter-channel-ioloop-set-session ioloop session))
+                   (unless (jupyter-ioloop-alive-p ioloop)
+                     (jupyter-ioloop-start
+                      ioloop
+                      (lambda (event)
+                        (pcase (car event)
+                          ((and 'start-channel (let ch (cadr event)))
+                           (plist-put (plist-get ch-group ch) :alive-p t))
+                          ((and 'stop-channel (let ch (cadr event)))
+                           (plist-put (plist-get ch-group ch) :alive-p nil))
+                          (_
+                           (cl-loop
+                            for handler in handlers
+                            do (funcall handler event))))))
+                     (condition-case err
+                         (cl-loop
+                          for ch in channels
+                          do (ch-start ch))
+                       (error
+                        (jupyter-ioloop-stop ioloop)
+                        (signal (car err) (cdr err)))))
+
+                   ioloop)
+                  (stop
+                   ()
+                   (and ioloop
+                        (jupyter-ioloop-alive-p ioloop)
+                        (jupyter-ioloop-stop ioloop))))
+        (list
+         (lambda (&rest args)
+           (pcase (car args)
+             ('message (apply #'jupyter-send (start) 'send (cdr args)))
+             ((and 'add-handler (let h (cadr args)))
+              (start)
+              (cl-pushnew h handlers))
+             ((and 'remove-handler (let h (cadr args)))
+              (cl-callf2 delq h handlers)
+              (unless handlers
+                (stop)))
+             ('start (start) nil)
+             ('stop (stop) nil)
+             ('alive-p
+              (if (and (cdr args) (eq (cadr args) 'hb))
+                  (and hb (jupyter-alive-p hb))
+                (and ioloop
+                     (jupyter-ioloop-alive-p ioloop))))
+             ('hb
+              (unless hb
+                (setq hb
+                      (let ((endpoints (jupyter-session-endpoints session)))
+                        (make-instance
+                         'jupyter-hb-channel
+                         :session session
+                         :endpoint (plist-get endpoints :hb)))))
+              hb)
+             (_
+              (error "Unhandled IO: %s" args))))
+         (make-finalizer
           (lambda ()
-            (unless (and ioloop (jupyter-ioloop-alive-p ioloop))
-              (require 'jupyter-zmq-channel-ioloop)
-              (let ((session (jupyter-kernel-session kernel)))
-                (setq ioloop (make-instance 'jupyter-zmq-channel-ioloop)
-                      chgroup (jupyter--make-channel-group session))
-                (jupyter-channel-ioloop-set-session ioloop session)
-                (jupyter-ioloop-start
-                 ioloop (lambda (event)
-                          (pcase (car event)
-                            ;; These channel events are from
-                            ;; `jupyter-channel-ioloop'
-                            ('start-channel
-                             (setf (jupyter--proxy-channel-alive-p
-                                    (plist-get chgroup (cadr event)))
-                                   t))
-                            ('stop-channel
-                             (setf (jupyter--proxy-channel-alive-p
-                                    (plist-get chgroup (cadr event)))
-                                   nil))
-                            (_
-                             (funcall handler event))))))))))
-    ;; session and ioloop are in the context of the connection and are
-    ;; thus not accessible outside of it, therefore no other parts of
-    ;; Emacs-Jupyter have to consider them.
-    (make-jupyter-connection
-     :hb (plist-get chgroup :hb)
-     :id (lambda ()
-           (format "session=%s" (truncate-string-to-width
-                                 (jupyter-session-id session)
-                                 9 nil nil "…")))
-     :start (lambda (&optional channel)
-              (funcall start-ioloop)
-              (if channel (jupyter--start-channel ioloop chgroup channel)
-                (cl-loop
-                 for channel in channels
-                 do (jupyter--start-channel ioloop chgroup channel))))
-     :stop (lambda (&optional channel)
-             (if channel (jupyter--stop-channel ioloop chgroup channel)
-               (cl-loop
-                for channel in channels
-                do (jupyter--stop-channel ioloop chgroup channel))
-               (jupyter-ioloop-stop ioloop)))
-     :send (lambda (&rest event)
-             (apply #'jupyter-send ioloop event))
-     :alive-p (lambda (&optional channel)
-                (if channel (jupyter--channel-alive-p ioloop chgroup channel)
-                  (cl-loop
-                   for channel in channels
-                   thereis (jupyter--channel-alive-p ioloop chgroup channel)))))))
+            (and hb (jupyter-hb-pause hb))
+            (stop)
+            (setq hb nil ioloop nil))))))))
+
+(cl-defmethod jupyter-connection ((kernel jupyter-kernel-process))
+  "Return a connection to KERNEL's session."
+  (jupyter-connection (jupyter-kernel-session kernel)))
 
 ;;; Kernel management
 

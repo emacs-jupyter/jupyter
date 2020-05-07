@@ -22,6 +22,13 @@
 
 ;;; Commentary:
 
+;; This file defines the `jupyter-connect' function used to connect a
+;; client to a kernel.  
+;;
+;;
+;; Before a client and kernel can be connected, a connection to a
+;; kernel must be made to get at the 
+
 ;; This file defines the `jupyter-connection' method which takes a
 ;; kernel and a client and returns an instance of the
 ;; `jupyter-connection' struct type, representing the set of IO
@@ -37,128 +44,179 @@
   "Linking kernels and clients"
   :group 'jupyter)
 
-(defconst jupyter-connection-uninitialized
-  (lambda (&rest _)
-    (error "Connection not initialized"))
-  "Default function used for some slots of a `jupyter-connection'.")
+(defvar jupyter-connections (make-hash-table :weakness 'key)
+  "A cache for Jupyter kernel connections.
+The keys are objects like kernels, clients, and other auxiliary
+objects.  The values are lists whose elements are related in some
+way to connecting clients to kernels in the current Emacs
+session.
 
-(cl-defstruct jupyter-connection
-  "Represents an Emacs based connection to a kernel.
-START, STOP, SEND, and ALIVE-P are one argument functions that
-take a `jupyter-kernel' to: ensure that communication with a
-kernel has started, stop any communication with a kernel, send a
-message to a kernel, and determine if communication with a kernel
-is possible."
-  hb
-  (id jupyter-connection-uninitialized
-      :type function
-      :read-only t)
-  (start jupyter-connection-uninitialized
-         :type function
-         :read-only t)
-  (stop jupyter-connection-uninitialized
-        :type function
-        :read-only t)
-  (send jupyter-connection-uninitialized
-        :type function
-        :read-only t)
-  (alive-p #'ignore
-           :type function
-           :read-only t))
+This table is used by `jupyter-io' to store the connection lists
+returned by `jupyter-connection'.  It is also used by
+`jupyter-connect' to keep track of the kernel a client is
+connected to.")
 
-(cl-defmethod jupyter-alive-p ((conn jupyter-connection) &optional channel)
+;; FIXME: Remove the channel argument
+(cl-defmethod jupyter-alive-p ((io function) &optional _channel)
   "Return non-nil if CONN is live."
-  (funcall (jupyter-connection-alive-p conn) channel))
+  (jupyter-send io 'alive-p))
 
-(cl-defmethod jupyter-start ((conn jupyter-connection) &optional channel)
-  (funcall (jupyter-connection-start conn) channel))
+(cl-defmethod jupyter-start ((io function) &optional _channel)
+  (jupyter-send io 'start))
 
-(cl-defmethod jupyter-stop ((conn jupyter-connection) &optional channel)
-  (funcall (jupyter-connection-stop conn) channel))
+(cl-defmethod jupyter-stop ((io function) &optional _channel)
+  (jupyter-send io 'stop))
 
 (defun jupyter-conn-id (conn)
   (funcall (jupyter-connection-id conn)))
 
-(cl-defmethod jupyter-send ((conn jupyter-connection) &rest msg)
-  (unless (funcall (jupyter-connection-alive-p conn))
-    (jupyter-start conn))
-  (apply (jupyter-connection-send conn) msg))
-
 ;;;; `jupyter-connection'
 
-(cl-defgeneric jupyter-connection (kernel handler)
-  "Return a `jupyter-connection' to KERNEL.
-When messages are received from KERNEL they are passed to
-HANDLER.")
+(cl-defgeneric jupyter-connection (thing)
+  "Establish a connection to THING.
+Return a list (IO ...), where IO is a function used to perform
+I/O actions on THING, the rest of the list is ignored.
+
+IO takes arguments like (TYPE ARGS...) where TYPE is a symbol
+describing the type of I/O action/query that ARGS are parameters
+to.
+
+This method should not be called directly, use `jupyter-io'.
+
+At a minimum, IO should accept to the following sets of I/O
+actions/queries:
+
+  * Connection lifetime
+
+    - ('start) :: Enable I/O.
+    - ('stop) :: Disable I/O.
+    - ('alive-p &optional CHANNEL) :: Return non-nil if I/O
+      connection is live.  If CHANNEL is specified and the I/O
+      connection resolves individual channels, return non-nil if
+      CHANNEL is live.
+
+  * Message sending/receiving
+
+    - ('send ARGS...) :: Send ARGS as a message to THING.
+
+    - ('add-handler FN) :: Add FN, a function, as a handler of
+      messages received from THING.
+
+    - ('remove-handler FN) :: Remove FN as a handler.
+
+    'send and 'add-handler are also responsible for enabling the
+    connection if it has not been already.
+
+  * Heartbeat channel [1]
+
+    - ('hb) :: Return a `jupyter-hb-channel' or nil if the
+      connection does not support one.
+
+\[1] https://jupyter-client.readthedocs.io/en/stable/messaging.html#heartbeat-for-kernels")
 
 (declare-function jupyter-kernel-process "ext:jupyter-kernel-process")
 
-(cl-defmethod jupyter-connection ((kernel jupyter-kernel) (handler function))
+(cl-defmethod jupyter-connection ((kernel jupyter-kernel))
+  "If KERNEL has a non-nil session, return a ZMQ based kernel connection."
   (cond
+   ;; FIXME: Remove the need for this
    ((and (jupyter-kernel-session kernel)
          (require 'jupyter-kernel-process nil t))
     (jupyter-connection
-     (jupyter-kernel-process :session (jupyter-kernel-session kernel))
-     handler))
+     (jupyter-kernel-process
+      :session (jupyter-kernel-session kernel))))
    (t (cl-call-next-method))))
 
-(defvar jupyter--kernel-connections (make-hash-table :weakness 'key))
+(defun jupyter-io (thing)
+  "Return a function that can be used to perform I/O with THING.
+The function takes arguments like (TYPE ARGS...) where TYPE is a
+symbol describing the type of I/O action/query that ARGS are
+parameters to.
 
-(defun jupyter-kernel-connection (kernel)
-  "Return the `jupyter-connection' associated with KERNEL."
-  (or (gethash kernel jupyter--kernel-connections)
-      (puthash
-       kernel (jupyter-connection
-               kernel
-               (lambda (event)
-                 (cl-loop
-                  for client in (jupyter-kernel-clients kernel) do
-                  (if (eq (car event) 'sent)
-                      (when jupyter--debug
-                        (jupyter--show-event event))
-                    (cl-destructuring-bind (_ channel _idents . msg) event
-                      (jupyter-handle-message client channel msg))))))
-       jupyter--kernel-connections)))
+See `jupyter-connection' for the I/O actions/queries THING implements."
+  (pcase-let ((`(,io . ,_)
+               (or (gethash thing jupyter-connections)
+                   (puthash thing (jupyter-connection thing)
+                            jupyter-connections))))
+    io))
 
-;; TODO: Reason about any reference cycles I'm creating.  When will
-;; the connection be garbage collected if the client holds a reference
-;; to the connection?
-(cl-defmethod jupyter-connection ((kernel jupyter-kernel) (client jupyter-kernel-client))
-  (let ((kcomm (jupyter--kernel-connection kernel))
-        (conn nil)
-        (connect (lambda ()
-                   (cl-pushnew client (jupyter-kernel-clients kernel))
-                   (oset client conn conn)
-                   ;; FIXME: This is here because `jupyter-widget-client' uses
-                   ;; `jupyter-find-client-for-session'.
-                   (oset client session (jupyter-kernel-session kernel))))
-        (disconnect (lambda ()
-                      (cl-callf2 delq client (jupyter-kernel-clients kernel))
-                      (slot-makeunbound client 'conn)
-                      (slot-makeunbound client 'session)))
-        (alive-p (lambda (&rest _)
-                   (and (jupyter-alive-p kcomm)
-                        (slot-boundp client 'conn) (eq conn (oref client conn))
-                        (memq client (jupyter-kernel-clients kernel))))))
-    (setq conn
-          (make-jupyter-connection
-           :id (jupyter-connection-id kcomm)
-           :hb (jupyter-connection-hb kcomm)
-           :start
-           (lambda (&rest _)
-             (unless (jupyter-alive-p kernel)
-               (jupyter-launch kernel))
-             (unless (jupyter-alive-p kcomm)
-               (jupyter-start kcomm))
-             (funcall connect))
-           ;; TODO: Re-implement comm-autostop
-           :stop
-           (lambda (&rest _)
-             (funcall disconnect))
-           :send (jupyter-connection-send kcomm)
-           :alive-p alive-p))))
-(cl-defmethod jupyter-connection ((client jupyter-kernel-client) (kernel jupyter-kernel))
-  (jupyter-connection kernel client))
+(cl-defmethod jupyter-send ((io function) &rest args)
+  "Send ARGS on IO."
+  (apply io args))
+
+(cl-defmethod jupyter-send ((kernel jupyter-kernel) &rest args)
+  "Send a message to KERNEL.
+Any associated messages will be received by KERNEL's handlers.
+See `jupyter-connection' for how a handler can be added."
+  (apply (jupyter-io kernel) 'message args))
+
+(cl-defmethod jupyter-connect ((client jupyter-kernel-client) (kernel jupyter-kernel))
+  "Connect CLIENT to KERNEL.
+When CLIENT has been connected to KERNEL, it handles messages
+KERNEL sends to its clients.  Return an I/O function that can be
+used to send messages to KERNEL.
+
+The connection exists as long as CLIENT exists or until CLIENT is
+connected to a different kernel.  The connection of a client can
+be removed manually with `jupyter-disconnect'.
+
+See `jupyter-connection' for more info. on the I/O function."
+  (jupyter-disconnect client)
+  ;; Make a weak ref. to CLIENT so that remhandler, below, will be
+  ;; called if CLIENT is not disconnected before being garbage
+  ;; collected.
+  (let* ((ref (jupyter-weak-ref client))
+         (handler (lambda (event)
+                    ;; FIXME: Handle the `sent' event, but not here.
+                    ;; How can I get rid of it?
+                    (pcase (car event)
+                      ((and 'message (let `(,channel . ,msg) (cdr event)))
+                       (when-let* ((client (jupyter-weak-ref-resolve ref)))
+                         (jupyter-handle-message client channel msg))))))
+         (io (jupyter-io kernel)))
+    (jupyter-send io 'add-handler handler)
+    (puthash client
+             (let ((remhandler
+                    (lambda ()
+                      (jupyter-send io 'remove-handler handler))))
+               ;; A reference to KERNEL is kept to allow disconnecting
+               ;; all clients of KERNEL in `jupyter-disconnect'.
+               ;;
+               ;; The finalizer is here to remove the handler if
+               ;; client is not disconnected before being garbage
+               ;; collected.
+               (list kernel remhandler (make-finalizer remhandler)))
+             jupyter-connections)
+    io))
+
+(cl-defmethod jupyter-disconnect ((client jupyter-kernel-client))
+  "Disconnect CLIENT from its kernel, if any."
+  (pcase (gethash client jupyter-connections)
+    (`(,_ ,remhandler . ,_)
+     (funcall remhandler)))
+  (remhash client jupyter-connections))
+
+(cl-defmethod jupyter-kernel ((client jupyter-kernel-client))
+  "Return the kernel CLIENT is connected to.
+Return nil if CLIENT is not connected to any kernel."
+  (let ((kernel (car (gethash client jupyter-connections))))
+    kernel))
+
+(cl-defmethod jupyter-clients ((kernel jupyter-kernel))
+  "Return a list of clients KERNEL is connected to."
+  (let ((clients '()))
+    (maphash (lambda (k v)
+               (when (and (eieio-object-p k)
+                          (object-of-class-p k 'jupyter-kernel-client)
+                          (memq kernel v))
+                 (push k clients)))
+             jupyter-connections)
+    clients))
+
+(cl-defmethod jupyter-disconnect ((kernel jupyter-kernel))
+  "Disconnect all clients of KERNEL."
+  (cl-loop for client in (jupyter-clients kernel)
+           do (jupyter-disconnect client)))
 
 (provide 'jupyter-connection)
 

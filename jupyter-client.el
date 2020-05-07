@@ -313,7 +313,7 @@ method is called."
   (and (slot-boundp client 'conn)
        (jupyter-alive-p (oref client conn))))
 
-(defun jupyter-clients ()
+(cl-defmethod jupyter-clients ()
   "Return a list of all `jupyter-kernel-client' objects."
   (jupyter-all-objects 'jupyter--clients))
 
