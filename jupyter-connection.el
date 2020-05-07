@@ -67,9 +67,6 @@ connected to.")
 (cl-defmethod jupyter-stop ((io function) &optional _channel)
   (jupyter-send io 'stop))
 
-(defun jupyter-conn-id (conn)
-  (funcall (jupyter-connection-id conn)))
-
 ;;;; `jupyter-connection'
 
 (cl-defgeneric jupyter-connection (thing)

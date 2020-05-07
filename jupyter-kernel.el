@@ -49,6 +49,16 @@
   "Return non-nil if KERNEL has been launched."
   (and (jupyter-kernel-session kernel) t))
 
+(cl-defmethod cl-print-object ((kernel jupyter-kernel) stream)
+  (princ (format "#<jupyter-kernel %s%s>"
+                 (jupyter-kernelspec-name (jupyter-kernel-spec kernel))
+                 (if (jupyter-alive-p kernel)
+                     (concat " " (truncate-string-to-width
+                                  (jupyter-session-id (jupyter-kernel-session kernel))
+                                  9 nil nil "…"))
+                   ""))
+         stream))
+
 (cl-defgeneric jupyter-kernel (&rest args)
   "Return a kernel constructed from ARGS.
 ARGS are keyword arguments used to initialize the returned
