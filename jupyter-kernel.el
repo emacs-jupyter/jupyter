@@ -43,10 +43,7 @@
         :type jupyter-kernelspec
         :documentation "The kernelspec of this kernel.")
   ;; FIXME: Remove this slot, used by `jupyter-widget-client'.
-  (session nil :type jupyter-session)
-  (clients nil
-           :type (list-of jupyter-kernel-client)
-           :documentation "List of clients able to receive messages."))
+  (session nil :type jupyter-session))
 
 (cl-defmethod jupyter-alive-p ((kernel jupyter-kernel))
   "Return non-nil if KERNEL has been launched."

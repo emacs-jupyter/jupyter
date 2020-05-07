@@ -212,8 +212,6 @@ client is expecting a reply from the kernel.")
 initializing this client.  When `jupyter-start-channels' is
 called, this will be set to the kernel info plist returned
 from an initial `:kernel-info-request'.")
-   (conn
-    :documentation "A `jupyter-connection' representing the client-kernel connection.")
    (session
     :type jupyter-session
     :documentation "The session for this client.")
@@ -310,8 +308,10 @@ method is called."
 
 (cl-defmethod jupyter-kernel-alive-p ((client jupyter-kernel-client))
   "Return non-nil if the kernel CLIENT is connected to is alive."
-  (and (slot-boundp client 'conn)
-       (jupyter-alive-p (oref client conn))))
+  (when-let* ((kernel (jupyter-kernel client)))
+    (and (slot-boundp client 'conn)
+         (jupyter-alive-p kernel)
+         (jupyter-alive-p (jupyter-io kernel)))))
 
 (cl-defmethod jupyter-clients ()
   "Return a list of all `jupyter-kernel-client' objects."
