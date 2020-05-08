@@ -145,7 +145,7 @@ is also removed if it returns nil after handling an event."
                  (when handlers
                    (start)))
                 (_ (error "Unhandled IO: %s" args))))
-            (make-finalizer stop)))))
+            (make-finalizer #'stop)))))
 
 (cl-defmethod jupyter-connection ((spec (head server)))
   (jupyter-connection (jupyter-server :url (cadr spec))))
@@ -308,7 +308,7 @@ actions defined by this connection are
              ('hb nil)
              (_
               (server-io args))))
-         (make-finalizer stop))))))
+         (make-finalizer #'stop))))))
 
 ;;; Kernel management
 
