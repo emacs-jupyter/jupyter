@@ -87,14 +87,7 @@ handling a message is always
 
 (cl-defmethod initialize-instance ((client jupyter-echo-client) &optional _slots)
   (cl-call-next-method)
-  (oset client messages (make-ring 10))
-  (oset client conn
-        (make-jupyter-connection
-         :hb (jupyter-hb-channel)
-         :start #'ignore
-         :stop #'ignore
-         :send #'ignore
-         :alive-p #'ignore)))
+  (oset client messages (make-ring 10)))
 
 (cl-defmethod jupyter-send ((client jupyter-echo-client) (type symbol) &rest content)
   (let ((req (jupyter-request :type type :content content)))
