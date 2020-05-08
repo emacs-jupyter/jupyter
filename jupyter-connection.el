@@ -171,6 +171,7 @@ be removed manually with `jupyter-disconnect'.
 
 See `jupyter-connection' for more info. on the I/O function."
   (jupyter-disconnect client)
+  (jupyter-launch kernel)
   ;; Make a weak ref. to CLIENT so that remhandler, below, will be
   ;; called if CLIENT is not disconnected before being garbage
   ;; collected.
