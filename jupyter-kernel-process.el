@@ -200,7 +200,8 @@ process and CONN-FILE the associated connection file.
 Cleaning up the list removes elements whose PROCESS is no longer
 live.  When removing, CONN-FILE will be deleted and PROCESS's
 buffer killed.  The list is periodically cleaned up when a new
-process is launched, also just before Emacs exits.")
+process is launched.  Also, any connection files that still exist
+before Emacs exits are deleted.")
 
 (defun jupyter--kernel-process (kernel)
   (cl-find-if (lambda (x) (and (processp (car x))
