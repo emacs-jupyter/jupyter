@@ -616,29 +616,57 @@
 ;; FIXME: Revisit after transition
 (ert-deftest jupyter-kernel-process ()
   :tags '(kernel)
-  (skip-unless nil)
-  (let ((kernel (jupyter--kernel-process
-                 :spec (jupyter-guess-kernelspec "python"))))
-    (ert-info ("Session set after kernel starts")
-      (should-not (jupyter-kernel-alive-p kernel))
-      (jupyter-start-kernel kernel)
-      (should (jupyter-kernel-alive-p kernel))
-      (should (oref kernel session))
-      (jupyter-kill-kernel kernel)
-      (should-not (jupyter-kernel-alive-p kernel)))
-    (ert-info ("Can we communicate?")
-      (let ((manager (jupyter-kernel-manager :kernel kernel)))
-        (jupyter-start-kernel manager)
-        (unwind-protect
-            (let ((jupyter-current-client
-                   (jupyter-make-client manager 'jupyter-kernel-client)))
-              (jupyter-start-channels jupyter-current-client)
-              (unwind-protect
-                  (progn
-                    (jupyter-wait-until-startup jupyter-current-client)
-                    (should (equal (jupyter-eval "1 + 1") "2")))
-                (jupyter-stop-channels jupyter-current-client)))
-          (jupyter-shutdown-kernel manager))))))
+  ;; TODO: `jupyter-interrupt'
+  (ert-info ("`jupyter-launch', `jupyter-shutdown'")
+    (cl-macrolet
+        ((confirm-shutdown-state
+          ()
+          `(progn
+             (should-not (jupyter-alive-p kernel))
+             (should (jupyter-kernel-spec kernel))
+             (should-not (jupyter-kernel-session kernel))
+             (should-not
+              (process-live-p
+               (jupyter-kernel-process-process kernel)))))
+         (confirm-launch-state
+          ()
+          `(progn
+             (should (jupyter-alive-p kernel))
+             (should (jupyter-kernel-spec kernel))
+             (should (jupyter-kernel-session kernel))
+             (should
+              (process-live-p
+               (jupyter-kernel-process-process kernel))))))
+      (let ((kernel (jupyter-kernel-process
+                     :spec (jupyter-guess-kernelspec "python"))))
+        (confirm-shutdown-state)
+        (jupyter-launch kernel)
+        (confirm-launch-state)
+        (jupyter-shutdown kernel)
+        (confirm-shutdown-state)))))
+
+;; (let ((kernel (jupyter--kernel-process
+;;                :spec (jupyter-guess-kernelspec "python"))))
+;;   (ert-info ("Session set after kernel starts")
+;;     (should-not (jupyter-kernel-alive-p kernel))
+;;     (jupyter-start-kernel kernel)
+;;     (should (jupyter-kernel-alive-p kernel))
+;;     (should (oref kernel session))
+;;     (jupyter-kill-kernel kernel)
+;;     (should-not (jupyter-kernel-alive-p kernel)))
+;;   (ert-info ("Can we communicate?")
+;;     (let ((manager (jupyter-kernel-manager :kernel kernel)))
+;;       (jupyter-start-kernel manager)
+;;       (unwind-protect
+;;           (let ((jupyter-current-client
+;;                  (jupyter-make-client manager 'jupyter-kernel-client)))
+;;             (jupyter-start-channels jupyter-current-client)
+;;             (unwind-protect
+;;                 (progn
+;;                   (jupyter-wait-until-startup jupyter-current-client)
+;;                   (should (equal (jupyter-eval "1 + 1") "2")))
+;;               (jupyter-stop-channels jupyter-current-client)))
+;;         (jupyter-shutdown-kernel manager)))))
 
 (ert-deftest jupyter-session-with-random-ports ()
   :tags '(kernel)

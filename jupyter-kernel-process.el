@@ -309,7 +309,7 @@ See also https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-spe
       ;; killing the process when explicitly shutting it down is not
       ;; an unexpected exit.
       (setf (process-sentinel process) #'ignore)
-      (kill-process process))
+      (delete-process process))
     (cl-call-next-method)))
 
 (cl-defmethod jupyter-interrupt ((kernel jupyter-kernel-process))
