@@ -37,8 +37,6 @@
 (require 'jupyter-kernel)
 (require 'jupyter-kernelspec)
 
-(declare-function jupyter-connection-hb "jupyter-connection")
-
 (defface jupyter-eval-overlay
   '((((class color) (min-colors 88) (background light))
      :foreground "navy"
