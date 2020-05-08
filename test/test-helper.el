@@ -656,7 +656,7 @@ see the documentation on the --NotebookApp.password argument."
    (ignore-errors (delete-directory jupyter-test-temporary-directory))
    (ignore-errors (delete-process (car jupyter-test-notebook)))
    (cl-loop
-    for client in (jupyter-clients)
+    for client in (jupyter-all-objects 'jupyter--clients)
     do (ignore-errors (jupyter-shutdown-kernel client)))
    (cl-loop for server in (jupyter-servers)
             do (ignore-errors (jupyter-ioloop-stop (oref server ioloop))))

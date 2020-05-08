@@ -311,15 +311,11 @@ method is called."
          (jupyter-alive-p kernel)
          (jupyter-alive-p (jupyter-io kernel)))))
 
-(cl-defmethod jupyter-clients ()
-  "Return a list of all `jupyter-kernel-client' objects."
-  (jupyter-all-objects 'jupyter--clients))
-
 (defun jupyter-find-client-for-session (session-id)
   "Return the kernel client whose session has SESSION-ID."
   (or (cl-find-if
        (lambda (x) (string= (jupyter-session-id (oref x session)) session-id))
-       (jupyter-clients))
+       (jupyter-all-objects 'jupyter--clients))
       (error "No client found for session (%s)" session-id)))
 
 ;;; Client local variables

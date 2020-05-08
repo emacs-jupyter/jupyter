@@ -172,7 +172,7 @@ CLIENT must be communicating with a `jupyter-server-kernel', see
   "Return a kernel manager managing kernel with ID on SERVER.
 Return nil if none could be found."
   (cl-loop
-   for client in (jupyter-clients)
+   for client in (jupyter-all-objects 'jupyter--clients)
    thereis (let ((manager (oref client manager)))
              (and (cl-typep manager 'jupyter-server-kernel-manager)
                   (pcase-let (((cl-struct jupyter-server-kernel server id)
