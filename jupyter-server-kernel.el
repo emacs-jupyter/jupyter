@@ -173,8 +173,8 @@ is also removed if it returns nil after handling an event."
        (error "Unauthenticated request, can't attempt re-authentication \
 with default `jupyter-api-authentication-method'"))
      (prog1 (cl-call-next-method)
-       (jupyter-stop (oref server conn))
-       (jupyter-start (oref server conn))))))
+       (jupyter-send (jupyter-io server) 'auth-headers
+                     (jupyter-api-auth-headers server))))))
 
 (cl-defmethod jupyter-server-kernelspecs ((server jupyter-server) &optional refresh)
   "Return the kernelspecs on SERVER.
