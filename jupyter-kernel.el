@@ -113,7 +113,7 @@ nil."
   (setf (jupyter-kernel-session kernel) nil))
 
 (cl-defmethod jupyter-shutdown :before ((kernel jupyter-kernel))
-  "Notify that the kernel launched."
+  "Notify that the kernel will be shutdown."
   (message "%s kernel shutdown..." (jupyter-kernel-name kernel)))
 
 (cl-defmethod jupyter-shutdown :after ((kernel jupyter-kernel))
