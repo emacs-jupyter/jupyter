@@ -510,31 +510,27 @@ back."
 
 ;;; Mapping kernelspecs to connected clients
 
+(cl-defgeneric jupyter-client (kernel &optional client-class)
+  "Return a client connected to KERNEL.
+The returned client will be an instance of CLIENT-CLASS.  The
+default class is `jupyter-kernel-client'.")
+
 (cl-defmethod jupyter-client ((kernel string) &optional client-class)
   "Return a client connected to KERNEL.
 KERNEL is the name of the kernelspec as returned by the
 
     jupyter kernelspec list
 
-shell command.
-
-The returned client will be an instance of CLIENT-CLASS which
-defaults to `jupyter-kernel-client'."
+shell command."
   (jupyter-client (jupyter-get-kernelspec kernel) client-class))
 
 (cl-defmethod jupyter-client ((spec jupyter-kernelspec) &optional client-class)
   "Return a client connected to kernel created from SPEC.
 SPEC is a kernelspec that will be used to initialize a new
-kernel whose kernelspec if SPEC.
-
-The returned client will be an instance of CLIENT-CLASS which
-defaults to `jupyter-kernel-client'."
+kernel whose kernelspec if SPEC."
   (jupyter-client (jupyter-kernel :spec spec) client-class))
 
 (cl-defmethod jupyter-client ((kernel jupyter-kernel) &optional client-class)
-  "Return a client connected to KERNEL.
-The returned client will be an instance of CLIENT-CLASS which
-defaults to `jupyter-kernel-client'."
   (or client-class (setq client-class 'jupyter-kernel-client))
   (cl-assert (child-of-class-p client-class 'jupyter-kernel-client))
   (let* ((client (make-instance client-class))
