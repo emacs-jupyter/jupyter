@@ -121,9 +121,7 @@ Call the next method if ARGS does not contain :spec."
                           ((and 'stop-channel (let ch (cadr event)))
                            (plist-put (plist-get ch-group ch) :alive-p nil))
                           (_
-                           (cl-loop
-                            for handler in handlers
-                            do (funcall handler event))))))
+                           (jupyter-run-handlers handlers event)))))
                      (condition-case err
                          (cl-loop
                           for ch in channels

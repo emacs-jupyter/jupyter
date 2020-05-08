@@ -264,10 +264,7 @@ This function is called by `jupyter-io', which see."
                 (lambda (event)
                   (pcase-let ((`(,type ,kid . ,rest) event))
                     (when (string= kid id)
-                      (cl-loop
-                       with event = (cons type rest)
-                       for handler in handlers
-                       do (funcall handler event)))))))
+                      (jupyter-run-handlers handlers (cons type rest)))))))
     (cl-macrolet ((server-io (&rest args)
                              (if (eq (car (last args)) 'args)
                                  `(apply server-io ,@args)

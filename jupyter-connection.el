@@ -69,6 +69,19 @@ connected to.")
 
 ;;;; `jupyter-connection'
 
+(defmacro jupyter-run-handlers (place event)
+  "Evaluate the list of functions in PLACE using ARGS.
+Set PLACE to those functions that returned non-nil."
+  `(setf ,place
+         (let ((handlers ,place)
+               (event ,event)
+               (new-handlers '()))
+           (while handlers
+             (let ((h (pop handlers)))
+               (when (funcall h event)
+                 (push h new-handlers))))
+           new-handlers)))
+
 (cl-defgeneric jupyter-connection (thing)
   "Establish a connection to THING.
 Return a list (IO ...), where IO is a function used to perform
