@@ -411,7 +411,10 @@ response to the sent message, see `jupyter-add-callback' and
 `jupyter-request-inhibited-handlers'."
   (declare (indent 1))
   (jupyter-verify-inhibited-handlers)
-  (pcase-let* ((req
+  (pcase-let* ((kernel (jupyter-kernel client))
+               (io (if kernel (jupyter-io kernel)
+                     (error "Client not connected to a kernel")))
+               (req
                 (jupyter-request
                  :id (if (stringp (car content)) (pop content)
                        (jupyter-new-uuid))
@@ -426,9 +429,7 @@ response to the sent message, see `jupyter-add-callback' and
       (run-at-time 0 nil (lambda () (message "SENDING: %s %s %s" type id content))))
     (let ((channel (if (memq type '(:input-reply :input-request)) :stdin :shell))
           (requests (oref client requests)))
-      (cl-call-next-method
-       (oref client conn)
-       'send channel content id)
+      (funcall io 'message channel type (jupyter-request-content req) id)
       ;; Anything sent to stdin is a reply not a request so consider
       ;; the "request" completed.
       (setf (jupyter-request-idle-p req) (eq channel :stdin))
@@ -475,7 +476,7 @@ back."
 ;;; Starting communication with a kernel
 
 (cl-defmethod jupyter-start-channels ((client jupyter-kernel-client))
-  (jupyter-connect client (oref client kernel)))
+  (jupyter-send (jupyter-io (jupyter-kernel client)) 'start))
 
 (cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
   "Stop any running channels of CLIENT."
@@ -486,8 +487,9 @@ back."
   (jupyter-alive-p client))
 
 (cl-defmethod jupyter-alive-p ((client jupyter-kernel-client) &optional channel)
-  (and (slot-boundp client 'conn)
-       (jupyter-alive-p (oref client conn) channel)))
+  (when-let* ((kernel (jupyter-kernel client)))
+    (and (jupyter-alive-p kernel)
+         (jupyter-alive-p (jupyter-io kernel)))))
 
 (cl-defmethod jupyter-hb-pause ((client jupyter-kernel-client))
   (with-slots (conn) client
@@ -535,8 +537,8 @@ The returned client will be an instance of CLIENT-CLASS which
 defaults to `jupyter-kernel-client'."
   (or client-class (setq client-class 'jupyter-kernel-client))
   (cl-assert (child-of-class-p client-class 'jupyter-kernel-client))
-  (let ((client (make-instance client-class))
-        (conn (jupyter-connection kernel client)))
+  (let* ((client (make-instance client-class))
+         (conn (jupyter-connect kernel client)))
     (jupyter-start conn)
     (let ((kinfo (jupyter-kernel-info client)))
       (unless kinfo
