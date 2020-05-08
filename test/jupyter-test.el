@@ -47,7 +47,9 @@
   :tags '(mock)
   (jupyter-with-echo-client client
     (ert-info ("Mock echo client echo's messages back to channel.")
-      (let ((req (jupyter-send client :execute-request :code "foo")))
+      (let ((req (jupyter-send client :execute-request :code "foo"))
+            (msg (jupyter-test-message
+                  (jupyter-request) :execute-request '(:code "foo"))))
         (sleep-for 0.3)
         (setq msgs (nreverse (ring-elements (oref client messages))))
         (should (= (length msgs) 3))
@@ -59,7 +61,7 @@
         (should (equal (jupyter-message-parent-id (cadr msgs))
                        (jupyter-request-id req)))
         (should (equal (jupyter-message-content (cadr msgs))
-                       (plist-get (jupyter-test-message (jupyter-request) nil msg) :content)))
+                       (plist-get msg :content)))
         (should (equal (jupyter-message-type (caddr msgs)) :status))
         (should (equal (jupyter-message-parent-id (caddr msgs))
                        (jupyter-request-id req)))

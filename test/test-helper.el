@@ -108,7 +108,7 @@ handling a message is always
      (lambda ()
        (jupyter-handle-message
         client :iopub (jupyter-test-message req :status (list :execution_state "busy")))
-       (jupyter-handle-message client channel (jupyter-test-message req type message))
+       (jupyter-handle-message client :shell (jupyter-test-message req type content))
        (jupyter-handle-message
         client :iopub (jupyter-test-message req :status (list :execution_state "idle")))))
     req))
