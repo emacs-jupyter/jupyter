@@ -158,7 +158,9 @@ is also removed if it returns nil after handling an event."
   "Forget `jupyter-servers' that are no longer accessible at their hosts."
   (dolist (server (jupyter-servers))
     (unless (jupyter-api-server-exists-p server)
-      (jupyter-stop (oref server conn))
+      ;; TODO: Stopping a connection, stops all subordinate
+      ;; connections and disconnects all subordinate clients.
+      (jupyter-stop (jupyter-io server))
       (jupyter-api-delete-cookies (oref server url))
       (delete-instance server))))
 
@@ -230,10 +232,10 @@ The kernelspecs are returned in the same form as returned by
 
 (cl-defmethod jupyter-kernel :extra "server" (&rest args)
   "Return a representation of a kernel on a Jupyter server.
-If ARGS contains a :server key, return a `jupyter-server-kernel'
-initialized using ARGS.  If ARGS contains a :spec key whose value
-is the name of a kernelspec, the returned kernel's spec slot will
-be set to the corresponding `jupyter-kernelspec'.
+If ARGS has a :server key, return a `jupyter-server-kernel'
+initialized using ARGS.  If ARGS also has a :spec key, whose
+value is the name of a kernelspec, the returned kernel's spec
+slot will be the corresponding `jupyter-kernelspec'.
 
 Call the next method if ARGS does not contain :server."
   (let ((server (plist-get args :server)))

@@ -1897,6 +1897,8 @@ list is a symbol as opposed to a string for the purposes of
 method dispatching.  Also all instances of \" \" in the language
 name are changed to \"-\" and all uppercase characters lowered."
   (cl-check-type client jupyter-kernel-client)
+  ;; TODO: This needs to be reset when a client is disconnected.  This
+  ;; should be part of the connection process.
   (or (oref client kernel-info)
       (let* ((jupyter-inhibit-handlers t)
              (msg (jupyter-wait-until-received :kernel-info-reply
