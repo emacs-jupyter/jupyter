@@ -253,11 +253,14 @@ Call the next method if ARGS does not contain :server."
 ;;; Client connection
 
 (cl-defmethod jupyter-connection ((kernel jupyter-server-kernel))
-  "Return a list representing a connection to KERNEL.
-The list looks like (IO RESERVED...) where IO is a function
-taking any number of arguments and RESERVED are used internally.
+  "Return a list representing an I/O connection to KERNEL.
+See `jupyter-connection' for the base I/O actions.  This
+connection returns nil to 'hb
 
-This function is called by `jupyter-io', which see."
+The extra I/O
+actions defined by this connection are 
+
+"
   (pcase-let* (((cl-struct jupyter-server-kernel server id) kernel)
                (server-io (jupyter-io server))
                (handlers '())
