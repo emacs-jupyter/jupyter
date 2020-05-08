@@ -215,6 +215,12 @@ Return nil if CLIENT is not connected to any kernel."
   (cl-loop for client in (jupyter-clients kernel)
            do (jupyter-disconnect client)))
 
+(cl-defmethod jupyter-shutdown :extra "IO" ((kernel jupyter-kernel))
+  "Stop KERNEL's I/O connections."
+  (jupyter-disconnect kernel)
+  (jupyter-stop (jupyter-io kernel))
+  (cl-call-next-method))
+
 (provide 'jupyter-connection)
 
 ;;; jupyter-connection.el ends here
