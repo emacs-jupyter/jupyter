@@ -268,16 +268,6 @@ process is launched, also just before Emacs exits.")
     (push (list process conn-file) jupyter--kernel-processes)
     process))
 
-(defun jupyter--kernel-died-process-sentinel (kernel)
-  "Return a sentinel function calling KERNEL's `jupyter-kernel-died' method.
-The method will be called when the process exits or receives a
-fatal signal."
-  (let ((ref (jupyter-weak-ref kernel)))
-    (lambda (process _)
-      (when-let (kernel (and (memq (process-status process) '(exit signal))
-                             (jupyter-weak-ref-resolve ref)))
-        (jupyter-kernel-died kernel)))))
-
 (cl-defmethod jupyter-launch :before ((kernel jupyter-kernel-process))
   "Ensure KERNEL has a non-nil SESSION slot.
 A `jupyter-session' with random port numbers for the channels and
@@ -305,16 +295,15 @@ slot.
 See also https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-specs"
   (let ((process (jupyter-process kernel)))
     (unless (process-live-p process)
-      (setq process (jupyter--start-kernel-process
-                     (jupyter-kernel-name kernel) spec
-                     (jupyter-write-connection-file session)))
-      (setf (process-get process :kernel) kernel))
-      (setf (process-sentinel process)
-            ;; TODO: Have the sentinel function do something like
-            ;; notify clients.  It should also handle auto-restarting
-            ;; if that is wanted.
-            (jupyter--kernel-died-process-sentinel kernel))
-      (setf (jupyter-kernel-process-process kernel) process)))
+      (pcase-let (((cl-struct jupyter-kernel-process spec session) kernel))
+        (setq process (jupyter--start-kernel-process
+                       (jupyter-kernel-name kernel) spec
+                       (jupyter-write-connection-file session))))
+      (setf (process-get process :kernel) kernel)
+      (setf (lambda (process _)
+              (pcase (process-status process)
+                ('signal
+                 (jupyter-kernel-died (process-get process :kernel))))))))
   (cl-call-next-method))
 
 ;; TODO: Add restart argument
