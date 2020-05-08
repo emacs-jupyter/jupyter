@@ -127,15 +127,14 @@ actions/queries:
 (declare-function jupyter-kernel-process "ext:jupyter-kernel-process")
 
 (cl-defmethod jupyter-connection ((kernel jupyter-kernel))
-  "If KERNEL has a non-nil session, return a ZMQ based kernel connection."
-  (cond
-   ;; FIXME: Remove the need for this
-   ((and (jupyter-kernel-session kernel)
-         (require 'jupyter-kernel-process nil t))
-    (jupyter-connection
-     (jupyter-kernel-process
-      :session (jupyter-kernel-session kernel))))
-   (t (cl-call-next-method))))
+  "Return a default connection list for KERNEL."
+  (list
+   (lambda (&rest args)
+     (pcase (car args)
+       ((or 'start 'stop 'alive-p))
+       ((or 'message 'add-handler 'remove-handler) (error "Not implemented"))
+       ('hb nil)
+       (_ (error "Unhandled IO: %s" args))))))
 
 (defun jupyter-io (thing)
   "Return a function that can be used to perform I/O with THING.
