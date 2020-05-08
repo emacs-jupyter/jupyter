@@ -492,21 +492,20 @@ back."
          (jupyter-alive-p (jupyter-io kernel)))))
 
 (cl-defmethod jupyter-hb-pause ((client jupyter-kernel-client))
-  (with-slots (conn) client
-    (when (jupyter-connection-hb conn)
-      (jupyter-hb-pause (jupyter-connection-hb conn)))))
+  (when-let* ((kernel (jupyter-kernel client))
+              (hb (jupyter-send (jupyter-io kernel) 'hb)))
+    (jupyter-hb-pause hb)))
 
 (cl-defmethod jupyter-hb-unpause ((client jupyter-kernel-client))
-  (with-slots (conn) client
-    (when (jupyter-connection-hb conn)
-      (jupyter-hb-pause (jupyter-connection-hb conn)))))
+  (when-let* ((kernel (jupyter-kernel client))
+              (hb (jupyter-send (jupyter-io kernel) 'hb)))
+    (jupyter-hb-unpause hb)))
 
 (cl-defmethod jupyter-hb-beating-p ((client jupyter-kernel-client))
   "Is CLIENT still connected to its kernel?"
-  (and (slot-boundp client 'conn)
-       (with-slots (conn) client
-         (or (null (jupyter-connection-hb conn))
-             (jupyter-hb-beating-p (jupyter-connection-hb conn))))))
+  (when-let* ((kernel (jupyter-kernel client)))
+    (let ((hb (jupyter-send (jupyter-io kernel) 'hb)))
+      (or (null hb) (jupyter-hb-beating-p hb)))))
 
 ;;; Mapping kernelspecs to connected clients
 
