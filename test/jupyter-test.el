@@ -625,25 +625,39 @@
              (should-not (jupyter-alive-p kernel))
              (should (jupyter-kernel-spec kernel))
              (should-not (jupyter-kernel-session kernel))
-             (should-not
-              (process-live-p
-               (jupyter-kernel-process-process kernel)))))
+             (should-not (process-live-p (jupyter-process kernel)))))
          (confirm-launch-state
           ()
           `(progn
              (should (jupyter-alive-p kernel))
              (should (jupyter-kernel-spec kernel))
              (should (jupyter-kernel-session kernel))
-             (should
-              (process-live-p
-               (jupyter-kernel-process-process kernel))))))
+             (should (process-live-p (jupyter-process kernel))))))
       (let ((kernel (jupyter-kernel-process
                      :spec (jupyter-guess-kernelspec "python"))))
         (confirm-shutdown-state)
         (jupyter-launch kernel)
         (confirm-launch-state)
         (jupyter-shutdown kernel)
-        (confirm-shutdown-state)))))
+        (confirm-shutdown-state))))
+;; (let (called)
+;;   (let* ((plist '(:argv ["sleep" "60"] :env nil :interrupt_mode "signal"))
+;;          (kernel (jupyter-kernel
+;;                   :spec (make-jupyter-kernelspec
+;;                          :name "sleep"
+;;                          :plist plist))))
+;;     (let ((jupyter-long-timeout 0.01))
+;;       (jupyter-launch kernel))
+;;     (cl-letf (((symbol-function #'interrupt-process)
+;;                (lambda (&rest args)
+;;                  (setq called t))))
+;;       (jupyter-interrupt kernel))
+;;     (should called)
+;;     (setq called nil)
+;;     (jupyter-shutdown kernel)))
+  )
+
+
 
 ;; (let ((kernel (jupyter--kernel-process
 ;;                :spec (jupyter-guess-kernelspec "python"))))
@@ -667,6 +681,57 @@
 ;;                   (should (equal (jupyter-eval "1 + 1") "2")))
 ;;               (jupyter-stop-channels jupyter-current-client)))
 ;;         (jupyter-shutdown-kernel manager)))))
+
+(ert-deftest jupyter-delete-connection-files ()
+  :tags '(kernel process)
+  (let ((jupyter--kernel-processes
+         (cl-loop repeat 2
+                  collect (list nil (make-temp-file "jupyter-test")))))
+    (jupyter-delete-connection-files)
+    (should-not
+     (cl-loop for (_ conn-file) in jupyter--kernel-processes
+              thereis (file-exists-p conn-file)))))
+
+(ert-deftest jupyter-kernel-process/connection-file-management ()
+  :tags '(kernel process)
+  (let (jupyter--kernel-processes)
+    (pcase-let ((`(,kernelA ,kernelB)
+                 (cl-loop
+                  repeat 2
+                  collect (jupyter-kernel :spec "python"))))
+      (jupyter-launch kernelA)
+      (should (= (length jupyter--kernel-processes) 1))
+      (unwind-protect
+          (pcase-let* ((`(,processA ,conn-fileA) (car jupyter--kernel-processes))
+                       (process-bufferA (process-buffer processA)))
+            (should (eq processA (jupyter-kernel-process-process kernelA)))
+            (jupyter-shutdown kernelA)
+            (should-not (process-live-p processA))
+            (should (file-exists-p conn-fileA))
+            (should (buffer-live-p process-bufferA))
+            (jupyter-launch kernelB)
+            (should-not (buffer-live-p process-bufferA))
+            (should-not (file-exists-p conn-fileA))
+            (should (= (length jupyter--kernel-processes) 1))
+            (pcase-let ((`(,processB ,conn-fileB)
+                         (car jupyter--kernel-processes)))
+              (should-not (eq processA processB))
+              (should-not (string= conn-fileA conn-fileB))))
+        (jupyter-shutdown kernelA)
+        (jupyter-shutdown kernelB)))))
+
+(ert-deftest jupyter-kernel-process/on-unexpected-exit ()
+  :tags '(kernel process)
+  (skip-unless nil)
+  (let ((kernel (jupyter-kernel :spec "python"))
+        called)
+    (jupyter-launch
+     kernel (lambda (kernel)
+              (setq called t)))
+    (let ((process (jupyter--kernel-process kernel)))
+      (kill-process process)
+      (sleep-for 0.01)
+      (should called))))
 
 (ert-deftest jupyter-session-with-random-ports ()
   :tags '(kernel)
