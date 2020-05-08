@@ -122,12 +122,8 @@ nil."
 
 (defun jupyter-restart (kernel)
   "Shutdown then re-launch KERNEL."
-  (let ((clients (jupyter-kernel-clients kernel)))
-    (jupyter-shutdown kernel)
-    (jupyter-launch kernel)
-    ;; FIXME: This doesn't look right
-    (while clients
-      (jupyter-connect kernel (pop clients)))))
+  (jupyter-shutdown kernel)
+  (jupyter-launch kernel))
 
 (cl-defgeneric jupyter-interrupt ((kernel jupyter-kernel))
   "Interrupt KERNEL.
