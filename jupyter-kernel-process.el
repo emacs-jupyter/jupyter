@@ -34,16 +34,31 @@
 
 (declare-function jupyter-channel-ioloop-set-session "jupyter-channel-ioloop")
 
+(defvar jupyter--kernel-processes '()
+  "The list of kernel processes launched.
+Elements look like (PROCESS CONN-FILE) where PROCESS is a kernel
+process and CONN-FILE the associated connection file.
+
+Cleaning up the list removes elements whose PROCESS is no longer
+live.  When removing, CONN-FILE will be deleted and PROCESS's
+buffer killed.  The list is periodically cleaned up when a new
+process is launched.  Also, any connection files that still exist
+before Emacs exits are deleted.")
+
 ;;; Kernel definition
 
 (cl-defstruct (jupyter-kernel-process
-               (:include jupyter-kernel))
-  (process nil
-           :type (or null process)
-           :documentation "A kernel process."))
+               (:include jupyter-kernel)))
+
+(cl-defmethod jupyter-process ((kernel jupyter-kernel-process))
+  "Return the process of KERNEL.
+Return nil if KERNEL does not have an associated process."
+  (car (cl-find-if (lambda (x) (and (processp (car x))
+                               (eq (process-get (car x) :kernel) kernel)))
+                   jupyter--kernel-processes)))
 
 (cl-defmethod jupyter-alive-p ((kernel jupyter-kernel-process))
-  (pcase-let (((cl-struct jupyter-kernel-process process) kernel))
+  (let ((process (jupyter-process kernel)))
     (and (process-live-p process)
          (cl-call-next-method))))
 
@@ -187,6 +202,11 @@ live.  When removing, CONN-FILE will be deleted and PROCESS's
 buffer killed.  The list is periodically cleaned up when a new
 process is launched, also just before Emacs exits.")
 
+(defun jupyter--kernel-process (kernel)
+  (cl-find-if (lambda (x) (and (processp (car x))
+                          (eq (process-get (car x) :kernel) kernel)))
+              jupyter--kernel-processes))
+
 (defun jupyter--gc-kernel-processes ()
   (setq jupyter--kernel-processes
         (cl-loop for (p conn-file) in jupyter--kernel-processes
@@ -283,13 +303,12 @@ written to file, its contents are generated from KERNEL's SESSION
 slot.
 
 See also https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-specs"
-  (pcase-let (((cl-struct jupyter-kernel-process process spec session) kernel))
+  (let ((process (jupyter-process kernel)))
     (unless (process-live-p process)
-      (setq process
-            (setf (jupyter-kernel-process-process kernel)
-                  (jupyter--start-kernel-process
-                   (jupyter-kernel-name kernel) spec
-                   (jupyter-write-connection-file session))))
+      (setq process (jupyter--start-kernel-process
+                     (jupyter-kernel-name kernel) spec
+                     (jupyter-write-connection-file session)))
+      (setf (process-get process :kernel) kernel))
       (setf (process-sentinel process)
             ;; TODO: Have the sentinel function do something like
             ;; notify clients.  It should also handle auto-restarting
@@ -301,13 +320,10 @@ See also https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-spe
 ;; TODO: Add restart argument
 (cl-defmethod jupyter-shutdown ((kernel jupyter-kernel-process))
   "Shutdown KERNEL by killing its process unconditionally."
-  (pcase-let (((cl-struct jupyter-kernel-process process) kernel))
-    (when (process-live-p process)
-      ;; The `process-sentinel' is ignored when shutting down because
-      ;; killing the process when explicitly shutting it down is not
-      ;; an unexpected exit.
-      (setf (process-sentinel process) #'ignore)
-      (delete-process process))
+  (let ((process (jupyter-process kernel)))
+    (when process
+      (delete-process process)
+      (setf (process-get process :kernel) nil))
     (cl-call-next-method)))
 
 (cl-defmethod jupyter-interrupt ((kernel jupyter-kernel-process))
@@ -318,11 +334,13 @@ KERNEL is interrupted by sending an :interrupt-request on
 KERNEL's control channel.
 
 See also https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-specs"
-  (pcase-let* (((cl-struct jupyter-kernel-process process spec) kernel)
+  (pcase-let* ((process (jupyter-process kernel))
+               ((cl-struct jupyter-kernel-process spec) kernel)
                ((cl-struct jupyter-kernelspec plist) spec)
                (imode (plist-get plist :interrupt_mode)))
     (if (or (null imode) (string= imode "signal"))
-        (interrupt-process process t)
+        (when process
+          (interrupt-process process t))
       (cl-call-next-method))))
 
 (provide 'jupyter-kernel-process)
