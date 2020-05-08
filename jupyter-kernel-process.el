@@ -184,8 +184,10 @@ Call the next method if ARGS does not contain :spec."
 Elements look like (PROCESS CONN-FILE) where PROCESS is a kernel
 process and CONN-FILE the associated connection file.
 
-This list is periodically cleaned up when a new process is
-launched and when Emacs exits.")
+Cleaning up the list removes elements whose PROCESS is no longer
+live.  When removing, CONN-FILE will be deleted and PROCESS's
+buffer killed.  The list is periodically cleaned up when a new
+process is launched, also just before Emacs exits.")
 
 (defun jupyter--gc-kernel-processes ()
   (setq jupyter--kernel-processes
