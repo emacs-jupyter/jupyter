@@ -106,16 +106,17 @@ is also removed if it returns nil after handling an event."
             (jupyter-ioloop-start
              ioloop
              (lambda (event)
-               (pcase (car event)
-                 ((and type (guard (not (memq type '(connect-channels
-                                                     disconnect-channels)))))
-                  (cl-loop
-                   for handler in handlers
-                   do (funcall handler event)))
-                 ((and 'connect-channels (let id (cadr event)))
-                  (cl-pushnew id kernel-ids :test #'string=))
-                 ((and 'disconnect-channels (let id (cadr event)))
-                  (cl-callf2 delete id kernel-ids)))))
+               (if (not (memq (car event)
+                              '(connect-channels
+                                disconnect-channels)))
+                   (cl-loop
+                    for handler in handlers
+                    do (funcall handler event))
+                 (pcase (car event)
+                   ((and 'connect-channels (let id (cadr event)))
+                    (cl-pushnew id kernel-ids :test #'string=))
+                   ((and 'disconnect-channels (let id (cadr event)))
+                    (cl-callf2 delete id kernel-ids))))))
             (reconnect-kernels))
           ioloop)
          (stop
