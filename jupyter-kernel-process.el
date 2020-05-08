@@ -192,22 +192,6 @@ Call the next method if ARGS does not contain :spec."
 
 ;;; Kernel management
 
-(defvar jupyter--kernel-processes '()
-  "The list of kernel processes launched.
-Elements look like (PROCESS CONN-FILE) where PROCESS is a kernel
-process and CONN-FILE the associated connection file.
-
-Cleaning up the list removes elements whose PROCESS is no longer
-live.  When removing, CONN-FILE will be deleted and PROCESS's
-buffer killed.  The list is periodically cleaned up when a new
-process is launched.  Also, any connection files that still exist
-before Emacs exits are deleted.")
-
-(defun jupyter--kernel-process (kernel)
-  (cl-find-if (lambda (x) (and (processp (car x))
-                          (eq (process-get (car x) :kernel) kernel)))
-              jupyter--kernel-processes))
-
 (defun jupyter--gc-kernel-processes ()
   (setq jupyter--kernel-processes
         (cl-loop for (p conn-file) in jupyter--kernel-processes
@@ -301,7 +285,8 @@ See also https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-spe
                        (jupyter-kernel-name kernel) spec
                        (jupyter-write-connection-file session))))
       (setf (process-get process :kernel) kernel)
-      (setf (lambda (process _)
+      (setf (process-sentinel process)
+            (lambda (process _)
               (pcase (process-status process)
                 ('signal
                  (jupyter-kernel-died (process-get process :kernel))))))))
