@@ -410,12 +410,7 @@ response to the sent message, see `jupyter-add-callback' and
   (pcase-let* ((kernel (jupyter-kernel client))
                (io (if kernel (jupyter-io kernel)
                      (error "Client not connected to a kernel")))
-               (req
-                (jupyter-request
-                 :id (if (stringp (car content)) (pop content)
-                       (jupyter-new-uuid))
-                 :type type
-                 :content (jupyter--merge-message-defaults type content)))
+               (req (jupyter--merge-message-defaults type content))
                ((cl-struct jupyter-request id) req))
     (when jupyter--debug
       ;; The logging of messages is deferred until the next command loop for
