@@ -432,9 +432,7 @@ fields:
 
 ;;; Request object definition
 
-(cl-defstruct (jupyter-request
-               (:constructor nil)
-               (:constructor jupyter-request))
+(cl-defstruct jupyter-request
   "Represents a request made to a kernel.
 Requests sent by a client always return something that can be
 interpreted as a `jupyter-request'.  It holds the state of a
@@ -451,9 +449,11 @@ types to callback functions a client should call."
   (id (jupyter-new-uuid) :read-only t)
   (type nil :read-only t)
   (content nil :read-only t)
+  (client nil :read-only t)
   (time (current-time) :read-only t)
   (idle-p nil)
   (last-message nil)
+  (messages nil)
   (inhibited-handlers nil)
   (callbacks nil))
 

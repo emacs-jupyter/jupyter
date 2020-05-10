@@ -537,14 +537,19 @@ kernel whose kernelspec if SPEC."
 
 ;;; Shutdown and interrupt a kernel
 
+;; FN is already a monadic function in the IO context of Emacs
+
 (cl-defmethod jupyter-shutdown-kernel ((client jupyter-kernel-client))
   "Shutdown the kernel CLIENT is connected to.
 After CLIENT shuts down the kernel it is connected to, it is no
 longer connected to a kernel."
-  (when-let* ((kernel (and (slot-boundp client 'kernel)
-                           (oref client kernel))))
-    (jupyter-wait-until-idle (jupyter-send client :shutdown-request))
-    (jupyter-shutdown kernel)))
+  (jupyter-do (jupyter-io client)
+    (jupyter-after
+        (jupyter-idle (jupyter-request "shutdown"))
+      (lambda (req)
+        ;; Ensure the Emacs representation of the kernel also knows
+        ;; that the kernel's process has been shutdown.
+        (jupyter-shutdown (jupyter-kernel client))))))
 
 (cl-defmethod jupyter-interrupt-kernel ((client jupyter-kernel-client))
   "Interrupt the kernel CLIENT is connected to."
@@ -878,10 +883,12 @@ user.  Otherwise `read-from-minibuffer' is used."
                              (read-from-minibuffer prompt))
                          (with-timeout-unsuspend timeout-spec)))
                    (quit ""))))
-      (unwind-protect
-          (jupyter-send client :input-reply :value value)
-        (when (eq password t)
-          (clear-string value)))
+      (jupyter-do (jupyter-io client)
+        (jupyter-bind
+            (jupyter-request :input-reply :value value)
+          (lambda (_req)
+            (when (eq password t)
+              (clear-string value)))))
       value)))
 
 (defalias 'jupyter-handle-input-reply 'jupyter-handle-input-request)

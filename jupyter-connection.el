@@ -136,6 +136,22 @@ actions/queries:
        ('hb nil)
        (_ (error "Unhandled IO: %s" args))))))
 
+;; Kernel -> IO Kernel-IO
+(cl-defmethod jupyter-connect ((kernel jupyter-kernel))
+  ;; Any -> IO Kernel-IO
+  (jupyter-launch kernel)
+  (jupyter-return (jupyter-io kernel)))
+
+;; Client -> IO Client
+(cl-defmethod jupyter-connect ((client jupyter-kernel-client))
+  ;; Any -> IO Client-IO
+  (lambda (_)
+    (let ((io (jupyter-io (jupyter-kernel client))))
+      (jupyter-return
+        (lambda (&rest args)
+          (let ((jupyter-current-client client))
+            (apply io args)))))))
+
 (defun jupyter-io (thing)
   "Return a function that can be used to perform I/O with THING.
 The function takes arguments like (TYPE ARGS...) where TYPE is a
