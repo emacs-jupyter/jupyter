@@ -270,7 +270,10 @@ actions defined by this connection are
                 (lambda (event)
                   (pcase-let ((`(,type ,kid . ,rest) event))
                     (when (string= kid id)
-                      (jupyter-run-handlers handlers (cons type rest)))))))
+                      (cl-loop
+                       with event = (cons type rest)
+                       for h in handlers
+                       do (funcall h event)))))))
     (cl-macrolet ((server-io (&rest args)
                              (if (eq (car (last args)) 'args)
                                  `(apply server-io ,@args)
