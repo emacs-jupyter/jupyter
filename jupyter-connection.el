@@ -39,6 +39,7 @@
 
 (require 'jupyter-kernel)
 (require 'jupyter-client)
+(require 'thunk)
 
 (defgroup jupyter-connection nil
   "Linking kernels and clients"
@@ -154,11 +155,15 @@ actions/queries:
 
 (defun jupyter-io (thing)
   "Return a function that can be used to perform I/O with THING.
+THING must implement both `jupyter-alive-p' and
+`jupyter-connection'.  If THING is not alive an error is
+signaled, otherwise the connection of THING is cached and the I/O
+function returned.
+
 The function takes arguments like (TYPE ARGS...) where TYPE is a
 symbol describing the type of I/O action/query that ARGS are
-parameters to.
-
-See `jupyter-connection' for the I/O actions/queries THING implements."
+parameters to."
+  (cl-assert (jupyter-alive-p thing))
   (pcase-let ((`(,io . ,_)
                (or (gethash thing jupyter-connections)
                    (puthash thing (jupyter-connection thing)
@@ -175,6 +180,65 @@ Any associated messages will be received by KERNEL's handlers.
 See `jupyter-connection' for how a handler can be added."
   (apply (jupyter-io kernel) 'message args))
 
+;; `jupyter-connection' is an example of a monad that passes monadic
+;; values like (IO ....), where ... is the context, mainly finalizers,
+;; of the IO connection functions.  `jupyter-connection' is actually
+;; taking a monadic value and returning another monadic value. 
+;;
+;; TODO I need to have a bind like function that I can use here.  That
+;; way I can probably get rid of the boiler plate.  The bind function
+;; takes the IO function and wraps it with another one, and returns a
+;; new list like what is being done here. Mapping from one category to
+;; another.
+;;
+;; Can't be :extra since we don't know when those files will be loaded
+
+(defun jupyter-with-client-handlers (io)
+  "Return an I/O function that can take clients as handlers.
+The returned function allows the argument to the 'add-handler and
+'remove-handler I/O actions to take `jupyter-kernel-client'
+objects.
+
+All other I/O actions are passed through to IO."
+  (let ((handlers (make-hash-table :weakness 'key)))
+    (cl-macrolet ((kernel-io (&rest args)
+                   (if (eq (car (last args)) 'args)
+                       `(apply io ,@args)
+                     `(funcall io ,@args))))
+      (cl-labels
+          ((handler
+            (client)
+            ;; Make a weak ref. to CLIENT so that remhandler, below,
+            ;; will be called if CLIENT is not disconnected before being
+            ;; garbage collected.
+            (letrec
+                ((ref (jupyter-weak-ref client))
+                 (h (lambda (event)
+                      ;; FIXME: Handle the `sent' event, but not here.
+                      ;; How can I get rid of it?
+                      (pcase (car event)
+                        ((and 'message (let `(,channel ,_idents . ,msg) (cdr event)))
+                         (if-let ((client (jupyter-weak-ref-resolve ref)))
+                             (jupyter-handle-message client channel msg)
+                           (kernel-io 'remove-handler h)))))))
+              h)))
+        (list
+         (lambda (&rest args)
+           (pcase args
+             (`(,(and (or 'add-handler 'remove-handler) action)
+                ,(and (guard (object-of-class-p (cadr args) 'jupyter-kernel-client))
+                      (let client (cadr args))))
+              (let ((h (gethash client handlers)))
+                (pcase action
+                  ((and 'add-handler (guard (not h)))
+                   (kernel-io action (setf (gethash client handlers) (handler client))))
+                  ((and 'remove-handler (guard h))
+                   (kernel-io action (progn (remhash client handlers) h))))))
+             (_ (kernel-io args)))))))))
+
+(cl-defmethod jupyter-connection :around ((kernel jupyter-kernel))
+  (jupyter-bind (cl-call-next-method) #'jupyter-with-client-handlers))
+
 (cl-defmethod jupyter-connect ((client jupyter-kernel-client) (kernel jupyter-kernel))
   "Connect CLIENT to KERNEL.
 When CLIENT has been connected to KERNEL, it handles messages
@@ -188,39 +252,18 @@ be removed manually with `jupyter-disconnect'.
 See `jupyter-connection' for more info. on the I/O function."
   (jupyter-disconnect client)
   (jupyter-launch kernel)
-  ;; Make a weak ref. to CLIENT so that remhandler, below, will be
-  ;; called if CLIENT is not disconnected before being garbage
-  ;; collected.
-  (let* ((ref (jupyter-weak-ref client))
-         (handler (lambda (event)
-                    ;; FIXME: Handle the `sent' event, but not here.
-                    ;; How can I get rid of it?
-                    (pcase (car event)
-                      ((and 'message (let `(,channel . ,msg) (cdr event)))
-                       (when-let* ((client (jupyter-weak-ref-resolve ref)))
-                         (jupyter-handle-message client channel msg))))))
-         (io (jupyter-io kernel)))
-    (jupyter-send io 'add-handler handler)
-    (puthash client
-             (let ((remhandler
-                    (lambda ()
-                      (jupyter-send io 'remove-handler handler))))
-               ;; A reference to KERNEL is kept to allow disconnecting
-               ;; all clients of KERNEL in `jupyter-disconnect'.
-               ;;
-               ;; The finalizer is here to remove the handler if
-               ;; client is not disconnected before being garbage
-               ;; collected.
-               (list kernel remhandler (make-finalizer remhandler)))
-             jupyter-connections)
+  (let ((io (jupyter-io kernel)))
+    (jupyter-send io 'add-handler client)
+    (puthash client (list kernel) jupyter-connections)
     io))
+(cl-defmethod jupyter-connect ((kernel jupyter-kernel) (client jupyter-kernel-client))
+  (jupyter-connect client kernel))
 
 (cl-defmethod jupyter-disconnect ((client jupyter-kernel-client))
   "Disconnect CLIENT from its kernel, if any."
-  (pcase (gethash client jupyter-connections)
-    (`(,_ ,remhandler . ,_)
-     (funcall remhandler)))
-  (remhash client jupyter-connections))
+  (when-let* ((kernel (car (gethash client jupyter-connections))))
+    (jupyter-send (jupyter-io kernel) 'remove-handler client)
+    (remhash client jupyter-connections)))
 
 (cl-defmethod jupyter-kernel ((client jupyter-kernel-client))
   "Return the kernel CLIENT is connected to.
@@ -247,7 +290,8 @@ Return nil if CLIENT is not connected to any kernel."
 (cl-defmethod jupyter-shutdown :extra "IO" ((kernel jupyter-kernel))
   "Stop KERNEL's I/O connections."
   (jupyter-disconnect kernel)
-  (jupyter-stop (jupyter-io kernel))
+  (when (jupyter-alive-p kernel)
+    (jupyter-stop (jupyter-io kernel)))
   (cl-call-next-method))
 
 (provide 'jupyter-connection)
