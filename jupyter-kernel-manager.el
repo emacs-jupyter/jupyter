@@ -118,8 +118,7 @@ access the name of the kernelspec.")
    (kernel
     :type jupyter-kernel
     :initarg :kernel
-    :documentation "The kernel that is being managed."))
-  :abstract t)
+    :documentation "The kernel that is being managed.")))
 
 (defun jupyter-kernel-managers ()
   "Return a list of all `jupyter-kernel-manager' objects."
