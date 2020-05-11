@@ -30,15 +30,15 @@
   "Monadic Jupyter I/O"
   :group 'jupyter)
 
-(require 'thunk)
-
 (defun jupyter-return (value)
   (declare (indent 0))
   (lambda (_io) value))
 
 ;; Adapted from `thunk-delay'
-(defmacro jupyter-return-thunk (&rest body)
+(defmacro jupyter-return-delayed (&rest body)
   (declare (indent 0))
+  ;; Return a delayed value, the value being evaluated in the next IO
+  ;; context.
   `(let (forced val)
      (lambda (_io)
        (unless forced
@@ -362,13 +362,18 @@ action."
         ('stop (websocket-close websocket))
         ('alive-p (websocket-openp websocket))))))
 
+;;; Request
 
 (defun jupyter-idle (io-req)
+  ;; After an IO-REQ is made, wait until the request is idle and
+  ;; return it.  If `jupyter-default-timeout' seconds elapses before
+  ;; the request is idle, signal an error.  Waiting for idleness is
+  ;; delayed until the returned I/O action is bound.
   (jupyter-after io-req
 	(lambda (req)
-	  (jupyter-return
-	   (if (jupyter-wait-until-idle req) req
-		 (list 'timeout req))))))
+      (jupyter-return-delayed
+        (if (jupyter-wait-until-idle req) req
+          (list 'timeout req))))))
 
 ;; MsgType -> MsgList -> (IO -> Req)
 ;; (IO -> Req) represents an IO monadic value. IO Req
