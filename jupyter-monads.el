@@ -222,6 +222,17 @@ action."
     io))
 
 
+;;; IO Event
+
+(defun jupyter-default-io ()
+  (jupyter-return
+    (lambda (&rest args)
+      (pcase (car args)
+        ((or 'start 'stop 'alive-p))
+        ((or 'message 'add-handler 'remove-handler)
+         (error "Not implemented"))
+        ('hb nil)
+        (_ (error "Unhandled IO: %s" args))))))
 
 ;; A monadic function that, given session endpoints, returns a monadic
 ;; value that, when evaluated, returns an I/O stream sink that can
@@ -241,69 +252,116 @@ action."
            collect ch
            collect (list 'endpoint (plist-get endpoints ch)
                          'alive-p nil))))
-    (lambda (io)
-      (cl-macrolet ((continue-after
-                     (cond on-timeout)
-                     `(jupyter-with-timeout
-                          (nil jupyter-default-timeout ,on-timeout)
-                        ,cond)))
-        (cl-labels ((ch-put
-                     (ch prop value)
-                     (plist-put (plist-get ch-group ch) prop value))
-                    (ch-get
-                     (ch prop)
-                     (plist-get (plist-get ch-group ch) prop))
-                    (ch-alive-p
-                     (ch)
-                     (and (funcall io 'alive-p)
-                          (ch-get ch 'alive-p)))
-                    (ch-start
-                     (ch)
-                     (unless (ch-alive-p ch)
-                       (funcall io 'message 'start-channel ch
-                                (ch-get ch 'endpoint))
-                       (continue-after
-                        (ch-alive-p ch)
-                        (error "Channel not started: %s" ch))))
-                    (ch-stop
-                     (ch)
-                     (when (ch-alive-p ch)
-                       (funcall io 'message 'stop-channel ch)
-                       (continue-after
-                        (not (ch-alive-p ch))
-                        (error "Channel not stopped: %s" ch)))))
-          (let ((sink
-                 (jupyter-io-sink (action)
-                   ('message
-                    (pcase action
-                      ('start
-                       (cl-loop
-                        for ch in channels
-                        do (ch-start ch)))
-                      ('stop
-                       (cl-loop
-                        for ch in channels
-                        do (ch-stop ch))
-                       (and hb (jupyter-hb-pause hb))
-                       (setq hb nil))
-                      ('alive-p
-                       (and (or (null hb) (jupyter-alive-p hb))
-                            (cl-loop
-                             for ch in channels
-                             do (ch-alive-p ch))))
-                      ('hb
-                       (unless hb
-                         (setq hb
-                               (make-instance
-                                'jupyter-hb-channel
-                                :session session
-                                :endpoint (plist-get endpoints :hb))))
-                       hb))))))
-            (funcall io 'handler
-                     (lambda ()
+    (cl-macrolet ((continue-after
+                   (cond on-timeout)
+                   `(jupyter-with-timeout
+                        (nil jupyter-default-timeout ,on-timeout)
+                      ,cond)))
+      (cl-labels ((ch-put
+                   (ch prop value)
+                   (plist-put (plist-get ch-group ch) prop value))
+                  (ch-get
+                   (ch prop)
+                   (plist-get (plist-get ch-group ch) prop))
+                  (ch-alive-p
+                   (ch)
+                   (and (funcall io 'alive-p)
+                        (ch-get ch 'alive-p)))
+                  (ch-start
+                   (ch)
+                   (unless (ch-alive-p ch)
+                     (funcall io 'message 'start-channel ch
+                              (ch-get ch 'endpoint))
+                     (continue-after
+                      (ch-alive-p ch)
+                      (error "Channel not started: %s" ch))))
+                  (ch-stop
+                   (ch)
+                   (when (ch-alive-p ch)
+                     (funcall io 'message 'stop-channel ch)
+                     (continue-after
+                      (not (ch-alive-p ch))
+                      (error "Channel not stopped: %s" ch)))))
+        (jupyter-io-lambda (_)
+          ('start
+           (cl-loop
+            for ch in channels
+            do (ch-start ch)))
+          ('stop
+           (cl-loop
+            for ch in channels
+            do (ch-stop ch))
+           (and hb (jupyter-hb-pause hb))
+           (setq hb nil))
+          ('alive-p
+           (and (or (null hb) (jupyter-alive-p hb))
+                (cl-loop
+                 for ch in channels
+                 do (ch-alive-p ch))))
+          ('hb
+           (unless hb
+             (setq hb
+                   (make-instance
+                    'jupyter-hb-channel
+                    :session session
+                    :endpoint (plist-get endpoints :hb))))
+           hb))))))
 
-                       ))
-            sink))))))
+;; Kernel -> IO Function
+(defun jupyter-kernel-websocket-io (kernel)
+  (jupyter-launch kernel)
+  (pcase-let* (((cl-struct jupyter-server-kernel server id) kernel)
+               (websocket (jupyter-api-kernel-websocket server id)))
+    (jupyter-websocket-io websocket)))
+
+;;; Websocket IO
+
+;; A monadic function in the I/O stream monad.
+;;
+;; There is a gap in evaluation time between sending and receiving.
+;; We do not know when a message will be received.  A stream fires of
+;; message events
+(defun jupyter-websocket-io (websocket &optional custom-header-alist)
+  (let ((handlers '())
+        (events '()))
+    (cl-labels
+        ((on-message
+          (_ws frame)
+          ;; This represents a source of new IO messages.
+          (cl-case (websocket-frame-opcode frame)
+            ((text binary)
+             (let* ((msg (jupyter-read-plist-from-string
+                          (websocket-frame-payload frame)))
+                    ;; TODO: Get rid of some of these explicit/implicit `intern' calls
+                    (channel (intern (concat ":" (plist-get msg :channel))))
+                    (msg-type (jupyter-message-type-as-keyword
+                               (jupyter-message-type msg)))
+                    (parent-header (plist-get msg :parent_header)))
+               (plist-put msg :msg_type msg-type)
+               (plist-put parent-header :msg_type msg-type)
+               ;; NOTE: The nil is the identity field expected by a
+               ;; `jupyter-channel-ioloop', it is mimicked here.
+               (jupyter-run-handlers handlers
+                                     (cl-list* 'message channel nil msg))))
+            (t
+             (error "Unhandled websocket frame opcode (%s)"
+                    (websocket-frame-opcode frame))))))
+      ;; The pattern is (with-io pub (subscribe subscriber) pub)
+      ;; passing along the publisher to attach subscribers.
+      (jupyter-io-lambda (&rest args)
+        ('message
+         (cl-destructuring-bind (channel msg-type msg &optional msg-id) args
+           (websocket-send-text
+            ws (jupyter-encode-raw-message
+                   (plist-get (websocket-client-data ws) :session) msg-type
+                 :channel (substring (symbol-name channel) 1)
+                 :msg-id msg-id
+                 :content msg))))
+        ('subscribe )
+        ('start (websocket-ensure-connected websocket))
+        ('stop (websocket-close websocket))
+        ('alive-p (websocket-openp websocket))))))
+
 
 (defun jupyter-idle (io-req)
   (jupyter-after io-req
