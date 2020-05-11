@@ -62,10 +62,14 @@
   `(let ((jupyter-current-io ,io))
 	 (jupyter--do ,@forms)))
 
-(defun jupyter-after (io-value fn)
+(defun jupyter-after (io-value io-fn)
+  "Return an I/O action that binds IO-VALUE to IO-FN.
+That is, IO-FN is evaluated after binding IO-VALUE within the I/O
+context."
   (declare (indent 1))
-  (lambda (io)
-	(jupyter-bind io-value fn)))
+  (lambda (_)
+	(jupyter-bind io-value io-fn)))
+
 
 (defun jupyter-idle (io-req)
   (jupyter-after io-req
