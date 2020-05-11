@@ -71,28 +71,37 @@
            (binder
             (lambda (vars)
               (if (zerop (length vars))
-                  `(jupyter-return-thunk ,@body)
+                  `(let ((res (progn ,@body)))
+                     (if res (jupyter-return res)
+                       jupyter-io-nil))
                 `(jupyter-bind ,(cadar vars)
                    (lambda (val)
-                     (setq ,(caar vars) val)
+                     ,@(unless (eq (caar vars) '_)
+                         `((setq ,(caar vars) val)))
                      ,(funcall binder (cdr vars))))))))
     `(let ,(cons result (mapcar #'car varlist))
        ;; nil is bound here to kick off the chain of binds.
        ;; TODO Is it safe to assume nil?
        (jupyter-bind jupyter-io-nil
-         ,(funcall binder varlist))
-       ,result)))
+         ,(funcall binder varlist)))))
 
 (defun jupyter--do (&rest mfns)
   (cl-reduce
    (lambda (io-value mfn)
 	 (jupyter-bind io-value mfn))
-   mfns :initial-value jupyter-io-nil))
+   mfns :initial-value jupyter-current-io))
+
+(defmacro jupyter-with-io (io &rest io-fns)
+  (declare (indent 1))
+  ;; Thread IO through the monad, return the resulting IO-VALUE.
+  `(cl-reduce #'jupyter-bind
+    ,@io-fns :initial-value (jupyter-return ,io)))
 
 (defmacro jupyter-do (io &rest forms)
-  (declare (indent 1))
+  (declare (indent 1) (debug (form &rest form)))
   `(let ((jupyter-current-io ,io))
 	 (jupyter--do ,@forms)))
+
 
 (defun jupyter-after (io-value io-fn)
   "Return an I/O action that binds IO-VALUE to IO-FN.
