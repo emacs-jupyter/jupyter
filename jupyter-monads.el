@@ -70,6 +70,37 @@ context."
   (lambda (_)
 	(jupyter-bind io-value io-fn)))
 
+;;; Kernel
+;;
+;; I/O actions that manage a kernel's lifetime.
+
+;; TODO: Change to `jupyter-kernel', move the old one's definition to
+;; `jupyter-make-kernel'.
+(defun jupyter--kernel (&rest args)
+  (lambda (_io)
+    (apply #'jupyter-kernel args)))
+
+;; TODO: Swap definitions with `jupyter-launch', same for the others.
+;; (jupyter-launch :kernel "python")
+;; (jupyter-launch :spec "python")
+(defun jupyter-kernel-launch (&rest args)
+  (lambda (_)
+    (let ((kernel (apply #'jupyter-kernel args)))
+      (jupyter-launch kernel)
+      kernel)))
+
+(defun jupyter-kernel-interrupt (io-kernel)
+  (jupyter-after io-kernel
+    (lambda (kernel)
+      (jupyter-interrupt kernel)
+      (jupyter-return kernel))))
+
+(defun jupyter-kernel-shutdown (kernel)
+  (jupyter-after (jupyter-return kernel)
+    (lambda (kernel)
+      (jupyter-shutdown kernel)
+      (jupyter-return kernel))))
+
 
 (defun jupyter-idle (io-req)
   (jupyter-after io-req
