@@ -142,14 +142,86 @@ context."
       (jupyter-shutdown kernel)
       (jupyter-return kernel))))
 
-(defmacro jupyter-io-sink (spec &rest cases)
+;;; Publisher/subscriber
+
+;; TODO: What is the structure of these functions when combined with
+;; the current IO?  This is like a bind, but in what Monad? The
+;; current IO is the unwrapped value and the function being returned,
+;; when called, takes you into the event monad.  The lambda being
+;; returned represents the lifting of an IO value into the event
+;; monad.
+;;
+;; TODO: Ensure that spec has the right form
+;; Sendable and subscribable
+(defmacro jupyter-subscriber (spec &rest cases)
   (declare (indent 1))
-  `(lambda (&rest args)
-     (setq ,(car spec) (cdr args))
-     (pcase (car args)
-       ,@cases
-       (_
-        (error "Unhandled I/O: %s" args)))))
+  ;; Since a subscriber cannot be subscribed to, it is just a function
+  ;; that handles events other than 'subscribe.
+  ;;
+  ;; NOTE: A subscriber ignores events it cannot handle.
+  `(lambda (&rest ,args)
+     (cl-destructuring-bind ,spec (cdr ,args)
+       (pcase (car ,args)
+         ('subscribe (error "Cannot subscribe to a subscriber"))
+         ,@cases))))
+
+(defmacro jupyter-io-lambda (spec &rest cases)
+  (declare (indent 1))
+  `(lambda (&rest ,args)
+     (cl-destructuring-bind ,spec (cdr ,args)
+       (pcase (car ,args)
+         ,@cases
+         (_ (error "Unhandled I/O: %s" args))))))
+
+;; Return an I/O stream that passes sent messages through to its subscribers.
+(defun jupyter-publisher ()
+  (let ((handlers '()))
+    (lambda (&rest args)
+      (pcase (car args)
+        ('subscribe
+         (when (functionp (cadr args))
+           (push (cadr args) handlers)))
+        ('message
+         (let ((new-handlers '()))
+           (while handlers
+             (let ((h (pop handlers))
+                   (keep nil))
+               (with-demoted-errors "Error when sending messages to subscribers: %S"
+                 (cl-block nil
+                   (apply h args)
+                   (setq keep t))
+                 (when (eq keep t)
+                   (push h new-handlers)))))
+           (setq handlers new-handlers)))
+        (_ (error "Unhandled I/O: %s" args))))))
+
+(defun jupyter-publish (&rest message)
+  (lambda (io)
+    (apply io 'message message)))
+
+(defun jupyter-filter-messages (pub fn)
+  "Filter the messages published by PUB through FN.  Return the
+new publisher.  If FN returns nil for a message, prevent the new
+publisher's subscribers from being evaluated."
+  (declare (indent 1))
+  (lambda (&rest args)
+    (pcase (car args)
+      ('message
+       (when (setq args (funcall fn (cdr args)))
+         (apply pub args)))
+      (_ (apply pub args)))))
+
+(defun jupyter-subscribe (subscriber)
+  "Return an I/O action that adds SUBSCRIBER as a handler of the current I/O's event stream.
+The action returns the current I/O in the context of the I/O
+action."
+  (declare (indent 0))
+  (lambda (io)
+    (funcall io 'subscribe (lambda (&rest args)
+                             (apply subscriber args)))
+    io))
+
+
 
 ;; A monadic function that, given session endpoints, returns a monadic
 ;; value that, when evaluated, returns an I/O stream sink that can
