@@ -33,6 +33,24 @@
 	 (error "Timed out: %s" (cl-prin1-to-string req)))
 	(`,value (funcall fn value))))
 
+(defmacro jupyter-mlet* (varlist &rest body)
+  (declare (indent 1))
+  (letrec ((result (make-symbol "result"))
+           (binder
+            (lambda (vars)
+              (if (zerop (length vars))
+                  `(jupyter-return-thunk ,@body)
+                `(jupyter-bind ,(cadar vars)
+                   (lambda (val)
+                     (setq ,(caar vars) val)
+                     ,(funcall binder (cdr vars))))))))
+    `(let ,(cons result (mapcar #'car varlist))
+       ;; nil is bound here to kick off the chain of binds.
+       ;; TODO Is it safe to assume nil?
+       (jupyter-bind jupyter-io-nil
+         ,(funcall binder varlist))
+       ,result)))
+
 (defun jupyter--do (&rest mfns)
   (cl-reduce
    (lambda (io-value mfn)
