@@ -101,6 +101,96 @@ context."
       (jupyter-shutdown kernel)
       (jupyter-return kernel))))
 
+(defmacro jupyter-io-sink (spec &rest cases)
+  (declare (indent 1))
+  `(lambda (&rest args)
+     (setq ,(car spec) (cdr args))
+     (pcase (car args)
+       ,@cases
+       (_
+        (error "Unhandled I/O: %s" args)))))
+
+;; A monadic function that, given session endpoints, returns a monadic
+;; value that, when evaluated, returns an I/O stream sink that can
+;; subscribe to some other source of messages.  
+;;
+;; (funcall channel-io 'message 'start)
+;;
+;; The current I/O context when the value is evaluated should be one
+;; in which the socket endpoints of SESSION can be controlled by
+;; 'start-channel, 'stop-channel, and 'alive-p messages.
+(defun jupyter-channel-io (session)
+  (let* ((channels '(:shell :iopub :stdin))
+         (ch-group
+          (cl-loop
+           with endpoints = (jupyter-session-endpoints session)
+           for ch in channels
+           collect ch
+           collect (list 'endpoint (plist-get endpoints ch)
+                         'alive-p nil))))
+    (lambda (io)
+      (cl-macrolet ((continue-after
+                     (cond on-timeout)
+                     `(jupyter-with-timeout
+                          (nil jupyter-default-timeout ,on-timeout)
+                        ,cond)))
+        (cl-labels ((ch-put
+                     (ch prop value)
+                     (plist-put (plist-get ch-group ch) prop value))
+                    (ch-get
+                     (ch prop)
+                     (plist-get (plist-get ch-group ch) prop))
+                    (ch-alive-p
+                     (ch)
+                     (and (funcall io 'alive-p)
+                          (ch-get ch 'alive-p)))
+                    (ch-start
+                     (ch)
+                     (unless (ch-alive-p ch)
+                       (funcall io 'message 'start-channel ch
+                                (ch-get ch 'endpoint))
+                       (continue-after
+                        (ch-alive-p ch)
+                        (error "Channel not started: %s" ch))))
+                    (ch-stop
+                     (ch)
+                     (when (ch-alive-p ch)
+                       (funcall io 'message 'stop-channel ch)
+                       (continue-after
+                        (not (ch-alive-p ch))
+                        (error "Channel not stopped: %s" ch)))))
+          (let ((sink
+                 (jupyter-io-sink (action)
+                   ('message
+                    (pcase action
+                      ('start
+                       (cl-loop
+                        for ch in channels
+                        do (ch-start ch)))
+                      ('stop
+                       (cl-loop
+                        for ch in channels
+                        do (ch-stop ch))
+                       (and hb (jupyter-hb-pause hb))
+                       (setq hb nil))
+                      ('alive-p
+                       (and (or (null hb) (jupyter-alive-p hb))
+                            (cl-loop
+                             for ch in channels
+                             do (ch-alive-p ch))))
+                      ('hb
+                       (unless hb
+                         (setq hb
+                               (make-instance
+                                'jupyter-hb-channel
+                                :session session
+                                :endpoint (plist-get endpoints :hb))))
+                       hb))))))
+            (funcall io 'handler
+                     (lambda ()
+
+                       ))
+            sink))))))
 
 (defun jupyter-idle (io-req)
   (jupyter-after io-req
