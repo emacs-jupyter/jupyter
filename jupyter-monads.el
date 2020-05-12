@@ -156,11 +156,11 @@ context."
                (when keep fn))))
          subs)))
 
-(defun jupyter-bind-subscribers (subs fn pub-args)
+(defun jupyter-bind-subscribers (subs fn content)
   ;; Th monadic values are lists with 'message or 'subscribe as the
   ;; first element.  In the case of 'message, the rest of the list is
   ;; the unwrapped value passed to FN.
-  (pcase pub-args
+  (pcase content
     (`('message . ,msg)
      ;; The expansion of the monadic context is represented by the
      ;; unwrapping of the msg, application of FN, and then re-wrapping
@@ -181,39 +181,43 @@ If FN returns nil, the chain of subscriber calls is suppressed
 for the returned publisher."
   (let ((subs '())
         (fn (or fn #'identity)))
-    (lambda (&rest pub-args)
+    (lambda (&rest content)
       (setq subs
-            (jupyter-bind-subscribers subs fn pub-args)))))
+            (jupyter-bind-subscribers subs fn content)))))
 
 (defun jupyter-source (value)
   "Return a publisher that maps published values to VALUE."
   (jupyter-publisher
    (lambda (_) (list value))))
 
-(defun jupyter--sink (fn args)
-  (pcase args
+(defun jupyter--sink (fn content)
+  (pcase content
     (`('message . ,msg) (funcall fn msg))
     (`('subscribe ,sub) (error "Cannot subscribe to a subscriber"))
-    (_ (error "Unhandled I/O: %s" args))))
+    (_ (error "Unhandled I/O: %s" content))))
 
 (defun jupyter-sink (fn)
   "Return a publisher that errors on subscription."
   (declare (indent 0))
-  (lambda (&rest args)
-    (jupyter--sink fn args)))
+  (lambda (&rest content)
+    (jupyter--sink fn content)))
 
-(defun jupyter-publish (&rest message)
+(defun jupyter-publish (&rest msg)
   (lambda (io)
-    (apply io 'message message)
+    (apply io 'message msg)
     io))
 
-(defun jupyter-filter-messages (pub fn)
-  "Filter the messages published by PUB through FN.  Return a
-new publisher.  If FN returns nil for a message, prevent the new
-publisher's subscribers from being evaluated."
+(defun jupyter-filter-content (pub fn)
+  "Filter the content published by PUB through FN.  Return a new
+publisher of the filtered content.  If FN returns nil for a
+message, prevent the new publisher's subscribers from being
+evaluated."
   (declare (indent 1))
-  (jupyter-with-io pub
-    (jupyter-subscribe (jupyter-publisher fn))))
+  (let ((filter (jupyter-publisher fn)))
+    (jupyter-with-io pub
+      (jupyter-do
+        (jupyter-subscribe filter)))
+    filter))
 
 (defun jupyter-subscribe (subscriber)
   "Return an I/O action that adds SUBSCRIBER as a handler of the current I/O's event stream.
