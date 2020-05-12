@@ -150,29 +150,6 @@ context."
 ;; when called, takes you into the event monad.  The lambda being
 ;; returned represents the lifting of an IO value into the event
 ;; monad.
-;;
-;; TODO: Ensure that spec has the right form
-;; Sendable and subscribable
-(defmacro jupyter-subscriber (spec &rest cases)
-  (declare (indent 1))
-  ;; Since a subscriber cannot be subscribed to, it is just a function
-  ;; that handles events other than 'subscribe.
-  ;;
-  ;; NOTE: A subscriber ignores events it cannot handle.
-  `(lambda (&rest ,args)
-     (cl-destructuring-bind ,spec (cdr ,args)
-       (pcase (car ,args)
-         ('subscribe (error "Cannot subscribe to a subscriber"))
-         ,@cases))))
-
-(defmacro jupyter-io-lambda (spec &rest cases)
-  (declare (indent 1))
-  `(lambda (&rest ,args)
-     (cl-destructuring-bind ,spec (cdr ,args)
-       (pcase (car ,args)
-         ,@cases
-         (_ (error "Unhandled I/O: %s" args))))))
-
 (defun jupyter-publish-to-subscribers (subs args)
   (delq nil
         (mapcar
