@@ -173,43 +173,76 @@ context."
          ,@cases
          (_ (error "Unhandled I/O: %s" args))))))
 
-;; Return an I/O stream that passes sent messages through to its subscribers.
-(defun jupyter-publisher ()
-  (let ((handlers '()))
-    (lambda (&rest args)
-      (pcase (car args)
-        ('subscribe
-         (when (functionp (cadr args))
-           (push (cadr args) handlers)))
-        ('message
-         (let ((new-handlers '()))
-           (while handlers
-             (let ((h (pop handlers))
-                   (keep nil))
-               (with-demoted-errors "Error when sending messages to subscribers: %S"
-                 (cl-block nil
-                   (apply h args)
-                   (setq keep t))
-                 (when (eq keep t)
-                   (push h new-handlers)))))
-           (setq handlers new-handlers)))
-        (_ (error "Unhandled I/O: %s" args))))))
+(defun jupyter-publish-to-subscribers (subs args)
+  (delq nil
+        (mapcar
+         (lambda (sub)
+           (let ((keep nil))
+             (with-demoted-errors "Jupyter: Error in subscriber: %S"
+               (cl-block nil
+                 (apply sub args)
+                 (setq keep t))
+               (when keep fn))))
+         subs)))
+
+(defun jupyter-bind-subscribers (subs fn pub-args)
+  ;; Th monadic values are lists with 'message or 'subscribe as the
+  ;; first element.  In the case of 'message, the rest of the list is
+  ;; the unwrapped value passed to FN.
+  (pcase pub-args
+    (`('message . ,msg)
+     ;; The expansion of the monadic context is represented by the
+     ;; unwrapping of the msg, application of FN, and then re-wrapping
+     ;; into a 'message for the next publisher context.
+     (if-let* ((mapped-msg (funcall fn msg)))
+         (jupyter-publish-to-subscribers
+          subs (cons 'message mapped-msg))
+       subs))
+    (`('subscribe ,sub)
+     (cons sub subs))
+    (_ (error "Unhandled I/O: %s" args))))
+
+(defun jupyter-publisher (&optional fn)
+  "Return a publisher that maps messages using FN.
+FN defaults to `identity'.
+
+If FN returns nil, the chain of subscriber calls is suppressed
+for the returned publisher."
+  (let ((subs '())
+        (fn (or fn #'identity)))
+    (lambda (&rest pub-args)
+      (setq subs
+            (jupyter-bind-subscribers subs fn pub-args)))))
+
+(defun jupyter-source (value)
+  "Return a publisher that maps published values to VALUE."
+  (jupyter-publisher
+   (lambda (_) (list value))))
+
+(defun jupyter--sink (fn args)
+  (pcase args
+    (`('message . ,msg) (funcall fn msg))
+    (`('subscribe ,sub) (error "Cannot subscribe to a subscriber"))
+    (_ (error "Unhandled I/O: %s" args))))
+
+(defun jupyter-sink (fn)
+  "Return a publisher that errors on subscription."
+  (declare (indent 0))
+  (lambda (&rest args)
+    (jupyter--sink fn args)))
 
 (defun jupyter-publish (&rest message)
   (lambda (io)
-    (apply io 'message message)))
+    (apply io 'message message)
+    io))
 
 (defun jupyter-filter-messages (pub fn)
-  "Filter the messages published by PUB through FN.  Return the
+  "Filter the messages published by PUB through FN.  Return a
 new publisher.  If FN returns nil for a message, prevent the new
 publisher's subscribers from being evaluated."
   (declare (indent 1))
-  (lambda (&rest args)
-    (pcase (car args)
-      ('message
-       (when (setq args (funcall fn (cdr args)))
-         (apply pub args)))
-      (_ (apply pub args)))))
+  (jupyter-with-io pub
+    (jupyter-subscribe (jupyter-publisher fn))))
 
 (defun jupyter-subscribe (subscriber)
   "Return an I/O action that adds SUBSCRIBER as a handler of the current I/O's event stream.
@@ -219,8 +252,7 @@ action."
   (lambda (io)
     (funcall io 'subscribe (lambda (&rest args)
                              (apply subscriber args)))
-    io))
-
+    subscriber))
 
 ;;; IO Event
 
@@ -228,10 +260,8 @@ action."
   (jupyter-return
     (lambda (&rest args)
       (pcase (car args)
-        ((or 'start 'stop 'alive-p))
-        ((or 'message 'add-handler 'remove-handler)
+        ((or 'message 'subscribe)
          (error "Not implemented"))
-        ('hb nil)
         (_ (error "Unhandled IO: %s" args))))))
 
 ;; A monadic function that, given session endpoints, returns a monadic
