@@ -52,8 +52,6 @@
   (lambda (&rest args)
 	(error "Unhandled IO: %s" args)))
 
-;; TODO: Keep track of the function bound to a io-value such that the
-;; function is accessible
 (defun jupyter-bind (io-value fn)
   "Bind MVALUE to MFN."
   (declare (indent 1))
@@ -85,23 +83,19 @@
        (jupyter-bind jupyter-io-nil
          ,(funcall binder varlist)))))
 
-(defun jupyter--do (&rest mfns)
-  (cl-reduce
-   (lambda (io-value mfn)
-	 (jupyter-bind io-value mfn))
-   mfns :initial-value jupyter-current-io))
-
-(defmacro jupyter-with-io (io &rest io-fns)
+(defmacro jupyter-with-io (io &rest body)
   (declare (indent 1))
-  ;; Thread IO through the monad, return the resulting IO-VALUE.
-  `(cl-reduce #'jupyter-bind
-    ,@io-fns :initial-value (jupyter-return ,io)))
-
-(defmacro jupyter-do (io &rest forms)
-  (declare (indent 1) (debug (form &rest form)))
   `(let ((jupyter-current-io ,io))
-	 (jupyter--do ,@forms)))
+     ,@body))
 
+(defmacro jupyter-do (&rest io-fns)
+  (declare (indent 0))
+  ;; Thread IO through the monad, return the resulting IO-VALUE.
+  (if (zerop (length io-fns))
+      'jupyter-io-nil
+    `(cl-reduce #'jupyter-bind
+                (list ,@io-fns)
+                :initial-value jupyter-io-nil)))
 
 (defun jupyter-after (io-value io-fn)
   "Return an I/O action that binds IO-VALUE to IO-FN.
