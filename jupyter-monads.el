@@ -142,97 +142,93 @@ context."
     nil))
 
 ;;; Publisher/subscriber
+;;
+;; TODO: Wrap the publisher functions in a struct
+;; (cl-defstruct jupyter-publisher id io ...)
 
-;; TODO: What is the structure of these functions when combined with
-;; the current IO?  This is like a bind, but in what Monad? The
-;; current IO is the unwrapped value and the function being returned,
-;; when called, takes you into the event monad.  The lambda being
-;; returned represents the lifting of an IO value into the event
-;; monad.
-(defun jupyter-publish-to-subscribers (subs args)
+(defun jupyter-publish-to-subscribers (subs content)
   (delq nil
         (mapcar
          (lambda (sub)
            (let ((keep nil))
              (with-demoted-errors "Jupyter: Error in subscriber: %S"
-               (cl-block nil
-                 (apply sub args)
+               (catch 'jupyter-subscription-cancelled
+                 (funcall sub content)
                  (setq keep t))
-               (when keep fn))))
+               (when keep sub))))
          subs)))
 
-(defun jupyter-bind-subscribers (subs fn content)
-  ;; Th monadic values are lists with 'message or 'subscribe as the
-  ;; first element.  In the case of 'message, the rest of the list is
-  ;; the unwrapped value passed to FN.
-  (pcase content
-    (`('message . ,msg)
-     ;; The expansion of the monadic context is represented by the
-     ;; unwrapping of the msg, application of FN, and then re-wrapping
-     ;; into a 'message for the next publisher context.
-     (if-let* ((mapped-msg (funcall fn msg)))
-         (jupyter-publish-to-subscribers
-          subs (cons 'message mapped-msg))
+(defun jupyter-cancel-subscription ()
+  "Cancel the current subscriber's subscription.
+If this function is called when a subscriber is handling the
+messages of a publisher, cancel the subscription."
+  (throw 'jupyter-subscription-cancelled t))
+
+(defun jupyter-bind-subscribers (subs pub-fn pub-content)
+  (pcase pub-content
+    (`(content ,content)
+     (if-let* ((pub-content (funcall pub-fn content)))
+         (jupyter-publish-to-subscribers subs pub-content)
        subs))
-    (`('subscribe ,sub)
+    (`(subscribe ,sub)
+     (cl-check-type sub function "A subscriber is a function")
      (cons sub subs))
-    (_ (error "Unhandled I/O: %s" args))))
+    (_ (error "Unhandled publisher content: %s" pub-content))))
 
-(defun jupyter-publisher (&optional fn)
-  "Return a publisher that maps messages using FN.
-FN defaults to `identity'.
+;; Since `jupyter-bind-subscribers' is structured as a `pcase'
+;; statement with the form that it has, any normal value outside of
+;; the publisher needs to be wrapped so as to preserve the structure
+;; of a publisher while still allowing those values to be passed
+;; through to the next subscribers.
+(defun jupyter-emit (val)
+  "Return a message list wrapping VAL.
+The returned list only has a meaning to
+"
+  (list 'content val))
 
-If FN returns nil, the chain of subscriber calls is suppressed
-for the returned publisher."
+(defconst jupyter-pub-nil (jupyter-emit nil))
+
+(defun jupyter-publisher (&optional pub-fn)
+  "Return a publisher that passes messages mapped by PUB-FN to its subscribers.
+PUB-FN is a function that returns values wrapped by
+`jupyter-emit'
+
+PUB-FN defaults to `identity'.  If PUB-FN returns nil on a
+message, the chain of subscriber calls is suppressed.  PUB-FN is
+still called if the returned publisher has no subscribers."
   (let ((subs '())
-        (fn (or fn #'identity)))
-    (lambda (&rest content)
-      (setq subs
-            (jupyter-bind-subscribers subs fn content)))))
+        (pub-fn (or pub-fn #'identity)))
+    (lambda (pub-content)
+      (setq subs (jupyter-bind-subscribers subs pub-fn pub-content)))))
 
-(defun jupyter-source (value)
+(defun jupyter-emitter (value)
   "Return a publisher that maps published values to VALUE."
-  (jupyter-publisher
-   (lambda (_) (list value))))
+  (let ((v (list value)))
+    (jupyter-publisher (lambda (_) v))))
 
-(defun jupyter--sink (fn content)
+(defun jupyter-consume (fn content)
   (pcase content
-    (`('message . ,msg) (funcall fn msg))
-    (`('subscribe ,sub) (error "Cannot subscribe to a subscriber"))
+    (`(content ,msg) (funcall fn msg))
+    (`(subscribe ,sub) (error "Cannot subscribe to a subscriber"))
     (_ (error "Unhandled I/O: %s" content))))
 
-(defun jupyter-sink (fn)
-  "Return a publisher that errors on subscription."
+(defun jupyter-collector (fn)
+  "Return a publisher that signal's an error on subscription."
   (declare (indent 0))
-  (lambda (&rest content)
-    (jupyter--sink fn content)))
+  (lambda (content)
+    (jupyter-consume fn content)))
 
-(defun jupyter-publish (&rest msg)
-  (lambda (io)
-    (apply io 'message msg)
-    io))
+(defun jupyter-publish (msg)
+  (lambda (_)
+    (funcall jupyter-current-io (jupyter-emit msg))
+    nil))
 
-(defun jupyter-filter-content (pub fn)
-  "Filter the content published by PUB through FN.  Return a new
-publisher of the filtered content.  If FN returns nil for a
-message, prevent the new publisher's subscribers from being
-evaluated."
-  (declare (indent 1))
-  (let ((filter (jupyter-publisher fn)))
-    (jupyter-with-io pub
-      (jupyter-do
-        (jupyter-subscribe filter)))
-    filter))
-
-(defun jupyter-subscribe (subscriber)
-  "Return an I/O action that adds SUBSCRIBER as a handler of the current I/O's event stream.
-The action returns the current I/O in the context of the I/O
-action."
+(defun jupyter-subscribe (sub)
+  "Return a monadic value subscribing SUB to the current publisher."
   (declare (indent 0))
-  (lambda (io)
-    (funcall io 'subscribe (lambda (&rest args)
-                             (apply subscriber args)))
-    subscriber))
+  (lambda (_)
+    (funcall jupyter-current-io (list 'subscribe sub))
+    nil))
 
 ;;; IO Event
 
