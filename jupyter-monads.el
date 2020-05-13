@@ -119,12 +119,6 @@ context."
 ;;
 ;; I/O actions that manage a kernel's lifetime.
 
-;; TODO: Change to `jupyter-kernel', move the old one's definition to
-;; `jupyter-make-kernel'.
-(defun jupyter--kernel (&rest args)
-  (lambda (_io)
-    (apply #'jupyter-kernel args)))
-
 ;; TODO: Swap definitions with `jupyter-launch', same for the others.
 ;; (jupyter-launch :kernel "python")
 ;; (jupyter-launch :spec "python")
@@ -135,16 +129,17 @@ context."
       kernel)))
 
 (defun jupyter-kernel-interrupt (io-kernel)
-  (jupyter-after io-kernel
-    (lambda (kernel)
-      (jupyter-interrupt kernel)
-      (jupyter-return kernel))))
+  (lambda (_)
+    (jupyter-interrupt kernel)
+    nil))
 
+;; TODO: Have this notify the I/O context by returning something like
+;;
+;;     ('shutdown kernel).
 (defun jupyter-kernel-shutdown (kernel)
-  (jupyter-after (jupyter-return kernel)
-    (lambda (kernel)
-      (jupyter-shutdown kernel)
-      (jupyter-return kernel))))
+  (lambda (_)
+    (jupyter-shutdown kernel)
+    nil))
 
 ;;; Publisher/subscriber
 
