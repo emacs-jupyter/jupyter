@@ -84,16 +84,14 @@ IO-FN, the context of the I/O monad is maintained."
                   `(let ((res (progn ,@body)))
                      (if res (jupyter-return res)
                        jupyter-io-nil))
-                `(jupyter-bind-delayed ,(cadar vars)
-                   (lambda (val)
-                     ,@(unless (eq (caar vars) '_)
-                         `((setq ,(caar vars) val)))
-                     ,(funcall binder (cdr vars))))))))
-    `(let ,(cons result (mapcar #'car varlist))
-       ;; nil is bound here to kick off the chain of binds.
-       ;; TODO Is it safe to assume nil?
-       (jupyter-bind-delayed jupyter-io-nil
-         ,(funcall binder varlist)))))
+                `(jupyter-bind-delayed
+                  (cadar vars)
+                  (lambda (,val)
+                    ,@(unless (eq (caar vars) '_)
+                        `((setq ,(caar vars) ,val)))
+                    ,(funcall binder (cdr vars))))))))
+    `(let (,@(mapcar #'car varlist))
+       ,(funcall binder varlist))))
 
 (defmacro jupyter-with-io (io &rest body)
   (declare (indent 1))
