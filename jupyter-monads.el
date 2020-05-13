@@ -52,27 +52,39 @@
   (lambda (&rest args)
 	(error "Unhandled IO: %s" args)))
 
-(defun jupyter-bind (io-value fn)
-  "Bind MVALUE to MFN."
+(defun jupyter-bind-delayed (io-value io-fn)
+  "Bind IO-VALUE to IO-FN.
+Binding causes the evaluation of a delayed value, IO-VALUE, in
+the current I/O context.  The unwrapped value is then passed to
+IO-FN which returns another delayed value.  Thus binding involves
+unwrapping a value by evaluating a closure, IO-VALUE, passing the
+current I/O context as argument, and passing the result to IO-FN
+which returns another delayed value to be bound at some future
+time.  Before, between, and after the two calls to IO-VALUE and
+IO-FN, the context of the I/O monad is maintained."
   (declare (indent 1))
   (pcase (funcall io-value jupyter-current-io)
 	((and req (cl-struct jupyter-request client)
 		  (let jupyter-current-client client))
-	 (funcall fn req))
+	 (funcall io-fn req))
 	(`(timeout ,(and req (cl-struct jupyter-request)))
 	 (error "Timed out: %s" (cl-prin1-to-string req)))
-	(`,value (funcall fn value))))
+	(`,value (funcall io-fn value))))
 
+;; mlet* is like do, but for varlist. The IO values in varlist are
+;; bound, just like do, and then body is evaluated in the functional
+;; context.
 (defmacro jupyter-mlet* (varlist &rest body)
+  "Bind the delayed values in VARLIST, evaluate BODY."
   (declare (indent 1))
-  (letrec ((result (make-symbol "result"))
+  (letrec ((val (make-symbol "val"))
            (binder
             (lambda (vars)
               (if (zerop (length vars))
                   `(let ((res (progn ,@body)))
                      (if res (jupyter-return res)
                        jupyter-io-nil))
-                `(jupyter-bind ,(cadar vars)
+                `(jupyter-bind-delayed ,(cadar vars)
                    (lambda (val)
                      ,@(unless (eq (caar vars) '_)
                          `((setq ,(caar vars) val)))
@@ -80,7 +92,7 @@
     `(let ,(cons result (mapcar #'car varlist))
        ;; nil is bound here to kick off the chain of binds.
        ;; TODO Is it safe to assume nil?
-       (jupyter-bind jupyter-io-nil
+       (jupyter-bind-delayed jupyter-io-nil
          ,(funcall binder varlist)))))
 
 (defmacro jupyter-with-io (io &rest body)
@@ -93,7 +105,7 @@
   ;; Thread IO through the monad, return the resulting IO-VALUE.
   (if (zerop (length io-fns))
       'jupyter-io-nil
-    `(cl-reduce #'jupyter-bind
+    `(cl-reduce #'jupyter-bind-delayed
                 (list ,@io-fns)
                 :initial-value jupyter-io-nil)))
 
@@ -103,7 +115,7 @@ That is, IO-FN is evaluated after binding IO-VALUE within the I/O
 context."
   (declare (indent 1))
   (lambda (_)
-	(jupyter-bind io-value io-fn)))
+	(jupyter-bind-delayed io-value io-fn)))
 
 ;;; Kernel
 ;;
