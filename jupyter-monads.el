@@ -235,110 +235,141 @@ publisher filters content to its subscribers through PUB-FN."
                    `(jupyter-with-timeout
                         (nil jupyter-default-timeout ,on-timeout)
                       ,cond)))
-      (cl-labels ((ch-put
-                   (ch prop value)
-                   (plist-put (plist-get ch-group ch) prop value))
-                  (ch-get
-                   (ch prop)
-                   (plist-get (plist-get ch-group ch) prop))
-                  (ch-alive-p
-                   (ch)
-                   (and (funcall io 'alive-p)
-                        (ch-get ch 'alive-p)))
-                  (ch-start
-                   (ch)
-                   (unless (ch-alive-p ch)
-                     (funcall io 'message 'start-channel ch
-                              (ch-get ch 'endpoint))
-                     (continue-after
-                      (ch-alive-p ch)
-                      (error "Channel not started: %s" ch))))
-                  (ch-stop
-                   (ch)
-                   (when (ch-alive-p ch)
-                     (funcall io 'message 'stop-channel ch)
-                     (continue-after
-                      (not (ch-alive-p ch))
-                      (error "Channel not stopped: %s" ch)))))
-        (jupyter-io-lambda (_)
-          ('start
-           (cl-loop
-            for ch in channels
-            do (ch-start ch)))
-          ('stop
-           (cl-loop
-            for ch in channels
-            do (ch-stop ch))
-           (and hb (jupyter-hb-pause hb))
-           (setq hb nil))
-          ('alive-p
-           (and (or (null hb) (jupyter-alive-p hb))
+      (cl-labels
+          ((ch-put
+            (ch prop value)
+            (plist-put (plist-get ch-group ch) prop value))
+           (ch-get
+            (ch prop)
+            (plist-get (plist-get ch-group ch) prop))
+           (ch-alive-p
+            (ch)
+            (ch-get ch 'alive-p))
+           (ch-start
+            (ch)
+            (unless (ch-alive-p ch)
+              (jupyter-with-io ioloop
+                (jupyter-do
+                  (jupyter-publish
+                    'start-channel ch (ch-get ch 'endpoint)
+                    ;; TODO: Make this actually work. Send a
+                    ;; start-channel event and pass it an IO
+                    ;; context that sets the alive-p flag for
+                    ;; the channel in this current IO context.
+                    ;; The ioloop will send a notification to
+                    ;; this I/O context if the channel dies.
+                    (jupyter-subscriber
+                      (lambda (alive-p)
+                        (ch-put ch 'alive-p alive-p))))
+                  (jupyter-return-delayed
+                    (continue-after
+                     (ch-alive-p ch)
+                     (error "Channel not started: %s" ch)))))))
+           (ch-stop
+            (ch)
+            (when (ch-alive-p ch)
+              (jupyter-with-io ioloop
+                (jupyter-do
+                  (jupyter-publish 'stop-channel ch)
+                  (jupyter-return-delayed
+                    (continue-after
+                     (not (ch-alive-p ch))
+                     (error "Channel not stopped: %s" ch))))))))
+        (list
+         (jupyter-subscriber
+           (lambda (msg)
+             (pcase msg
+               ('start
                 (cl-loop
                  for ch in channels
-                 do (ch-alive-p ch))))
-          ('hb
-           (unless hb
-             (setq hb
-                   (make-instance
-                    'jupyter-hb-channel
-                    :session session
-                    :endpoint (plist-get endpoints :hb))))
-           hb))))))
-
-;; Kernel -> IO Function
-(defun jupyter-kernel-websocket-io (kernel)
-  (jupyter-launch kernel)
-  (pcase-let* (((cl-struct jupyter-server-kernel server id) kernel)
-               (websocket (jupyter-api-kernel-websocket server id)))
-    (jupyter-websocket-io websocket)))
+                 do (ch-start ch)))
+               ('stop
+                (cl-loop
+                 for ch in channels
+                 do (ch-stop ch))
+                (and hb (jupyter-hb-pause hb))
+                (setq hb nil)))))
+         (jupyter-publisher
+           (lambda (_status)
+             (unless hb
+               (setq hb
+                     (make-instance
+                      'jupyter-hb-channel
+                      :session session
+                      :endpoint (plist-get endpoints :hb))))
+             (jupyter-send-content
+              (append (list :hb hb)
+                      (cl-loop
+                       for ch in channels
+                       collect ch and collect (ch-alive-p ch)))))))))))
 
 ;;; Websocket IO
 
-;; A monadic function in the I/O stream monad.
-;;
-;; There is a gap in evaluation time between sending and receiving.
-;; We do not know when a message will be received.  A stream fires of
-;; message events
-(defun jupyter-websocket-io (websocket &optional custom-header-alist)
-  (let ((handlers '())
-        (events '()))
-    (cl-labels
-        ((on-message
-          (_ws frame)
-          ;; This represents a source of new IO messages.
-          (cl-case (websocket-frame-opcode frame)
-            ((text binary)
-             (let* ((msg (jupyter-read-plist-from-string
-                          (websocket-frame-payload frame)))
-                    ;; TODO: Get rid of some of these explicit/implicit `intern' calls
-                    (channel (intern (concat ":" (plist-get msg :channel))))
-                    (msg-type (jupyter-message-type-as-keyword
-                               (jupyter-message-type msg)))
-                    (parent-header (plist-get msg :parent_header)))
-               (plist-put msg :msg_type msg-type)
-               (plist-put parent-header :msg_type msg-type)
-               ;; NOTE: The nil is the identity field expected by a
-               ;; `jupyter-channel-ioloop', it is mimicked here.
-               (jupyter-run-handlers handlers
-                                     (cl-list* 'message channel nil msg))))
-            (t
-             (error "Unhandled websocket frame opcode (%s)"
-                    (websocket-frame-opcode frame))))))
-      ;; The pattern is (with-io pub (subscribe subscriber) pub)
-      ;; passing along the publisher to attach subscribers.
-      (jupyter-io-lambda (&rest args)
-        ('message
-         (cl-destructuring-bind (channel msg-type msg &optional msg-id) args
-           (websocket-send-text
-            ws (jupyter-encode-raw-message
-                   (plist-get (websocket-client-data ws) :session) msg-type
-                 :channel (substring (symbol-name channel) 1)
-                 :msg-id msg-id
-                 :content msg))))
-        ('subscribe )
-        ('start (websocket-ensure-connected websocket))
-        ('stop (websocket-close websocket))
-        ('alive-p (websocket-openp websocket))))))
+(defun jupyter--websocket-io (kernel)
+  (let ((msg-pub (jupyter-publisher #'jupyter-send-content))
+        (status-pub (jupyter-publisher #'jupyter-send-content)))
+    (pcase-let*
+        (((cl-struct jupyter-server-kernel server id) kernel)
+         (ws (jupyter-api-kernel-websocket
+              server id
+              :custom-header-alist (jupyter-api-auth-headers server)
+              :on-message
+              (lambda (_ws frame)
+                (pcase (websocket-frame-opcode frame)
+                  ((or 'text 'binary)
+                   (let* ((msg (jupyter-read-plist-from-string
+                                (websocket-frame-payload frame)))
+                          ;; TODO: Get rid of some of these
+                          ;; explicit/implicit `intern' calls
+                          (channel (intern (concat ":" (plist-get msg :channel))))
+                          (msg-type (jupyter-message-type-as-keyword
+                                     (jupyter-message-type msg)))
+                          (parent-header (plist-get msg :parent_header)))
+                     (plist-put msg :msg_type msg-type)
+                     (plist-put parent-header :msg_type msg-type)
+                     (jupyter-with-io msg-pub
+                       (jupyter-do
+                         (jupyter-publish (list channel msg))))))
+                  (_
+                   (jupyter-with-io status-pub
+                     (jupyter-do
+                       (jupyter-publish
+                         'error (websocket-frame-opcode frame))))))))))
+      (list
+       ;; The websocket action subscriber.
+       (jupyter-subscriber
+         (lambda (msg)
+           (pcase msg
+             (`('send ,channel ,msg-type ,content ,msg-id)
+              (websocket-send-text
+               ws (jupyter-encode-raw-message
+                      (plist-get (websocket-client-data ws) :session) msg-type
+                    :channel (substring (symbol-name channel) 1)
+                    :msg-id msg-id
+                    :content content)))
+             ('start (websocket-ensure-connected ws))
+             ('stop (websocket-close ws)))))
+       ;; The websocket message publisher.
+       msg-pub
+       ;; The websocket status publisher.
+       status-pub))))
+
+(defun jupyter-return-websocket-io (kernel)
+  "Return a list of three elements representing an I/O connection to kernel.
+The returned list looks like (ACTION-SUB MSG-PUB STATUS-PUB)
+where
+
+ACTION-SUB is a subscriber of websocket actions to start, stop,
+or send a Jupyter message on the websocket.
+
+MSG-PUB is a publisher of Jupyter messages received from the
+websocket.
+
+STATUS-PUB is a publisher of status changes to the websocket.
+
+TODO The form of content each sends/consumes."
+  (cl-assert (cl-typep kernel 'jupyter-server-kernel))
+  (jupyter-return-delayed (jupyter--websocket-io kernel)))
 
 ;;; Request
 
