@@ -342,19 +342,17 @@ publisher filters content to its subscribers through PUB-FN."
 
 ;;; Request
 
-(defun jupyter-idle (io-req)
-  ;; After an IO-REQ is made, wait until the request is idle and
-  ;; return it.  If `jupyter-default-timeout' seconds elapses before
-  ;; the request is idle, signal an error.  Waiting for idleness is
-  ;; delayed until the returned I/O action is bound.
-  (jupyter-after io-req
-	(lambda (req)
-      (jupyter-return-delayed
-        (if (jupyter-wait-until-idle req) req
-          (list 'timeout req))))))
+(defun jupyter-timeout (req)
+  (list 'timeout req))
 
-;; MsgType -> MsgList -> (IO -> Req)
-;; (IO -> Req) represents an IO monadic value. IO Req
+(defun jupyter-idle-wait (req)
+  (jupyter-return-delayed
+    (if (jupyter-wait-until-idle req) req
+      (jupyter-timeout req))))
+
+(defun jupyter-idle (io-req)
+  (jupyter-after io-req #'jupyter-idle-wait))
+
 (defun jupyter-request (type &rest content)
   "Return an IO action that sends a `jupyter-request'.
 TYPE is the message type of the message that CONTENT, a property
@@ -366,26 +364,36 @@ See `jupyter-io' for more information on IO actions."
                              (replace-regexp-in-string "_" "-" type))))
   (jupyter-return-delayed
     (let* ((req (make-jupyter-request
+                 ;; TODO: `jupyter-with-client' similar to
+                 ;; `jupyter-with-io' but on a functional client.
                  :client jupyter-current-client
                  :type type
                  :content content))
+           ;; TODO: Figure out if the subscribers are garbage
+           ;; collected when the subscription is cancelled.
+           (req-msgs-pub
+            (jupyter-publisher
+              (lambda (event)
+                (when (jupyter-request-idle-p req)
+                  (jupyter-cancel-subscription))
+                (pcase (car event)
+                  ((and 'message (let `(,channel . ,msg) (cdr event))
+                        ;; TODO: `jupyter-message-parent-id' -> `jupyter-parent-id'
+                        ;; and the like.
+                        (guard (string= id (jupyter-message-parent-id msg))))
+                   (cl-callf nconc (jupyter-request-messages req)
+                     (list msg))
+                   (when (jupyter--message-completes-request-p msg)
+                     (setf (jupyter-request-idle-p req) t))
+                   (jupyter-send-content msg))))))
            (ch (if (memq type '(:input-reply :input-request))
                    :stdin
                  :shell))
            (id (jupyter-request-id req)))
-      (letrec ((handler
-                (lambda (event)
-                  (pcase (car event)
-                    ((and 'message (let `(,channel . ,msg) (cdr event))
-                          (guard (string= id (jupyter-message-parent-id msg))))
-                     (cl-callf nconc (jupyter-request-messages req)
-                       (list msg))
-                     (when (jupyter--message-completes-request-p msg)
-                       (setf (jupyter-request-idle-p req) t)
-                       (jupyter-send io 'remove-handler handler)))))))
-        (jupyter-send io 'message ch type content id)
-        (jupyter-send io 'add-handler handler)
-        req))))
+      (jupyter-do
+        (jupyter-subscribe req-msgs-pub)
+        (jupyter-publish 'send ch type content id))
+      (list req req-msgs-pub))))
 
 (provide 'jupyter-monads)
 
