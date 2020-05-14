@@ -30,40 +30,35 @@
   "Monadic Jupyter I/O"
   :group 'jupyter)
 
-(defun jupyter-return (value)
-  (declare (indent 0))
-  (lambda (_io) value))
-
-;; Adapted from `thunk-delay'
 (defmacro jupyter-return-delayed (&rest body)
+  "Return an I/O value that evaluates BODY in the I/O context.
+The result of BODY is the unboxed value of the I/O value.  BODY
+is evaluated only once."
   (declare (indent 0))
-  ;; Return a delayed value, the value being evaluated in the next IO
-  ;; context.
-  `(let (forced val)
-     (lambda (_io)
-       (unless forced
-         (setf val (progn ,@body))
-         (setf forced t))
-       val)))
+  `(lambda () ,@body))
 
-(defconst jupyter-io-nil (jupyter-return nil))
+(defconst jupyter-io-nil (jupyter-return-delayed nil))
 
 (defvar jupyter-current-io
-  (lambda (&rest args)
-	(error "Unhandled IO: %s" args)))
+  (lambda (args)
+    (pcase args
+      (`(,(or 'message 'subscribe) . ,_)
+       (error "Not implemented"))
+      (_ (error "Unhandled IO: %s" args)))))
 
+;; TODO: How to incorporate `make-thread', `thread-join'?
 (defun jupyter-bind-delayed (io-value io-fn)
   "Bind IO-VALUE to IO-FN.
-Binding causes the evaluation of a delayed value, IO-VALUE, in
-the current I/O context.  The unwrapped value is then passed to
-IO-FN which returns another delayed value.  Thus binding involves
-unwrapping a value by evaluating a closure, IO-VALUE, passing the
-current I/O context as argument, and passing the result to IO-FN
-which returns another delayed value to be bound at some future
-time.  Before, between, and after the two calls to IO-VALUE and
-IO-FN, the context of the I/O monad is maintained."
+Binding causes the evaluation of a delayed value, IO-VALUE (a
+closure), in the current I/O context.  The unwrapped
+value (result of evaluating the closure) is then passed to IO-FN
+which returns another delayed value.  Thus binding involves
+unwrapping a value by evaluating a closure and giving the result
+to IO-FN which returns another delayed value to be bound at some
+future time.  Before, between, and after the two calls to
+IO-VALUE and IO-FN, the I/O context is maintained."
   (declare (indent 1))
-  (pcase (funcall io-value jupyter-current-io)
+  (pcase (funcall io-value)
 	((and req (cl-struct jupyter-request client)
 		  (let jupyter-current-client client))
 	 (funcall io-fn req))
@@ -82,10 +77,9 @@ IO-FN, the context of the I/O monad is maintained."
             (lambda (vars)
               (if (zerop (length vars))
                   `(let ((res (progn ,@body)))
-                     (if res (jupyter-return res)
+                     (if res (jupyter-return-delayed res)
                        jupyter-io-nil))
-                `(jupyter-bind-delayed
-                  (cadar vars)
+                `(jupyter-bind-delayed (cadar vars)
                   (lambda (,val)
                     ,@(unless (eq (caar vars) '_)
                         `((setq ,(caar vars) ,val)))
@@ -109,10 +103,9 @@ IO-FN, the context of the I/O monad is maintained."
 
 (defun jupyter-after (io-value io-fn)
   "Return an I/O action that binds IO-VALUE to IO-FN.
-That is, IO-FN is evaluated after binding IO-VALUE within the I/O
-context."
+That is, IO-VALUE is bound to IO-FN within the I/O context."
   (declare (indent 1))
-  (lambda (_)
+  (jupyter-return-delayed
 	(jupyter-bind-delayed io-value io-fn)))
 
 ;;; Kernel
@@ -123,23 +116,21 @@ context."
 ;; (jupyter-launch :kernel "python")
 ;; (jupyter-launch :spec "python")
 (defun jupyter-kernel-launch (&rest args)
-  (lambda (_)
+  (jupyter-return-delayed
     (let ((kernel (apply #'jupyter-kernel args)))
       (jupyter-launch kernel)
       kernel)))
 
-(defun jupyter-kernel-interrupt (io-kernel)
-  (lambda (_)
-    (jupyter-interrupt kernel)
-    nil))
+(defun jupyter-kernel-interrupt (kernel)
+  (jupyter-return-delayed
+    (jupyter-interrupt kernel)))
 
 ;; TODO: Have this notify the I/O context by returning something like
 ;;
 ;;     ('shutdown kernel).
 (defun jupyter-kernel-shutdown (kernel)
-  (lambda (_)
-    (jupyter-shutdown kernel)
-    nil))
+  (jupyter-return-delayed
+    (jupyter-shutdown kernel)))
 
 ;;; Publisher/subscriber
 ;;
@@ -217,36 +208,19 @@ publisher filters content to its subscribers through PUB-FN."
 (defun jupyter-subscribe (sub)
   "Return an I/O value subscribing SUB to the current publisher/subscriber."
   (declare (indent 0))
-  (lambda (_)
+  (jupyter-return-delayed
     (funcall jupyter-current-io (list 'subscribe sub))
     nil))
 
 (defun jupyter-publish (&rest content)
   "Return an I/O value publishing CONTENT."
   (declare (indent 0))
-  (lambda (_)
+  (jupyter-return-delayed
     (funcall jupyter-current-io content)
     nil))
 
 ;;; IO Event
 
-(defun jupyter-default-io ()
-  (jupyter-return
-    (lambda (&rest args)
-      (pcase (car args)
-        ((or 'message 'subscribe)
-         (error "Not implemented"))
-        (_ (error "Unhandled IO: %s" args))))))
-
-;; A monadic function that, given session endpoints, returns a monadic
-;; value that, when evaluated, returns an I/O stream sink that can
-;; subscribe to some other source of messages.  
-;;
-;; (funcall channel-io 'message 'start)
-;;
-;; The current I/O context when the value is evaluated should be one
-;; in which the socket endpoints of SESSION can be controlled by
-;; 'start-channel, 'stop-channel, and 'alive-p messages.
 (defun jupyter-channel-io (session)
   (let* ((channels '(:shell :iopub :stdin))
          (ch-group
@@ -390,7 +364,7 @@ See `jupyter-io' for more information on IO actions."
   (declare (indent 1))
   (setq type (intern (format ":%s-request"
                              (replace-regexp-in-string "_" "-" type))))
-  (lambda (io)
+  (jupyter-return-delayed
     (let* ((req (make-jupyter-request
                  :client jupyter-current-client
                  :type type
