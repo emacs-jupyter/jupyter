@@ -93,6 +93,12 @@ IO-VALUE and IO-FN, the I/O context is maintained."
      ,@body))
 
 (defmacro jupyter-do (&rest io-fns)
+  "Bind IO-FNS in the current I/O context.
+Bind nil to the first function in IO-FNS, then bind the result to
+the second function, and so on.  Return the result of evaluating
+the last element.  Each element of IO-FNS is an I/O monadic
+function that returns an I/O value, a closure of one argument.
+See `jupyter-return-delayed'."
   (declare (indent 0))
   ;; Thread IO through the monad, return the resulting IO-VALUE.
   (if (zerop (length io-fns))
