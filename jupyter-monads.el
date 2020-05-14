@@ -72,18 +72,16 @@ IO-VALUE and IO-FN, the I/O context is maintained."
 (defmacro jupyter-mlet* (varlist &rest body)
   "Bind the delayed values in VARLIST, evaluate BODY."
   (declare (indent 1))
-  (letrec ((val (make-symbol "val"))
+  (letrec ((value (make-symbol "value"))
            (binder
             (lambda (vars)
               (if (zerop (length vars))
-                  `(let ((res (progn ,@body)))
-                     (if res (jupyter-return-delayed res)
-                       jupyter-io-nil))
-                `(jupyter-bind-delayed (cadar vars)
-                  (lambda (,val)
-                    ,@(unless (eq (caar vars) '_)
-                        `((setq ,(caar vars) ,val)))
-                    ,(funcall binder (cdr vars))))))))
+                  `(progn ,@body)
+                (pcase-let ((`(,name ,io-value) (car vars)))
+                  `(jupyter-bind-delayed ,io-value
+                     (lambda (,value)
+                       ,@(unless (eq name '_) `((setq ,name ,value)))
+                       ,(funcall binder (cdr vars)))))))))
     `(let (,@(mapcar #'car varlist))
        ,(funcall binder varlist))))
 
@@ -92,20 +90,23 @@ IO-VALUE and IO-FN, the I/O context is maintained."
   `(let ((jupyter-current-io ,io))
      ,@body))
 
+;; do takes IO-actions and sequences them.
 (defmacro jupyter-do (&rest io-fns)
   "Bind IO-FNS in the current I/O context.
 Bind nil to the first function in IO-FNS, then bind the result to
 the second function, and so on.  Return the result of evaluating
-the last element.  Each element of IO-FNS is an I/O monadic
-function that returns an I/O value, a closure of one argument.
-See `jupyter-return-delayed'."
+the last element.  Each element of IO-FNS must return a delayed
+value."
   (declare (indent 0))
-  ;; Thread IO through the monad, return the resulting IO-VALUE.
-  (if (zerop (length io-fns))
-      'jupyter-io-nil
-    `(cl-reduce #'jupyter-bind-delayed
-                (list ,@io-fns)
-                :initial-value jupyter-io-nil)))
+  (if (zerop (length io-fns)) 'nil
+    (letrec ((after-chain
+              (lambda (io-fns)
+                (if (zerop (length io-fns))
+                    'jupyter-io-nil
+                  `(jupyter-after ,(funcall after-chain (cdr io-fns))
+                     ,(car io-fns))))))
+      `(jupyter-bind-delayed ,(funcall after-chain (reverse io-fns))
+         (lambda (value) (jupyter-return-delayed value))))))
 
 (defun jupyter-after (io-value io-fn)
   "Return an I/O action that binds IO-VALUE to IO-FN.
