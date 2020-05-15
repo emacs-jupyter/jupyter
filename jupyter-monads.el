@@ -97,9 +97,24 @@ IO-VALUE and IO-FN, the I/O context is maintained."
        ,(funcall binder varlist))))
 
 (defmacro jupyter-with-io (io &rest body)
-  (declare (indent 1))
-  `(let ((jupyter-current-io ,io))
-     ,@body))
+  "Return an I/O action that returns the result of the I/O action BODY evaluates to.
+All I/O operations are done in the context of IO."
+  (declare (indent 1) (debug (form body)))
+  `(make-jupyter-delayed
+    :value (lambda ()
+             (let ((jupyter-current-io ,io)
+                   (value nil))
+               (jupyter-mlet* ((result (progn ,@body)))
+                 (setq value result))
+               value))))
+
+(defmacro jupyter-run-with-io (io &rest body)
+  "Return an I/O action that returns the result of the I/O action BODY evaluates to.
+All I/O operations are done in the context of IO."
+  (declare (indent 1) (debug (form body)))
+  `(jupyter-mlet* ((value (jupyter-with-io ,io
+                            ,@body)))
+     value))
 
 ;; do (for the IO monad) takes IO actions, functions of one argument
 ;; that return IO values (values with type `jupyter-delayed'), and
@@ -267,19 +282,17 @@ The returned publisher filters content to its subscribers through
 PUB-FN."
   (declare (indent 1))
   (let ((sub (jupyter-publisher pub-fn)))
-    (jupyter-with-io pub
-      (jupyter-do
-        (jupyter-subscribe sub)))
+    (jupyter-run-with-io pub
+      (jupyter-subscribe sub))
     sub))
 
 (defun jupyter-consume-content (pub sub-fn)
   "Return a subscriber subscribed to PUB's content.
 The subscriber evaluates FN on the published content."
   (declare (indent 1))
-  (let ((sub (jupyter-subscriber fn)))
-    (jupyter-with-io pub
-      (jupyter-do
-        (jupyter-subscribe sub)))
+  (let ((sub (jupyter-subscriber sub-fn)))
+    (jupyter-run-with-io pub
+      (jupyter-subscribe sub))
     sub))
 
 (defun jupyter-subscribe (sub)
@@ -329,7 +342,8 @@ subscribers."
            (ch-start
             (ch)
             (unless (ch-alive-p ch)
-              (jupyter-with-io ioloop
+              ;; FIXME: Bring in ioloop?  See `jupyter-kernel-process'.
+              (jupyter-run-with-io ioloop
                 (jupyter-do
                   (jupyter-publish
                     'start-channel ch (ch-get ch 'endpoint)
@@ -349,7 +363,7 @@ subscribers."
            (ch-stop
             (ch)
             (when (ch-alive-p ch)
-              (jupyter-with-io ioloop
+              (jupyter-run-with-io ioloop
                 (jupyter-do
                   (jupyter-publish 'stop-channel ch)
                   (jupyter-return-delayed
@@ -408,14 +422,12 @@ subscribers."
                           (parent-header (plist-get msg :parent_header)))
                      (plist-put msg :msg_type msg-type)
                      (plist-put parent-header :msg_type msg-type)
-                     (jupyter-with-io msg-pub
-                       (jupyter-do
-                         (jupyter-publish channel msg)))))
+                     (jupyter-run-with-io msg-pub
+                       (jupyter-publish channel msg))))
                   (_
-                   (jupyter-with-io status-pub
-                     (jupyter-do
-                       (jupyter-publish
-                         'error (websocket-frame-opcode frame))))))))))
+                   (jupyter-run-with-io status-pub
+                     (jupyter-publish
+                       'error (websocket-frame-opcode frame)))))))))
       (list
        ;; The websocket action subscriber.
        (jupyter-subscriber
