@@ -176,46 +176,41 @@ IO-VALUES."
 ;; by one of these two, the publishing context does nothing with the
 ;; result.
 
-(defun jupyter-publish-content (val)
-  "Arrange for VAL to be sent to subscribers of a publisher."
-  (list 'content val))
+(defun jupyter-send-content (value)
+  "Arrange for VALUE to be sent to subscribers of a publisher."
+  (list 'content value))
 
-(defun jupyter-consume-content (sub-content fn)
-  "Call FN on the unboxed content in SUB-CONTENT."
-  (pcase sub-content
-    (`(content ,content) (funcall fn content))
-    (`(subscribe ,_) (error "A subscriber cannot be subscribed to"))
-    (_ (error "Unhandled content: %s" sub-content))))
+(define-error 'jupyter-subscribed-subscriber
+  "A subscriber cannot be subscribed to.")
 
 (defun jupyter-subscriber (fn)
   "Return a subscriber evaluating FN for side-effects on published content."
   (declare (indent 0))
   (lambda (sub-content)
     ;; TODO: fn -> fun
-    (jupyter-consume-content sub-content fn)
-    nil))
-
-(define-error 'jupyter-unsubscribe "A subscriber will be unsubscribed (not an error).")
-
-(defun jupyter-unsubscribe ()
-  "Cancel the current subscriber's subscription.
-If this function is called when a subscriber is being evaluated
-on the content of a publisher, cancel the subscription."
-  (signal 'jupyter-unsubscribe nil))
+    (pcase sub-content
+      (`(content ,content) (funcall fn content))
+      (`(subscribe ,_) (signal 'jupyter-subscribed-subscriber nil))
+      (_ (error "Unhandled content: %s" sub-content)))))
 
 (defsubst jupyter-subscribe-io (sub)
   (list 'subscribe sub))
 
-(defsubst jupyter-unsubscribe-io (sub)
-  (list 'unsubscribe sub))
+(defsubst jupyter-unsubscribe ()
+  (list 'unsubscribe))
 
 ;; A publisher function takes a value and returns subscriber content
 ;; that is passed to the publisher's subscribers.  Each subscriber can
 ;; unsubscribe from the publisher by calling `jupyter-unsubscribe'.
 ;;
 ;; Binding content to a subscriber always returns whether or not the
-;; subscriber should be kept or unsubscribed.
-(defun jupyter-bind-content (sub-content sub)
+;; subscriber should be kept or unsubscribed.  If a subscriber returns
+;; the result of `jupyter-unsubscribe', it's subscription is removed.
+;;
+;; NOTE: It's not sub-content here since unwrapping the value happens
+;; in the publisher to avoid having to unbox the content on every
+;; subscriber.
+(defun jupyter-deliver (content sub)
   (catch 'subscriber-signal
     (let ((signal-hook-function
            (lambda (&rest error-value)
@@ -223,30 +218,17 @@ on the content of a publisher, cancel the subscription."
              ;; `jupyter-unsubscribe' do not keep the subscriber.  For
              ;; other errors, keep it and notify that a subscriber
              ;; raised an error.
-             (if (eq (car error-value) 'jupyter-unsubscribe)
-                 (throw 'subscriber-signal
-                        (jupyter-unsubscribe-io sub))
-               (message "Jupyter: I/O subscriber error: %S"
-                        (error-message-string error-value))
-               (throw 'subscriber-signal
-                      (jupyter-subscribe-io sub))))))
-      (funcall sub sub-content)
-      (jupyter-subscribe-io sub))))
+             (message "Jupyter: I/O subscriber error: %S"
+                      (error-message-string error-value))
+             ;; Keep the subscription on error.
+             (throw 'subscriber-signal sub))))
+      (pcase (funcall sub content)
+        ('(unsubscribe) nil)
+        (_ sub)))))
 
 ;; Binding subscribers binds the content to each of the subscribers.
 ;; Before doing so, the list of remaining subscribers from a previous
 ;; binding has to be computed.
-;;
-;; TODO: The list of subscribers probably wont change that often so
-;; checking it every time content is published seems unnecessary.  How
-;; can it be removed?
-(defun jupyter-bind-subscribers (delayed-subs sub-content)
-  (mapcar (lambda (sub) (jupyter-bind-content sub-content sub))
-          (let ((remaining-subs '()))
-            (while delayed-subs
-              (pcase (pop delayed-subs)
-                (`(subscribe ,sub) (push sub remaining-subs))))
-            remaining-subs)))
 
 ;; In the context external to a publisher, i.e. in the context where a
 ;; message was published, the content is built up and then published.
@@ -254,28 +236,32 @@ on the content of a publisher, cancel the subscription."
 ;; PUB-FN before being passed along to subscribers.  So PUB-FN is a
 ;; filter of published messages.  Subscribers receive filtered
 ;; messages or no message at all depending on if a value wrapped by
-;; `jupyter-publish-content' is returned by PUB-FN or not.
+;; `jupyter-send-content' is returned by PUB-FN or not.
 (defun jupyter-publisher (&optional pub-fn)
   "Return a publisher that publishes content to subscribers with PUB-FN.
 PUB-FN is a function that takes a normal value and produces
 content to send to the publisher's subscribers.  If no content is
 sent by PUB-FN, no content is sent to subscribers.  The default
-is `jupyter-publish-content'."
+is `jupyter-publish'."
   (declare (indent 0))
-  (let ((delayed-subs '())
-        (pub-fn (or pub-fn #'jupyter-publish-content)))
+  (let ((subs '())
+        (pub-fn (or pub-fn #'jupyter-send-content)))
     ;; A publisher value is either a value representing a subscriber
     ;; or a value representing content to send to subscribers.
     (lambda (pub-value)
       (pcase pub-value
         (`(content ,content)
-         (let ((sub-content (funcall pub-fn content)))
-           (when (eq (car-safe sub-content) 'content)
-             (setq delayed-subs
-                   (jupyter-bind-subscribers delayed-subs sub-content)))))
-        (`(subscribe ,_) (cl-pushnew pub-value delayed-subs))
-        (_ (error "Unhandled publisher value: %s" pub-value)))
-      nil)))
+         (pcase (funcall pub-fn content)
+           (`(content ,content)
+            (setq subs
+                  (delq nil (mapcar
+                             (lambda (sub)
+                               (jupyter-deliver content sub))
+                             subs))))
+           ;; Only published content flows to subscribers.
+           (_ nil)))
+        (`(subscribe ,sub) (cl-pushnew sub subs) nil)
+        (_ (error "Unhandled publisher value: %s" pub-value))))))
 
 (defun jupyter-filter-content (pub pub-fn)
   "Return a publisher subscribed to PUB's content.
@@ -288,7 +274,7 @@ PUB-FN."
         (jupyter-subscribe sub)))
     sub))
 
-(defun jupyter-subscribe-publisher (pub fn)
+(defun jupyter-consume-content (pub sub-fn)
   "Return a subscriber subscribed to PUB's content.
 The subscriber evaluates FN on the published content."
   (declare (indent 1))
@@ -313,7 +299,7 @@ subscribers."
   (declare (indent 0))
   (make-jupyter-delayed
    :value (lambda ()
-            (funcall jupyter-current-io (jupyter-publish-content value))
+            (funcall jupyter-current-io (jupyter-send-content value))
             nil)))
 
 ;;; IO Event
@@ -394,7 +380,7 @@ subscribers."
                       'jupyter-hb-channel
                       :session session
                       :endpoint (plist-get endpoints :hb))))
-             (jupyter-publish-content
+             (jupyter-send-content
               (append (list :hb hb)
                       (cl-loop
                        for ch in channels
