@@ -544,7 +544,7 @@ kernel whose kernelspec if SPEC."
 After CLIENT shuts down the kernel it is connected to, it is no
 longer connected to a kernel."
   (jupyter-do (jupyter-io client)
-    (jupyter-after
+    (jupyter-then
         (jupyter-idle (jupyter-request "shutdown"))
       (lambda (req)
         ;; Ensure the Emacs representation of the kernel also knows

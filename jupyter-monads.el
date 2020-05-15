@@ -117,17 +117,15 @@ of the do block is the result of performing the last action in
 IO-VALUES."
   (declare (indent 0))
   (if (zerop (length io-values)) 'jupyter-io-nil
-    (letrec ((after-chain
+    (letrec ((then-chain
               (lambda (io-values)
                 (if (= (length io-values) 1) (car io-values)
-                  `(jupyter-after ,(funcall after-chain (cdr io-values))
+                  `(jupyter-then ,(funcall then-chain (cdr io-values))
                      ,(car io-values))))))
-      ,(funcall after-chain (reverse io-values)))))
+      (funcall then-chain (reverse io-values)))))
 
-;; TODO: then? To write: "IO-A then IO-B."  Also, I think then has
-;; been used in other programs.
-(defun jupyter-after (io-a io-b)
-  "Return an I/O action that performs IO-B after IO-A."
+(defun jupyter-then (io-a io-b)
+  "Return an I/O action that performs IO-A then IO-B."
   (declare (indent 1))
   (make-jupyter-delayed
    :value (lambda ()
@@ -459,14 +457,12 @@ TODO The form of content each sends/consumes."
 (defun jupyter-timeout (req)
   (list 'timeout req))
 
-(defun jupyter-idle-wait (req)
-  (jupyter-return-delayed
-    (if (jupyter-wait-until-idle req) req
-      (jupyter-timeout req))))
-
 (defun jupyter-idle (io-req)
-  (jupyter-after io-req #'jupyter-idle-wait))
-
+  (jupyter-then io-req
+    (lambda (req)
+      (jupyter-return-delayed
+        (if (jupyter-wait-until-idle req) req
+          (jupyter-timeout req))))))
 (defun jupyter-request (type &rest content)
   "Return an IO action that sends a `jupyter-request'.
 TYPE is the message type of the message that CONTENT, a property
