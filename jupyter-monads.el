@@ -30,14 +30,25 @@
   "Monadic Jupyter I/O"
   :group 'jupyter)
 
-(defmacro jupyter-return-delayed (&rest body)
+(cl-defstruct jupyter-delayed value)
+
+(defun jupyter-scalar-p (x)
+  (or (symbolp x) (numberp x) (stringp x)
+      (and (listp x)
+           (memq (car x) '(quote function closure)))))
+
+(defconst jupyter-io-nil (make-jupyter-delayed :value (lambda () nil)))
+
+;; TODO: Any monadic value is really a kind of delayed value in some
+;; sense, since it represents some staged computation to be evaluated
+;; later.  Change the name to `jupyter-return-io' and also change
+;; `jupyter-delayed' to `jupyter-io'.
+(defun jupyter-return-delayed (value)
   "Return an I/O value that evaluates BODY in the I/O context.
 The result of BODY is the unboxed value of the I/O value.  BODY
 is evaluated only once."
-  (declare (indent 0))
-  `(lambda () ,@body))
-
-(defconst jupyter-io-nil (jupyter-return-delayed nil))
+  (declare (indent 0) (debug (&rest form)))
+  (make-jupyter-delayed :value (lambda () value)))
 
 (defvar jupyter-current-io
   (lambda (args)
@@ -58,10 +69,10 @@ to IO-FN which returns another delayed value to be bound at some
 future time.  Before, between, and after the two calls to
 IO-VALUE and IO-FN, the I/O context is maintained."
   (declare (indent 1))
-  (pcase (funcall io-value)
-	((and req (cl-struct jupyter-request client)
-		  (let jupyter-current-client client))
-	 (funcall io-fn req))
+  (pcase (funcall (jupyter-delayed-value io-value))
+	((and req (cl-struct jupyter-request client))
+     (let ((jupyter-current-client client))
+	   (funcall io-fn req)))
 	(`(timeout ,(and req (cl-struct jupyter-request)))
 	 (error "Timed out: %s" (cl-prin1-to-string req)))
 	(`,value (funcall io-fn value))))
@@ -112,8 +123,8 @@ value."
   "Return an I/O action that binds IO-VALUE to IO-FN.
 That is, IO-VALUE is bound to IO-FN within the I/O context."
   (declare (indent 1))
-  (jupyter-return-delayed
-	(jupyter-bind-delayed io-value io-fn)))
+  (make-jupyter-delayed
+   :value (lambda () (jupyter-bind-delayed io-value io-fn))))
 
 ;;; Kernel
 ;;
