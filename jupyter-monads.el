@@ -101,13 +101,20 @@ IO-VALUE and IO-FN, the I/O context is maintained."
   `(let ((jupyter-current-io ,io))
      ,@body))
 
-;; do takes IO-actions and sequences them.
+;; do (for the IO monad) takes IO actions, functions of one argument
+;; that return IO values (values with type `jupyter-delayed'), and
+;; returns the actions composed.  In the IO monad, composition is
+;; equivalent to performing one IO action after the other.  The result
+;; of one action being bound to the next.  The initial action is bound
+;; to nil.
+;;
+;; Based on explanations at
+;; https://wiki.haskell.org/Introduction_to_Haskell_IO/Actions
 (defmacro jupyter-do (&rest io-fns)
-  "Bind IO-FNS in the current I/O context.
-Bind nil to the first function in IO-FNS, then bind the result to
-the second function, and so on.  Return the result of evaluating
-the last element.  Each element of IO-FNS must return a delayed
-value."
+  "Return an I/O action composing all IO-FNS.
+The action evaluates each of IO-FNS in sequence, binding the
+result of one action to the next.  The initial action is bound to
+nil."
   (declare (indent 0))
   (if (zerop (length io-fns)) 'nil
     (letrec ((after-chain
@@ -116,8 +123,7 @@ value."
                     'jupyter-io-nil
                   `(jupyter-after ,(funcall after-chain (cdr io-fns))
                      ,(car io-fns))))))
-      `(jupyter-bind-delayed ,(funcall after-chain (reverse io-fns))
-         (lambda (value) (jupyter-return-delayed value))))))
+      ,(funcall after-chain (reverse io-fns)))))
 
 (defun jupyter-after (io-value io-fn)
   "Return an I/O action that binds IO-VALUE to IO-FN.
