@@ -187,13 +187,58 @@ nil."
     (jupyter-consume-content sub-content fn)
     nil))
 
-(define-error 'jupyter-unsubscribed "A subscriber was unsubscribed (not an error).")
+(define-error 'jupyter-unsubscribe "A subscriber will be unsubscribed (not an error).")
 
 (defun jupyter-unsubscribe ()
   "Cancel the current subscriber's subscription.
 If this function is called when a subscriber is being evaluated
 on the content of a publisher, cancel the subscription."
-  (signal 'jupyter-unsubscribed nil))
+  (signal 'jupyter-unsubscribe nil))
+
+(defsubst jupyter-subscribe-io (sub)
+  (list 'subscribe sub))
+
+(defsubst jupyter-unsubscribe-io (sub)
+  (list 'unsubscribe sub))
+
+;; A publisher function takes a value and returns subscriber content
+;; that is passed to the publisher's subscribers.  Each subscriber can
+;; unsubscribe from the publisher by calling `jupyter-unsubscribe'.
+;;
+;; Binding content to a subscriber always returns whether or not the
+;; subscriber should be kept or unsubscribed.
+(defun jupyter-bind-content (sub-content sub)
+  (catch 'subscriber-signal
+    (let ((signal-hook-function
+           (lambda (&rest error-value)
+             ;; If the signal arose from a call to
+             ;; `jupyter-unsubscribe' do not keep the subscriber.  For
+             ;; other errors, keep it and notify that a subscriber
+             ;; raised an error.
+             (if (eq (car error-value) 'jupyter-unsubscribe)
+                 (throw 'subscriber-signal
+                        (jupyter-unsubscribe-io sub))
+               (message "Jupyter: I/O subscriber error: %S"
+                        (error-message-string error-value))
+               (throw 'subscriber-signal
+                      (jupyter-subscribe-io sub))))))
+      (funcall sub sub-content)
+      (jupyter-subscribe-io sub))))
+
+;; Binding subscribers binds the content to each of the subscribers.
+;; Before doing so, the list of remaining subscribers from a previous
+;; binding has to be computed.
+;;
+;; TODO: The list of subscribers probably wont change that often so
+;; checking it every time content is published seems unnecessary.  How
+;; can it be removed?
+(defun jupyter-bind-subscribers (delayed-subs sub-content)
+  (mapcar (lambda (sub) (jupyter-bind-content sub-content sub))
+          (let ((remaining-subs '()))
+            (while delayed-subs
+              (pcase (pop delayed-subs)
+                (`(subscribe ,sub) (push sub remaining-subs))))
+            remaining-subs)))
 
 ;; In the context external to a publisher, i.e. in the context where a
 ;; message was published, the content is built up and then published.
@@ -202,45 +247,6 @@ on the content of a publisher, cancel the subscription."
 ;; filter of published messages.  Subscribers receive filtered
 ;; messages or no message at all depending on if a value wrapped by
 ;; `jupyter-publish-content' is returned by PUB-FN or not.
-;;
-;; FIXME: This function is essentially the bind operator of
-;; subscribers to a value, refactor it to make that more apparent,
-;; for example by bind-content 
-
-;; Since subscribers are content consumers (the subscriber functions
-;; being evaluated on content only for their side effects), 
-(defun jupyter-send-subscribed (pub-subs pub-fn value-or-sub)
-  ;; The missing default case means if the value returned by the
-  ;; publisher function is not within the publisher context (doesn't
-  ;; match any of the cases), the chain of subscriber calls does not
-  ;; continue for this publisher.
-  (pcase (if (eq (car-safe value-or-sub) 'subscribe)
-             ;; Don't call PUB-FN on a subscriber.
-             value-or-sub
-           (funcall pub-fn value-or-sub))
-    (`(content ,content)
-     (let ((remaining-subs '()))
-       ;; PUB-FN returned publishable content. Evaluate the
-       ;; subscribers on it and return the remaining ones.
-       (while pub-subs
-         (catch 'subscriber-signal
-           (let ((signal-hook-function
-                  (lambda (&rest error-value)
-                    ;; If the signal arose from a call to
-                    ;; `jupyter-unsubscribe' do not keep the
-                    ;; subscriber.  For other errors, keep it and
-                    ;; notify that a subscriber raised an error.
-                    (unless (eq (car error-value) 'jupyter-unsubscribed)
-                      (push sub remaining-subs)
-                      (message "Jupyter: I/O subscriber error: %S"
-                               (error-message-string error-value)))
-                    (throw 'subscriber-signal t)))
-                 (sub (pop pub-subs)))
-             (funcall sub content)
-             (push sub remaining-subs))))
-       remaining-subs))
-    (`(subscribe ,sub) (cl-pushnew sub pub-subs))))
-
 (defun jupyter-publisher (&optional pub-fn)
   "Return a publisher that publishes content to subscribers with PUB-FN.
 PUB-FN is a function that takes a normal value and produces
@@ -248,10 +254,20 @@ content to send to the publisher's subscribers.  If no content is
 sent by PUB-FN, no content is sent to subscribers.  The default
 is `jupyter-publish-content'."
   (declare (indent 0))
-  (let ((subs '())
+  (let ((delayed-subs '())
         (pub-fn (or pub-fn #'jupyter-publish-content)))
-    (lambda (value-or-sub)
-      (setq subs (jupyter-send-subscribed subs pub-fn value-or-sub)))))
+    ;; A publisher value is either a value representing a subscriber
+    ;; or a value representing content to send to subscribers.
+    (lambda (pub-value)
+      (pcase pub-value
+        (`(content ,content)
+         (let ((sub-content (funcall pub-fn content)))
+           (when (eq (car-safe sub-content) 'content)
+             (setq delayed-subs
+                   (jupyter-bind-subscribers delayed-subs sub-content)))))
+        (`(subscribe ,_) (cl-pushnew pub-value delayed-subs))
+        (_ (error "Unhandled publisher value: %s" pub-value)))
+      nil)))
 
 (defun jupyter-filter-content (pub pub-fn)
   "Return a publisher subscribed to PUB's content.
