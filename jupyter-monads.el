@@ -145,21 +145,23 @@ IO-VALUES."
 ;; (jupyter-launch :kernel "python")
 ;; (jupyter-launch :spec "python")
 (defun jupyter-kernel-launch (&rest args)
-  (jupyter-return-delayed
-    (let ((kernel (apply #'jupyter-kernel args)))
-      (jupyter-launch kernel)
-      kernel)))
+  (make-jupyter-delayed
+   :value (lambda ()
+            (let ((kernel (apply #'jupyter-kernel args)))
+              (jupyter-launch kernel)
+              kernel))))
 
 (defun jupyter-kernel-interrupt (kernel)
-  (jupyter-return-delayed
-    (jupyter-interrupt kernel)))
+  (make-jupyter-delayed
+   :value (lambda ()
+            (jupyter-interrupt kernel)
+            kernel)))
 
-;; TODO: Have this notify the I/O context by returning something like
-;;
-;;     ('shutdown kernel).
 (defun jupyter-kernel-shutdown (kernel)
-  (jupyter-return-delayed
-    (jupyter-shutdown kernel)))
+  (make-jupyter-delayed
+   :value (lambda ()
+            (jupyter-shutdown kernel)
+            kernel)))
 
 ;;; Publisher/subscriber
 ;;
