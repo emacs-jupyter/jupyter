@@ -131,8 +131,11 @@ IO-VALUES."
   (declare (indent 1))
   (make-jupyter-delayed
    :value (lambda ()
-            (funcall io-a)
-            (funcall io-b))))
+            (let ((value nil))
+              (jupyter-mlet* ((_ io-a)
+                              (result io-b))
+                (setq value result))
+              value))))
 
 ;;; Kernel
 ;;
