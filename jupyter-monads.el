@@ -110,26 +110,29 @@ IO-VALUE and IO-FN, the I/O context is maintained."
 ;;
 ;; Based on explanations at
 ;; https://wiki.haskell.org/Introduction_to_Haskell_IO/Actions
-(defmacro jupyter-do (&rest io-fns)
-  "Return an I/O action composing all IO-FNS.
-The action evaluates each of IO-FNS in sequence, binding the
-result of one action to the next.  The initial action is bound to
-nil."
+(defmacro jupyter-do (&rest io-values)
+  "Return an I/O action composing all I/O actions in IO-VALUES.
+The action evaluates each of IO-VALUES in sequence.  The result
+of the do block is the result of performing the last action in
+IO-VALUES."
   (declare (indent 0))
-  (if (zerop (length io-fns)) 'nil
+  (if (zerop (length io-values)) 'jupyter-io-nil
     (letrec ((after-chain
-              (lambda (io-fns)
-                (if (zerop (length io-fns))
-                    'jupyter-io-nil
-                  `(jupyter-after ,(funcall after-chain (cdr io-fns))
-                     ,(car io-fns))))))
-      ,(funcall after-chain (reverse io-fns)))))
+              (lambda (io-values)
+                (if (= (length io-values) 1) (car io-values)
+                  `(jupyter-after ,(funcall after-chain (cdr io-values))
+                     ,(car io-values))))))
+      ,(funcall after-chain (reverse io-values)))))
 
-(defun jupyter-after (io-value io-fn)
-  "Return an I/O value that binds IO-VALUE to IO-FN."
+;; TODO: then? To write: "IO-A then IO-B."  Also, I think then has
+;; been used in other programs.
+(defun jupyter-after (io-a io-b)
+  "Return an I/O action that performs IO-B after IO-A."
   (declare (indent 1))
   (make-jupyter-delayed
-   :value (lambda () (jupyter-bind-delayed io-value io-fn))))
+   :value (lambda ()
+            (funcall io-a)
+            (funcall io-b))))
 
 ;;; Kernel
 ;;
