@@ -126,8 +126,7 @@ nil."
       ,(funcall after-chain (reverse io-fns)))))
 
 (defun jupyter-after (io-value io-fn)
-  "Return an I/O action that binds IO-VALUE to IO-FN.
-That is, IO-VALUE is bound to IO-FN within the I/O context."
+  "Return an I/O value that binds IO-VALUE to IO-FN."
   (declare (indent 1))
   (make-jupyter-delayed
    :value (lambda () (jupyter-bind-delayed io-value io-fn))))
@@ -173,10 +172,6 @@ That is, IO-VALUE is bound to IO-FN within the I/O context."
   "Arrange for VAL to be sent to subscribers of a publisher."
   (list 'content val))
 
-(defun jupyter-new-subscription (sub)
-  "Arrange for SUB to be a subscriber of a publisher."
-  (list 'subscribe sub))
-
 (defun jupyter-consume-content (sub-content fn)
   "Call FN on the unboxed content in SUB-CONTENT."
   (pcase sub-content
@@ -189,7 +184,8 @@ That is, IO-VALUE is bound to IO-FN within the I/O context."
   (declare (indent 0))
   (lambda (sub-content)
     ;; TODO: fn -> fun
-    (jupyter-consume-content sub-content fn)))
+    (jupyter-consume-content sub-content fn)
+    nil))
 
 (define-error 'jupyter-unsubscribed "A subscriber was unsubscribed (not an error).")
 
@@ -268,29 +264,30 @@ PUB-FN."
         (jupyter-subscribe sub)))
     sub))
 
-(defun jupyter-subscribe-publisher (pub sub-fn)
+(defun jupyter-subscribe-publisher (pub fn)
   "Return a subscriber subscribed to PUB's content.
-The subscriber consumes published content with SUB-FN."
+The subscriber evaluates FN on the published content."
   (declare (indent 1))
-  (let ((sub (jupyter-subscriber sub-fn)))
+  (let ((sub (jupyter-subscriber fn)))
     (jupyter-with-io pub
       (jupyter-do
         (jupyter-subscribe sub)))
     sub))
 
 (defun jupyter-subscribe (sub)
-  "Return an I/O function subscribing SUB to the current publisher/subscriber."
+  "Return an I/O function subscribing SUB to the current publisher."
   (declare (indent 0))
   (lambda (_)
-    (funcall jupyter-current-io (list 'subscribe sub))
+    (funcall jupyter-current-io (jupyter-subscribe-io sub))
     jupyter-io-nil))
 
-(defun jupyter-publish (content)
-  "Return an I/O function publishing CONTENT."
+(defun jupyter-publish (&rest value)
+  "Return an I/O function publishing VALUE as content.
+VALUE is passed as content along to the current I/O publisher's
+subscribers."
   (declare (indent 0))
   (lambda (_)
-    ;; Take CONTENT into the publisher context.
-    (funcall jupyter-current-io (jupyter-publish-content content))
+    (funcall jupyter-current-io (jupyter-publish-content value))
     jupyter-io-nil))
 
 ;;; IO Event
@@ -371,7 +368,7 @@ The subscriber consumes published content with SUB-FN."
                       'jupyter-hb-channel
                       :session session
                       :endpoint (plist-get endpoints :hb))))
-             (jupyter-send-content
+             (jupyter-publish-content
               (append (list :hb hb)
                       (cl-loop
                        for ch in channels
@@ -380,8 +377,8 @@ The subscriber consumes published content with SUB-FN."
 ;;; Websocket IO
 
 (defun jupyter--websocket-io (kernel)
-  (let ((msg-pub (jupyter-publisher #'jupyter-send-content))
-        (status-pub (jupyter-publisher #'jupyter-send-content)))
+  (let ((msg-pub (jupyter-publisher))
+        (status-pub (jupyter-publisher)))
     (pcase-let*
         (((cl-struct jupyter-server-kernel server id) kernel)
          (ws (jupyter-api-kernel-websocket
@@ -403,7 +400,7 @@ The subscriber consumes published content with SUB-FN."
                      (plist-put parent-header :msg_type msg-type)
                      (jupyter-with-io msg-pub
                        (jupyter-do
-                         (jupyter-publish (list channel msg))))))
+                         (jupyter-publish channel msg)))))
                   (_
                    (jupyter-with-io status-pub
                      (jupyter-do
