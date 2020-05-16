@@ -112,12 +112,13 @@ BODY evaluates to."
                value))))
 
 (defmacro jupyter-run-with-io (io &rest body)
-  "Return an I/O action that returns the result of the I/O action BODY evaluates to.
-All I/O operations are done in the context of IO."
+  "Return the result of evaluating the I/O value BODY evaluates to.
+The result is return as an I/O value.  All I/O operations are
+done in the context of IO."
   (declare (indent 1) (debug (form body)))
-  `(jupyter-mlet* ((value (jupyter-with-io ,io
-                            ,@body)))
-     value))
+  `(jupyter-mlet* ((result (jupyter-with-io ,io
+                             ,@body)))
+     result))
 
 ;; do (for the IO monad) takes IO actions, functions of one argument
 ;; that return IO values (values with type `jupyter-delayed'), and
