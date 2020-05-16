@@ -87,7 +87,8 @@ IO-VALUE and IO-FN, the I/O context is maintained."
            (binder
             (lambda (vars)
               (if (zerop (length vars))
-                  `(progn ,@body)
+                  (if (zerop (length body)) 'jupyter-io-nil
+                    `(jupyter-return-delayed (progn ,@body)))
                 (pcase-let ((`(,name ,io-value) (car vars)))
                   `(jupyter-bind-delayed ,io-value
                      (lambda (,value)
