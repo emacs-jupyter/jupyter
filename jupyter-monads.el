@@ -143,7 +143,8 @@ returned action is the result of the last action in IO-ACTIONS."
       (funcall before (reverse io-actions)))))
 
 (defun jupyter-then (io-a io-b)
-  "Return an I/O action that performs IO-A then IO-B."
+  "Return an I/O action that performs IO-A then IO-B.
+The result of the returned action is the result of IO-B."
   (declare (indent 1))
   (make-jupyter-delayed
    :value (lambda ()
@@ -204,6 +205,10 @@ returned action is the result of the last action in IO-ACTIONS."
   (list 'content value))
 
 (defsubst jupyter-unsubscribe ()
+  "Arrange for the current subscription to be canceled.
+A subscriber (or publisher with a subscription) can return the
+result of this function to cancel its subscription with the
+publisher providing content."
   (list 'unsubscribe))
 
 ;; I/O actions return I/O values (values wrapped by
@@ -238,22 +243,45 @@ or `jupyter-publisher') can return the result of evaluating
 ;; message was published, the content is built up and then published.
 ;; In the context of a publisher, that content is filtered through
 ;; PUB-FN before being passed along to subscribers.  So PUB-FN is a
-;; filter of published messages.  Subscribers receive filtered
-;; messages or no message at all depending on if a value wrapped by
+;; filter of content.  Subscribers receive filtered content or no
+;; content at all depending on if a value wrapped by
 ;; `jupyter-send-content' is returned by PUB-FN or not.
 (defun jupyter-publisher (&optional pub-fn)
-  "Return a publisher that publishes content to subscribers with PUB-FN.
+  "Return a publisher that publishes content to subscribers.
 PUB-FN is a function that takes a normal value and produces
-content to send to the publisher's subscribers.  If no content is
+content to send to the publisher's subscribers (by returning the
+result of `jupyter-send-content' on a value).  If no content is
 sent by PUB-FN, no content is sent to subscribers.  The default
-is `jupyter-publish'."
+for PUB-FN is `jupyter-send-content'.
+
+Ex. Publish the value 1 regardless of what is given to PUB-FN.
+
+    (jupyter-publisher
+      (lambda (_)
+        (jupyter-send-content 1)))
+
+Ex. Publish 'app if 'app is given to a publisher, nothing is sent
+    to subscribers otherwise.  In this case, a publisher is a
+    filter of the value given to it for publishing.
+
+    (jupyter-publisher
+      (lambda (value)
+        (if (eq value 'app)
+          (jupyter-send-content value))))"
   (declare (indent 0))
+  ;; Publishing functions take normal values and return content to
+  ;; send.  Publishers publish that content to subscribers.  A
+  ;; publisher's context is its subscribers, the list is maintained
+  ;; outside of the normal, functional, context.
   (let ((subs '())
         (pub-fn (or pub-fn #'jupyter-send-content)))
     ;; A publisher value is either a value representing a subscriber
     ;; or a value representing content to send to subscribers.
     (lambda (pub-value)
       (pcase pub-value
+        ;; Unbox the content given to a publisher.  If the result of
+        ;; evaluating PUB-FN on the content is also content, deliver
+        ;; it to the subscribers.
         (`(content ,content)
          (let ((sub-content (funcall pub-fn content)))
            ;; Only published content is sent to subscribers.  So
@@ -267,6 +295,11 @@ is `jupyter-publish'."
         (`(subscribe ,sub) (cl-pushnew sub subs))
         (_ (error "Unhandled publisher value: %s" pub-value)))
       nil)))
+;; In the publisher context, subscriber content is the monadic value
+;; and the monadic functions are those functions that return content
+;; to send to subscribers.  A publishing function like PUB-FN is
+;; actually not monadic since it does not always return content
+;; (because content can be filtered).
 (defun jupyter-filter-content (pub pub-fn)
   "Return a publisher subscribed to PUB's content.
 The returned publisher filters content to its subscribers through
@@ -279,7 +312,7 @@ PUB-FN."
 
 (defun jupyter-consume-content (pub sub-fn)
   "Return a subscriber subscribed to PUB's content.
-The subscriber evaluates FN on the published content."
+The subscriber evaluates SUB-FN on the published content."
   (declare (indent 1))
   (let ((sub (jupyter-subscriber sub-fn)))
     (jupyter-run-with-io pub
