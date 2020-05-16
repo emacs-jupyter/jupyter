@@ -51,11 +51,8 @@ is evaluated only once."
   (make-jupyter-delayed :value (lambda () value)))
 
 (defvar jupyter-current-io
-  (lambda (args)
-    (pcase args
-      (`(,(or 'message 'subscribe) . ,_)
-       (error "Not implemented"))
-      (_ (error "Unhandled IO: %s" args)))))
+  (lambda (content)
+    (error "Unhandled I/O: %s" content)))
 
 ;; TODO: How to incorporate `make-thread', `thread-join'?
 (defun jupyter-bind-delayed (io-value io-fn)
