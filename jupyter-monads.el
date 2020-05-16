@@ -129,19 +129,18 @@ done in the context of IO."
 ;;
 ;; Based on explanations at
 ;; https://wiki.haskell.org/Introduction_to_Haskell_IO/Actions
-(defmacro jupyter-do (&rest io-values)
-  "Return an I/O action composing all I/O actions in IO-VALUES.
-The action evaluates each of IO-VALUES in sequence.  The result
-of the do block is the result of performing the last action in
-IO-VALUES."
+(defmacro jupyter-do (&rest io-actions)
+  "Return an I/O action that performs all actions in IO-ACTIONS.
+The actions are evaluated in the order given.  The result of the
+returned action is the result of the last action in IO-ACTIONS."
   (declare (indent 0))
-  (if (zerop (length io-values)) 'jupyter-io-nil
-    (letrec ((then-chain
-              (lambda (io-values)
-                (if (= (length io-values) 1) (car io-values)
-                  `(jupyter-then ,(funcall then-chain (cdr io-values))
-                     ,(car io-values))))))
-      (funcall then-chain (reverse io-values)))))
+  (if (zerop (length io-actions)) 'jupyter-io-nil
+    (letrec ((before
+              (lambda (io-actions)
+                (if (= (length io-actions) 1) (car io-actions)
+                  `(jupyter-then ,(funcall before (cdr io-actions))
+                     ,(car io-actions))))))
+      (funcall before (reverse io-actions)))))
 
 (defun jupyter-then (io-a io-b)
   "Return an I/O action that performs IO-A then IO-B."
