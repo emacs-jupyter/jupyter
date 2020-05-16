@@ -307,10 +307,10 @@ The subscriber evaluates FN on the published content."
             (funcall jupyter-current-io (jupyter-subscribe-io sub))
             nil)))
 
-(defun jupyter-publish (&rest value)
-  "Return an I/O function publishing VALUE as content.
-VALUE is passed as content along to the current I/O publisher's
-subscribers."
+(defun jupyter-publish (value)
+  "Return an I/O action that publishes VALUE as content.
+The content will be sent to the subscribers of the publisher in
+whatever I/O context the action is evaluated in."
   (declare (indent 0))
   (make-jupyter-delayed
    :value (lambda ()
