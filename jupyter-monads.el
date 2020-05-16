@@ -300,7 +300,27 @@ The subscriber evaluates FN on the published content."
     sub))
 
 (defun jupyter-subscribe (sub)
-  "Return an I/O function subscribing SUB to the current publisher."
+  "Return an I/O action that subscribes SUB to published content.
+If a subscriber (or a publisher with a subscription to another
+publisher) returns the result of `jupyter-unsubscribe', its
+subscription is canceled.
+
+Ex. Subscribe to a publisher and unsubscribe after receiving two
+    messages.
+
+    (let* ((msgs '())
+           (pub (jupyter-publisher))
+           (sub (jupyter-subscriber
+                  (lambda (n)
+                    (if (> n 2) (jupyter-unsubscribe)
+                      (push n msgs))))))
+      (jupyter-run-with-io pub
+        (jupyter-subscribe sub))
+      (cl-loop
+       for x in '(1 2 3)
+       do (jupyter-run-with-io pub
+            (jupyter-publish x)))
+      (reverse msgs)) ; => '(1 2)"
   (declare (indent 0))
   (make-jupyter-delayed
    :value (lambda ()
