@@ -255,18 +255,18 @@ is `jupyter-publish'."
     (lambda (pub-value)
       (pcase pub-value
         (`(content ,content)
-         (pcase (funcall pub-fn content)
-           (`(content ,content)
-            (setq subs
-                  (delq nil (mapcar
-                             (lambda (sub)
-                               (jupyter-deliver content sub))
-                             subs))))
-           ;; Only published content flows to subscribers.
-           (_ nil)))
-        (`(subscribe ,sub) (cl-pushnew sub subs) nil)
-        (_ (error "Unhandled publisher value: %s" pub-value))))))
-
+         (let ((sub-content (funcall pub-fn content)))
+           ;; Only published content is sent to subscribers.  So
+           ;; SUB-CONTENT may be content.
+           (when (eq (car-safe sub-content) 'content)
+             (setq subs
+                   (delq nil (mapcar
+                              (lambda (sub)
+                                (jupyter--deliver sub-content sub))
+                              subs))))))
+        (`(subscribe ,sub) (cl-pushnew sub subs))
+        (_ (error "Unhandled publisher value: %s" pub-value)))
+      nil)))
 (defun jupyter-filter-content (pub pub-fn)
   "Return a publisher subscribed to PUB's content.
 The returned publisher filters content to its subscribers through
