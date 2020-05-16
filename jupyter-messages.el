@@ -424,7 +424,7 @@ and `:msg_type'."
   (cl-check-type code string)
   (cl-check-type pos integer)
   (jupyter-request
-   :type :complete-requesr
+   :type :complete-request
    :content (list :code code :cursor_pos pos)))
 
 (cl-defun jupyter-history-request (&key
