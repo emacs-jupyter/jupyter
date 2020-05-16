@@ -77,11 +77,9 @@ IO-VALUE and IO-FN, the I/O context is maintained."
 	 (error "Timed out: %s" (cl-prin1-to-string req)))
 	(`,value (funcall io-fn value))))
 
-;; mlet* is like do, but for varlist. The IO values in varlist are
-;; bound, just like do, and then body is evaluated in the functional
-;; context.
 (defmacro jupyter-mlet* (varlist &rest body)
-  "Bind the delayed values in VARLIST, evaluate BODY."
+  "Bind the I/O values in VARLIST, evaluate BODY.
+Return an I/O value containing the result of evaluating BODY."
   (declare (indent 1))
   (letrec ((value (make-symbol "value"))
            (binder
@@ -92,9 +90,12 @@ IO-VALUE and IO-FN, the I/O context is maintained."
                 (pcase-let ((`(,name ,io-value) (car vars)))
                   `(jupyter-bind-delayed ,io-value
                      (lambda (,value)
-                       ,@(unless (eq name '_) `((setq ,name ,value)))
+                       ,(if (eq name '_)
+                            ;; FIXME: Avoid this.
+                            `(ignore ,value)
+                          `(setq ,name ,value))
                        ,(funcall binder (cdr vars)))))))))
-    `(let (,@(mapcar #'car varlist))
+    `(let (,@(delq '_ (mapcar #'car varlist)))
        ,(funcall binder varlist))))
 
 (defmacro jupyter-with-io (io &rest body)
