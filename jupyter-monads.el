@@ -187,16 +187,6 @@ IO-VALUES."
 ;;
 ;; TODO: Verify monadic laws.
 
-;; The following two functions are how publishers tell the publishing
-;; context whether or not to send a value to subscribers or subscribe
-;; a new subscriber.  If a publisher does not return a value wrapped
-;; by one of these two, the publishing context does nothing with the
-;; result.
-
-(defun jupyter-send-content (value)
-  "Arrange for VALUE to be sent to subscribers of a publisher."
-  (list 'content value))
-
 (define-error 'jupyter-subscribed-subscriber
   "A subscriber cannot be subscribed to.")
 
@@ -210,8 +200,9 @@ IO-VALUES."
       (`(subscribe ,_) (signal 'jupyter-subscribed-subscriber nil))
       (_ (error "Unhandled content: %s" sub-content)))))
 
-(defsubst jupyter-subscribe-io (sub)
-  (list 'subscribe sub))
+(defun jupyter-send-content (value)
+  "Arrange for VALUE to be sent to subscribers of a publisher."
+  (list 'content value))
 
 (defsubst jupyter-unsubscribe ()
   (list 'unsubscribe))
@@ -299,6 +290,9 @@ The subscriber evaluates FN on the published content."
       (jupyter-subscribe sub))
     sub))
 
+(defsubst jupyter--subscribe (sub)
+  (list 'subscribe sub))
+
 (defun jupyter-subscribe (sub)
   "Return an I/O action that subscribes SUB to published content.
 If a subscriber (or a publisher with a subscription to another
@@ -324,7 +318,7 @@ Ex. Subscribe to a publisher and unsubscribe after receiving two
   (declare (indent 0))
   (make-jupyter-delayed
    :value (lambda ()
-            (funcall jupyter-current-io (jupyter-subscribe-io sub))
+            (funcall jupyter-current-io (jupyter--subscribe sub))
             nil)))
 
 (defun jupyter-publish (value)
