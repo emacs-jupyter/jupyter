@@ -99,8 +99,9 @@ Return an I/O value containing the result of evaluating BODY."
        ,(funcall binder varlist))))
 
 (defmacro jupyter-with-io (io &rest body)
-  "Return an I/O action that returns the result of the I/O action BODY evaluates to.
-All I/O operations are done in the context of IO."
+  "Return an I/O action evaluating BODY in IO's I/O context.
+The result of the returned action is the result of the I/O action
+BODY evaluates to."
   (declare (indent 1) (debug (form body)))
   `(make-jupyter-delayed
     :value (lambda ()
