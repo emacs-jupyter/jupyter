@@ -207,36 +207,33 @@ IO-VALUES."
 (defsubst jupyter-unsubscribe ()
   (list 'unsubscribe))
 
-;; A publisher function takes a value and returns subscriber content
-;; that is passed to the publisher's subscribers.  Each subscriber can
-;; unsubscribe from the publisher by calling `jupyter-unsubscribe'.
-;;
-;; Binding content to a subscriber always returns whether or not the
-;; subscriber should be kept or unsubscribed.  If a subscriber returns
-;; the result of `jupyter-unsubscribe', it's subscription is removed.
-;;
-;; NOTE: It's not sub-content here since unwrapping the value happens
-;; in the publisher to avoid having to unbox the content on every
-;; subscriber.
-(defun jupyter-deliver (content sub)
-  (catch 'subscriber-signal
-    (let ((signal-hook-function
-           (lambda (&rest error-value)
-             ;; If the signal arose from a call to
-             ;; `jupyter-unsubscribe' do not keep the subscriber.  For
-             ;; other errors, keep it and notify that a subscriber
-             ;; raised an error.
-             (message "Jupyter: I/O subscriber error: %S"
-                      (error-message-string error-value))
-             ;; Keep the subscription on error.
-             (throw 'subscriber-signal sub))))
-      (pcase (funcall sub content)
-        ('(unsubscribe) nil)
-        (_ sub)))))
+;; I/O actions return I/O values (values wrapped by
+;; `jupyter-return-delayed').  Subscribers return the status of their
+;; subscription.  Publishers return content for their subscribers.
+;; Monadic functions are those functions that take a value and return
+;; boxed values that are interpreted by the associated context.
 
-;; Binding subscribers binds the content to each of the subscribers.
-;; Before doing so, the list of remaining subscribers from a previous
-;; binding has to be computed.
+;; Deliver the content to the subscriber, subscribers consume content
+;; without returning any new content to the publisher.
+(defun jupyter--deliver (sub-content sub)
+  "Bind SUB-CONTENT to SUB, a (re-)publisher or subscriber.
+Binding content to a subscriber returns the subscriber if the
+subscription should be kept and nil if it should not.
+
+A subscriber function (a function passed to `jupyter-subscriber'
+or `jupyter-publisher') can return the result of evaluating
+`jupyter-unsubscribe' to cancel a subscription."
+  (condition-case error
+      ;; This recursion may be a problem if there is a lot of content
+      ;; filtering (by subscribing publishers to publishers).
+      (pcase (funcall sub sub-content)
+        ('(unsubscribe) nil)
+        (_ sub))
+    (error
+     (message "Jupyter: I/O subscriber error: %S"
+              (error-message-string error))
+     ;; Keep the subscription on error.
+     sub)))
 
 ;; In the context external to a publisher, i.e. in the context where a
 ;; message was published, the content is built up and then published.
