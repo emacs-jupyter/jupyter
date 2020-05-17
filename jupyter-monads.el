@@ -76,14 +76,15 @@ IO-VALUE and IO-FN, the I/O context is maintained."
 
 (defmacro jupyter-mlet* (varlist &rest body)
   "Bind the I/O values in VARLIST, evaluate BODY.
-Return an I/O value containing the result of evaluating BODY."
-  (declare (indent 1))
+Return the result of evaluating BODY, which should be another I/O
+value."
+  (declare (indent 1) ((&rest (symbolp form)) body))
   (letrec ((value (make-symbol "value"))
            (binder
             (lambda (vars)
               (if (zerop (length vars))
                   (if (zerop (length body)) 'jupyter-io-nil
-                    `(jupyter-return-delayed (progn ,@body)))
+                    `(progn ,@body))
                 (pcase-let ((`(,name ,io-value) (car vars)))
                   `(jupyter-bind-delayed ,io-value
                      (lambda (,value)
@@ -102,11 +103,9 @@ BODY evaluates to."
   (declare (indent 1) (debug (form body)))
   `(make-jupyter-delayed
     :value (lambda ()
-             (let ((jupyter-current-io ,io)
-                   (value nil))
+             (let ((jupyter-current-io ,io))
                (jupyter-mlet* ((result (progn ,@body)))
-                 (setq value result))
-               value))))
+                 result)))))
 
 (defmacro jupyter-run-with-io (io &rest body)
   "Return the result of evaluating the I/O value BODY evaluates to.
@@ -145,11 +144,9 @@ The result of the returned action is the result of IO-B."
   (declare (indent 1))
   (make-jupyter-delayed
    :value (lambda ()
-            (let ((value nil))
-              (jupyter-mlet* ((_ io-a)
-                              (result io-b))
-                (setq value result))
-              value))))
+            (jupyter-mlet* ((_ io-a)
+                            (result io-b))
+              result))))
 
 ;;; Kernel
 ;;
