@@ -22,7 +22,22 @@
 
 ;;; Commentary:
 
-;; 
+;; TODO: Add a state monad to log state changes of a kernel, client, etc.
+;;
+;; TODO: Generalize `jupyter-with-io' and `jupyter-do' for any monad,
+;; not just the I/O one.
+;;
+;; TODO: Rename delayed -> io since any monadic value really
+;; represents some kind of delayed value.
+;;
+;; TODO: Implement seq interface?
+
+;; The context of an I/O action is the current I/O publisher.
+;;
+;; The context of a publisher is its list of subscribers.
+;;
+;; The context of a subscriber is whether or not it remains subscribed
+;; to a publisher.
 
 ;;; Code:
 
@@ -54,7 +69,6 @@ is evaluated only once."
   (lambda (content)
     (error "Unhandled I/O: %s" content)))
 
-;; TODO: How to incorporate `make-thread', `thread-join'?
 (defun jupyter-bind-delayed (io-value io-fn)
   "Bind IO-VALUE to IO-FN.
 Binding causes the evaluation of a delayed value, IO-VALUE (a
@@ -68,6 +82,9 @@ IO-VALUE and IO-FN, the I/O context is maintained."
   (declare (indent 1))
   (pcase (funcall (jupyter-delayed-value io-value))
 	((and req (cl-struct jupyter-request client))
+     ;; TODO: If the delayed value is bound and its a request, doesn't
+     ;; that mean the request was sent and so the client will already
+     ;; be `jupyter-current-client'.
      (let ((jupyter-current-client client))
 	   (funcall io-fn req)))
 	(`(timeout ,(and req (cl-struct jupyter-request)))
@@ -116,12 +133,11 @@ done in the context of IO."
                              ,@body)))
      result))
 
-;; do (for the IO monad) takes IO actions, functions of one argument
-;; that return IO values (values with type `jupyter-delayed'), and
-;; returns the actions composed.  In the IO monad, composition is
-;; equivalent to performing one IO action after the other.  The result
-;; of one action being bound to the next.  The initial action is bound
-;; to nil.
+;; do (for the IO monad) takes IO actions (IO values), which are
+;; closures of zero argument wrapped in the `jupyter-delay' type, and
+;; evaluates them in sequence one after the other.  In the IO monad,
+;; composition is equivalent to one IO action being performed after
+;; the other.
 ;;
 ;; Based on explanations at
 ;; https://wiki.haskell.org/Introduction_to_Haskell_IO/Actions
@@ -281,6 +297,9 @@ Ex. Publish 'app if 'app is given to a publisher, nothing is sent
 ;; to send to subscribers.  A publishing function like PUB-FN is
 ;; actually not monadic since it does not always return content
 ;; (because content can be filtered).
+;;
+;; The result of filtering a publisher's content is a publisher that
+;; publishes filtered content.
 (defun jupyter-filter-content (pub pub-fn)
   "Return a publisher subscribed to PUB's content.
 The returned publisher filters content to its subscribers through
