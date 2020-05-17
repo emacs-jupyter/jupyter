@@ -62,7 +62,7 @@
   "Return an I/O value that evaluates BODY in the I/O context.
 The result of BODY is the unboxed value of the I/O value.  BODY
 is evaluated only once."
-  (declare (indent 0) (debug (&rest form)))
+  (declare (indent 0))
   (make-jupyter-delayed :value (lambda () value)))
 
 (defvar jupyter-current-io
