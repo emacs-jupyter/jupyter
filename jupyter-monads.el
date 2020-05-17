@@ -551,38 +551,85 @@ See `jupyter-io' for more information on IO actions."
   (declare (indent 1))
   (setq type (intern (format ":%s-request"
                              (replace-regexp-in-string "_" "-" type))))
-  (jupyter-return-delayed
-    (let* ((req (make-jupyter-request
-                 ;; TODO: `jupyter-with-client' similar to
-                 ;; `jupyter-with-io' but on a functional client.
-                 :client jupyter-current-client
-                 :type type
-                 :content content))
-           ;; TODO: Figure out if the subscribers are garbage
-           ;; collected when the subscription is cancelled.
-           (req-msgs-pub
-            (jupyter-publisher
-              (lambda (event)
-                (when (jupyter-request-idle-p req)
-                  (jupyter-cancel-subscription))
-                (pcase (car event)
-                  ((and 'message (let `(,channel . ,msg) (cdr event))
+  ;; FIXME: Implement `jupyter-new-request-publisher'
+  ;;
+  ;; Build up a request and return an I/O action that sends it.  After
+  ;; sending, the kernel client in the I/O context
+  (let* ((msgs '())
+         ;; Messages may still be arriving for the most recent
+         ;; request, e.g. stdout message of an already idle request.
+         ;; This variable ensures requests are not unsubscribed from a
+         ;; kernel's message too early by only unsubscribing when they
+         ;; aren't the most recent request.
+         (most-recent t)
+         (ch (if (memq type '(:input-reply :input-request))
+                 :stdin
+               :shell))
+         (req-complete-pub (jupyter-publisher))
+         (req (make-jupyter-request
+               ;; TODO: `jupyter-with-client' similar to
+               ;; `jupyter-with-io' but on a functional client.
+               :client jupyter-current-client
+               ;; The handler methods of client that are suppressed
+               ;; from being evaluated.
+               :inhibited-handlers jupyter-inhibit-handlers
+               :type type
+               :content content))
+         (id (jupyter-request-id req))
+         (req-msgs-pub
+          (jupyter-publisher
+            (lambda (value)
+              (cond
+               ((and (not most-recent) (jupyter-request-idle-p req))
+                (jupyter-run-with-io req-complete-pub
+                  (jupyter-publish req))
+                (jupyter-unsubscribe))
+               (t
+                (pcase value
+                  ((and `(,channel . ,msg)
                         ;; TODO: `jupyter-message-parent-id' -> `jupyter-parent-id'
                         ;; and the like.
                         (guard (string= id (jupyter-message-parent-id msg))))
-                   (cl-callf nconc (jupyter-request-messages req)
-                     (list msg))
-                   (when (jupyter--message-completes-request-p msg)
+                   (push msg msgs)
+                   (when (or (jupyter-message-status-idle-p msg)
+                             ;; Jupyter protocol 5.1, IPython implementation 7.5.0
+                             ;; doesn't give status: busy or status: idle messages on
+                             ;; kernel-info-requests.  Whereas IPython implementation
+                             ;; 6.5.0 does.  Seen on Appveyor tests.
+                             ;;
+                             ;; TODO: May be related jupyter/notebook#3705 as the
+                             ;; problem does happen after a kernel restart when
+                             ;; testing.
+                             (eq (jupyter-message-type msg) :kernel-info-reply)
+                             ;; No idle message is received after a shutdown reply so
+                             ;; consider REQ as having received an idle message in
+                             ;; this case.
+                             (eq (jupyter-message-type msg) :shutdown-reply))
+                     (setf (jupyter-request-messages req) (nreverse msgs))
                      (setf (jupyter-request-idle-p req) t))
-                   (jupyter-send-content msg))))))
-           (ch (if (memq type '(:input-reply :input-request))
-                   :stdin
-                 :shell))
-           (id (jupyter-request-id req)))
-      (jupyter-do
-        (jupyter-subscribe req-msgs-pub)
-        (jupyter-publish 'send ch type content id))
-      (list req req-msgs-pub))))
+                   (jupyter-send-content value)))))))))
+    (jupyter-do
+      (jupyter-subscribe req-msgs-pub)
+      (jupyter-publish (list 'send ch type content id))
+      (jupyter-with-io
+          (jupyter-new-request-publisher jupyter-current-client)
+        (jupyter-do
+          ;; Subscribers to the new request publisher of a
+          ;; client are given another publisher to subscribe
+          ;; to.  When the request is complete, the publisher
+          ;; publishes the actual request object.
+          ;;
+          ;; TODO: Is there a better approach?  Maybe have a
+          ;; new and completed request publisher of a client.
+          ;; This way we avoid having to create a
+          ;; req-complete-pub on every new request.
+          (jupyter-publish req-complete-pub)
+          (jupyter-subscribe
+            (jupyter-subscriber
+              (lambda (_)
+                (setq most-recent nil)
+                (jupyter-unsubscribe))))
+          (jupyter-return-delayed req-msgs-pub))))))
 
 (provide 'jupyter-monads)
 
