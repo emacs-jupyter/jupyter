@@ -503,7 +503,33 @@ STATUS-PUB is a publisher of status changes to the websocket.
 
 TODO The form of content each sends/consumes."
   (cl-assert (cl-typep kernel 'jupyter-server-kernel))
-  (jupyter-return-delayed (jupyter--websocket-io kernel)))
+  (jupyter-mlet* ((value (jupyter-do
+                           (jupyter-kernel-launch kernel)
+                           (jupyter--websocket kernel))))
+    (pcase-let ((`(,ws ,msg-pub ,status-pub) value))
+      ;; Make sure the websocket is cleaned up when it is garbage
+      ;; collected.
+      (plist-put (websocket-client-data ws)
+                 :finalizer (make-finalizer (lambda () (websocket-close ws))))
+      (jupyter-return-delayed
+        (list
+         ;; The websocket action subscriber.
+         (jupyter-subscriber
+           (lambda (msg)
+             (pcase msg
+               (`(send ,channel ,msg-type ,content ,msg-id)
+                (websocket-send-text
+                 ws (jupyter-encode-raw-message
+                        (plist-get (websocket-client-data ws) :session) msg-type
+                      :channel channel
+                      :msg-id msg-id
+                      :content content)))
+               ('start (websocket-ensure-connected ws))
+               ('stop (websocket-close ws)))))
+         ;; The websocket message publisher.
+         msg-pub
+         ;; The websocket status publisher.
+         status-pub)))))
 
 ;;; Request
 
