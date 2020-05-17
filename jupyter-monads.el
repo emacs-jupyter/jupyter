@@ -205,33 +205,36 @@ result of this function to cancel its subscription with the
 publisher providing content."
   (list 'unsubscribe))
 
-;; I/O actions return I/O values (values wrapped by
-;; `jupyter-return-delayed').  Subscribers return the status of their
-;; subscription.  Publishers return content for their subscribers.
-;; Monadic functions are those functions that take a value and return
-;; boxed values that are interpreted by the associated context.
-
-;; Deliver the content to the subscriber, subscribers consume content
-;; without returning any new content to the publisher.
-(defun jupyter--deliver (sub-content sub)
-  "Bind SUB-CONTENT to SUB, a (re-)publisher or subscriber.
-Binding content to a subscriber returns the subscriber if the
-subscription should be kept and nil if it should not.
-
-A subscriber function (a function passed to `jupyter-subscriber'
-or `jupyter-publisher') can return the result of evaluating
-`jupyter-unsubscribe' to cancel a subscription."
-  (condition-case error
-      ;; This recursion may be a problem if there is a lot of content
-      ;; filtering (by subscribing publishers to publishers).
-      (pcase (funcall sub sub-content)
-        ('(unsubscribe) nil)
-        (_ sub))
-    (error
-     (message "Jupyter: I/O subscriber error: %S"
-              (error-message-string error))
-     ;; Keep the subscription on error.
-     sub)))
+;; Bind the publisher's submitted content to the subscribers.
+;; Filtering through PUB-FN first.  Subscribers return whether or not
+;; their subscription should be kept.  The result of binding is the
+;; remaining list of subscribers.
+;;
+;; Subscribers (Content a) -> (a -> Content b) -> Subscribers ()
+;;
+;; NOTE: This is called pseudo-bind since, to be monadic, the
+;; signature should be something like
+;;
+;;     Subscribers FilteredContent a -> (a -> FilteredContent b) -> Subscribers FilteredContent b
+(defun jupyter-pseudo-bind-subscribers (subs-value pub-fn)
+  (pcase (funcall pub-fn (cdr subs-value))
+    ((and `(content ,_) sub-content)
+     (mapcar
+      (lambda (sub)
+        (condition-case error
+            ;; This recursion may be a problem if
+            ;; there is a lot of content filtering (by
+            ;; subscribing publishers to publishers).
+            (pcase (funcall sub sub-content)
+              ('(unsubscribe) nil)
+              (_ sub))
+          (error
+           (message "Jupyter: I/O subscriber error: %S"
+                    (error-message-string error))
+           ;; Keep the subscription on error.
+           sub)))
+      (car subs-value)))
+    (_ (car subs-value))))
 
 ;; In the context external to a publisher, i.e. in the context where a
 ;; message was published, the content is built up and then published.
@@ -263,31 +266,15 @@ Ex. Publish 'app if 'app is given to a publisher, nothing is sent
         (if (eq value 'app)
           (jupyter-send-content value))))"
   (declare (indent 0))
-  ;; Publishing functions take normal values and return content to
-  ;; send.  Publishers publish that content to subscribers.  A
-  ;; publisher's context is its subscribers, the list is maintained
-  ;; outside of the normal, functional, context.
   (let ((subs '())
         (pub-fn (or pub-fn #'jupyter-send-content)))
     ;; A publisher value is either a value representing a subscriber
     ;; or a value representing content to send to subscribers.
     (lambda (pub-value)
-      (pcase pub-value
-        ;; Unbox the content given to a publisher.  If the result of
-        ;; evaluating PUB-FN on the content is also content, deliver
-        ;; it to the subscribers.
-        (`(content ,content)
-         (let ((sub-content (funcall pub-fn content)))
-           ;; Only published content is sent to subscribers.  So
-           ;; SUB-CONTENT may be content.
-           (when (eq (car-safe sub-content) 'content)
-             (setq subs
-                   (delq nil (mapcar
-                              (lambda (sub)
-                                (jupyter--deliver sub-content sub))
-                              subs))))))
-        (`(subscribe ,sub) (cl-pushnew sub subs))
-        (_ (error "Unhandled publisher value: %s" pub-value)))
+      (pcase (car-safe pub-value)
+        ('content (setq subs (delq nil (jupyter-pseudo-bind-subscribers
+                                        (cons subs (cadr pub-value)) pub-fn))))
+        ('subscribe (cl-pushnew (cadr pub-value) subs)))
       nil)))
 ;; In the publisher context, subscriber content is the monadic value
 ;; and the monadic functions are those functions that return content
