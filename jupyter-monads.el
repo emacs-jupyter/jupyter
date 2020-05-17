@@ -441,52 +441,31 @@ whatever I/O context the action is evaluated in."
 
 ;;; Websocket IO
 
-(defun jupyter--websocket-io (kernel)
-  (let ((msg-pub (jupyter-publisher))
-        (status-pub (jupyter-publisher)))
-    (pcase-let*
-        (((cl-struct jupyter-server-kernel server id) kernel)
-         (ws (jupyter-api-kernel-websocket
-              server id
-              :custom-header-alist (jupyter-api-auth-headers server)
-              :on-message
-              (lambda (_ws frame)
-                (pcase (websocket-frame-opcode frame)
-                  ((or 'text 'binary)
-                   (let* ((msg (jupyter-read-plist-from-string
-                                (websocket-frame-payload frame)))
-                          ;; TODO: Get rid of some of these
-                          ;; explicit/implicit `intern' calls
-                          (channel (intern (concat ":" (plist-get msg :channel))))
-                          (msg-type (jupyter-message-type-as-keyword
-                                     (jupyter-message-type msg)))
-                          (parent-header (plist-get msg :parent_header)))
-                     (plist-put msg :msg_type msg-type)
-                     (plist-put parent-header :msg_type msg-type)
+(defun jupyter--websocket (kernel)
+  (make-jupyter-delayed
+   :value (lambda ()
+            (pcase-let
+                (((cl-struct jupyter-server-kernel server id) kernel)
+                 (msg-pub (jupyter-publisher))
+                 (status-pub (jupyter-publisher)))
+              (list
+               (jupyter-api-kernel-websocket
+                server id
+                :custom-header-alist (jupyter-api-auth-headers server)
+                :on-message
+                (lambda (_ws frame)
+                  (pcase (websocket-frame-opcode frame)
+                    ((or 'text 'binary)
                      (jupyter-run-with-io msg-pub
-                       (jupyter-publish channel msg))))
-                  (_
-                   (jupyter-run-with-io status-pub
-                     (jupyter-publish
-                       'error (websocket-frame-opcode frame)))))))))
-      (list
-       ;; The websocket action subscriber.
-       (jupyter-subscriber
-         (lambda (msg)
-           (pcase msg
-             (`('send ,channel ,msg-type ,content ,msg-id)
-              (websocket-send-text
-               ws (jupyter-encode-raw-message
-                      (plist-get (websocket-client-data ws) :session) msg-type
-                    :channel (substring (symbol-name channel) 1)
-                    :msg-id msg-id
-                    :content content)))
-             ('start (websocket-ensure-connected ws))
-             ('stop (websocket-close ws)))))
-       ;; The websocket message publisher.
-       msg-pub
-       ;; The websocket status publisher.
-       status-pub))))
+                       (jupyter-publish
+                         (jupyter-read-plist-from-string
+                          (websocket-frame-payload frame)))))
+                    (_
+                     (jupyter-run-with-io status-pub
+                       (jupyter-publish
+                         (list 'error (websocket-frame-opcode frame))))))))
+               msg-pub
+               status-pub)))))
 
 (defun jupyter-return-websocket-io (kernel)
   "Return a list of three elements representing an I/O connection to kernel.
