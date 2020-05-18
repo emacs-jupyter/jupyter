@@ -45,13 +45,12 @@ Used in, e.g. a `jupyter-server-kernel-list-mode' buffer.")
 
 (put 'jupyter-current-server 'permanent-local t)
 
-(defvar jupyter--servers nil)
+(defvar jupyter--servers-1 (make-hash-table :weakness 'value :test #'equal))
 
 ;; TODO: We should really rename `jupyter-server' to something like
 ;; `jupyter-server-client' since it isn't a representation of a server, but a
 ;; communication channel with one.
-(defclass jupyter-server (jupyter-rest-client
-                          eieio-instance-tracker)
+(defclass jupyter-server (jupyter-rest-client eieio-instance-tracker)
   ((tracking-symbol :initform 'jupyter--servers)
    (conn :type jupyter-connection)
    (handlers :type list :initform nil)
@@ -60,6 +59,124 @@ Used in, e.g. a `jupyter-server-kernel-list-mode' buffer.")
     :initform nil
     :documentation "Kernelspecs for the kernels available behind this gateway.
 Access should be done through `jupyter-available-kernelspecs'.")))
+
+(cl-defmethod make-instance ((class (subclass jupyter-server)) &rest slots)
+  (cl-assert (plist-get slots :url))
+  (or (gethash (plist-get slots :url) jupyter--servers-1)
+      (puthash (plist-get slots :url)
+               (cl-call-next-method) jupyter--servers-1)))
+
+(defun jupyter-server-ioloop-io (ioloop)
+  (let* ((ids '())
+         (event-pub (jupyter-publisher))
+         (channels-pub (jupyter-publisher))
+         (event-handler
+          (lambda (event)
+            (if (not (memq (car event)
+                           '(connect-channels disconnect-channels)))
+                (jupyter-run-with-io event-pub
+                  (jupyter-publish event))
+              (pcase (car event)
+                ((and 'connect-channels (let id (cadr event)))
+                 (cl-pushnew id ids :test #'string=))
+                ((and 'disconnect-channels (let id (cadr event)))
+                 (cl-callf2 delete id ids)))
+              ;; Notify subscribers that the connected kernels have
+              ;; changed.  Currently only `jupyter-server' uses this.
+              (jupyter-run-with-io channels-pub
+                (jupyter-publish event)))))
+         (start
+          (lambda ()
+            (unless (jupyter-ioloop-alive-p ioloop)
+              ;; Write the cookies to file so that they can be read by
+              ;; the subprocess.
+              (url-cookie-write-file)
+              (jupyter-ioloop-start ioloop event-handler)
+              (when ids
+                (let ((head ids))
+                  ;; Reset KERNEL-IDS since it will be updated after the
+                  ;; channels have been re-connected.
+                  (setq ids nil)
+                  (while head
+                    (jupyter-send ioloop 'connect-channels (pop head))))))
+            nil))
+         (action-sub
+          (jupyter-subscriber
+            (lambda (action)
+              (pcase (if (listp action) (car action) action) 
+                ('send
+                 (funcall start)
+                 (apply #'jupyter-send ioloop action))
+                ('event
+                 (funcall start)
+                 (apply #'jupyter-send ioloop (cdr action)))
+                ('start (funcall start))
+                ('stop
+                 (when (jupyter-ioloop-alive-p ioloop)
+                   (jupyter-ioloop-stop ioloop))))))))
+    (jupyter-return-delayed
+      (list action-sub channels-pub event-pub))))
+
+(defun jupyter-server-io--sync-action (pub action id)
+  (let ((done nil))
+    (jupyter-run-with-io pub
+      ;; TODO: (subscribe (subscriber ...)) -> (subscribe ...)
+      ;;
+      ;; Need to make a publisher struct type to distinguish between
+      ;; publisher functions and regular functions first.
+      (jupyter-subscribe
+        (jupyter-subscriber
+          (lambda (event)
+            (when (and (eq (car event) action)
+                       (string= id (cadr event)))
+              (setq done t)
+              (jupyter-unsubscribe))))))
+    ;; TODO: Synchronization I/O actions?
+    ;;
+    ;;     (jupyter-with-io pub
+    ;;       (jupyter-wait (lambda () cond)))
+    (jupyter-with-timeout
+        (nil jupyter-default-timeout
+             (error "Timeout when %sconnecting server channels"
+                    (if (eq action 'connect-channels) "" "dis")))
+      done)))
+
+;; TODO: Figure out how to refresh the connection with new
+;; auth-headers.  I think its just call this function again.  Due to
+;; the functional design, all references to the old objects should get
+;; cleaned up.
+(defun jupyter-server-io (server)
+  (let ((ioloop (jupyter-server-ioloop
+                 :url (oref server url)
+                 :ws-url (oref server ws-url)
+                 :ws-headers (jupyter-api-auth-headers server))))
+    ;; TODO: Another instance where it would be great for mlet* to
+    ;; support `pcase' patterns.  Or should it be the other way round?
+    ;; Make a `pcase' macro for I/O values.
+    ;;
+    ;; (pcase (jupyter-server-ioloop-io ioloop)
+    ;;   ((jupyter-io `(,action-sub ,kernel-channels-pub ,ioloop-event-pub))
+    ;;    ...))
+    (jupyter-mlet* ((value (jupyter-server-ioloop-io ioloop)))
+      (pcase-let*
+          ((`(,action-sub ,channels-pub ,event-pub) value)
+           (kernel-connector
+            (jupyter-subscriber
+              (lambda (content)
+                (pcase content
+                  ;; (publish kc id) or (publish kc (list id 'disconnect))
+                  ;; FIXME: (id 'connect) and (id 'disconnect)
+                  ((or `(,(and (pred stringp) id) ,disconnect)
+                       (and (pred stringp) id))
+                   (let ((action (if disconnect 'disconnect-channels
+                                   'connect-channels)))
+                     (jupyter-run-with-io action-sub
+                       (jupyter-publish (list 'event action id)))
+                     (jupyter-server-io--sync-action
+                      channels-pub action id)))
+                  (_ (error "Unknown value: %s" content)))))))
+        (jupyter-return-delayed
+          (list action-sub kernel-connector event-pub))))))
 
 (cl-defmethod jupyter-connection ((server jupyter-server))
   "Return a list of two functions, the first used to send events
@@ -245,8 +362,16 @@ Call the next method if ARGS does not contain :server."
       (let ((spec (plist-get args :spec)))
         (when (stringp spec)
           (plist-put args :spec
+                     ;; TODO: (jupyter-server-kernelspec server "python3")
+                     ;; which returns an I/O action and then arrange
+                     ;; for that action to be bound by mlet* and set
+                     ;; as the spec value. Or better yet, have
+                     ;; `jupyter-kernel' return a delayed kernel with
+                     ;; the server connection already open and
+                     ;; kernelspecs already retrieved.
                      (or (jupyter-guess-kernelspec
                           spec (jupyter-server-kernelspecs server))
+                         ;; TODO: Return the error to the I/O context.
                          (error "No kernelspec matching %s @ %s" spec
                                 (oref server url))))))
       (apply #'jupyter-server-kernel args))))
@@ -314,8 +439,49 @@ actions defined by this connection are
               (server-io args))))
          (make-finalizer #'stop))))))
 
+(defun jupyter-server-kernel-io (kernel)
+  ;; TODO: What about disconnecting channels?  Do that at a later
+  ;; stage.
+  (pcase-let (((cl-struct jupyter-server-kernel server id) kernel))
+    (jupyter-mlet* ((value (jupyter-server-io server)))
+      (pcase-let*
+          ((`(,action-sub ,kernel-connector ,ioloop-event-pub) value)
+           (kernel-event-pub
+            (jupyter-publisher
+              ;; TODO: How to unsubscribe this when the kernel is no
+              ;; longer needed?
+              (lambda (event)
+                (pcase event
+                  ((and `(message ,kid . ,rest)
+                        (guard (string= kid id)))
+                   (jupyter-send-content (cons 'message rest)))
+                  (`(unsubscribe ,kid)
+                   (if (string= kid id)
+                       (jupyter-unsubscribe)
+                     (jupyter-send-content event)))
+                  (_
+                   (jupyter-run-with-io action-sub
+                     (pcase event
+                       (`(send . ,args)
+                        (jupyter-publish (cl-list* 'send id args)))
+                       (_ (jupyter-publish event))))))))))
+        (jupyter-do
+          (jupyter-with-io kernel-connector
+            (jupyter-publish id))
+          (jupyter-with-io ioloop-event-pub
+            (jupyter-subscribe kernel-event-pub))
+          (jupyter-return-delayed kernel-event-pub))))))
+
 ;;; Kernel management
 
+(cl-defmethod jupyter-launch ((server jupyter-server) (kernel string))
+  (let* ((spec (jupyter-guess-kernelspec
+                kernel (jupyter-server-kernelspecs server)))
+         (plist (jupyter-api-start-kernel
+                 server (jupyter-kernelspec-name spec))))
+    (jupyter-kernel :server server :id (plist-get plist :id) :spec spec)))
+
+;; FIXME: Don't allow creating kernels without them being launched.
 (cl-defmethod jupyter-launch ((kernel jupyter-server-kernel))
   "Launch KERNEL based on its kernelspec.
 When KERNEL does not have an ID yet, launch KERNEL on SERVER
