@@ -277,7 +277,7 @@ Returns \(cons 'ok org-table-representing-dataframe\), nil otherwise."
                        rest))))
                   (col-types
                    (mapcar 'caddr
-                         (--drop-while ;; TODO
+                         (--drop-while
                           (pcase it
                             (`(th ,_attrib . ,col-name)
                              (null col-name))
