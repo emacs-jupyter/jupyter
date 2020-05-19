@@ -248,35 +248,35 @@ TABLE-AS-HTML-STR is the jupyter html representation of a DataFrame, like
 Returns \(cons 'ok org-table-representing-dataframe\), nil otherwise."
   (when (not (null table-as-html-str))
     (when-let* ((e (with-temp-buffer
-                       (insert table-as-html-str)
-                       (libxml-parse-html-region (point-min) (point-max))))
-                  (headers-and-rows (pcase e
-                                      (`(html , _html-attribs
-                                                (body , _body-attribs
-                                                        (table ((class . "data-frame"))
-                                                               . ,rest)))
-                                       rest)))
-                  (first-tr (pcase (car headers-and-rows)
-                              (`(thead ,_attr . ,rest)
-                               (car rest))))
-                  (th-nodes (pcase first-tr
-                              (`(tr ,_attrib . ,ths)
-                               ths)))
-                  (col-names
-                   (mapcar
-                    'caddr
-                    (--drop-while
-                     (pcase it
-                       (`(th ,_attrib . ,col-name)
-                        (null col-name)))
-                     th-nodes)))
-                  (second-header-row
-                   (pcase (-first-item headers-and-rows)
-                     (`(thead ,_attr . ,rest)
-                      (cadr
-                       rest))))
-                  (col-types
-                   (mapcar 'caddr
+                     (insert table-as-html-str)
+                     (libxml-parse-html-region (point-min) (point-max))))
+                (headers-and-rows (pcase e
+                                    (`(html , _html-attribs
+                                              (body , _body-attribs
+                                                      (table ((class . "data-frame"))
+                                                             . ,rest)))
+                                     rest)))
+                (first-tr (pcase (car headers-and-rows)
+                            (`(thead ,_attr . ,rest)
+                             (car rest))))
+                (th-nodes (pcase first-tr
+                            (`(tr ,_attrib . ,ths)
+                             ths)))
+                (col-names
+                 (mapcar
+                  'caddr
+                  (--drop-while
+                   (pcase it
+                     (`(th ,_attrib . ,col-name)
+                      (null col-name)))
+                   th-nodes)))
+                (second-header-row
+                 (pcase (-first-item headers-and-rows)
+                   (`(thead ,_attr . ,rest)
+                    (cadr
+                     rest))))
+                (col-types
+                 (mapcar 'caddr
                          (--drop-while
                           (pcase it
                             (`(th ,_attrib . ,col-name)
@@ -284,25 +284,25 @@ Returns \(cons 'ok org-table-representing-dataframe\), nil otherwise."
                             (_
                              t))
                           second-header-row)))
-                  (data-rows
-                   (pcase (cadr headers-and-rows)
-                     (`(tbody ,_attrib (p ,_pattrib ,_table-name) . ,rest)
-                      rest)))
-                  (extracted-data
-                   (mapcar
-                    (pcase-lambda (`(tr ,_tr-attrib . ,rest))
-                      (let ((row-without-numbering
-                             (cdr rest)))
-                        (mapcar
-                         (pcase-lambda (`(td ,_td-attrib . ,value))
-                           (car value))
-                         row-without-numbering)))
-                    data-rows)))
-    (cons 'ok
-          (jupyter-org-scalar
-         (append
-          (list col-names)
-          extracted-data))))))
+                (data-rows
+                 (pcase (cadr headers-and-rows)
+                   (`(tbody ,_attrib (p ,_pattrib ,_table-name) . ,rest)
+                    rest)))
+                (extracted-data
+                 (mapcar
+                  (pcase-lambda (`(tr ,_tr-attrib . ,rest))
+                    (let ((row-without-numbering
+                           (cdr rest)))
+                      (mapcar
+                       (pcase-lambda (`(td ,_td-attrib . ,value))
+                         (car value))
+                       row-without-numbering)))
+                  data-rows)))
+      (cons 'ok
+            (jupyter-org-scalar
+             (append
+              (list col-names)
+              extracted-data))))))
 
 (cl-defmethod jupyter-org-result ((_mime (eql :text/html))
                                   &context (jupyter-lang julia)
