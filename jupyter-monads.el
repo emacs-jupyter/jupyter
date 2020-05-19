@@ -95,8 +95,14 @@ IO-VALUE and IO-FN, the I/O context is maintained."
   "Bind the I/O values in VARLIST, evaluate BODY.
 Return the result of evaluating BODY, which should be another I/O
 value."
-  (declare (indent 1) ((&rest (symbolp form)) body))
-  (letrec ((value (make-symbol "value"))
+  (declare (indent 1) (debug ((&rest (symbolp form)) body)))
+  ;; FIXME: The below doesn't work
+  ;;
+  ;; (jupyter-mlet* ((io io))
+  ;;   (jupyter-run-with-io io
+  ;;      ...))
+  (letrec ((vars (delq '_ (mapcar #'car varlist)))
+           (value (make-symbol "value"))
            (binder
             (lambda (vars)
               (if (zerop (length vars))
@@ -110,7 +116,7 @@ value."
                             `(ignore ,value)
                           `(setq ,name ,value))
                        ,(funcall binder (cdr vars)))))))))
-    `(let (,@(delq '_ (mapcar #'car varlist)))
+    `(let (,@vars)
        ,(funcall binder varlist))))
 
 (defmacro jupyter-with-io (io &rest body)
@@ -126,8 +132,7 @@ BODY evaluates to."
 
 (defmacro jupyter-run-with-io (io &rest body)
   "Return the result of evaluating the I/O value BODY evaluates to.
-The result is return as an I/O value.  All I/O operations are
-done in the context of IO."
+All I/O operations are done in the context of IO."
   (declare (indent 1) (debug (form body)))
   `(jupyter-mlet* ((result (jupyter-with-io ,io
                              ,@body)))
@@ -145,7 +150,7 @@ done in the context of IO."
   "Return an I/O action that performs all actions in IO-ACTIONS.
 The actions are evaluated in the order given.  The result of the
 returned action is the result of the last action in IO-ACTIONS."
-  (declare (indent 0))
+  (declare (indent 0) (debug (body)))
   (if (zerop (length io-actions)) 'jupyter-io-nil
     (letrec ((before
               (lambda (io-actions)
@@ -200,13 +205,27 @@ The result of the returned action is the result of IO-B."
 (define-error 'jupyter-subscribed-subscriber
   "A subscriber cannot be subscribed to.")
 
-(defun jupyter-subscriber (fn)
-  "Return a subscriber evaluating FN for side-effects on published content."
+(defun jupyter-subscriber (sub-fn)
+  "Return a subscriber evaluating SUB-FN on published content.
+SUB-FN should return the result of evaluating
+`jupyter-unsubscribe' if a subscription should be canceled.
+
+Ex. Unsubscribe after consuming one message
+
+    (jupyter-subscriber
+      (lambda (value)
+        (message \"The published content: %s\" value)
+        (jupyter-unsubscribe)))
+
+    Used like this, where sub is the above subscriber:
+
+    (jupyter-run-with-io (jupyter-publisher)
+      (jupyter-subscribe sub)
+      (jupyter-publish (list 'topic \"today's news\")))"
   (declare (indent 0))
   (lambda (sub-content)
-    ;; TODO: fn -> fun
     (pcase sub-content
-      (`(content ,content) (funcall fn content))
+      (`(content ,content) (funcall sub-fn content))
       (`(subscribe ,_) (signal 'jupyter-subscribed-subscriber nil))
       (_ (error "Unhandled content: %s" sub-content)))))
 
