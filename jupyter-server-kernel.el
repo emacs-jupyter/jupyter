@@ -454,11 +454,11 @@ actions defined by this connection are
                 (pcase event
                   ((and `(message ,kid . ,rest)
                         (guard (string= kid id)))
-                   (jupyter-send-content (cons 'message rest)))
+                   (jupyter-content (cons 'message rest)))
                   (`(unsubscribe ,kid)
                    (if (string= kid id)
                        (jupyter-unsubscribe)
-                     (jupyter-send-content event)))
+                     (jupyter-content event)))
                   (_
                    (jupyter-run-with-io action-sub
                      (pcase event

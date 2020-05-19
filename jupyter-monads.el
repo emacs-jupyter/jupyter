@@ -229,7 +229,7 @@ Ex. Unsubscribe after consuming one message
       (`(subscribe ,_) (signal 'jupyter-subscribed-subscriber nil))
       (_ (error "Unhandled content: %s" sub-content)))))
 
-(defun jupyter-send-content (value)
+(defun jupyter-content (value)
   "Arrange for VALUE to be sent to subscribers of a publisher."
   (list 'content value))
 
@@ -322,10 +322,10 @@ Ex. Publish 'app if 'app is given to a publisher, nothing is sent
     (jupyter-publisher
       (lambda (value)
         (if (eq value 'app)
-          (jupyter-send-content value))))"
+          (jupyter-content value))))"
   (declare (indent 0))
   (let ((subs '())
-        (pub-fn (or pub-fn #'jupyter-send-content)))
+        (pub-fn (or pub-fn #'jupyter-content)))
     ;; A publisher value is either a value representing a subscriber
     ;; or a value representing content to send to subscribers.
     (lambda (pub-value)
@@ -397,7 +397,7 @@ whatever I/O context the action is evaluated in."
   (declare (indent 0))
   (make-jupyter-delayed
    :value (lambda ()
-            (funcall jupyter-current-io (jupyter-send-content value))
+            (funcall jupyter-current-io (jupyter-content value))
             nil)))
 
 ;;; IO Event
@@ -479,7 +479,7 @@ whatever I/O context the action is evaluated in."
                       'jupyter-hb-channel
                       :session session
                       :endpoint (plist-get endpoints :hb))))
-             (jupyter-send-content
+             (jupyter-content
               (append (list :hb hb)
                       (cl-loop
                        for ch in channels
@@ -632,7 +632,7 @@ See `jupyter-io' for more information on IO actions."
                              (eq (jupyter-message-type msg) :shutdown-reply))
                      (setf (jupyter-request-messages req) (nreverse msgs))
                      (setf (jupyter-request-idle-p req) t))
-                   (jupyter-send-content value)))))))))
+                   (jupyter-content value)))))))))
     (jupyter-do
       (jupyter-subscribe req-msgs-pub)
       (jupyter-publish (list 'send ch type content id))
