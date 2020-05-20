@@ -604,24 +604,30 @@ TODO The form of content each sends/consumes."
 
 ;;; Request
 
-(defun jupyter-timeout (req)
+(defsubst jupyter-timeout (req)
   (list 'timeout req))
 
 (defun jupyter-idle (io-req)
-  (jupyter-then io-req
-    (lambda (req)
-      (jupyter-return-delayed
-        (if (jupyter-wait-until-idle req) req
-          (jupyter-timeout req))))))
-(defun jupyter-request (type &rest content)
+  (make-jupyter-delayed
+   :value (lambda ()
+            (jupyter-mlet* ((req io-req))
+              (if (jupyter-wait-until-idle req) req
+                (jupyter-timeout req))))))
+
+;; When a request is bound it returns a list containing the request.
+;; FIXME: A client monad.  What would be bound to it?  A request
+;; message?  What would be a values of the client monad?  Requests?
+(cl-defun jupyter-request (type &rest content)
   "Return an IO action that sends a `jupyter-request'.
 TYPE is the message type of the message that CONTENT, a property
 list, represents.
 
 See `jupyter-io' for more information on IO actions."
   (declare (indent 1))
-  (setq type (intern (format ":%s-request"
-                             (replace-regexp-in-string "_" "-" type))))
+  ;; TODO: Get rid of having to do this conversion.
+  (unless (symbolp type)
+    (setq type (intern (format ":%s-request"
+                               (replace-regexp-in-string "_" "-" type)))))
   ;; FIXME: Implement `jupyter-new-request-publisher'
   ;;
   ;; Build up a request and return an I/O action that sends it.
@@ -650,9 +656,14 @@ See `jupyter-io' for more information on IO actions."
           (jupyter-publisher
             (lambda (value)
               (cond
-               ((and (not most-recent) (jupyter-request-idle-p req))
-                (jupyter-run-with-io req-complete-pub
-                  (jupyter-publish req))
+               ((and (not most-recent)
+                     (jupyter-request-idle-p req))
+                ;; (jupyter-run-with-io req-complete-pub
+                ;;   (jupyter-publish req))
+                ;;
+                ;; What happens to the subscriber references of this
+                ;; publisher after it unsubscribes?  They remain until
+                ;; the publisher itself is no longer accessible.
                 (jupyter-unsubscribe))
                (t
                 (pcase value
@@ -682,30 +693,19 @@ See `jupyter-io' for more information on IO actions."
                      (setf (jupyter-request-messages req) (nreverse msgs))
                      (setf (jupyter-request-idle-p req) t))
                    (jupyter-content value)))))))))
+    ;; Anything sent to stdin is a reply not a request so consider the
+    ;; "request" completed.
+    (setf (jupyter-request-idle-p req) (eq ch :stdin))
+    ;; TODO: Don't initiate the request before req-msgs-pub is
+    ;; subscribed to.
     (jupyter-do
       (jupyter-subscribe req-msgs-pub)
       (jupyter-publish (list 'send ch type content id))
-      (jupyter-with-io
-          (jupyter-new-request-publisher jupyter-current-client)
-        (jupyter-do
-          ;; Subscribers to the new request publisher of a
-          ;; client are given another publisher to subscribe
-          ;; to.  When the request is complete, the publisher
-          ;; publishes the actual request object.
-          ;;
-          ;; TODO: Is there a better approach?  Maybe have a
-          ;; new and completed request publisher of a client.
-          ;; This way we avoid having to create a
-          ;; req-complete-pub on every new request.
-          (jupyter-publish req-complete-pub)
-          (jupyter-subscribe
-            (jupyter-subscriber
-              (lambda (_)
-                (setq most-recent nil)
-                (jupyter-unsubscribe))))
-          (jupyter-return-delayed req-msgs-pub))))))
+      ;; FIXME: Return the request for now, but use req-complete-pub
+      ;; (or something better) later on so that an incomplete request
+      ;; isn't accessible until it is completed.
+      (jupyter-return-delayed (list req-msgs-pub req)))))
 
 (provide 'jupyter-monads)
 
 ;;; jupyter-monads.el ends here
-
