@@ -221,6 +221,10 @@ Contains all of the open comms.  Each value is a cons cell (REQ .
 DATA) which contains the generating `jupyter-request' that caused
 the comm to open and the initial DATA passed to the comm for
 initialization.")
+   (io
+    :type function
+    :initarg :io
+    :documentation "The I/O context kernel messages are communicated on.")
    (manager
     :initform nil
     :documentation "If this client was initialized using a
@@ -390,6 +394,54 @@ If it does not contain a valid value, raise an error."
   (let ((req (intern (concat "jupyter-" (substring (symbol-name type) 1)))))
     (apply req content)))
 
+(cl-defmethod jupyter-send ((client jupyter-kernel-client) (dreq jupyter-delayed))
+  ;; FIXME: (mlet* (pcase-let ...)) -> (mlet* ((PATTERN IO-EXP) ...) ...)
+  ;; or (pcase-let (((jupyter-io PATTERN) IO-EXP) ...) ...)
+  (jupyter-mlet*
+      ((req-io (jupyter-with-io
+                   (or (oref client io)
+                       (error "Client not connected to a kernel"))
+                 dreq)))
+    (pcase-let ((requests (oref client requests))
+                ;; FIXME: Only give access to a request once its
+                ;; completed.
+                (`(,req-msgs-pub ,req) req-io))
+      (jupyter-run-with-io req-msgs-pub
+        (jupyter-subscribe
+          (jupyter-subscriber
+            (lambda (content)
+              (pcase (car content)
+                ;; FIXME: Remove the need for 'message to be called
+                ;; here.
+                ((and 'message
+                      (let `(,channel ,_idents . ,msg)
+                        (cdr content)))
+                 (let ((jupyter-current-client client)
+                       ;; Set the current I/O context for
+                       ;; `jupyter-mlet*'.
+                       (jupyter-current-io (oref client io)))
+                   (jupyter--update-execution-state client msg req)
+                   (cond
+                    (req
+                     (setf (jupyter-request-last-message req) msg)
+                     (unwind-protect
+                         (jupyter--run-callbacks req msg)
+                       (unwind-protect
+                           (jupyter--run-handler-maybe client channel msg req)
+                         (when (jupyter--message-completes-request-p msg)
+                           ;; Order matters here.  We want to remove idle requests *before*
+                           ;; setting another request idle to account for idle messages
+                           ;; coming in out of order, e.g. before their respective reply
+                           ;; messages.
+                           (jupyter--drop-idle-requests client)
+                           (setf (jupyter-request-idle-p req) t)))))
+                    ((or (jupyter-get client 'jupyter-include-other-output)
+                         ;; Always handle a startup message
+                         (jupyter-message-status-starting-p msg))
+                     (jupyter--run-handler-maybe client channel msg req))))))))))
+      (puthash (jupyter-request-id req) req requests)
+      (puthash "last-sent" req requests))))
+
 (cl-defmethod jupyter-send ((client jupyter-kernel-client) (type symbol) &rest content)
   "Send a message to the kernel CLIENT is connected to.
 Return a `jupyter-request' representing the sent message.
@@ -407,32 +459,23 @@ response to the sent message, see `jupyter-add-callback' and
 `jupyter-request-inhibited-handlers'."
   (declare (indent 1))
   (jupyter-verify-inhibited-handlers)
-  (pcase-let* ((kernel (jupyter-kernel client))
-               (io (if kernel (jupyter-io kernel)
-                     (error "Client not connected to a kernel")))
-               (req (jupyter--merge-message-defaults type content))
-               ((cl-struct jupyter-request id) req))
-    (when jupyter--debug
-      ;; The logging of messages is deferred until the next command loop for
-      ;; security reasons.  When sending :input-reply messages that read
-      ;; passwords, clearing the password string using `clear-string' happens
-      ;; *after* the call to `jupyter-send'.
-      (run-at-time 0 nil (lambda () (message "SENDING: %s %s %s" type id content))))
-    (let ((channel (if (memq type '(:input-reply :input-request)) :stdin :shell))
-          (requests (oref client requests)))
-      (funcall io 'message channel type (jupyter-request-content req) id)
-      ;; Anything sent to stdin is a reply not a request so consider
-      ;; the "request" completed.
-      (setf (jupyter-request-idle-p req) (eq channel :stdin))
-      (setf (jupyter-request-inhibited-handlers req) jupyter-inhibit-handlers)
-      (puthash id req requests)
-      (puthash "last-sent" req requests))))
+  (jupyter-send client (apply #'jupyter-request type content)))
 
-(cl-defmethod jupyter-send :after ((client jupyter-kernel-client) (_type (eql :execute-request)) &rest _content)
-  (jupyter-server-mode-set-client client))
+(cl-defmethod jupyter-send :after ((client jupyter-kernel-client)
+                                   type
+                                   &rest _content)
+  (when (and (stringp type) (string= type "execute"))
+    (jupyter-server-mode-set-client client)))
 
-(cl-defmethod jupyter-send ((type symbol) &rest content)
-  (apply #'cl-call-next-method jupyter-current-client type content))
+;; NOTE: At least two arguments are needed, so instead of
+;;
+;;     (jupyter-send :kernel-info-request)
+;;
+;; you do
+;;
+;;     (jupyter-send :kernel-info-request nil)
+(cl-defmethod jupyter-send ((type string) &rest content)
+  (jupyter-send jupyter-current-client type content))
 
 ;;; Pending requests
 
@@ -467,7 +510,8 @@ back."
 ;;; Starting communication with a kernel
 
 (cl-defmethod jupyter-start-channels ((client jupyter-kernel-client))
-  (jupyter-send (jupyter-io (jupyter-kernel client)) 'start))
+  (jupyter-run-with-io (oref client io)
+    (jupyter-publish 'start)))
 
 (cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
   "Stop any running channels of CLIENT."
@@ -483,20 +527,25 @@ back."
          (jupyter-alive-p (jupyter-io kernel)))))
 
 (cl-defmethod jupyter-hb-pause ((client jupyter-kernel-client))
-  (when-let* ((kernel (jupyter-kernel client))
-              (hb (jupyter-send (jupyter-io kernel) 'hb)))
-    (jupyter-hb-pause hb)))
+  ;; (when-let* ((kernel (jupyter-kernel client))
+  ;;             (hb (jupyter-send (jupyter-io kernel) 'hb)))
+  ;;   (jupyter-hb-pause hb))
+
+  )
 
 (cl-defmethod jupyter-hb-unpause ((client jupyter-kernel-client))
-  (when-let* ((kernel (jupyter-kernel client))
-              (hb (jupyter-send (jupyter-io kernel) 'hb)))
-    (jupyter-hb-unpause hb)))
+  ;; (when-let* ((kernel (jupyter-kernel client))
+  ;;             (hb (jupyter-send (jupyter-io kernel) 'hb)))
+  ;;   (jupyter-hb-unpause hb))
+  )
 
 (cl-defmethod jupyter-hb-beating-p ((client jupyter-kernel-client))
   "Is CLIENT still connected to its kernel?"
-  (when-let* ((kernel (jupyter-kernel client)))
-    (let ((hb (jupyter-send (jupyter-io kernel) 'hb)))
-      (or (null hb) (jupyter-hb-beating-p hb)))))
+  t
+  ;; (when-let* ((kernel (jupyter-kernel client)))
+  ;;   (let ((hb (jupyter-send (jupyter-io kernel) 'hb)))
+  ;;     (or (null hb) (jupyter-hb-beating-p hb))))
+  )
 
 ;;; Mapping kernelspecs to connected clients
 
@@ -523,13 +572,11 @@ kernel whose kernelspec if SPEC."
 (cl-defmethod jupyter-client ((kernel jupyter-kernel) &optional client-class)
   (or client-class (setq client-class 'jupyter-kernel-client))
   (cl-assert (child-of-class-p client-class 'jupyter-kernel-client))
-  (let* ((client (make-instance client-class))
-         (conn (jupyter-connect kernel client)))
-    (jupyter-start conn)
-    (let ((kinfo (jupyter-kernel-info client)))
-      (unless kinfo
-        (jupyter-stop conn)
-        (error "Kernel did not respond to :kernel-info request")))
+  (let ((client (make-instance client-class :io
+                               (pcase-let ((`(,io . ,_) (jupyter-io kernel)))
+                                 io))))
+    (unless (jupyter-kernel-info client)
+      (error "Kernel did not respond to :kernel-info-request"))
     ;; If the connection can resolve the kernel's heartbeat channel,
     ;; start monitoring it now.
     (jupyter-hb-unpause client)
@@ -537,13 +584,11 @@ kernel whose kernelspec if SPEC."
 
 ;;; Shutdown and interrupt a kernel
 
-;; FN is already a monadic function in the IO context of Emacs
-
 (cl-defmethod jupyter-shutdown-kernel ((client jupyter-kernel-client))
   "Shutdown the kernel CLIENT is connected to.
 After CLIENT shuts down the kernel it is connected to, it is no
 longer connected to a kernel."
-  (jupyter-do (jupyter-io client)
+  (jupyter-run-with-io (oref client io)
     (jupyter-then
         (jupyter-idle (jupyter-request "shutdown"))
       (lambda (req)
@@ -883,12 +928,9 @@ user.  Otherwise `read-from-minibuffer' is used."
                              (read-from-minibuffer prompt))
                          (with-timeout-unsuspend timeout-spec)))
                    (quit ""))))
-      (jupyter-do (jupyter-io client)
-        (jupyter-bind
-            (jupyter-request :input-reply :value value)
-          (lambda (_req)
-            (when (eq password t)
-              (clear-string value)))))
+      (jupyter-mlet* ((_ (jupyter-request "input" :value value)))
+        (when (eq password t)
+          (clear-string value)))
       value)))
 
 (defalias 'jupyter-handle-input-reply 'jupyter-handle-input-request)
