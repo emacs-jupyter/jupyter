@@ -917,6 +917,7 @@ completed, requests from CLIENT's request table."
 PROMPT is the prompt the kernel would like to show the user.  If
 PASSWORD is t, then `read-passwd' is used to get input from the
 user.  Otherwise `read-from-minibuffer' is used."
+  ;; TODO: with-message-content -> with-content
   (jupyter-with-message-content msg (prompt password)
     (let ((value (condition-case nil
                      ;; Disallow any `with-timeout's from timing out.  This
