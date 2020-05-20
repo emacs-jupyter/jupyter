@@ -370,24 +370,21 @@ and `:msg_type'."
 ;;; Control messages
 
 (cl-defun jupyter-interrupt-request ()
-  (jupyter-request
-   :type :interrupt-request
+  (jupyter-request "interrupt"
    :content (list)))
 
 ;;; stdin messages
 
 (cl-defun jupyter-input-reply (&key value)
   (cl-check-type value string)
-  (jupyter-request
-   :type :input-reply
+  (jupyter-request "input"
    :content (list :value value)))
 
 ;;; shell messages
 
 (cl-defun jupyter-kernel-info-request ()
-  (jupyter-request
-   :type :kernel-info-request
-   :content (list)))
+  (jupyter-request "kernel_info"
+    :content (list)))
 
 (cl-defun jupyter-execute-request (&key
                                    code
@@ -398,8 +395,7 @@ and `:msg_type'."
                                    (stop-on-error nil))
   (cl-check-type code string)
   (cl-check-type user-expressions json-plist)
-  (jupyter-request
-   :type :execute-request
+  (jupyter-request "execute"
    :content (list :code code :silent (if silent t jupyter--false)
                   :store_history (if store-history t jupyter--false)
                   :user_expressions (or user-expressions jupyter--empty-dict)
@@ -414,18 +410,16 @@ and `:msg_type'."
     (setq pos (marker-position pos)))
   (cl-check-type code string)
   (cl-check-type pos integer)
-  (jupyter-request
-   :type :inspect-request
-   :content (list :code code :cursor_pos pos :detail_level detail)))
+  (jupyter-request "inspect"
+    :content (list :code code :cursor_pos pos :detail_level detail)))
 
 (cl-defun jupyter-complete-request (&key code (pos 0))
   (when (markerp pos)
     (setq pos (marker-position pos)))
   (cl-check-type code string)
   (cl-check-type pos integer)
-  (jupyter-request
-   :type :complete-request
-   :content (list :code code :cursor_pos pos)))
+  (jupyter-request "complete"
+    :content (list :code code :cursor_pos pos)))
 
 (cl-defun jupyter-history-request (&key
                                    output
@@ -439,8 +433,7 @@ and `:msg_type'."
                                    unique)
   (unless (member hist-access-type '("range" "tail" "search"))
     (error "History access type can only be one of (range, tail, search)"))
-  (jupyter-request
-   :type :history-request
+  (jupyter-request "history"
    :content 
    (append
     (list :output (if output t jupyter--false) :raw (if raw t jupyter--false)
@@ -461,41 +454,35 @@ and `:msg_type'."
 
 (cl-defun jupyter-is-complete-request (&key code)
   (cl-check-type code string)
-  (jupyter-request
-   :type :is-complete-request
+  (jupyter-request "is_complete"
    :content (list :code code)))
 
 (cl-defun jupyter-message-comm-info-request (&key target-name)
   (cl-check-type target-name string)
-  (jupyter-request
-   :type :comm-info-request
+  (jupyter-request "comm_info"
    :content (list :target_name target-name)))
 
 (cl-defun jupyter-comm-open (&key id target-name data)
   (cl-check-type id string)
   (cl-check-type target-name string)
   (cl-check-type data json-plist)
-  (jupyter-request
-   :type :comm-open
+  (jupyter-request "comm_open"
    :content (list :comm_id id :target_name target-name :data data)))
 
 (cl-defun jupyter-comm-msg (&key id data)
   (cl-check-type id string)
   (cl-check-type data json-plist)
-  (jupyter-request
-   :type :comm-msg
+  (jupyter-request "comm_msg"
    :content (list :comm_id id :data data)))
 
 (cl-defun jupyter-comm-close (&key id data)
   (cl-check-type id string)
   (cl-check-type data json-plist)
-  (jupyter-request
-   :type :comm-close
+  (jupyter-request "comm_close"
    :content (list :comm_id id :data data)))
 
 (cl-defun jupyter-shutdown-request (&key restart)
-  (jupyter-request
-   :type :shutdown-request
+  (jupyter-request "shutdown"
    :content (list :restart (if restart t jupyter--false))))
 
 ;;; Convenience functions and macros
