@@ -341,18 +341,37 @@ the subscriber list for those subscribers that unsubscribed."
 ;; value and produces content to send to subscribers.  The monadic
 ;; value is the content, created by `jupyter-content'.
 (defun jupyter-publisher (&optional pub-fn)
-  "Return a publisher that publishes content to subscribers.
-PUB-FN is a function that takes a normal value and produces
-content to send to the publisher's subscribers (by returning the
-result of `jupyter-send-content' on a value).  If no content is
-sent by PUB-FN, no content is sent to subscribers.  The default
-for PUB-FN is `jupyter-send-content'.
+  "Return a publisher function.
+A publisher function is a closure, function with a local scope,
+that maintains a list of subscribers and distributes the content
+that PUB-FN returns to each of them.
+
+PUB-FN is a function that optionally returns content to
+publish (by returning the result of `jupyter-content' on a
+value).  It's called when a value is submitted for publishing
+using `jupyter-publish', like this:
+
+    (let ((pub (jupyter-publisher
+                 (lambda (submitted-value)
+                   (message \"Publishing %s to subscribers\" submitted-value)
+                   (jupyter-content submitted-value)))))
+      (jupyter-run-with-io pub
+        (jupyter-publish (list 1 2 3))))
+
+The default for PUB-FN is `jupyter-content'.
+
+If no content is returned by PUB-FN, no content is sent to
+subscribers.
+
+A publisher can also be a subscriber of another publisher.  In
+this case, if PUB-FN returns the result of `jupyter-unsubscribe'
+its subscription is canceled.
 
 Ex. Publish the value 1 regardless of what is given to PUB-FN.
 
     (jupyter-publisher
       (lambda (_)
-        (jupyter-send-content 1)))
+        (jupyter-content 1)))
 
 Ex. Publish 'app if 'app is given to a publisher, nothing is sent
     to subscribers otherwise.  In this case, a publisher is a
