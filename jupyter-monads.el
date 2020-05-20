@@ -31,6 +31,20 @@
 ;; represents some kind of delayed value.
 ;;
 ;; TODO: Implement seq interface?
+;;
+;; TODO: Test unsubscribing publishers.
+;; 
+;; TODO: Allow pcase patterns in mlet*
+;;
+;;     (jupyter-mlet* ((value (jupyter-server-kernel-io kernel)))
+;;       (pcase-let ((`(,kernel-sub ,event-pub) value))
+;;         ...))
+;;
+;;     into
+;;
+;;     (jupyter-mlet* ((`(,kernel-sub ,event-pub)
+;;                      (jupyter-server-kernel-io kernel)))
+;;       ...)
 
 ;; The context of an I/O action is the current I/O publisher.
 ;;
@@ -38,6 +52,25 @@
 ;;
 ;; The context of a subscriber is whether or not it remains subscribed
 ;; to a publisher.
+
+;; Publisher/subscriber
+;;
+;; - A value is submitted to a publisher via `jupyter-publish'.
+;;
+;; - A publishing function takes the value and optionally returns
+;;   content (by returning the result of `jupyter-content' on a
+;;   value).
+;;
+;; - If no content is returned, nothing is published to subscribers.
+;;
+;; - When content is returned, that content is published to
+;;   subscribers (the subscriber functions called on the content).
+;;
+;; - The result of distributing content to a subscriber is the
+;;   subscriber's subscription status.
+;;
+;;   - If a subscriber returns anything other than the result of
+;;    `jupyter-unsubscribe', the subscription is kept.
 
 ;;; Code:
 
@@ -249,7 +282,9 @@ publisher providing content."
 ;; binds it to PUB-FN to produce content to send, and distributes the
 ;; content to subscribers.  When a publisher is a subscriber of
 ;; another publisher, the subscribed publisher is called to repeat the
-;; process on the sent content.
+;; process on the sent content.  In this way, the initial submitted
+;; content (submitted via `jupyter-publish') gets transformed by each
+;; subscribed publisher, via PUB-FN, to publish to their subscribers.
 ;;
 ;; TODO: Verify if this is a real bind and if not, add to the above
 ;; paragraph why it isn't.
@@ -299,8 +334,12 @@ the subscriber list for those subscribers that unsubscribed."
 ;; In the context of a publisher, that content is filtered through
 ;; PUB-FN before being passed along to subscribers.  So PUB-FN is a
 ;; filter of content.  Subscribers receive filtered content or no
-;; content at all depending on if a value wrapped by
-;; `jupyter-send-content' is returned by PUB-FN or not.
+;; content at all depending on the return value of PUB-FN, in
+;; particular if it returns a value wrapped by `jupyter-content'.
+;;
+;; PUB-FN is a monadic function in the Publisher monad.  It takes a
+;; value and produces content to send to subscribers.  The monadic
+;; value is the content, created by `jupyter-content'.
 (defun jupyter-publisher (&optional pub-fn)
   "Return a publisher that publishes content to subscribers.
 PUB-FN is a function that takes a normal value and produces
@@ -333,8 +372,8 @@ Ex. Publish 'app if 'app is given to a publisher, nothing is sent
         ('content
          (setq subs (jupyter-pseudo-bind-content
                      (cons subs (cadr pub-value)) pub-fn))
-         ;; Propagate back the unboxed result of binding subscribers
-         ;; so that publishers subscribed to other publishers return
+         ;; Propagate back the unboxed result of binding content so
+         ;; that publishers subscribed to other publishers return
          ;; their subscription status.
          (prog1 (cdr subs)
            (setq subs (delq nil (car subs)))))
@@ -443,6 +482,11 @@ whatever I/O context the action is evaluated in."
                     (jupyter-subscriber
                       (lambda (alive-p)
                         (ch-put ch 'alive-p alive-p))))
+                  ;; FIXME: This doesn't do what I think it does.  It
+                  ;; will evaluate continue-after before actually
+                  ;; publishing the start-channel message since the do
+                  ;; block is an I/O action and doesn't actually
+                  ;; perform the action.
                   (jupyter-return-delayed
                     (continue-after
                      (ch-alive-p ch)
@@ -453,10 +497,12 @@ whatever I/O context the action is evaluated in."
               (jupyter-run-with-io ioloop
                 (jupyter-do
                   (jupyter-publish 'stop-channel ch)
+                  ;; FIXME: Same here, see above.
                   (jupyter-return-delayed
                     (continue-after
                      (not (ch-alive-p ch))
                      (error "Channel not stopped: %s" ch))))))))
+        ;; TODO: Maybe return actions that start and stop channels?
         (list
          (jupyter-subscriber
            (lambda (msg)
@@ -578,8 +624,7 @@ See `jupyter-io' for more information on IO actions."
                              (replace-regexp-in-string "_" "-" type))))
   ;; FIXME: Implement `jupyter-new-request-publisher'
   ;;
-  ;; Build up a request and return an I/O action that sends it.  After
-  ;; sending, the kernel client in the I/O context
+  ;; Build up a request and return an I/O action that sends it.
   (let* ((msgs '())
          ;; Messages may still be arriving for the most recent
          ;; request, e.g. stdout message of an already idle request.
@@ -617,17 +662,21 @@ See `jupyter-io' for more information on IO actions."
                         (guard (string= id (jupyter-message-parent-id msg))))
                    (push msg msgs)
                    (when (or (jupyter-message-status-idle-p msg)
-                             ;; Jupyter protocol 5.1, IPython implementation 7.5.0
-                             ;; doesn't give status: busy or status: idle messages on
-                             ;; kernel-info-requests.  Whereas IPython implementation
-                             ;; 6.5.0 does.  Seen on Appveyor tests.
+                             ;; Jupyter protocol 5.1, IPython
+                             ;; implementation 7.5.0 doesn't give
+                             ;; status: busy or status: idle messages
+                             ;; on kernel-info-requests.  Whereas
+                             ;; IPython implementation 6.5.0 does.
+                             ;; Seen on Appveyor tests.
                              ;;
-                             ;; TODO: May be related jupyter/notebook#3705 as the
-                             ;; problem does happen after a kernel restart when
-                             ;; testing.
+                             ;; TODO: May be related
+                             ;; jupyter/notebook#3705 as the problem
+                             ;; does happen after a kernel restart
+                             ;; when testing.
                              (eq (jupyter-message-type msg) :kernel-info-reply)
-                             ;; No idle message is received after a shutdown reply so
-                             ;; consider REQ as having received an idle message in
+                             ;; No idle message is received after a
+                             ;; shutdown reply so consider REQ as
+                             ;; having received an idle message in
                              ;; this case.
                              (eq (jupyter-message-type msg) :shutdown-reply))
                      (setf (jupyter-request-messages req) (nreverse msgs))
