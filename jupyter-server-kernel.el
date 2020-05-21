@@ -117,29 +117,56 @@ Access should be done through `jupyter-available-kernelspecs'.")))
     (jupyter-return-delayed
       (list action-sub channels-pub event-pub))))
 
-(defun jupyter-server-io--sync-action (pub action id)
-  (let ((done nil))
-    (jupyter-run-with-io pub
-      ;; TODO: (subscribe (subscriber ...)) -> (subscribe ...)
-      ;;
-      ;; Need to make a publisher struct type to distinguish between
-      ;; publisher functions and regular functions first.
-      (jupyter-subscribe
-        (jupyter-subscriber
-          (lambda (event)
-            (when (and (eq (car event) action)
-                       (string= id (cadr event)))
-              (setq done t)
-              (jupyter-unsubscribe))))))
-    ;; TODO: Synchronization I/O actions?
-    ;;
-    ;;     (jupyter-with-io pub
-    ;;       (jupyter-wait (lambda () cond)))
-    (jupyter-with-timeout
-        (nil jupyter-default-timeout
-             (error "Timeout when %sconnecting server channels"
-                    (if (eq action 'connect-channels) "" "dis")))
-      done)))
+(defun jupyter-server-kernel-action-sub (action-sub channels-pub)
+  "Return a subscriber that connects/disconnects kernel channels.
+The subscriber will wait until the channels have been
+connected/disconnected before returning.
+
+Content like '(connect-channels ID) or '(disconnect-channels ID)
+can be submitted to connect or disconnect the WebSocket channels
+of a kernel with ID, a string.
+
+ACTION-SUB is a subscriber of content like
+
+    '(event connect-channels ID)
+
+and does the actual connecting/disconnecting of kernel channels.
+
+CHANNELS-PUB is a publisher of the status changes of a kernel's
+channels and publishes content like '(connect-channels ID) when
+the corresponding action has been completed."
+  (jupyter-subscriber
+    (lambda (content)
+      (unless (and (memq (car-safe content)
+                         '(connect-channels disconnect-channels))
+                   (stringp (car (cdr-safe content))))
+        (error "Unknown value: %s" content))
+      (pcase-let ((`(,action ,id) content)
+                  (done nil))
+        (jupyter-run-with-io channels-pub
+          ;; TODO: (subscribe (subscriber ...)) -> (subscribe ...)
+          ;;
+          ;; Need to make a publisher struct type to distinguish
+          ;; between publisher functions and regular functions
+          ;; first.
+          (jupyter-subscribe
+            (jupyter-subscriber
+              (lambda (event)
+                (when (and (eq (car event) action)
+                           (string= id (cadr event)))
+                  (setq done t)
+                  (jupyter-unsubscribe))))))
+        (jupyter-run-with-io action-sub
+          (jupyter-publish (list 'event action id)))
+        ;; TODO: Synchronization I/O actions?
+        ;;
+        ;;     (jupyter-with-io pub
+        ;;       (jupyter-wait (lambda () cond)))
+        (jupyter-with-timeout
+            (nil jupyter-default-timeout
+                 (error "Timeout when %sconnecting server channels"
+                        (if (eq action 'connect-channels) "" "dis")))
+          done)))))
 
 ;; TODO: Figure out how to refresh the connection with new
 ;; auth-headers.  I think its just call this function again.  Due to
@@ -158,25 +185,17 @@ Access should be done through `jupyter-available-kernelspecs'.")))
     ;;   ((jupyter-io `(,action-sub ,kernel-channels-pub ,ioloop-event-pub))
     ;;    ...))
     (jupyter-mlet* ((value (jupyter-server-ioloop-io ioloop)))
-      (pcase-let*
-          ((`(,action-sub ,channels-pub ,event-pub) value)
-           (kernel-connector
-            (jupyter-subscriber
-              (lambda (content)
-                (pcase content
-                  ;; (publish kc id) or (publish kc (list id 'disconnect))
-                  ;; FIXME: (id 'connect) and (id 'disconnect)
-                  ((or `(,(and (pred stringp) id) ,disconnect)
-                       (and (pred stringp) id))
-                   (let ((action (if disconnect 'disconnect-channels
-                                   'connect-channels)))
-                     (jupyter-run-with-io action-sub
-                       (jupyter-publish (list 'event action id)))
-                     (jupyter-server-io--sync-action
-                      channels-pub action id)))
-                  (_ (error "Unknown value: %s" content)))))))
+      (pcase-let ((`(,action-sub ,channels-pub ,event-pub) value))
+        (jupyter-add-finalizer server
+          (lambda ()
+            (jupyter-run-with-io action-sub
+              (jupyter-publish 'stop))))
+        ;; FIXME: mlet* should wrap the result in
+        ;; `jupyter-return-delayed'.
         (jupyter-return-delayed
-          (list action-sub kernel-connector event-pub))))))
+          (list action-sub
+                (jupyter-server-kernel-action-sub action-sub channels-pub)
+                event-pub))))))
 
 (cl-defmethod jupyter-connection ((server jupyter-server))
   "Return a list of two functions, the first used to send events
