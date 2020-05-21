@@ -201,95 +201,9 @@ the corresponding action has been completed."
                 (jupyter-server-kernel-action-sub action-sub channels-pub)
                 event-pub))))))
 
-(cl-defmethod jupyter-connection ((server jupyter-server))
-  "Return a list of two functions, the first used to send events
-to SERVER and the second used to add a message handler to
-SERVER's event stream.  A handler passed an even number of times
-will cause it to no longer handle SERVER's events.  The handler
-is also removed if it returns nil after handling an event."
-  (let ((url (oref server url))
-        (ws-url (oref server ws-url))
-        (handlers '())
-        (kernel-ids '())
-        (ioloop nil))
-    (cl-labels
-        ((set-ioloop
-          (auth-headers)
-          (setq ioloop
-                (jupyter-server-ioloop
-                 :url url
-                 :ws-url ws-url
-                 :ws-headers auth-headers)))
-         (ch-action
-          (action id)
-          (jupyter-send ioloop action id)
-          (unless (jupyter-ioloop-wait-until ioloop action #'identity)
-            (error "Timeout when %sconnecting server channels"
-                   (if (eq action 'connect-channels) "" "dis"))))
-         (reconnect-kernels
-          ()
-          (when kernel-ids
-            (let ((ids kernel-ids))
-              ;; Reset KERNEL-IDS since it will be updated after the
-              ;; channels have been re-connected.
-              (setq kernel-ids nil)
-              (while ids
-                (ch-action 'connect-channels (pop ids))))))
-         (start
-          ()
-          ;; No need to check for IOLOOP being nil since it will
-          ;; already be set before the first call to this function.
-          (unless (jupyter-ioloop-alive-p ioloop)
-            ;; Write the cookies to file so that they can be read by
-            ;; the subprocess.
-            (url-cookie-write-file)
-            (jupyter-ioloop-start
-             ioloop
-             (lambda (event)
-               (if (not (memq (car event)
-                              '(connect-channels
-                                disconnect-channels)))
-                   (cl-loop
-                    for handler in handlers
-                    do (funcall handler event))
-                 (pcase (car event)
-                   ((and 'connect-channels (let id (cadr event)))
-                    (cl-pushnew id kernel-ids :test #'string=))
-                   ((and 'disconnect-channels (let id (cadr event)))
-                    (cl-callf2 delete id kernel-ids))))))
-            (reconnect-kernels))
-          ioloop)
-         (stop
-          ()
-          (when (jupyter-ioloop-alive-p ioloop)
-            (jupyter-ioloop-stop ioloop))))
-      (set-ioloop (jupyter-api-auth-headers server))
-      (list (lambda (&rest args)
-              (pcase (car args)
-                ('message (apply #'jupyter-send (start) 'send (cdr args)))
-                ('alive-p (jupyter-ioloop-alive-p ioloop))
-                ('start (start) nil)
-                ('stop (stop) nil)
-                ((and 'add-handler (let h (cadr args)))
-                 (start)
-                 (cl-pushnew h handlers))
-                ((and 'remove-handler (let h (cadr args)))
-                 (cl-callf2 delq h handlers)
-                 (unless handlers
-                   (stop)))
-                ((or 'connect-channels 'disconnect-channels)
-                 (start)
-                 (apply #'ch-action args))
-                ((and 'auth-headers (let auth-headers (cadr args)))
-                 (stop)
-                 (set-ioloop auth-headers)
-                 (when handlers
-                   (start)))
-                (_ (error "Unhandled IO: %s" args))))
-            (make-finalizer #'stop)))))
-
-(cl-defmethod jupyter-connection ((spec (head server)))
-  (jupyter-connection (jupyter-server :url (cadr spec))))
+(cl-defmethod jupyter-io ((server jupyter-server))
+  (jupyter-mlet* ((io (jupyter-server-io server)))
+    io))
 
 (defun jupyter-servers ()
   "Return a list of all `jupyter-server's."
@@ -401,67 +315,6 @@ Call the next method if ARGS does not contain :server."
 
 ;;; Client connection
 
-(cl-defmethod jupyter-connection ((kernel jupyter-server-kernel))
-  "Return a list representing an I/O connection to KERNEL.
-See `jupyter-connection' for the base I/O actions.  This
-connection returns nil to 'hb
-
-The extra I/O
-actions defined by this connection are 
-
-"
-  (pcase-let* (((cl-struct jupyter-server-kernel server id) kernel)
-               (server-io (jupyter-io server))
-               (handlers '())
-               (connected nil)
-               (filter-by-id
-                (lambda (event)
-                  (pcase-let ((`(,type ,kid . ,rest) event))
-                    (when (string= kid id)
-                      (cl-loop
-                       with event = (cons type rest)
-                       for h in handlers
-                       do (funcall h event)))))))
-    (cl-macrolet ((server-io (&rest args)
-                             (if (eq (car (last args)) 'args)
-                                 `(apply server-io ,@args)
-                               `(funcall server-io ,@args))))
-      (cl-labels ((start
-                   ()
-                   (unless connected
-                     (server-io 'connect-channels id)
-                     (server-io 'add-handler filter-by-id)
-                     (setq connected t)))
-                  (stop
-                   ()
-                   (when connected
-                     (server-io 'remove-handler filter-by-id)
-                     (server-io 'disconnect-channels id)
-                     (setq connected nil))))
-        ;; These functions should not depend on KERNEL. See
-        ;; `jupyter-connections' for the reason why.
-        (list
-         (lambda (&rest args)
-           (pcase (car args)
-             ('message
-              (start)
-              (server-io 'message id args))
-             ('start (start) nil)
-             ('stop (stop) nil)
-             ('alive-p
-              (and (server-io 'alive-p) connected))
-             ((and 'add-handler (let h (cadr args)))
-              (start)
-              (cl-pushnew h handlers))
-             ((and 'remove-handler (let h (cadr args)))
-              (cl-callf2 delq h handlers)
-              (unless handlers
-                (stop)))
-             ('hb nil)
-             (_
-              (server-io args))))
-         (make-finalizer #'stop))))))
-
 (defun jupyter-server-kernel-io (kernel)
   ;; TODO: What about disconnecting channels?  Do that at a later
   ;; stage.
@@ -497,6 +350,10 @@ actions defined by this connection are
                     (jupyter-run-with-io kernel-action
                       (jupyter-publish
                         (list 'disconnect-channels id)))))))))))
+
+(cl-defmethod jupyter-io ((kernel jupyter-server-kernel))
+  (jupyter-mlet* ((io (jupyter-server-kernel-io kernel)))
+    io))
 
 ;;; Kernel management
 
