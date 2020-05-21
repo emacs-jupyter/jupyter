@@ -172,6 +172,10 @@ the corresponding action has been completed."
 ;; auth-headers.  I think its just call this function again.  Due to
 ;; the functional design, all references to the old objects should get
 ;; cleaned up.
+(cl-defmethod jupyter-add-finalizer (obj finalizer)
+  (cl-callf append (gethash obj jupyter-finalizer-pool)
+    (list (make-finalizer finalizer))))
+
 (defun jupyter-server-io (server)
   (let ((ioloop (jupyter-server-ioloop
                  :url (oref server url)
@@ -462,34 +466,37 @@ actions defined by this connection are
   ;; TODO: What about disconnecting channels?  Do that at a later
   ;; stage.
   (pcase-let (((cl-struct jupyter-server-kernel server id) kernel))
-    (jupyter-mlet* ((value (jupyter-server-io server)))
+    (jupyter-mlet* ((server-io (jupyter-io server)))
       (pcase-let*
-          ((`(,action-sub ,kernel-connector ,ioloop-event-pub) value)
-           (kernel-event-pub
+          ((`(,action-sub ,kernel-action ,event-pub) server-io)
+           (kernel-io
             (jupyter-publisher
-              ;; TODO: How to unsubscribe this when the kernel is no
-              ;; longer needed?
               (lambda (event)
                 (pcase event
                   ((and `(message ,kid . ,rest)
                         (guard (string= kid id)))
-                   (jupyter-content (cons 'message rest)))
+                   (jupyter-content rest))
                   (`(unsubscribe ,kid)
-                   (if (string= kid id)
-                       (jupyter-unsubscribe)
-                     (jupyter-content event)))
+                   (when (string= kid id)
+                     (jupyter-unsubscribe)))
                   (_
                    (jupyter-run-with-io action-sub
-                     (pcase event
-                       (`(send . ,args)
-                        (jupyter-publish (cl-list* 'send id args)))
-                       (_ (jupyter-publish event))))))))))
+                     (jupyter-publish (cl-list* 'send id args)))))))))
         (jupyter-do
-          (jupyter-with-io kernel-connector
-            (jupyter-publish id))
-          (jupyter-with-io ioloop-event-pub
-            (jupyter-subscribe kernel-event-pub))
-          (jupyter-return-delayed kernel-event-pub))))))
+          (jupyter-with-io kernel-action
+            (jupyter-publish (list 'connect-channels id)))
+          (jupyter-with-io event-pub
+            (jupyter-subscribe kernel-io))
+          (jupyter-return-delayed
+            (list kernel-io
+                  ;; TODO: Bring this, as an action, into kernel-io
+                  (lambda ()
+                    (jupyter-run-with-io event-pub
+                      ;; TODO: How can this be avoided?
+                      (jupyter-publish (list 'unsubscribe id)))
+                    (jupyter-run-with-io kernel-action
+                      (jupyter-publish
+                        (list 'disconnect-channels id)))))))))))
 
 ;;; Kernel management
 
