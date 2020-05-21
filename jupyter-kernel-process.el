@@ -86,109 +86,112 @@ Call the next method if ARGS does not contain :spec."
 
 ;;; Client connection
 
-(cl-defmethod jupyter-connection ((session jupyter-session))
-  (let* ((channels '(:control :shell :iopub :stdin))
-         (ch-group (let ((endpoints (jupyter-session-endpoints session)))
-                     (cl-loop
-                      for ch in channels
-                      collect ch
-                      collect (list :endpoint (plist-get endpoints ch)
-                                    :alive-p nil))))
-         (hb nil)
-         (ioloop nil)
-         (handlers '()))
-    (cl-macrolet ((continue-after
-                   (cond on-timeout)
-                   `(jupyter-with-timeout
-                        (nil jupyter-default-timeout ,on-timeout)
-                      ,cond)))
-      (cl-labels ((ch-alive-p
-                   (ch)
-                   (and ioloop (jupyter-ioloop-alive-p ioloop)
-                        (plist-get (plist-get ch-group ch) :alive-p)))
-                  (ch-start
-                   (ch)
-                   (unless (ch-alive-p ch)
-                     (jupyter-send ioloop 'start-channel ch (plist-get ch :endpoint))
-                     (continue-after
-                      (ch-alive-p ch)
-                      (error "Channel not started: %s" ch))))
-                  (ch-stop
-                   (ch)
-                   (when (ch-alive-p ch)
-                     (jupyter-send ioloop 'stop-channel ch)
-                     (continue-after
-                      (not (ch-alive-p ch))
-                      (error "Channel not stopped: %s" ch))))
-                  (start
-                   ()
-                   (unless ioloop
-                     (require 'jupyter-zmq-channel-ioloop)
-                     (setq ioloop (make-instance 'jupyter-zmq-channel-ioloop))
-                     (jupyter-channel-ioloop-set-session ioloop session))
-                   (unless (jupyter-ioloop-alive-p ioloop)
-                     (jupyter-ioloop-start
-                      ioloop
-                      (lambda (event)
-                        (pcase (car event)
-                          ((and 'start-channel (let ch (cadr event)))
-                           (plist-put (plist-get ch-group ch) :alive-p t))
-                          ((and 'stop-channel (let ch (cadr event)))
-                           (plist-put (plist-get ch-group ch) :alive-p nil))
-                          (_
-                           (jupyter-run-handlers handlers event)))))
-                     (condition-case err
-                         (cl-loop
-                          for ch in channels
-                          do (ch-start ch))
-                       (error
-                        (jupyter-ioloop-stop ioloop)
-                        (signal (car err) (cdr err)))))
+(defun jupyter-kernel-process-io (kernel)
+  (let ((session (jupyter-kernel-session kernel)))
+    (let* ((channels '(:shell :iopub :stdin))
+           (ch-group (let ((endpoints (jupyter-session-endpoints session)))
+                       (cl-loop
+                        for ch in channels
+                        collect ch
+                        collect (list :endpoint (plist-get endpoints ch)
+                                      :alive-p nil))))
+           (hb nil)
+           (kernel-io nil)
+           (ioloop nil))
+      (cl-macrolet ((continue-after
+                     (cond on-timeout)
+                     `(jupyter-with-timeout
+                          (nil jupyter-default-timeout ,on-timeout)
+                        ,cond)))
+        (cl-labels ((ch-put
+                     (ch prop value)
+                     (plist-put (plist-get ch-group ch) prop value))
+                    (ch-get
+                     (ch prop)
+                     (plist-get (plist-get ch-group ch) prop))
+                    (ch-alive-p
+                     (ch)
+                     (and ioloop (jupyter-ioloop-alive-p ioloop)
+                          (ch-get ch :alive-p)))
+                    (ch-start
+                     (ch)
+                     (unless (ch-alive-p ch)
+                       (jupyter-send ioloop 'start-channel ch
+                                     (ch-get ch :endpoint))
+                       (continue-after
+                        (ch-alive-p ch)
+                        (error "Channel not started: %s" ch))))
+                    (ch-stop
+                     (ch)
+                     (when (ch-alive-p ch)
+                       (jupyter-send ioloop 'stop-channel ch)
+                       (continue-after
+                        (not (ch-alive-p ch))
+                        (error "Channel not stopped: %s" ch))))
+                    (start
+                     ()
+                     (unless ioloop
+                       (require 'jupyter-zmq-channel-ioloop)
+                       (setq ioloop (make-instance 'jupyter-zmq-channel-ioloop))
+                       (jupyter-channel-ioloop-set-session ioloop session))
+                     (unless (jupyter-ioloop-alive-p ioloop)
+                       (jupyter-ioloop-start
+                        ioloop
+                        (lambda (event)
+                          (pcase (car event)
+                            ((and 'start-channel (let ch (cadr event)))
+                             (ch-put ch :alive-p t))
+                            ((and 'stop-channel (let ch (cadr event)))
+                             (ch-put ch :alive-p nil))
+                            ('sent (message "SENT: %s" (cdr event)))
+                            (_
+                             (jupyter-run-with-io kernel-io
+                               (jupyter-publish event))))))
+                       (condition-case err
+                           (cl-loop
+                            for ch in channels
+                            do (ch-start ch))
+                         (error
+                          (jupyter-ioloop-stop ioloop)
+                          (signal (car err) (cdr err)))))
 
-                   ioloop)
-                  (stop
-                   ()
-                   (and ioloop
-                        (jupyter-ioloop-alive-p ioloop)
-                        (jupyter-ioloop-stop ioloop))))
-        (list
-         (lambda (&rest args)
-           (pcase (car args)
-             ('message (apply #'jupyter-send (start) 'send (cdr args)))
-             ((and 'add-handler (let h (cadr args)))
-              (start)
-              (cl-pushnew h handlers))
-             ((and 'remove-handler (let h (cadr args)))
-              (cl-callf2 delq h handlers)
-              (unless handlers
-                (stop)))
-             ('start (start) nil)
-             ('stop (stop) nil)
-             ('alive-p
-              (if (and (cdr args) (eq (cadr args) 'hb))
-                  (and hb (jupyter-alive-p hb))
-                (and ioloop
-                     (jupyter-ioloop-alive-p ioloop))))
-             ('hb
-              (unless hb
-                (setq hb
-                      (let ((endpoints (jupyter-session-endpoints session)))
-                        (make-instance
-                         'jupyter-hb-channel
-                         :session session
-                         :endpoint (plist-get endpoints :hb)))))
-              hb)
-             (_
-              (error "Unhandled IO: %s" args))))
-         (make-finalizer
-          (lambda ()
-            (and hb (jupyter-hb-pause hb))
-            (stop)
-            (setq hb nil ioloop nil))))))))
+                     ioloop)
+                    (stop
+                     ()
+                     (and ioloop
+                          (jupyter-ioloop-alive-p ioloop)
+                          (jupyter-ioloop-stop ioloop))))
+          (setq kernel-io
+                (jupyter-publisher
+                  (lambda (content)
+                    (pcase (car content)
+                      ;; ('message channel idents . msg)
+                      ('message
+                       (jupyter-content (cdr content)))
+                      ('send (apply #'jupyter-send (start) content))
+                      ('hb
+                       (unless hb
+                         (setq hb
+                               (let ((endpoints (jupyter-session-endpoints session)))
+                                 (make-instance
+                                  'jupyter-hb-channel
+                                  :session session
+                                  :endpoint (plist-get endpoints :hb)))))
+                       (jupyter-run-with-io (cadr content)
+                         (jupyter-publish hb)))
+                      (_
+                       (error "Unhandled I/O: %s" content))))))
+          (jupyter-return-delayed
+            (list kernel-io
+                  (lambda ()
+                    (and hb (jupyter-hb-pause hb))
+                    (stop)
+                    (setq hb nil ioloop nil)))))))))
 
-(cl-defmethod jupyter-connection ((kernel jupyter-kernel-process))
+(cl-defmethod jupyter-io ((kernel jupyter-kernel-process))
   "Return a connection to KERNEL's session."
-  (jupyter-connection (jupyter-kernel-session kernel)))
+  (jupyter-mlet* ((io (jupyter-kernel-process-io kernel)))
+    io))
 
 ;;; Kernel management
 
