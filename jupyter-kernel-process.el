@@ -96,6 +96,7 @@ Call the next method if ARGS does not contain :spec."
                         collect (list :endpoint (plist-get endpoints ch)
                                       :alive-p nil))))
            (hb nil)
+           (discarded nil)
            (kernel-io nil)
            (ioloop nil))
       (cl-macrolet ((continue-after
@@ -164,29 +165,36 @@ Call the next method if ARGS does not contain :spec."
           (setq kernel-io
                 (jupyter-publisher
                   (lambda (content)
-                    (pcase (car content)
-                      ;; ('message channel idents . msg)
-                      ('message
-                       (jupyter-content (cdr content)))
-                      ('send (apply #'jupyter-send (start) content))
-                      ('hb
-                       (unless hb
-                         (setq hb
-                               (let ((endpoints (jupyter-session-endpoints session)))
-                                 (make-instance
-                                  'jupyter-hb-channel
-                                  :session session
-                                  :endpoint (plist-get endpoints :hb)))))
-                       (jupyter-run-with-io (cadr content)
-                         (jupyter-publish hb)))
-                      (_
-                       (error "Unhandled I/O: %s" content))))))
+                    (if discarded
+                        (error "Kernel I/O no longer available")
+                      (pcase (car content)
+                        ;; ('message channel idents . msg)
+                        ('message
+                         (pop content)
+                         ;; TODO: Get rid of this
+                         (plist-put
+                          (cddr content) :channel
+                          (substring (symbol-name (car content)) 1))
+                         (jupyter-content (cddr content)))
+                        ('send (apply #'jupyter-send (start) content))
+                        ('hb
+                         (unless hb
+                           (setq hb
+                                 (let ((endpoints (jupyter-session-endpoints session)))
+                                   (make-instance
+                                    'jupyter-hb-channel
+                                    :session session
+                                    :endpoint (plist-get endpoints :hb)))))
+                         (jupyter-run-with-io (cadr content)
+                           (jupyter-publish hb)))
+                        (_
+                         (error "Unhandled I/O: %s" content)))))))
           (jupyter-return-delayed
             (list kernel-io
                   (lambda ()
                     (and hb (jupyter-hb-pause hb))
                     (stop)
-                    (setq hb nil ioloop nil)))))))))
+                    (setq hb nil ioloop nil discarded t)))))))))
 
 (cl-defmethod jupyter-io ((kernel jupyter-kernel-process))
   "Return a connection to KERNEL's session."

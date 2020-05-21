@@ -29,6 +29,7 @@
 ;;; Code:
 
 (require 'jupyter-base)
+(require 'jupyter-monads)
 (require 'jupyter-kernelspec)
 
 (defgroup jupyter-kernel nil
@@ -44,6 +45,21 @@
         :documentation "The kernelspec of this kernel.")
   ;; FIXME: Remove this slot, used by `jupyter-widget-client'.
   (session nil :type jupyter-session))
+
+(cl-defmethod jupyter-io :around ((kernel jupyter-kernel))
+  (jupyter-mlet* ((value (cl-call-next-method)))
+    (pcase-let ((`(,io ,discard-io) value))
+      ;; Cleanup the I/O connection
+      (jupyter-run-with-io io
+        (jupyter-subscribe
+          (jupyter-subscriber
+            (lambda (msg)
+              (when (eq (jupyter-message-type msg) :shutdown-reply)
+                (funcall discard-io)
+                ;; Cleanup the Emacs representation of a kernel.
+                (jupyter-shutdown kernel)
+                (jupyter-unsubscribe))))))
+      (jupyter-return-delayed io))))
 
 (cl-defmethod jupyter-alive-p ((kernel jupyter-kernel))
   "Return non-nil if KERNEL has been launched."

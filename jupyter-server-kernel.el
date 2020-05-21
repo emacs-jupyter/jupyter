@@ -318,23 +318,26 @@ Call the next method if ARGS does not contain :server."
 (defun jupyter-server-kernel-io (kernel)
   ;; TODO: What about disconnecting channels?  Do that at a later
   ;; stage.
-  (pcase-let (((cl-struct jupyter-server-kernel server id) kernel))
+  (pcase-let (((cl-struct jupyter-server-kernel server id) kernel)
+              (discarded nil))
     (jupyter-mlet* ((server-io (jupyter-io server)))
       (pcase-let*
           ((`(,action-sub ,kernel-action ,event-pub) server-io)
            (kernel-io
             (jupyter-publisher
               (lambda (event)
-                (pcase event
-                  ((and `(message ,kid . ,rest)
-                        (guard (string= kid id)))
-                   (jupyter-content rest))
-                  (`(unsubscribe ,kid)
-                   (when (string= kid id)
-                     (jupyter-unsubscribe)))
-                  (_
-                   (jupyter-run-with-io action-sub
-                     (jupyter-publish (cl-list* 'send id args)))))))))
+                (if discarded
+                    (error "Kernel I/O no longer available")
+                  (pcase event
+                    ((and `(message ,kid . ,rest)
+                          (guard (string= kid id)))
+                     (jupyter-content rest))
+                    (`(unsubscribe ,kid)
+                     (when (string= kid id)
+                       (jupyter-unsubscribe)))
+                    (_
+                     (jupyter-run-with-io action-sub
+                       (jupyter-publish (cl-list* 'send id args))))))))))
         (jupyter-do
           (jupyter-with-io kernel-action
             (jupyter-publish (list 'connect-channels id)))
@@ -348,8 +351,8 @@ Call the next method if ARGS does not contain :server."
                       ;; TODO: How can this be avoided?
                       (jupyter-publish (list 'unsubscribe id)))
                     (jupyter-run-with-io kernel-action
-                      (jupyter-publish
-                        (list 'disconnect-channels id)))))))))))
+                      (jupyter-publish (list 'disconnect-channels id)))
+                    (setq discarded t)))))))))
 
 (cl-defmethod jupyter-io ((kernel jupyter-server-kernel))
   (jupyter-mlet* ((io (jupyter-server-kernel-io kernel)))
