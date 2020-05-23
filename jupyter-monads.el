@@ -666,16 +666,8 @@ See `jupyter-io' for more information on IO actions."
   (unless (symbolp type)
     (setq type (intern (format ":%s-request"
                                (replace-regexp-in-string "_" "-" type)))))
-  ;; FIXME: Implement `jupyter-new-request-publisher'
-  ;;
   ;; Build up a request and return an I/O action that sends it.
   (let* ((msgs '())
-         ;; Messages may still be arriving for the most recent
-         ;; request, e.g. stdout message of an already idle request.
-         ;; This variable ensures requests are not unsubscribed from a
-         ;; kernel's message too early by only unsubscribing when they
-         ;; aren't the most recent request.
-         (most-recent t)
          (ch (if (memq type '(:input-reply :input-request))
                  :stdin
                :shell))
@@ -692,45 +684,47 @@ See `jupyter-io' for more information on IO actions."
          (id (jupyter-request-id req))
          (req-msgs-pub
           (jupyter-publisher
-            (lambda (value)
+            (lambda (msg)
               (cond
-               ((and (not most-recent)
-                     (jupyter-request-idle-p req))
-                ;; (jupyter-run-with-io req-complete-pub
-                ;;   (jupyter-publish req))
-                ;;
+               ((and (jupyter-request-idle-p req)
+                     ;; A status message after a request goes idle
+                     ;; means there is a new request and there will,
+                     ;; theoretically, be no more messages for the
+                     ;; idle one.
+                     ;;
+                     ;; FIXME: Is that true? Figure out the difference
+                     ;; between a status: busy and a status: idle
+                     ;; message.
+                     (eq (jupyter-message-type msg) :status))
+                (setf (jupyter-request-messages req) (nreverse msgs))
                 ;; What happens to the subscriber references of this
                 ;; publisher after it unsubscribes?  They remain until
                 ;; the publisher itself is no longer accessible.
                 (jupyter-unsubscribe))
-               (t
-                (pcase value
-                  ((and `(,channel . ,msg)
-                        ;; TODO: `jupyter-message-parent-id' -> `jupyter-parent-id'
-                        ;; and the like.
-                        (guard (string= id (jupyter-message-parent-id msg))))
-                   (push msg msgs)
-                   (when (or (jupyter-message-status-idle-p msg)
-                             ;; Jupyter protocol 5.1, IPython
-                             ;; implementation 7.5.0 doesn't give
-                             ;; status: busy or status: idle messages
-                             ;; on kernel-info-requests.  Whereas
-                             ;; IPython implementation 6.5.0 does.
-                             ;; Seen on Appveyor tests.
-                             ;;
-                             ;; TODO: May be related
-                             ;; jupyter/notebook#3705 as the problem
-                             ;; does happen after a kernel restart
-                             ;; when testing.
-                             (eq (jupyter-message-type msg) :kernel-info-reply)
-                             ;; No idle message is received after a
-                             ;; shutdown reply so consider REQ as
-                             ;; having received an idle message in
-                             ;; this case.
-                             (eq (jupyter-message-type msg) :shutdown-reply))
-                     (setf (jupyter-request-messages req) (nreverse msgs))
-                     (setf (jupyter-request-idle-p req) t))
-                   (jupyter-content value)))))))))
+               ;; TODO: `jupyter-message-parent-id' -> `jupyter-parent-id'
+               ;; and the like.
+               ((string= id (jupyter-message-parent-id msg))
+                (push msg msgs)
+                (when (or (jupyter-message-status-idle-p msg)
+                          ;; Jupyter protocol 5.1, IPython
+                          ;; implementation 7.5.0 doesn't give
+                          ;; status: busy or status: idle messages
+                          ;; on kernel-info-requests.  Whereas
+                          ;; IPython implementation 6.5.0 does.
+                          ;; Seen on Appveyor tests.
+                          ;;
+                          ;; TODO: May be related
+                          ;; jupyter/notebook#3705 as the problem
+                          ;; does happen after a kernel restart
+                          ;; when testing.
+                          (eq (jupyter-message-type msg) :kernel-info-reply)
+                          ;; No idle message is received after a
+                          ;; shutdown reply so consider REQ as
+                          ;; having received an idle message in
+                          ;; this case.
+                          (eq (jupyter-message-type msg) :shutdown-reply))
+                  (setf (jupyter-request-idle-p req) t))
+                (jupyter-content msg)))))))
     ;; Anything sent to stdin is a reply not a request so consider the
     ;; "request" completed.
     (setf (jupyter-request-idle-p req) (eq ch :stdin))
