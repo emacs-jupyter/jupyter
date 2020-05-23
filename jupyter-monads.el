@@ -470,9 +470,7 @@ Ex. Subscribe to a publisher and unsubscribe after receiving two
             nil)))
 
 (defun jupyter-publish (value)
-  "Return an I/O action that publishes VALUE as content.
-The content will be sent to the subscribers of the publisher in
-whatever I/O context the action is evaluated in."
+  "Return an I/O action that submits VALUE to publish as content."
   (declare (indent 0))
   (make-jupyter-delayed
    :value (lambda ()
