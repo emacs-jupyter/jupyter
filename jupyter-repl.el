@@ -1373,15 +1373,17 @@ In addition to the above, call the function
 the REPL to disable that mode in those buffers.  See
 `jupyter-repl-associate-buffer'."
   (when (eq major-mode 'jupyter-repl-mode)
-    (let ((kernel (jupyter-kernel jupyter-current-client)))
+    (let ((kernel (slot-boundp jupyter-current-client 'io)))
       (or (not kernel)
           (when (y-or-n-p (format "Jupyter REPL (%s) still connected.  Kill it? "
                                   (buffer-name (current-buffer))))
             (prog1 t
-              (jupyter-disconnect jupyter-current-client)
-              (when (and (zerop (length (jupyter-clients kernel)))
-                         (yes-or-no-p (format "Shutdown the client's kernel? ")))
-                (jupyter-shutdown kernel))))))))
+              (when (yes-or-no-p (format "Shutdown the client's kernel? "))
+                ;; FIXME: Get rid of this `jupyter-inhibit-handlers'
+                ;; variable.
+                (let ((jupyter-inhibit-handlers t))
+                  (jupyter-send jupyter-current-client :shutdown-request)))
+              (jupyter-disconnect jupyter-current-client)))))))
 
 (defun jupyter-repl-error-before-major-mode-change ()
   "Error if attempting to change the `major-mode' in a REPL buffer."
