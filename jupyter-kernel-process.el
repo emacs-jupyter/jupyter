@@ -40,10 +40,14 @@ Elements look like (PROCESS CONN-FILE) where PROCESS is a kernel
 process and CONN-FILE the associated connection file.
 
 Cleaning up the list removes elements whose PROCESS is no longer
-live.  When removing, CONN-FILE will be deleted and PROCESS's
-buffer killed.  The list is periodically cleaned up when a new
-process is launched.  Also, any connection files that still exist
-before Emacs exits are deleted.")
+live.  When removing an element, CONN-FILE will be deleted and
+PROCESS's buffer killed.
+
+The list is periodically cleaned up when a new process is
+launched.
+
+Also, just before Emacs exits any connection files that still
+exist are deleted.")
 
 ;;; Kernel definition
 
