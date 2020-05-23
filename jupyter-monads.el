@@ -408,14 +408,26 @@ Ex. Publish 'app if 'app is given to a publisher, nothing is sent
         ('subscribe (cl-pushnew (cadr pub-value) subs))
         (_ (error "Unhandled content: %s" pub-value))))))
 (defun jupyter-filter-content (pub pub-fn)
-  "Return a publisher subscribed to PUB's content.
-The returned publisher filters content to its subscribers through
-PUB-FN."
+  "Return an I/O action subscribing a publisher to PUB's content.
+The subscribed publisher filters the content it publishes through
+PUB-FN.  The result of the I/O action is the subscribed
+publisher.
+
+This is the bind operation of a publisher embedded in an I/O
+context."
   (declare (indent 1))
-  (let ((sub (jupyter-publisher pub-fn)))
-    (jupyter-run-with-io pub
-      (jupyter-subscribe sub))
-    sub))
+  (jupyter-filter pub (jupyter-publisher pub-fn)))
+
+(defun jupyter-filter (pub-a pub-b)
+  "Return an I/O action filtering PUB-A's content through PUB-B."
+  (declare (indent 1))
+  (jupyter-with-io pub-a
+    (jupyter-do
+      (jupyter-subscribe pub-b)
+      ;; TODO: How can this be a different publisher?  Composing
+      ;; publishers should return a new publisher of the filtered
+      ;; content.
+      (jupyter-return-delayed pub-b))))
 
 (defun jupyter-consume-content (pub sub-fn)
   "Return a subscriber subscribed to PUB's content.
