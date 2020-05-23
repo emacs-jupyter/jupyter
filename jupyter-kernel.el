@@ -47,14 +47,19 @@
   (session nil :type jupyter-session))
 
 (cl-defmethod jupyter-io :around ((kernel jupyter-kernel))
+  (jupyter-launch kernel)
   (jupyter-mlet* ((value (cl-call-next-method)))
     (pcase-let ((`(,io ,discard-io) value))
-      ;; Cleanup the I/O connection
+      ;; Discard the I/O connection on shutdown
       (jupyter-run-with-io io
         (jupyter-subscribe
           (jupyter-subscriber
             (lambda (msg)
-              (when (eq (jupyter-message-type msg) :shutdown-reply)
+              (when (and (eq (jupyter-message-parent-type msg)
+                             :shutdown-request)
+                         (or (jupyter-message-status-idle-p msg)
+                             (eq (jupyter-message-type msg)
+                                 :shutdown-reply)))
                 (funcall discard-io)
                 ;; Cleanup the Emacs representation of a kernel.
                 (jupyter-shutdown kernel)
