@@ -582,13 +582,7 @@ kernel whose kernelspec if SPEC."
   "Shutdown the kernel CLIENT is connected to.
 After CLIENT shuts down the kernel it is connected to, it is no
 longer connected to a kernel."
-  (jupyter-run-with-io (oref client io)
-    (jupyter-then
-        (jupyter-idle (jupyter-request "shutdown"))
-      (lambda (req)
-        ;; Ensure the Emacs representation of the kernel also knows
-        ;; that the kernel's process has been shutdown.
-        (jupyter-shutdown (jupyter-kernel client))))))
+  (jupyter-wait-until-idle (jupyter-send client :shutdown-request)))
 
 (cl-defmethod jupyter-interrupt-kernel ((client jupyter-kernel-client))
   "Interrupt the kernel CLIENT is connected to."
