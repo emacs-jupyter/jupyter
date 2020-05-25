@@ -47,6 +47,8 @@ Used in, e.g. a `jupyter-server-kernel-list-mode' buffer.")
 
 (defvar jupyter--servers-1 (make-hash-table :weakness 'value :test #'equal))
 
+(defvar jupyter--servers nil)
+
 ;; TODO: We should really rename `jupyter-server' to something like
 ;; `jupyter-server-client' since it isn't a representation of a server, but a
 ;; communication channel with one.
