@@ -74,6 +74,8 @@
 
 ;;; Code:
 
+(require 'jupyter-base)
+
 (defgroup jupyter-monads nil
   "Monadic Jupyter I/O"
   :group 'jupyter)
