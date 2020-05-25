@@ -310,10 +310,8 @@ method is called."
 
 (cl-defmethod jupyter-kernel-alive-p ((client jupyter-kernel-client))
   "Return non-nil if the kernel CLIENT is connected to is alive."
-  (when-let* ((kernel (jupyter-kernel client)))
-    (and (slot-boundp client 'conn)
-         (jupyter-alive-p kernel)
-         (jupyter-alive-p (jupyter-io kernel)))))
+  ;; FIXME: What should this be
+  (slot-boundp client 'io))
 
 (defun jupyter-find-client-for-session (session-id)
   "Return the kernel client whose session has SESSION-ID."
@@ -553,6 +551,10 @@ KERNEL is the name of the kernelspec as returned by the
 shell command."
   (jupyter-client (jupyter-get-kernelspec kernel) client-class))
 
+(cl-defmethod jupyter-disconnect ((client jupyter-kernel-client))
+  (slot-makeunbound client 'io)
+  (slot-makeunbound client 'session))
+
 (cl-defmethod jupyter-client ((spec jupyter-kernelspec) &optional client-class)
   "Return a client connected to kernel created from SPEC.
 SPEC is a kernelspec that will be used to initialize a new
@@ -562,9 +564,11 @@ kernel whose kernelspec if SPEC."
 (cl-defmethod jupyter-client ((kernel jupyter-kernel) &optional client-class)
   (or client-class (setq client-class 'jupyter-kernel-client))
   (cl-assert (child-of-class-p client-class 'jupyter-kernel-client))
-  (let ((client (make-instance client-class :io
-                               (pcase-let ((`(,io . ,_) (jupyter-io kernel)))
-                                 io))))
+  (let ((client (make-instance
+                 client-class
+                 :io (jupyter-mlet* ((io (jupyter-io kernel)))
+                       io))))
+    (oset client session (jupyter-kernel-session kernel))
     (unless (jupyter-kernel-info client)
       (error "Kernel did not respond to :kernel-info-request"))
     ;; If the connection can resolve the kernel's heartbeat channel,
