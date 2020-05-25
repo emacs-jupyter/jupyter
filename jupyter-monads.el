@@ -269,7 +269,7 @@ Ex. Unsubscribe after consuming one message
     (pcase sub-content
       (`(content ,content) (funcall sub-fn content))
       (`(subscribe ,_) (signal 'jupyter-subscribed-subscriber nil))
-      (_ (error "Unhandled content: %s" sub-content)))))
+      (_ (error "Unhandled subscriber content: %s" sub-content)))))
 
 (defun jupyter-content (value)
   "Arrange for VALUE to be sent to subscribers of a publisher."
@@ -382,7 +382,7 @@ Ex. Publish 'app if 'app is given to a publisher, nothing is sent
       (pcase (car-safe pub-value)
         ('content (jupyter-pseudo-bind-content pub-fn (cadr pub-value) subs))
         ('subscribe (cl-pushnew (cadr pub-value) (cdr subs)))
-        (_ (error "Unhandled content: %s" pub-value))))))
+        (_ (error "Unhandled publisher content: %s" pub-value))))))
 
 (defun jupyter-filter-content (pub pub-fn)
   "Return an I/O action subscribing a publisher to PUB's content.
