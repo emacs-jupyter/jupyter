@@ -300,7 +300,9 @@ publisher providing content."
 (defun jupyter-pseudo-bind-content (pub-fn content subs)
   "Apply PUB-FN on submitted CONTENT to produce published content.
 Call each subscriber in SUBS on the published content, remove
-those subscribers that cancel their subscription."
+those subscribers that cancel their subscription.
+
+Errors signaled by a subscriber are demoted to messages."
   (pcase (funcall pub-fn content)
     ((and `(content ,_) sub-content)
      (while subs
