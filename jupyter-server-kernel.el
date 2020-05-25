@@ -355,8 +355,7 @@ Call the next method if ARGS does not contain :server."
                     (setq discarded t)))))))))
 
 (cl-defmethod jupyter-io ((kernel jupyter-server-kernel))
-  (jupyter-mlet* ((io (jupyter-server-kernel-io kernel)))
-    io))
+  (jupyter-server-kernel-io kernel))
 
 ;;; Kernel management
 
