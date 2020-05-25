@@ -405,6 +405,24 @@ If it does not contain a valid value, raise an error."
                   ;; FIXME: Only give access to a request once its
                   ;; completed.
                   (`(,req-msgs-pub ,req) req-io))
+        (setf (jupyter-request-client req) client)
+        (setf (jupyter-request-inhibited-handlers req)
+              (progn
+                ;; TODO: Remove this by getting rid of inhibiting
+                ;; handlers.  Removing the concept of handlers in
+                ;; favor of just callbacks would be ideal.  One less
+                ;; thing to consider.  The callback/handler
+                ;; distinction was made to have a fixed behavior
+                ;; defined for a client, the message type handlers,
+                ;; while an individual request could have callbacks
+                ;; that could override or be used in addition to the
+                ;; default client behavior.  This can be done with
+                ;; just callbacks, where a client can specify the
+                ;; default callbacks on each request.  `add-function'
+                ;; could be used to modify that default function on a
+                ;; per request basis.
+                (jupyter-verify-inhibited-handlers)
+                jupyter-inhibit-handlers))
         (jupyter-run-with-io req-msgs-pub
           (jupyter-subscribe
             (jupyter-subscriber
@@ -431,7 +449,6 @@ Note that you can manipulate how to handle messages received in
 response to the sent message, see `jupyter-add-callback' and
 `jupyter-request-inhibited-handlers'."
   (declare (indent 1))
-  (jupyter-verify-inhibited-handlers)
   (jupyter-send client (apply #'jupyter-request type content)))
 
 (cl-defmethod jupyter-send :after ((client jupyter-kernel-client)

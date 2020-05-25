@@ -487,12 +487,6 @@ See `jupyter-io' for more information on IO actions."
                :shell))
          (req-complete-pub (jupyter-publisher))
          (req (make-jupyter-request
-               ;; TODO: `jupyter-with-client' similar to
-               ;; `jupyter-with-io' but on a functional client.
-               :client jupyter-current-client
-               ;; The handler methods of client that are suppressed
-               ;; from being evaluated.
-               :inhibited-handlers jupyter-inhibit-handlers
                :type type
                :content content))
          (id (jupyter-request-id req))
