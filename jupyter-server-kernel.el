@@ -267,6 +267,9 @@ The kernelspecs are returned in the same form as returned by
   (server jupyter-current-server
           :read-only t
           :documentation "The kernel server.")
+  ;; TODO: Make this read only by only allowing creating
+  ;; representations of kernels that have already been launched and
+  ;; have a connection to the kernel.
   (id nil
       :type (or null string)
       :documentation "The kernel ID."))
