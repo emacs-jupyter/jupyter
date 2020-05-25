@@ -297,46 +297,29 @@ publisher providing content."
 ;;
 ;; TODO: Verify if this is a real bind and if not, add to the above
 ;; paragraph why it isn't.
-(defun jupyter-pseudo-bind-content (subs-value pub-fn)
-  "Bind a publisher's submitted content to subscribers.
-SUBS-VALUE is a cons cell ((SUB1 SUB2 ...) . VALUE).  PUB-FN is
-called on VALUE to produce content sent to the subscribers SUB1,
-SUB2, ....  The result of evaluating a subscriber on content is
-the subscriber's subscription status.
-
-Return another value like SUBS-VALUE that contains nil entries in
-the subscriber list for those subscribers that unsubscribed."
-  (pcase (funcall pub-fn (cdr subs-value))
+(defun jupyter-pseudo-bind-content (pub-fn content subs)
+  "Apply PUB-FN on submitted CONTENT to produce published content.
+Call each subscriber in SUBS on the published content, remove
+those subscribers that cancel their subscription."
+  (pcase (funcall pub-fn content)
     ((and `(content ,_) sub-content)
-     ;; TODO: How slow will this be?  A new subscriber list is created
-     ;; every time content is published.  Instead, the list could be
-     ;; looped over and elements destructively removed when an
-     ;; unsubscribe occurs.  Should be OK since binding subscribers is
-     ;; internal to a publisher.
-     (cons (mapcar
-            (lambda (sub)
-              (condition-case error
-                  ;; This recursion may be a problem if
-                  ;; there is a lot of content filtering (by
-                  ;; subscribing publishers to publishers).
-                  (pcase (funcall sub sub-content)
-                    ('(unsubscribe) nil)
-                    (_ sub))
-                (error
-                 (message "Jupyter: I/O subscriber error: %S"
-                          (error-message-string error))
-                 ;; Keep the subscription on error.
-                 sub)))
-            (car subs-value))
-           nil))
-    ;; This case is hit when a publisher unsubscribes from another
-    ;; publisher.  The subscribers of the unsubscribed publisher are
-    ;; kept and its subscription status propagated back up the
-    ;; publisher chain.
-    ('(unsubscribe) (cons (car subs-value) '(unsubscribe)))
-    ;; When no content was produced by PUB-FN: keep all the
-    ;; subscribers, return nil up the publisher chain.
-    (_ (cons (car subs-value) nil))))
+     (while subs
+       ;; NOTE: The first element of SUBS is ignored here so that
+       ;; the pointer to the subscriber list remains the same for
+       ;; each publisher, even when subscribers are being
+       ;; destructively removed.
+       (when (cadr subs)
+         (with-demoted-errors "Jupyter: I/O subscriber error: %S"
+           ;; This recursion may be a problem if
+           ;; there is a lot of content filtering (by
+           ;; subscribing publishers to publishers).
+           (pcase (funcall (cadr subs) sub-content)
+             ('(unsubscribe) (setcdr subs (cddr subs))))))
+       (pop subs))
+     nil)
+    ;; Cancel a publisher's subscription to another publisher.
+    ('(unsubscribe) '(unsubscribe))
+    (_ nil)))
 
 ;; In the context external to a publisher, i.e. in the context where a
 ;; message was published, the content is built up and then published.
@@ -391,22 +374,16 @@ Ex. Publish 'app if 'app is given to a publisher, nothing is sent
         (if (eq value 'app)
           (jupyter-content value))))"
   (declare (indent 0))
-  (let ((subs '())
+  (let ((subs (list 'subscribers))
         (pub-fn (or pub-fn #'jupyter-content)))
     ;; A publisher value is either a value representing a subscriber
     ;; or a value representing content to send to subscribers.
     (lambda (pub-value)
       (pcase (car-safe pub-value)
-        ('content
-         (setq subs (jupyter-pseudo-bind-content
-                     (cons subs (cadr pub-value)) pub-fn))
-         ;; Propagate back the unboxed result of binding content so
-         ;; that publishers subscribed to other publishers return
-         ;; their subscription status.
-         (prog1 (cdr subs)
-           (setq subs (delq nil (car subs)))))
-        ('subscribe (cl-pushnew (cadr pub-value) subs))
+        ('content (jupyter-pseudo-bind-content pub-fn (cadr pub-value) subs))
+        ('subscribe (cl-pushnew (cadr pub-value) (cdr subs)))
         (_ (error "Unhandled content: %s" pub-value))))))
+
 (defun jupyter-filter-content (pub pub-fn)
   "Return an I/O action subscribing a publisher to PUB's content.
 The subscribed publisher filters the content it publishes through
