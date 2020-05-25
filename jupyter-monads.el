@@ -352,7 +352,9 @@ using `jupyter-publish', like this:
       (jupyter-run-with-io pub
         (jupyter-publish (list 1 2 3))))
 
-The default for PUB-FN is `jupyter-content'.
+The default for PUB-FN is `jupyter-content'.  See
+`jupyter-subscribe' for an example on how to subscribe to a
+publisher.
 
 If no content is returned by PUB-FN, no content is sent to
 subscribers.
