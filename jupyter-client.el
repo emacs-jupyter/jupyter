@@ -397,50 +397,23 @@ If it does not contain a valid value, raise an error."
 (cl-defmethod jupyter-send ((client jupyter-kernel-client) (dreq jupyter-delayed))
   ;; FIXME: (mlet* (pcase-let ...)) -> (mlet* ((PATTERN IO-EXP) ...) ...)
   ;; or (pcase-let (((jupyter-io PATTERN) IO-EXP) ...) ...)
-  (jupyter-mlet*
-      ((req-io (jupyter-with-io
-                   (or (oref client io)
-                       (error "Client not connected to a kernel"))
-                 dreq)))
-    (pcase-let ((requests (oref client requests))
-                ;; FIXME: Only give access to a request once its
-                ;; completed.
-                (`(,req-msgs-pub ,req) req-io))
-      (jupyter-run-with-io req-msgs-pub
-        (jupyter-subscribe
-          (jupyter-subscriber
-            (lambda (content)
-              (pcase (car content)
-                ;; FIXME: Remove the need for 'message to be called
-                ;; here.
-                ((and 'message
-                      (let `(,channel ,_idents . ,msg)
-                        (cdr content)))
-                 (let ((jupyter-current-client client)
-                       ;; Set the current I/O context for
-                       ;; `jupyter-mlet*'.
-                       (jupyter-current-io (oref client io)))
-                   (jupyter--update-execution-state client msg req)
-                   (cond
-                    (req
-                     (setf (jupyter-request-last-message req) msg)
-                     (unwind-protect
-                         (jupyter--run-callbacks req msg)
-                       (unwind-protect
-                           (jupyter--run-handler-maybe client channel msg req)
-                         (when (jupyter--message-completes-request-p msg)
-                           ;; Order matters here.  We want to remove idle requests *before*
-                           ;; setting another request idle to account for idle messages
-                           ;; coming in out of order, e.g. before their respective reply
-                           ;; messages.
-                           (jupyter--drop-idle-requests client)
-                           (setf (jupyter-request-idle-p req) t)))))
-                    ((or (jupyter-get client 'jupyter-include-other-output)
-                         ;; Always handle a startup message
-                         (jupyter-message-status-starting-p msg))
-                     (jupyter--run-handler-maybe client channel msg req))))))))))
-      (puthash (jupyter-request-id req) req requests)
-      (puthash "last-sent" req requests))))
+  (let ((jupyter-current-io
+         (or (oref client io)
+             (error "Client not connected to a kernel"))))
+    (jupyter-mlet* ((req-io dreq))
+      (pcase-let ((requests (oref client requests))
+                  ;; FIXME: Only give access to a request once its
+                  ;; completed.
+                  (`(,req-msgs-pub ,req) req-io))
+        (jupyter-run-with-io req-msgs-pub
+          (jupyter-subscribe
+            (jupyter-subscriber
+              (lambda (msg)
+                ;; FIXME: Get rid of this intern
+                (let ((channel (intern (concat ":" (plist-get msg :channel)))))
+                  (jupyter-handle-message client channel msg))))))
+        (puthash (jupyter-request-id req) req requests)
+        (puthash "last-sent" req requests)))))
 
 (cl-defmethod jupyter-send ((client jupyter-kernel-client) (type symbol) &rest content)
   "Send a message to the kernel CLIENT is connected to.
