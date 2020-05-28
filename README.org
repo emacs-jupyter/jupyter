@@ -478,7 +478,7 @@ controlled by setting the =:results= header argument.
 **** Fixing the file name of images with the =:file= argument
 
 Whenever an image result is returned, a random image file name is generated and
-the image is written into =org-babel-jupyter-resourse-directory=. In order to
+the image is written into =org-babel-jupyter-resource-directory=. In order to
 specify your own file name for the image, you can give an appropriate value to
 the =:file= header argument.
 
