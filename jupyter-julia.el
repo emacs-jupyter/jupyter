@@ -242,7 +242,7 @@ end")))
 (defun jupyter-julia--try-parse-dataframe (table-as-html-str)
   "Try to parse DataFrame to transform to org table.
 
-TABLE-AS-HTML-STR is the jupyter html representation of a DataFrame, like 
+TABLE-AS-HTML-STR is the jupyter html representation of a DataFrame, like
 <html>… <table class=data-frame>…
 
 Returns \(cons 'ok org-table-representing-dataframe\), nil otherwise."
@@ -301,7 +301,8 @@ Returns \(cons 'ok org-table-representing-dataframe\), nil otherwise."
       (cons 'ok
             (jupyter-org-scalar
              (append
-              (list col-names)
+              (list col-names
+                    'hline)
               extracted-data))))))
 
 (cl-defmethod jupyter-org-result ((_mime (eql :text/html))
