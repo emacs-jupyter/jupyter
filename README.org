@@ -14,7 +14,7 @@ An interface to communicate with Jupyter kernels in Emacs.
   - [[#building-a-package-archive-using-cask][Building a package archive using cask]]
   - [[#manual-installation][Manual installation]]
   - [[#building-the-widget-support-experimental][Building the widget support (EXPERIMENTAL)]]
-- [[#how-does-this-package-compare-to-other-similar-packages][How does this package compare to other similar packages?]]
+- [[#related-packages][Related packages]]
   - [[#ob-ipython][=ob-ipython=]]
   - [[#emacs-ipython-notebook-ein][=emacs-ipython-notebook= (=ein=)]]
 - [[#how-do-i-use-the-built-in-frontends][How do I use the built-in frontends?]]
@@ -148,54 +148,12 @@ to run the following commands from the root project directory:
 #+BEGIN_SRC shell
 make widgets
 #+END_SRC
-* How does this package compare to other similar packages?
+* Related packages
 
 ** =ob-ipython=
 
 The =org-mode= source block frontend in =emacs-jupyter= is similar to what is
-offered by [[https://github.com/gregsexton/ob-ipython][ob-ipython]] (and also the [[https://github.com/jkitchin/scimax][scimax]] version), below are some of the
-differences between =emacs-jupyter= and =ob-ipython= (biased in favor of
-=emacs-jupyter=):
-
-- Faster than =ob-ipython=
-
-  - =ob-ipython= starts a new process for every request made to a kernel and
-    does not persist the connection it makes to the kernel. This means that for
-    every request made there is the overhead of both starting a new process and
-    establishing communication with the kernel.
-
-    =emacs-jupyter= starts a process on every new kernel connection only and
-    the connection is persisted for the lifetime of the client (frontend)
-    connected to the kernel.
-
-    This difference is most notable when comparing the code completion features
-    of both packages. =ob-ipython= code completion is basically unusable for
-    quick completions while typing.
-
-- Better REPL interface
-
-  - =ob-ipython= uses =python-shell-make-comint= to create a REPL connected to
-    a kernel. There are two problems with this (1) no syntax highlighting for
-    kernel languages other than Python (2) =comint= only groks text based
-    output, but a Jupyter kernel can provide much richer representations of
-    data, e.g. HTML, markdown, or =png= images to name a few. The REPL frontend
-    experience of =emacs-jupyter= is much closer to what one would get when
-    using =jupyer qtconsole= (see https://qtconsole.readthedocs.io/en/stable/).
-
-- Better integration with =org-mode= source block =:session= features
-
-  - All of the extension points that =org-mode= offers for source block
-    languages like =org-babel-edit-prep=, =org-babel-load-in-session=, etc. are
-    all fully supported. =ob-ipython= does not provide some of these features,
-    e.g. =org-babel-load-in-session=.
-
-- Similar features to the =scimax= version of =ob-ipython=
-
-  - The =scimax= version has some really neat features like custom keybindings
-    when inside an =org-mode= source block, selective display of mimetypes,
-    jumping to source block error locations, and others. Many of these features
-    have also been implemented in =emacs-jupyter=, e.g. you can add language
-    specific keybindings using the =jupyter-org-define-key= function.
+offered by [[https://github.com/gregsexton/ob-ipython][ob-ipython]] (and also the [[https://github.com/jkitchin/scimax][scimax]] version).
 
 ** =emacs-ipython-notebook= (=ein=)
 
@@ -204,13 +162,6 @@ features for Python kernels. There is some overlap in the features provided by
 =emacs-jupyter= and =ein=, but I have never used =ein= so I cannot speak very
 much about their similarities/differences.
 
-I would say that =emacs-jupyter= aims to be a generic API for interacting with
-Jupyter kernels that just happens to have a built-in REPL and =org-mode= source
-block frontend whereas =ein= aims to be a fully featured Jupyter notebook
-frontend. Also =ein= can read and write =.ipynb= files, this feature is lacking
-in =emacs-jupyter= at the moment. In the future it would be nice to add some
-kind of notebook interface in =emacs-jupyter= or at least an efficient
-conversion process between notebook files and =org-mode=.
 * How do I use the built-in frontends?
 ** REPL
 
