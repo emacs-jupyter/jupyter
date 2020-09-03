@@ -441,7 +441,7 @@ types to callback functions a client should call."
   (id (jupyter-new-uuid) :read-only t)
   (type nil :read-only t)
   (content nil :read-only t)
-  (client nil :read-only t)
+  (client nil :read-only nil)
   (time (current-time) :read-only t)
   (idle-p nil)
   (last-message nil)
