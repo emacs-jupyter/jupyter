@@ -435,7 +435,10 @@ TODO The form of content each sends/consumes."
 
 ;;; Kernel management
 
-(cl-defmethod jupyter-launch ((server jupyter-server) (kernel string))
+;; The KERNEL argument is optional here so that `jupyter-launch' does
+;; not require more than one argument just to handle this case.
+(cl-defmethod jupyter-launch ((server jupyter-server) &optional (kernel string))
+  (cl-check-type kernel string)
   (let* ((spec (jupyter-guess-kernelspec
                 kernel (jupyter-server-kernelspecs server)))
          (plist (jupyter-api-start-kernel
