@@ -176,8 +176,7 @@ requests like the above example.")
 
 ;; Define channel classes for method dispatching based on the channel type
 
-(defclass jupyter-kernel-client (jupyter-finalized-object
-                                 jupyter-instance-tracker)
+(defclass jupyter-kernel-client (jupyter-instance-tracker)
   ((tracking-symbol :initform 'jupyter--clients)
    (execution-state
     :type string

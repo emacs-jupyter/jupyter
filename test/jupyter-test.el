@@ -566,21 +566,6 @@
     (garbage-collect)
     (should-not (jupyter-weak-ref-resolve ref))))
 
-(defclass jupyter-test-object (jupyter-finalized-object)
-  ((val)))
-
-(ert-deftest jupyter-add-finalizer ()
-  :tags '(gc)
-  (let ((val (list 1)))
-    (let ((obj (jupyter-test-object)))
-      (oset obj val val)
-      (jupyter-add-finalizer obj
-        (lambda () (setcar (oref obj val) nil))))
-    (ignore (make-list (* 2 gc-cons-threshold) ?0))
-    (garbage-collect)
-    (should (null (car val)))))
-
-
 ;;; Kernel
 
 (ert-deftest jupyter-locate-python ()

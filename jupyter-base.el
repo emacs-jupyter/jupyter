@@ -373,21 +373,13 @@ class corresponding to the symbol `jupyter-instance-tracker'."
       (cl-assert (get sym 'jupyter-instance-tracker) t)
       (hash-table-keys table))))
 
-(defclass jupyter-finalized-object ()
-  ((finalizers :type list :initform nil))
-  :documentation "A list of finalizers."
-  :documentation "A base class for cleaning up resources.
-Adds the method `jupyter-add-finalizer' which maintains a list of
-finalizer functions to be called when the object is garbage
-collected.")
+(defvar jupyter-finalizers (make-hash-table :weakness 'key :test #'eq))
 
-(cl-defgeneric jupyter-add-finalizer ((obj jupyter-finalized-object) finalizer)
-  "Cleanup resources automatically.
-FINALIZER if a function to be added to a list of finalizers that
-will be called when OBJ is garbage collected."
+(cl-defgeneric jupyter-add-finalizer (obj (fn function))
+  "Add FN to the finalizers of OBJ."
   (declare (indent 1))
-  (cl-check-type finalizer function)
-  (push (make-finalizer finalizer) (oref obj finalizers)))
+  (cl-callf append (gethash obj jupyter-finalizers)
+    (list (make-finalizer fn))))
 
 ;;; Session object definition
 

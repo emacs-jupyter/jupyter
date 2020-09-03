@@ -174,9 +174,6 @@ the corresponding action has been completed."
 ;; auth-headers.  I think its just call this function again.  Due to
 ;; the functional design, all references to the old objects should get
 ;; cleaned up.
-(cl-defmethod jupyter-add-finalizer (obj finalizer)
-  (cl-callf append (gethash obj jupyter-finalizer-pool)
-    (list (make-finalizer finalizer))))
 
 (defun jupyter-server-io (server)
   (let ((ioloop (jupyter-server-ioloop
