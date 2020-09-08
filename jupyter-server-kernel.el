@@ -202,8 +202,7 @@ the corresponding action has been completed."
                 event-pub))))))
 
 (cl-defmethod jupyter-io ((server jupyter-server))
-  (jupyter-mlet* ((io (jupyter-server-io server)))
-    io))
+  (jupyter-server-io server))
 
 (defun jupyter-servers ()
   "Return a list of all `jupyter-server's."
