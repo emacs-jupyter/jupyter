@@ -216,22 +216,22 @@ The result of the returned action is the result of IO-B."
 ;; TODO: Swap definitions with `jupyter-launch', same for the others.
 ;; (jupyter-launch :kernel "python")
 ;; (jupyter-launch :spec "python")
-(defun jupyter-kernel-launch (kernel)
+(defun jupyter-launch (kernel)
   (make-jupyter-delayed
    :value (lambda ()
-            (jupyter-launch kernel)
+            (jupyter-do-launch kernel)
             kernel)))
 
-(defun jupyter-kernel-interrupt (kernel)
+(defun jupyter-interrupt (kernel)
   (make-jupyter-delayed
    :value (lambda ()
-            (jupyter-interrupt kernel)
+            (jupyter-do-interrupt kernel)
             kernel)))
 
-(defun jupyter-kernel-shutdown (kernel)
+(defun jupyter-shutdown (kernel)
   (make-jupyter-delayed
    :value (lambda ()
-            (jupyter-shutdown kernel)
+            (jupyter-do-shutdown kernel)
             kernel)))
 
 ;;; Publisher/subscriber

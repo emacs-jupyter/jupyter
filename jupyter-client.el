@@ -587,7 +587,7 @@ longer connected to a kernel."
   "Interrupt the kernel CLIENT is connected to."
   (when-let* ((kernel (and (slot-boundp client 'kernel)
                            (oref client kernel))))
-    (jupyter-interrupt kernel)))
+    (jupyter-do-interrupt kernel)))
 
 ;;; Message callbacks
 

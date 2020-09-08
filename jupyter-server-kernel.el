@@ -31,7 +31,7 @@
 (require 'jupyter-kernel)
 (require 'jupyter-rest-api)
 (require 'jupyter-server-ioloop)
-(require 'jupyter-connection)
+(require 'jupyter-monads)
 
 (defgroup jupyter-server-kernel nil
   "Kernel behind a Jupyter server"
@@ -437,7 +437,7 @@ TODO The form of content each sends/consumes."
 
 ;; The KERNEL argument is optional here so that `jupyter-launch' does
 ;; not require more than one argument just to handle this case.
-(cl-defmethod jupyter-launch ((server jupyter-server) &optional (kernel string))
+(cl-defmethod jupyter-do-launch ((server jupyter-server) &optional (kernel string))
   (cl-check-type kernel string)
   (let* ((spec (jupyter-guess-kernelspec
                 kernel (jupyter-server-kernelspecs server)))
@@ -446,7 +446,7 @@ TODO The form of content each sends/consumes."
     (jupyter-kernel :server server :id (plist-get plist :id) :spec spec)))
 
 ;; FIXME: Don't allow creating kernels without them being launched.
-(cl-defmethod jupyter-launch ((kernel jupyter-server-kernel))
+(cl-defmethod jupyter-do-launch ((kernel jupyter-server-kernel))
   "Launch KERNEL based on its kernelspec.
 When KERNEL does not have an ID yet, launch KERNEL on SERVER
 using its SPEC."
@@ -475,13 +475,13 @@ using its SPEC."
 	  (setf (jupyter-kernel-session kernel) (jupyter-session))))
   (cl-call-next-method))
 
-(cl-defmethod jupyter-shutdown ((kernel jupyter-server-kernel))
+(cl-defmethod jupyter-do-shutdown ((kernel jupyter-server-kernel))
   (pcase-let (((cl-struct jupyter-server-kernel server id session) kernel))
     (cl-call-next-method)
     (when session
       (jupyter-api-shutdown-kernel server id))))
 
-(cl-defmethod jupyter-interrupt ((kernel jupyter-server-kernel))
+(cl-defmethod jupyter-do-interrupt ((kernel jupyter-server-kernel))
   (pcase-let (((cl-struct jupyter-server-kernel server id) kernel))
     (jupyter-api-interrupt-kernel server id)))
 

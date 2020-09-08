@@ -603,8 +603,8 @@
 ;; FIXME: Revisit after transition
 (ert-deftest jupyter-kernel-process ()
   :tags '(kernel)
-  ;; TODO: `jupyter-interrupt'
-  (ert-info ("`jupyter-launch', `jupyter-shutdown'")
+  ;; TODO: `jupyter-do-interrupt'
+  (ert-info ("`jupyter-do-launch', `jupyter-do-shutdown'")
     (cl-macrolet
         ((confirm-shutdown-state
           ()
@@ -625,7 +625,7 @@
         (confirm-shutdown-state)
         (jupyter-launch kernel)
         (confirm-launch-state)
-        (jupyter-shutdown kernel)
+        (jupyter-do-shutdown kernel)
         (confirm-shutdown-state))))
 ;; (let (called)
 ;;   (let* ((plist '(:argv ["sleep" "60"] :env nil :interrupt_mode "signal"))
@@ -638,10 +638,10 @@
 ;;     (cl-letf (((symbol-function #'interrupt-process)
 ;;                (lambda (&rest args)
 ;;                  (setq called t))))
-;;       (jupyter-interrupt kernel))
+;;       (jupyter-do-interrupt kernel))
 ;;     (should called)
 ;;     (setq called nil)
-;;     (jupyter-shutdown kernel)))
+;;     (jupyter-do-shutdown kernel)))
   )
 
 
@@ -692,7 +692,7 @@
           (pcase-let* ((`(,processA ,conn-fileA) (car jupyter--kernel-processes))
                        (process-bufferA (process-buffer processA)))
             (should (eq processA (jupyter-kernel-process-process kernelA)))
-            (jupyter-shutdown kernelA)
+            (jupyter-do-shutdown kernelA)
             (should-not (process-live-p processA))
             (should (file-exists-p conn-fileA))
             (should (buffer-live-p process-bufferA))
@@ -704,8 +704,8 @@
                          (car jupyter--kernel-processes)))
               (should-not (eq processA processB))
               (should-not (string= conn-fileA conn-fileB))))
-        (jupyter-shutdown kernelA)
-        (jupyter-shutdown kernelB)))))
+        (jupyter-do-shutdown kernelA)
+        (jupyter-do-shutdown kernelB)))))
 
 (ert-deftest jupyter-kernel-process/on-unexpected-exit ()
   :tags '(kernel process)

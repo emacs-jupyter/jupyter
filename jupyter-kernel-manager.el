@@ -75,11 +75,11 @@ access the name of the kernelspec.")
 
 (cl-defmethod jupyter-start-kernel (kernel &rest _args)
   "Start KERNEL."
-  (jupyter-launch kernel))
+  (jupyter-do-launch kernel))
 
 (cl-defgeneric jupyter-kill-kernel (kernel)
   "Stop KERNEL."
-  (jupyter-shutdown kernel))
+  (jupyter-do-shutdown kernel))
 
 (cl-defgeneric jupyter-kernel-died (kernel)
   "Called when a KERNEL dies unexpectedly.")
@@ -143,18 +143,18 @@ instance already connected to MANAGER's kernel."
 
 (cl-defmethod jupyter-start-kernel ((manager jupyter-kernel-manager) &rest _args)
   "Start MANAGER's kernel."
-  (jupyter-launch (oref manager kernel)))
+  (jupyter-do-launch (oref manager kernel)))
 
 ;; FIXME: Specify the arguments.  See the method implementation for
 ;; `jupyter-rest-api' why this isn't done.
 (cl-defgeneric jupyter-shutdown-kernel ((manager jupyter-kernel-manager) &rest _args)
   "Shutdown MANAGER's kernel or restart it if RESTART is non-nil.
 Wait until TIMEOUT before forcibly shutting down the kernel."
-  (jupyter-shutdown (oref manager kernel)))
+  (jupyter-do-shutdown (oref manager kernel)))
 
 (cl-defgeneric jupyter-interrupt-kernel ((manager jupyter-kernel-manager) &rest _args)
   "Interrupt MANAGER's kernel."
-  (jupyter-interrupt (oref manager kernel)))
+  (jupyter-do-interrupt (oref manager kernel)))
 
 (cl-defmethod jupyter-kernel-alive-p ((manager jupyter-kernel-manager))
   "Is MANGER's kernel alive?"
