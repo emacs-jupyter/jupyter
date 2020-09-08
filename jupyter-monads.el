@@ -82,11 +82,6 @@
 
 (cl-defstruct jupyter-delayed value)
 
-(defun jupyter-scalar-p (x)
-  (or (symbolp x) (numberp x) (stringp x)
-      (and (listp x)
-           (memq (car x) '(quote function closure)))))
-
 (defconst jupyter-io-nil (make-jupyter-delayed :value (lambda () nil)))
 
 (defvar jupyter-io-cache (make-hash-table :weakness 'key))
