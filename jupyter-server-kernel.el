@@ -78,13 +78,14 @@ Access should be done through `jupyter-available-kernelspecs'.")))
                            '(connect-channels disconnect-channels)))
                 (jupyter-run-with-io event-pub
                   (jupyter-publish event))
-              (pcase (car event)
-                ((and 'connect-channels (let id (cadr event)))
-                 (cl-pushnew id ids :test #'string=))
-                ((and 'disconnect-channels (let id (cadr event)))
-                 (cl-callf2 delete id ids)))
-              ;; Notify subscribers that the connected kernels have
-              ;; changed.  Currently only `jupyter-server' uses this.
+              (let ((id (cadr event)))
+                (pcase (car event)
+                  ('connect-channels
+                   (cl-pushnew id ids :test #'string=))
+                  ('disconnect-channels
+                   (cl-callf2 delete id ids))))
+              ;; Notify subscribers of CHANNELS-PUB that the connected
+              ;; kernels have changed.
               (jupyter-run-with-io channels-pub
                 (jupyter-publish event)))))
          (start
