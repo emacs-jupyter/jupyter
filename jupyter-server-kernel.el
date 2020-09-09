@@ -54,8 +54,6 @@ Used in, e.g. a `jupyter-server-kernel-list-mode' buffer.")
 ;; communication channel with one.
 (defclass jupyter-server (jupyter-rest-client eieio-instance-tracker)
   ((tracking-symbol :initform 'jupyter--servers)
-   (conn :type jupyter-connection)
-   (handlers :type list :initform nil)
    (kernelspecs
     :type json-plist
     :initform nil

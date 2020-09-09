@@ -28,7 +28,6 @@
 
 (require 'zmq)
 (require 'jupyter-zmq-channel-ioloop)
-(require 'jupyter-connection)
 (require 'jupyter-kernel-process)
 (require 'jupyter-repl)
 (require 'jupyter-org-client)
