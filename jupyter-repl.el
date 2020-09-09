@@ -1103,19 +1103,21 @@ elements."
 (cl-defmethod jupyter-handle-is-complete-reply ((client jupyter-repl-client) _req msg)
   (jupyter-with-repl-buffer client
     (jupyter-with-message-content msg (status indent)
+      ;; `run-at-time' is used here so that the waiting done in
+      ;; `jupyter-repl-ret' completes before a cell is executed.
       (pcase status
         ("complete"
-         (jupyter-repl-execute-cell client))
+         (run-at-time 0 nil (lambda () (jupyter-repl-execute-cell client))))
         ("incomplete"
          (insert "\n")
          (if (= (length indent) 0) (jupyter-repl-indent-line)
            (insert indent)))
         ("invalid"
          ;; Force an execute to produce a traceback
-         (jupyter-repl-execute-cell client))
+         (run-at-time 0 nil (lambda () (jupyter-repl-execute-cell client))))
         ("unknown"
          ;; Let the kernel decide if the code is complete
-         (jupyter-repl-execute-cell client))))))
+         (run-at-time 0 nil (lambda () (jupyter-repl-execute-cell client))))))))
 
 (defun jupyter-repl--insert-banner-and-prompt (client)
   (jupyter-with-repl-buffer client
