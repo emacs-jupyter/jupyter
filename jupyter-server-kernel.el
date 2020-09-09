@@ -120,7 +120,7 @@ Access should be done through `jupyter-available-kernelspecs'.")))
     (jupyter-return-delayed
       (list action-sub channels-pub event-pub))))
 
-(defun jupyter-server-kernel-action-sub (action-sub channels-pub)
+(defun jupyter-server-synced-channel-action-sub (action-sub channels-pub)
   "Return a subscriber that connects/disconnects kernel channels.
 The subscriber will wait until the channels have been
 connected/disconnected before returning.
@@ -194,11 +194,10 @@ the corresponding action has been completed."
           (lambda ()
             (jupyter-run-with-io action-sub
               (jupyter-publish 'stop))))
-        ;; FIXME: mlet* should wrap the result in
-        ;; `jupyter-return-delayed'.
         (jupyter-return-delayed
           (list action-sub
-                (jupyter-server-kernel-action-sub action-sub channels-pub)
+                (jupyter-server-synced-channel-action-sub
+                 action-sub channels-pub)
                 event-pub))))))
 
 (cl-defmethod jupyter-io ((server jupyter-server))
@@ -323,7 +322,7 @@ Call the next method if ARGS does not contain :server."
               (discarded nil))
     (jupyter-mlet* ((server-io (jupyter-io server)))
       (pcase-let*
-          ((`(,action-sub ,kernel-action ,event-pub) server-io)
+          ((`(,action-sub ,channel-action ,event-pub) server-io)
            (kernel-io
             (jupyter-publisher
               (lambda (event)
@@ -340,7 +339,7 @@ Call the next method if ARGS does not contain :server."
                      (jupyter-run-with-io action-sub
                        (jupyter-publish (cl-list* 'send id args))))))))))
         (jupyter-do
-          (jupyter-with-io kernel-action
+          (jupyter-with-io channel-action
             (jupyter-publish (list 'connect-channels id)))
           (jupyter-with-io event-pub
             (jupyter-subscribe kernel-io))
@@ -351,7 +350,7 @@ Call the next method if ARGS does not contain :server."
                     (jupyter-run-with-io event-pub
                       ;; TODO: How can this be avoided?
                       (jupyter-publish (list 'unsubscribe id)))
-                    (jupyter-run-with-io kernel-action
+                    (jupyter-run-with-io channel-action
                       (jupyter-publish (list 'disconnect-channels id)))
                     (setq discarded t)))))))))
 
