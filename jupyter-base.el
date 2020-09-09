@@ -375,9 +375,10 @@ class corresponding to the symbol `jupyter-instance-tracker'."
 
 (defvar jupyter-finalizers (make-hash-table :weakness 'key :test #'eq))
 
-(cl-defgeneric jupyter-add-finalizer (obj (fn function))
+(defun jupyter-add-finalizer (obj fn)
   "Add FN to the finalizers of OBJ."
   (declare (indent 1))
+  (cl-check-type fn function)
   (cl-callf append (gethash obj jupyter-finalizers)
     (list (make-finalizer fn))))
 
