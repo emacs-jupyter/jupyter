@@ -227,8 +227,7 @@ the corresponding action has been completed."
        (error "Unauthenticated request, can't attempt re-authentication \
 with default `jupyter-api-authentication-method'"))
      (prog1 (cl-call-next-method)
-       (jupyter-send (jupyter-io server) 'auth-headers
-                     (jupyter-api-auth-headers server))))))
+       (jupyter-reauthenticate-websockets server)))))
 
 (cl-defmethod jupyter-server-kernelspecs ((server jupyter-server) &optional refresh)
   "Return the kernelspecs on SERVER.
@@ -362,34 +361,64 @@ Call the next method if ARGS does not contain :server."
 
 ;;; Websocket IO
 
-(defun jupyter--websocket (kernel)
-  (cl-check-type kernel jupyter-server-kernel)
-  (make-jupyter-delayed
-   :value (lambda ()
-            (pcase-let
-                (((cl-struct jupyter-server-kernel server id) kernel)
-                 (msg-pub (jupyter-publisher))
-                 (status-pub (jupyter-publisher)))
-              (list
-               (jupyter-api-kernel-websocket
-                server id
-                :custom-header-alist (jupyter-api-auth-headers server)
-                :on-message
-                (lambda (_ws frame)
-                  (pcase (websocket-frame-opcode frame)
-                    ((or 'text 'binary)
-                     (jupyter-run-with-io msg-pub
-                       (jupyter-publish
-                         (jupyter-read-plist-from-string
-                          (websocket-frame-payload frame)))))
-                    (_
-                     (jupyter-run-with-io status-pub
-                       (jupyter-publish
-                         (list 'error (websocket-frame-opcode frame))))))))
-               msg-pub
-               status-pub)))))
+(defvar jupyter-server-websockets (make-hash-table :weakness 'key :test 'eq))
 
-(defun jupyter-return-websocket-io (kernel)
+(defun jupyter-reauthenticate-websockets (server)
+  (let ((headers (jupyter-api-auth-headers server)))
+    (setf (gethash server jupyter-server-websockets)
+          (delq nil
+                (mapcar
+                 (lambda (ws)
+                   (when (websocket-openp ws)
+                     (websocket-close ws)
+                     (websocket-open
+                      :on-open (websocket-on-open ws)
+                      :custom-header-alist headers)
+                     ws))
+                 (gethash server jupyter-server-websockets))))))
+
+(defun jupyter--websocket-io (kernel)
+  (pcase-let
+      (((cl-struct jupyter-server-kernel server id) kernel)
+       (msg-pub (jupyter-publisher))
+       (status-pub (jupyter-publisher)))
+    (let ((ws (jupyter-api-kernel-websocket
+               server id
+               :custom-header-alist (jupyter-api-auth-headers server)
+               ;; TODO: on-error publishes to status-pub
+               :on-message (lambda (_ws frame)
+                             (pcase (websocket-frame-opcode frame)
+                               ((or 'text 'binary)
+                                (let* ((msg (jupyter-read-plist-from-string
+                                             (websocket-frame-payload frame)))
+                                       (header (plist-get msg :header))
+                                       (pheader (plist-get msg :parent_header)))
+                                  ;; TODO: Remove the need for this by getting rid of
+                                  ;; message type keywords.
+                                  (plist-put msg :msg_type (jupyter-message-type-as-keyword
+                                                            (plist-get msg :msg_type)))
+                                  (plist-put header :msg_type (jupyter-message-type-as-keyword
+                                                               (plist-get header :msg_type)))
+                                  (plist-put pheader :msg_type (jupyter-message-type-as-keyword
+                                                                (plist-get pheader :msg_type)))
+                                  (jupyter-run-with-io msg-pub
+                                    (jupyter-publish (cons 'message msg)))))
+                               (_
+                                (jupyter-run-with-io status-pub
+                                  (jupyter-publish
+                                    (list 'error (websocket-frame-opcode frame))))))))))
+      (push ws (gethash server jupyter-server-websockets))
+      (list
+       ws
+       msg-pub
+       status-pub))))
+
+(cl-defmethod jupyter-websocket-io :around (thing)
+  "Cache the I/O object of THING in `jupyter-io-cache'."
+  (or (gethash thing jupyter-io-cache)
+      (puthash thing (cl-call-next-method) jupyter-io-cache)))
+
+(cl-defmethod jupyter-websocket-io ((kernel jupyter-server-kernel))
   "Return a list of three elements representing an I/O connection to kernel.
 The returned list looks like (ACTION-SUB MSG-PUB STATUS-PUB)
 where
@@ -403,40 +432,56 @@ websocket.
 STATUS-PUB is a publisher of status changes to the websocket.
 
 TODO The form of content each sends/consumes."
-  (cl-check-type kernel jupyter-server-kernel)
-  (jupyter-mlet* ((value (jupyter-do
-                           (jupyter-kernel-launch kernel)
-                           (jupyter--websocket kernel))))
-    (pcase-let ((`(,ws ,msg-pub ,status-pub) value))
-      ;; Make sure the websocket is cleaned up when it is garbage
-      ;; collected.
-      (plist-put (websocket-client-data ws)
-                 :finalizer (make-finalizer (lambda () (websocket-close ws))))
+  (jupyter-do-launch kernel)
+  (pcase-let*
+      ((`(,ws ,msg-pub ,status-pub) (jupyter--websocket-io kernel))
+       (discarded nil)
+       (kernel-io
+        (jupyter-publisher
+          (lambda (event)
+            (if discarded
+                ;; TODO: What to do here?
+                (error "Kernel I/O discarded")
+              (pcase event
+                (`(message . ,rest) (jupyter-content rest))
+                (`(send ,channel ,msg-type ,content ,msg-id)
+                 (websocket-send-text
+                  ws (jupyter-encode-raw-message
+                         (plist-get (websocket-client-data ws) :session) msg-type
+                       :channel channel
+                       :msg-id msg-id
+                       :content content)))
+                ('start (websocket-ensure-connected ws))
+                ('stop (websocket-close ws))))))))
+    (jupyter-do
+      (jupyter-with-io msg-pub
+        (jupyter-subscribe kernel-io))
       (jupyter-return-delayed
-        (list
-         ;; The websocket action subscriber.
-         (jupyter-subscriber
-           (lambda (msg)
-             (pcase msg
-               (`(send ,channel ,msg-type ,content ,msg-id)
-                (websocket-send-text
-                 ws (jupyter-encode-raw-message
-                        (plist-get (websocket-client-data ws) :session) msg-type
-                      :channel channel
-                      :msg-id msg-id
-                      :content content)))
-               ('start (websocket-ensure-connected ws))
-               ('stop (websocket-close ws)))))
-         ;; The websocket message publisher.
-         msg-pub
-         ;; The websocket status publisher.
-         status-pub)))))
+        (list kernel-io
+              nil
+              ;; (make-finalizer
+              ;;  (lambda ()
+              ;;    (websocket-close ws)
+              ;;    (message "DISCARDED")
+              ;;    (setq discarded t)))
 
+              )))))
+
+(cl-defmethod jupyter-new-repl
+  ((kernel jupyter-kernel)
+   &optional repl-name associate-buffer client-class
+   (display t))
+  (cl-assert (jupyter-alive-p kernel))
+  (or client-class (setq client-class 'jupyter-repl-client))
+  (jupyter-error-if-not-client-class-p client-class 'jupyter-repl-client)
+  (jupyter-bootstrap-repl
+   (jupyter-client kernel client-class)
+   repl-name associate-buffer display))
 
 ;;; Kernel management
 
-;; The KERNEL argument is optional here so that `jupyter-launch' does
-;; not require more than one argument just to handle this case.
+;; The KERNEL argument is optional here so that `jupyter-do-launch'
+;; does not require more than one argument just to handle this case.
 (cl-defmethod jupyter-do-launch ((server jupyter-server) &optional (kernel string))
   (cl-check-type kernel string)
   (let* ((spec (jupyter-guess-kernelspec
