@@ -563,10 +563,9 @@ kernel whose kernelspec if SPEC."
 (cl-defmethod jupyter-client ((kernel jupyter-kernel) &optional client-class)
   (or client-class (setq client-class 'jupyter-kernel-client))
   (cl-assert (child-of-class-p client-class 'jupyter-kernel-client))
-  (let ((client (make-instance
-                 client-class
-                 :io (jupyter-mlet* ((io (jupyter-io kernel)))
-                       io))))
+  (let ((client (make-instance client-class)))
+    (oset client io (jupyter-mlet* ((io (jupyter-websocket-io kernel)))
+                       (car io)))
     (oset client session (jupyter-kernel-session kernel))
     (unless (jupyter-kernel-info client)
       (error "Kernel did not respond to :kernel-info-request"))
