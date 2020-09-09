@@ -505,7 +505,6 @@ See `jupyter-io' for more information on IO actions."
                      ;; between a status: busy and a status: idle
                      ;; message.
                      (eq (jupyter-message-type msg) :status))
-                (setf (jupyter-request-messages req) (nreverse msgs))
                 ;; What happens to the subscriber references of this
                 ;; publisher after it unsubscribes?  They remain until
                 ;; the publisher itself is no longer accessible.
@@ -513,7 +512,7 @@ See `jupyter-io' for more information on IO actions."
                ;; TODO: `jupyter-message-parent-id' -> `jupyter-parent-id'
                ;; and the like.
                ((string= id (jupyter-message-parent-id msg))
-                (push msg msgs)
+                (cl-callf nconc (jupyter-request-messages req) (list msg))
                 (when (or (jupyter-message-status-idle-p msg)
                           ;; Jupyter protocol 5.1, IPython
                           ;; implementation 7.5.0 doesn't give
