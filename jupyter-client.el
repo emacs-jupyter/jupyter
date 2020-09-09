@@ -176,7 +176,8 @@ requests like the above example.")
 
 ;; Define channel classes for method dispatching based on the channel type
 
-(defclass jupyter-kernel-client (jupyter-instance-tracker)
+(defclass jupyter-kernel-client (jupyter-instance-tracker
+                                 jupyter-finalized-object)
   ((tracking-symbol :initform 'jupyter--clients)
    (execution-state
     :type string
@@ -295,8 +296,7 @@ method is called."
     (jupyter-add-finalizer client
       (lambda ()
         (when (buffer-live-p buffer)
-          (kill-buffer buffer))
-        (jupyter-stop-channels client)))))
+          (kill-buffer buffer))))))
 
 (cl-defmethod jupyter-kernel-alive-p ((client jupyter-kernel-client))
   "Return non-nil if the kernel CLIENT is connected to is alive."
