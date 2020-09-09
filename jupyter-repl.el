@@ -820,12 +820,12 @@ Return the `jupyter-request' representing the executed code."
       (goto-char (jupyter-repl-cell-code-beginning-position))
       (run-hooks 'jupyter-repl-cell-pre-send-hook))
     (let ((code (string-trim (jupyter-repl-cell-code))))
-      (let ((req (jupyter-send client
-                  :execute-request
-                  :code code
-                  ;; Handle empty code cells as just an update of the
-                  ;; prompt number
-                  :silent (and (= (length code) 0) t))))
+      (let ((req (jupyter-send
+                  client (jupyter-execute-request
+                          :code code
+                          ;; Handle empty code cells as just an update
+                          ;; of the prompt number
+                          :silent (and (= (length code) 0) t)))))
         (jupyter-repl-without-continuation-prompts
          (jupyter-repl-cell-mark-busy)
          (jupyter-repl-finalize-cell req)
@@ -1193,9 +1193,10 @@ execute the current cell."
            (t
             (let ((res (jupyter-wait-until-received :is-complete-reply
                          (let ((jupyter-inhibit-handlers '(not :is-complete-reply)))
-                           (jupyter-send jupyter-current-client
-                             :is-complete-request
-                             :code (jupyter-repl-cell-code)))
+                           (jupyter-send
+                            jupyter-current-client
+                            (jupyter-is-complete-request
+                             :code (jupyter-repl-cell-code))))
                          jupyter-repl-maximum-is-complete-timeout)))
               (unless res
                 (message "\
@@ -1382,7 +1383,9 @@ the REPL to disable that mode in those buffers.  See
                 ;; FIXME: Get rid of this `jupyter-inhibit-handlers'
                 ;; variable.
                 (let ((jupyter-inhibit-handlers t))
-                  (jupyter-send jupyter-current-client :shutdown-request)))
+                  (jupyter-send
+                   jupyter-current-client
+                   (jupyter-shutdown-request))))
               (jupyter-disconnect jupyter-current-client)))))))
 
 (defun jupyter-repl-error-before-major-mode-change ()
@@ -1448,9 +1451,9 @@ value."
               (unless jupyter-repl-echo-eval-p
                 '(not :input-request))))
         (setq req (jupyter-send jupyter-current-client
-                   :execute-request
-                   :code str
-                   :store-history jupyter-repl-echo-eval-p))
+                   (jupyter-execute-request
+                    :code str
+                    :store-history jupyter-repl-echo-eval-p)))
         (if jupyter-repl-echo-eval-p
             (jupyter-repl-replace-cell-code cell-previous-code))))
     ;; Add callbacks to display evaluation output in pop-up buffers either when
@@ -1694,10 +1697,10 @@ Return the buffer switched to."
     (ring-insert jupyter-repl-history 'jupyter-repl-history)
     (let ((jupyter-inhibit-handlers '(:status)))
       (jupyter-send jupyter-current-client
-       :history-request
-       :n jupyter-repl-history-maximum-length
-       :raw nil
-       :unique t))
+       (jupyter-history-request
+        :n jupyter-repl-history-maximum-length
+        :raw nil
+        :unique t)))
     (erase-buffer)
     ;; Add local hooks
     (add-hook 'kill-buffer-query-functions #'jupyter-repl-kill-buffer-query-function nil t)
@@ -1815,10 +1818,10 @@ Also update the cell count of the current REPL input prompt using
 the updated state."
   (let* ((client jupyter-current-client)
          (req (let ((jupyter-inhibit-handlers t))
-                (jupyter-send client
-                 :execute-request
-                 :code ""
-                 :silent t))))
+                (jupyter-send
+                 client (jupyter-execute-request
+                         :code ""
+                         :silent t)))))
     (jupyter-add-callback req
       :execute-reply
       (jupyter-message-lambda (execution_count)

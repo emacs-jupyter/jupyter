@@ -581,7 +581,7 @@ kernel whose kernelspec if SPEC."
   "Shutdown the kernel CLIENT is connected to.
 After CLIENT shuts down the kernel it is connected to, it is no
 longer connected to a kernel."
-  (jupyter-wait-until-idle (jupyter-send client :shutdown-request)))
+  (jupyter-wait-until-idle (jupyter-send client (jupyter-shutdown-request))))
 
 (cl-defmethod jupyter-interrupt-kernel ((client jupyter-kernel-client))
   "Interrupt the kernel CLIENT is connected to."
@@ -993,8 +993,11 @@ text/plain representation."
   (interactive (list (jupyter-read-expression) nil))
   (let ((msg (jupyter-wait-until-received :execute-result
                (let* ((jupyter-inhibit-handlers t)
-                      (req (jupyter-send jupyter-current-client
-                            :execute-request :code code :store-history nil)))
+                      (req (jupyter-send
+                            jupyter-current-client
+                            (jupyter-execute-request
+                             :code code
+                             :store-history nil))))
                  (prog1 req
                    (jupyter-add-callback req
                      :execute-reply
@@ -1147,8 +1150,11 @@ current buffer that STR was extracted from.")
   (cl-check-type jupyter-current-client jupyter-kernel-client
                  "Not a valid client")
   (let ((jupyter-inhibit-handlers '(not :input-request))
-        (req (jupyter-send jupyter-current-client
-              :execute-request :code str :store-history nil)))
+        (req (jupyter-send
+              jupyter-current-client
+              (jupyter-execute-request
+               :code str
+               :store-history nil))))
     (prog1 req
       (jupyter-eval-add-callbacks req beg end))))
 
@@ -1429,8 +1435,10 @@ DETAIL is the detail level to use for the request and defaults to
     (error "Need a valid `jupyter-current-client'"))
   (let ((client jupyter-current-client)
         (msg (jupyter-wait-until-received :inspect-reply
-               (jupyter-send jupyter-current-client
-                :inspect-request :code code :pos pos :detail detail)
+               (jupyter-send
+                jupyter-current-client
+                (jupyter-inspect-request
+                 :code code :pos pos :detail detail))
                ;; Longer timeout for the Julia kernel
                jupyter-long-timeout)))
     (if msg
@@ -1774,8 +1782,10 @@ Run FUN when the completions are available."
   (cl-destructuring-bind (code pos)
       (jupyter-code-context 'completion)
     (let ((req (let ((jupyter-inhibit-handlers t))
-                 (jupyter-send jupyter-current-client
-                  :complete-request :code code :pos pos))))
+                 (jupyter-send
+                  jupyter-current-client
+                  (jupyter-complete-request
+                   :code code :pos pos)))))
       (prog1 req
         (jupyter-add-callback req :complete-reply fun)))))
 
@@ -1929,7 +1939,7 @@ name are changed to \"-\" and all uppercase characters lowered."
   (or (oref client kernel-info)
       (let* ((jupyter-inhibit-handlers t)
              (msg (jupyter-wait-until-received :kernel-info-reply
-                    (jupyter-send client :kernel-info-request)
+                    (jupyter-send client (jupyter-kernel-info-request))
                     ;; Go to great lengths to ensure we have waited long
                     ;; enough.  When communicating with slow to start kernels
                     ;; behind a kernel server this is necessary.
