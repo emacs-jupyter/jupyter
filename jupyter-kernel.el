@@ -111,6 +111,10 @@ need the default behavior."
 
 ;;; Kernel management
 
+(defun jupyter-kernel-name (kernel)
+  (jupyter-kernelspec-name
+   (jupyter-kernel-spec kernel)))
+
 (cl-defgeneric jupyter-do-launch ((kernel jupyter-kernel))
   "Launch KERNEL."
   (cl-assert (jupyter-alive-p kernel)))
