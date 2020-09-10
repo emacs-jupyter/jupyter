@@ -473,9 +473,7 @@ Ex. Subscribe to a publisher and unsubscribe after receiving two
 (cl-defun jupyter-request (type &rest content)
   "Return an IO action that sends a `jupyter-request'.
 TYPE is the message type of the message that CONTENT, a property
-list, represents.
-
-See `jupyter-io' for more information on IO actions."
+list, represents."
   (declare (indent 1))
   ;; TODO: Get rid of having to do this conversion.
   (unless (symbolp type)
@@ -487,7 +485,8 @@ See `jupyter-io' for more information on IO actions."
                  :stdin
                :shell))
          (req-complete-pub (jupyter-publisher))
-         (req (make-jupyter-request
+         (req (jupyter-generate-request
+               jupyter-current-client
                :type type
                :content content))
          (id (jupyter-request-id req))

@@ -116,7 +116,7 @@ See also the docstring of `org-image-actual-width' for more details."
 
 (defvar org-babel-jupyter-current-src-block-params)
 
-(cl-defmethod jupyter-generate-request ((_client jupyter-org-client) _msg)
+(cl-defmethod jupyter-generate-request ((_client jupyter-org-client) &rest slots)
   "Return a `jupyter-org-request' for the current source code block."
   (if (and org-babel-current-src-block-location
            org-babel-jupyter-current-src-block-params
@@ -133,17 +133,20 @@ See also the docstring of `org-image-actual-width' for more details."
         (let* ((context (org-element-context))
                (block-params org-babel-jupyter-current-src-block-params)
                (result-params (alist-get :result-params block-params)))
-          (jupyter-org-request
-           :marker (copy-marker org-babel-current-src-block-location)
-           :inline-block-p (and (memq (org-element-type context)
-                                      '(inline-babel-call inline-src-block))
-                                t)
-           :result-type (alist-get :result-type block-params)
-           :file (alist-get :file block-params)
-           :block-params block-params
-           :async-p (equal (alist-get :async block-params) "yes")
-           :silent-p (car (or (member "none" result-params)
-                              (member "silent" result-params))))))
+          (apply #'jupyter-org-request
+                 (append
+                  (list
+                   :marker (copy-marker org-babel-current-src-block-location)
+                   :inline-block-p (and (memq (org-element-type context)
+                                              '(inline-babel-call inline-src-block))
+                                        t)
+                   :result-type (alist-get :result-type block-params)
+                   :file (alist-get :file block-params)
+                   :block-params block-params
+                   :async-p (equal (alist-get :async block-params) "yes")
+                   :silent-p (car (or (member "none" result-params)
+                                      (member "silent" result-params))))
+                  slots))))
     (cl-call-next-method)))
 
 (cl-defmethod jupyter-drop-request ((_client jupyter-org-client)

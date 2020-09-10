@@ -359,7 +359,7 @@ this is called."
 
 ;;; Sending messages
 
-(cl-defgeneric jupyter-generate-request ((_client jupyter-kernel-client) _msg)
+(cl-defgeneric jupyter-generate-request (_client &rest slots)
   "Generate a `jupyter-request' object for MSG.
 This method gives an opportunity for subclasses to initialize a
 `jupyter-request' based on the current context.
@@ -368,7 +368,7 @@ The default implementation returns a new `jupyter-request' with
 the default value for all slots.  Note, the `:id' and
 `:inhibited-handlers' slots are overwritten by the caller of this
 method."
-  (jupyter-request))
+  (apply #'make-jupyter-request slots))
 
 (defun jupyter-verify-inhibited-handlers ()
   "Verify the value of `jupyter-inhibit-handlers'.
