@@ -147,31 +147,8 @@ nil."
   (jupyter-do-launch kernel))
 
 (cl-defgeneric jupyter-do-interrupt ((kernel jupyter-kernel))
-  "Interrupt KERNEL.
-
-The default implementation sends an interrupt request on KERNEL's
-control channel if the KERNEL's spec. has an :interrupt_mode
-equal to \"message\"."
-  (pcase-let* (((cl-struct jupyter-kernel spec session) kernel)
-               ((cl-struct jupyter-kernelspec plist) spec))
-    (when (string= (plist-get plist :interrupt_mode) "message")
-      (let ((channel
-             (make-instance
-              'jupyter-zmq-channel
-              :type :control
-              :session session
-              :endpoint (plist-get (jupyter-session-endpoints session) :control))))
-        ;; TODO: `with-live-jupyter-channel'
-        (jupyter-start channel)
-        (jupyter-send channel :interrupt-request '())
-        (jupyter-with-timeout
-            ((format "Interrupting %s kernel"
-                     (jupyter-kernel-name kernel))
-             jupyter-default-timeout
-             (message "No interrupt reply from kernel (%s)"
-                      (jupyter-kernel-name kernel)))
-          (jupyter-recv channel 'dont-wait))
-        (jupyter-stop channel)))))
+  "Interrupt KERNEL."
+  (ignore))
 
 (provide 'jupyter-kernel)
 
