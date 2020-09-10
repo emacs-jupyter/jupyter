@@ -78,12 +78,9 @@ Access should be done through `jupyter-available-kernelspecs'.")))
   jupyter--servers)
 
 (defun jupyter-gc-servers ()
-  "Forget `jupyter-servers' that are no longer accessible at their hosts."
+  "Delete `jupyter-server' instances that are no longer accessible."
   (dolist (server (jupyter-servers))
     (unless (jupyter-api-server-exists-p server)
-      ;; TODO: Stopping a connection, stops all subordinate
-      ;; connections and disconnects all subordinate clients.
-      (jupyter-stop (jupyter-io server))
       (jupyter-api-delete-cookies (oref server url))
       (delete-instance server))))
 
