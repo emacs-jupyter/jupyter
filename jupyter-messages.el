@@ -454,25 +454,25 @@ and `:msg_type'."
   (jupyter-request "is_complete"
     :code code))
 
-(cl-defun jupyter-message-comm-info-request (&key target-name)
+(cl-defun jupyter-comm-info-request (&key (target-name ""))
   (cl-check-type target-name string)
   (jupyter-request "comm_info"
     :target_name target-name))
 
-(cl-defun jupyter-comm-open (&key id target-name data)
+(cl-defun jupyter-comm-open-request (&key id target-name data)
   (cl-check-type id string)
   (cl-check-type target-name string)
   (cl-check-type data json-plist)
   (jupyter-request "comm_open"
     :comm_id id :target_name target-name :data data))
 
-(cl-defun jupyter-comm-msg (&key id data)
+(cl-defun jupyter-comm-msg-request (&key id data)
   (cl-check-type id string)
   (cl-check-type data json-plist)
   (jupyter-request "comm_msg"
     :comm_id id :data data))
 
-(cl-defun jupyter-comm-close (&key id data)
+(cl-defun jupyter-comm-close-request (&key id data)
   (cl-check-type id string)
   (cl-check-type data json-plist)
   (jupyter-request "comm_close"
