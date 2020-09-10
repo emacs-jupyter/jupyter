@@ -209,9 +209,9 @@ client is expecting a reply from the kernel.")
 initializing this client.  When `jupyter-start-channels' is
 called, this will be set to the kernel info plist returned
 from an initial `:kernel-info-request'.")
-   (session
-    :type jupyter-session
-    :documentation "The session for this client.")
+   (kernel
+    :type jupyter-kernel
+    :documentation "The kernel this client is connected to.")
    (comms
     :type hash-table
     :initform (make-hash-table :test 'equal)
@@ -564,8 +564,8 @@ kernel whose kernelspec if SPEC."
   (cl-assert (child-of-class-p client-class 'jupyter-kernel-client))
   (let ((client (make-instance client-class)))
     (oset client io (jupyter-mlet* ((io (jupyter-websocket-io kernel)))
-                       (car io)))
-    (oset client session (jupyter-kernel-session kernel))
+                      (car io)))
+    (oset client kernel kernel)
     (unless (jupyter-kernel-info client)
       (error "Kernel did not respond to :kernel-info-request"))
     ;; If the connection can resolve the kernel's heartbeat channel,
