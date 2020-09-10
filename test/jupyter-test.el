@@ -410,19 +410,19 @@
   (jupyter-test-with-python-client client
     (ert-info ("Kernel info")
       (let ((res (jupyter-wait-until-received :kernel-info-reply
-                   (jupyter-send client :kernel-info-request))))
+                   (jupyter-send client (jupyter-kernel-info-request)))))
         (should res)
         (should (json-plist-p res))
         (should (eq (jupyter-message-type res) :kernel-info-reply))))
     (ert-info ("Comm info")
       (let ((res (jupyter-wait-until-received :comm-info-reply
-                   (jupyter-send client :comm-info-request))))
+                   (jupyter-send client (jupyter-comm-info-request)))))
         (should-not (null res))
         (should (json-plist-p res))
         (should (eq (jupyter-message-type res) :comm-info-reply))))
     (ert-info ("Execute")
       (let ((res (jupyter-wait-until-received :execute-reply
-                   (jupyter-send client :execute-request :code "y = 1 + 2"))))
+                   (jupyter-send client (jupyter-execute-request :code "y = 1 + 2")))))
         (should-not (null res))
         (should (json-plist-p res))
         (should (eq (jupyter-message-type res) :execute-reply))))
@@ -430,7 +430,7 @@
       (cl-letf (((symbol-function 'read-from-minibuffer)
                  (lambda (_prompt &rest _args) "foo")))
         (let ((res (jupyter-wait-until-received :execute-result
-                     (jupyter-send client :execute-request :code "input('')"))))
+                     (jupyter-send client (jupyter-execute-request :code "input('')")))))
           (should-not (null res))
           (should (json-plist-p res))
           (should (eq (jupyter-message-type res) :execute-result))
@@ -438,41 +438,41 @@
     (ert-info ("Inspect")
       (let ((res (jupyter-wait-until-received :inspect-reply
                    (jupyter-send client
-                                 :inspect-request
+                                 (jupyter-inspect-request
                                   :code "list((1, 2, 3))"
                                   :pos 2
-                                  :detail 0))))
+                                  :detail 0)))))
         (should-not (null res))
         (should (json-plist-p res))
         (should (eq (jupyter-message-type res) :inspect-reply))))
     (ert-info ("Complete")
       (let ((res (jupyter-wait-until-received :complete-reply
                    (jupyter-send client
-                                 :complete-request
+                                 (jupyter-complete-request
                                   :code "foo = lis"
-                                  :pos 8))))
+                                  :pos 8)))))
         (should-not (null res))
         (should (json-plist-p res))
         (should (eq (jupyter-message-type res) :complete-reply))))
     (ert-info ("History")
       (let ((res (jupyter-wait-until-received :history-reply
                    (jupyter-send client
-                                 :history-request
-                                 :hist-access-type "tail" :n 2))))
+                                 (jupyter-history-request
+                                  :hist-access-type "tail" :n 2)))))
         (should-not (null res))
         (should (json-plist-p res))
         (should (eq (jupyter-message-type res) :history-reply))))
     (ert-info ("Is Complete")
       (let ((res (jupyter-wait-until-received :is-complete-reply
                    (jupyter-send client
-                                 :is-complete-request
-                                 :code "for i in range(5):"))))
+                                 (jupyter-is-complete-request
+                                  :code "for i in range(5):")))))
         (should-not (null res))
         (should (json-plist-p res))
         (should (eq (jupyter-message-type res) :is-complete-reply))))
     (ert-info ("Shutdown")
       (let ((res (jupyter-wait-until-received :shutdown-reply
-                   (jupyter-send client :shutdown-request))))
+                   (jupyter-send client (jupyter-shutdown-request)))))
         (should-not (null res))
         (should (json-plist-p res))
         (should (eq (jupyter-message-type res) :shutdown-reply))
