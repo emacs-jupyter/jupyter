@@ -1380,13 +1380,6 @@ the REPL to disable that mode in those buffers.  See
           (when (y-or-n-p (format "Jupyter REPL (%s) still connected.  Kill it? "
                                   (buffer-name (current-buffer))))
             (prog1 t
-              (when (yes-or-no-p (format "Shutdown the client's kernel? "))
-                ;; FIXME: Get rid of this `jupyter-inhibit-handlers'
-                ;; variable.
-                (let ((jupyter-inhibit-handlers t))
-                  (jupyter-send
-                   jupyter-current-client
-                   (jupyter-shutdown-request))))
               (jupyter-disconnect jupyter-current-client)))))))
 
 (defun jupyter-repl-error-before-major-mode-change ()
