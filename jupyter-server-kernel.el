@@ -65,6 +65,14 @@ Access should be done through `jupyter-available-kernelspecs'.")))
       (puthash (plist-get slots :url)
                (cl-call-next-method) jupyter--servers-1)))
 
+(cl-defmethod delete-instance ((this jupyter-server))
+  (let (key)
+    (maphash (lambda (k v) (when (eq this v) (setq key k)))
+             jupyter--servers-1)
+    (when key
+      (remhash key jupyter--servers-1)))
+  (cl-call-next-method))
+
 (defun jupyter-servers ()
   "Return a list of all `jupyter-server's."
   jupyter--servers)
