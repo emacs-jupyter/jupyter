@@ -224,11 +224,6 @@ initialization.")
     :type function
     :initarg :io
     :documentation "The I/O context kernel messages are communicated on.")
-   (manager
-    :initform nil
-    :documentation "If this client was initialized using a
-`jupyter-kernel-manager' this slot will hold the manager which
-initialized the client.")
    (-buffer
     :type buffer
     :documentation "An internal buffer used to store client local

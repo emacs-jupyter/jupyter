@@ -60,7 +60,6 @@
 (require 'jupyter-connection)
 (require 'jupyter-kernelspec)
 (require 'jupyter-widget-client)
-(require 'jupyter-kernel-manager)
 (require 'ring)
 
 ;; TODO: Define `jupyter-kernel-manager-after-restart-hook' to update the
