@@ -237,10 +237,6 @@ TODO The form of content each sends/consumes."
       (((cl-struct jupyter-server-kernel server id) kernel)
        (msg-pub (jupyter-publisher))
        (status-pub (jupyter-publisher))
-       (discarded nil)
-       (discard-io (lambda ()
-                     (websocket-close ws)
-                     (setq discarded t)))
        (ws (jupyter-api-kernel-websocket
             server id
             :custom-header-alist (jupyter-api-auth-headers server)
@@ -255,7 +251,7 @@ TODO The form of content each sends/consumes."
                    (jupyter-run-with-io msg-pub
                      (jupyter-publish (cons 'message msg)))
                    (when (eq (jupyter-message-type msg) :shutdown-reply)
-                     (funcall discard-io))))
+                     (websocket-close ws))))
                 (_
                  (jupyter-run-with-io status-pub
                    (jupyter-publish
@@ -263,26 +259,21 @@ TODO The form of content each sends/consumes."
        (kernel-io
         (jupyter-publisher
           (lambda (event)
-            (if discarded
-                ;; TODO: What to do here?
-                (error "Kernel I/O discarded")
-              (pcase event
-                (`(message . ,rest) (jupyter-content rest))
-                (`(send ,channel ,msg-type ,content ,msg-id)
-                 (websocket-send-text
-                  ws (jupyter-encode-raw-message
-                         (plist-get (websocket-client-data ws) :session) msg-type
-                       :channel channel
-                       :msg-id msg-id
-                       :content content)))
-                ('start (websocket-ensure-connected ws))
-                ('stop (websocket-close ws))))))))
+            (pcase event
+              (`(message . ,rest) (jupyter-content rest))
+              (`(send ,channel ,msg-type ,content ,msg-id)
+               (websocket-send-text
+                ws (jupyter-encode-raw-message
+                       (plist-get (websocket-client-data ws) :session) msg-type
+                     :channel channel
+                     :msg-id msg-id
+                     :content content)))
+              ('start (websocket-ensure-connected ws))
+              ('stop (websocket-close ws)))))))
     (push ws (gethash server jupyter-server-websockets))
-    (jupyter-do
-      (jupyter-with-io msg-pub
-        (jupyter-subscribe kernel-io))
-      (jupyter-return-delayed
-        (list kernel-io discard-io)))))
+    (jupyter-run-with-io msg-pub
+      (jupyter-subscribe kernel-io))
+    kernel-io))
 
 (cl-defmethod jupyter-new-repl
   ((kernel jupyter-kernel)
