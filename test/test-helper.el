@@ -27,6 +27,7 @@
 ;;; Code:
 
 (require 'jupyter-repl)
+(require 'jupyter-server)
 (require 'jupyter-org-client)
 (require 'org-element)
 (require 'subr-x)
@@ -191,6 +192,13 @@ If the `current-buffer' is not a REPL, this is identical to
          (accept-process-output nil 1)
          ,@body))))
 
+(defmacro jupyter-test-with-notebook (server &rest body)
+  (declare (indent 1))
+  `(let* ((host (format "localhost:%s" (jupyter-test-ensure-notebook-server)))
+          (url (format "http://%s" host))
+          (,server (jupyter-server :url url)))
+     ,@body))
+
 (defmacro jupyter-test-with-kernel-client (kernel client &rest body)
   "Start a new KERNEL client, bind it to CLIENT, evaluate BODY.
 This only starts a single global client unless the variable
@@ -199,15 +207,16 @@ This only starts a single global client unless the variable
   `(jupyter-test-with-client-cache
     (lambda (name)
       (jupyter-client
-       (jupyter-kernel
-        :server (jupyter-current-server)
-        :spec name)
+       (jupyter-test-with-notebook server
+        (jupyter-kernel
+         :server server
+         :spec name))
        'jupyter-kernel-client))
-       jupyter-test-global-clients ,kernel ,client
-     (unwind-protect
-         (progn ,@body)
-       (when jupyter-test-with-new-client
-         (jupyter-shutdown-kernel client)))))
+    jupyter-test-global-clients ,kernel ,client
+    (unwind-protect
+        (progn ,@body)
+      (when jupyter-test-with-new-client
+        (jupyter-shutdown-kernel client)))))
 
 (defmacro jupyter-test-with-python-client (client &rest body)
   "Start a new Python kernel, bind it to CLIENT, evaluate BODY."
@@ -282,13 +291,6 @@ For `url-retrieve', the callback will be called with a nil status."
           (url-cookie-secure-storage nil)
           (host (format "localhost:%s" (jupyter-test-ensure-notebook-server)))
           (,client (jupyter-rest-client :url (format "http://%s" host))))
-     ,@body))
-
-(defmacro jupyter-test-with-notebook (server &rest body)
-  (declare (indent 1))
-  `(let* ((host (format "localhost:%s" (jupyter-test-ensure-notebook-server)))
-          (url (format "http://%s" host))
-          (,server (jupyter-server :url url)))
      ,@body))
 
 (defmacro jupyter-test-with-server-kernel (server name kernel &rest body)
