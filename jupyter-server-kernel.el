@@ -30,7 +30,6 @@
 
 (require 'jupyter-kernel)
 (require 'jupyter-rest-api)
-(require 'jupyter-server-ioloop)
 (require 'jupyter-monads)
 
 (defgroup jupyter-server-kernel nil
@@ -65,141 +64,6 @@ Access should be done through `jupyter-available-kernelspecs'.")))
   (or (gethash (plist-get slots :url) jupyter--servers-1)
       (puthash (plist-get slots :url)
                (cl-call-next-method) jupyter--servers-1)))
-
-(defun jupyter-server-ioloop-io (ioloop)
-  (let* ((ids '())
-         (event-pub (jupyter-publisher))
-         (channels-pub (jupyter-publisher))
-         (event-handler
-          (lambda (event)
-            (if (not (memq (car event)
-                           '(connect-channels disconnect-channels)))
-                (jupyter-run-with-io event-pub
-                  (jupyter-publish event))
-              (let ((id (cadr event)))
-                (pcase (car event)
-                  ('connect-channels
-                   (cl-pushnew id ids :test #'string=))
-                  ('disconnect-channels
-                   (cl-callf2 delete id ids))))
-              ;; Notify subscribers of CHANNELS-PUB that the connected
-              ;; kernels have changed.
-              (jupyter-run-with-io channels-pub
-                (jupyter-publish event)))))
-         (start
-          (lambda ()
-            (unless (jupyter-ioloop-alive-p ioloop)
-              ;; Write the cookies to file so that they can be read by
-              ;; the subprocess.
-              (url-cookie-write-file)
-              (jupyter-ioloop-start ioloop event-handler)
-              (when ids
-                (let ((head ids))
-                  ;; Reset KERNEL-IDS since it will be updated after the
-                  ;; channels have been re-connected.
-                  (setq ids nil)
-                  (while head
-                    (jupyter-send ioloop 'connect-channels (pop head))))))
-            nil))
-         (action-sub
-          (jupyter-subscriber
-            (lambda (action)
-              (pcase (if (listp action) (car action) action) 
-                ('send
-                 (funcall start)
-                 (apply #'jupyter-send ioloop action))
-                ('event
-                 (funcall start)
-                 (apply #'jupyter-send ioloop (cdr action)))
-                ('start (funcall start))
-                ('stop
-                 (when (jupyter-ioloop-alive-p ioloop)
-                   (jupyter-ioloop-stop ioloop))))))))
-    (jupyter-return-delayed
-      (list action-sub channels-pub event-pub))))
-
-(defun jupyter-server-synced-channel-action-sub (action-sub channels-pub)
-  "Return a subscriber that connects/disconnects kernel channels.
-The subscriber will wait until the channels have been
-connected/disconnected before returning.
-
-Content like '(connect-channels ID) or '(disconnect-channels ID)
-can be submitted to connect or disconnect the WebSocket channels
-of a kernel with ID, a string.
-
-ACTION-SUB is a subscriber of content like
-
-    '(event connect-channels ID)
-
-and does the actual connecting/disconnecting of kernel channels.
-
-CHANNELS-PUB is a publisher of the status changes of a kernel's
-channels and publishes content like '(connect-channels ID) when
-the corresponding action has been completed."
-  (jupyter-subscriber
-    (lambda (content)
-      (unless (and (memq (car-safe content)
-                         '(connect-channels disconnect-channels))
-                   (stringp (car (cdr-safe content))))
-        (error "Unknown value: %s" content))
-      (pcase-let ((`(,action ,id) content)
-                  (done nil))
-        (jupyter-run-with-io channels-pub
-          ;; TODO: (subscribe (subscriber ...)) -> (subscribe ...)
-          ;;
-          ;; Need to make a publisher struct type to distinguish
-          ;; between publisher functions and regular functions
-          ;; first.
-          (jupyter-subscribe
-            (jupyter-subscriber
-              (lambda (event)
-                (when (and (eq (car event) action)
-                           (string= id (cadr event)))
-                  (setq done t)
-                  (jupyter-unsubscribe))))))
-        (jupyter-run-with-io action-sub
-          (jupyter-publish (list 'event action id)))
-        ;; TODO: Synchronization I/O actions?
-        ;;
-        ;;     (jupyter-with-io pub
-        ;;       (jupyter-wait (lambda () cond)))
-        (jupyter-with-timeout
-            (nil jupyter-default-timeout
-                 (error "Timeout when %sconnecting server channels"
-                        (if (eq action 'connect-channels) "" "dis")))
-          done)))))
-
-;; TODO: Figure out how to refresh the connection with new
-;; auth-headers.  I think its just call this function again.  Due to
-;; the functional design, all references to the old objects should get
-;; cleaned up.
-
-(defun jupyter-server-io (server)
-  (let ((ioloop (jupyter-server-ioloop
-                 :url (oref server url)
-                 :ws-url (oref server ws-url)
-                 :ws-headers (jupyter-api-auth-headers server))))
-    ;; TODO: Another instance where it would be great for mlet* to
-    ;; support `pcase' patterns.  Or should it be the other way round?
-    ;; Make a `pcase' macro for I/O values.
-    ;;
-    ;; (pcase (jupyter-server-ioloop-io ioloop)
-    ;;   ((jupyter-io `(,action-sub ,kernel-channels-pub ,ioloop-event-pub))
-    ;;    ...))
-    (jupyter-mlet* ((value (jupyter-server-ioloop-io ioloop)))
-      (pcase-let ((`(,action-sub ,channels-pub ,event-pub) value))
-        (jupyter-add-finalizer server
-          (lambda ()
-            (jupyter-run-with-io action-sub
-              (jupyter-publish 'stop))))
-        (jupyter-return-delayed
-          (list action-sub
-                (jupyter-server-synced-channel-action-sub
-                 action-sub channels-pub)
-                event-pub))))))
-
-(cl-defmethod jupyter-io ((server jupyter-server))
-  (jupyter-server-io server))
 
 (defun jupyter-servers ()
   "Return a list of all `jupyter-server's."
@@ -310,51 +174,6 @@ Call the next method if ARGS does not contain :server."
                          (error "No kernelspec matching %s @ %s" spec
                                 (oref server url))))))
       (apply #'jupyter-server-kernel args))))
-
-;;; Client connection
-
-(defun jupyter-server-kernel-io (kernel)
-  ;; TODO: What about disconnecting channels?  Do that at a later
-  ;; stage.
-  (pcase-let (((cl-struct jupyter-server-kernel server id) kernel)
-              (discarded nil))
-    (jupyter-mlet* ((server-io (jupyter-io server)))
-      (pcase-let*
-          ((`(,action-sub ,channel-action ,event-pub) server-io)
-           (kernel-io
-            (jupyter-publisher
-              (lambda (event)
-                (if discarded
-                    (error "Kernel I/O no longer available")
-                  (pcase event
-                    ((and `(message ,kid . ,rest)
-                          (guard (string= kid id)))
-                     (jupyter-content rest))
-                    (`(unsubscribe ,kid)
-                     (when (string= kid id)
-                       (jupyter-unsubscribe)))
-                    (_
-                     (jupyter-run-with-io action-sub
-                       (jupyter-publish (cl-list* 'send id args))))))))))
-        (jupyter-do
-          (jupyter-with-io channel-action
-            (jupyter-publish (list 'connect-channels id)))
-          (jupyter-with-io event-pub
-            (jupyter-subscribe kernel-io))
-          (jupyter-return-delayed
-            (list kernel-io
-                  ;; TODO: Bring this, as an action, into kernel-io
-                  (lambda ()
-                    (jupyter-run-with-io event-pub
-                      ;; TODO: How can this be avoided?
-                      (jupyter-publish (list 'unsubscribe id)))
-                    (jupyter-run-with-io channel-action
-                      (jupyter-publish (list 'disconnect-channels id)))
-                    (setq discarded t)))))))))
-
-(cl-defmethod jupyter-io ((kernel jupyter-server-kernel))
-  (jupyter-server-kernel-io kernel))
-
 
 ;;; Websocket IO
 
