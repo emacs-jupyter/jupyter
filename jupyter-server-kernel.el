@@ -188,6 +188,7 @@ Call the next method if ARGS does not contain :server."
 (defvar jupyter-server-websockets (make-hash-table :weakness 'key :test 'eq))
 
 (defun jupyter-reauthenticate-websockets (server)
+  "Re-authenticate WebSocket connections of SERVER."
   (let ((headers (jupyter-api-auth-headers server)))
     (setf (gethash server jupyter-server-websockets)
           (delq nil
@@ -195,7 +196,7 @@ Call the next method if ARGS does not contain :server."
                  (lambda (ws)
                    (when (websocket-openp ws)
                      (websocket-close ws)
-                     (websocket-open
+                     (websocket-open (websocket-url ws)
                       :on-open (websocket-on-open ws)
                       :custom-header-alist headers)
                      ws))
