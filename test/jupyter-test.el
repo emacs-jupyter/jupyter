@@ -31,7 +31,6 @@
 (require 'jupyter-client)
 (require 'jupyter-repl)
 (require 'jupyter-org-client)
-(require 'jupyter-kernel-manager)
 (require 'cl-lib)
 (require 'ert)
 (require 'subr-x)                       ; string-trim
@@ -476,10 +475,8 @@
         (should-not (null res))
         (should (json-plist-p res))
         (should (eq (jupyter-message-type res) :shutdown-reply))
-        ;; Ensure we give the kernel process time to die off
-        (when (oref client manager)
-          (jupyter-with-timeout (nil jupyter-long-timeout)
-            (not (jupyter-kernel-alive-p (oref client manager)))))))))
+        ;; TODO: Ensure we give the kernel process time to die off
+        ))))
 
 (ert-deftest jupyter-message-lambda ()
   :tags '(messages)

@@ -37,7 +37,6 @@
 (require 'jupyter-client)
 (require 'jupyter-kernelspec)
 (require 'jupyter-repl)
-(require 'jupyter-kernel-manager)
 
 (provide 'jupyter)
 

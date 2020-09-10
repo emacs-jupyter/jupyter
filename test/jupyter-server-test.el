@@ -269,10 +269,10 @@
           (cl-letf (((symbol-function #'read-passwd)
                      (lambda (&rest _) "foobar")))
             (jupyter-api-ensure-authenticated server))
-          (cl-destructuring-bind (manager client)
-              (jupyter-server-start-new-kernel server "python")
+          (cl-destructuring-bind (_ client)
+              (list nil (jupyter-client (jupyter-kernel :server server :spec "python")))
             (unwind-protect
-                (let ((id (jupyter-server-kernel-id (oref manager kernel)))
+                (let ((id (jupyter-server-kernel-id (oref client kernel)))
                       (jupyter-current-client client))
                   (should (equal (jupyter-eval "1 + 1") "2"))
                   (let (url-cookie-storage)
@@ -288,52 +288,9 @@
                       (should (jupyter-api-server-accessible-p server)))
                     (ert-info ("Verify clients still work after re-authentication")
                       (should (equal (jupyter-eval "1 + 1") "2")))))
-              (jupyter-shutdown-kernel manager))))
+              (jupyter-shutdown-kernel client))))
       (when (process-live-p (car jupyter-test-notebook))
         (delete-process (car jupyter-test-notebook))))))
-
-;; FIXME: Revisit after transition
-(ert-deftest jupyter-server-kernel-manager ()
-  :tags '(server)
-  (skip-unless nil)
-  (jupyter-test-with-notebook server
-    (let* ((kernel (jupyter--server-kernel
-                    :server server
-                    :spec (jupyter-guess-kernelspec
-                           "python" (jupyter-server-kernelspecs server))))
-           (manager (jupyter-server-kernel-manager
-                     :kernel kernel)))
-      (should-not (jupyter-kernel-alive-p manager))
-      (jupyter-start-kernel manager)
-      (unwind-protect
-          (progn
-            (should (jupyter-kernel-alive-p (oref manager kernel)))
-            (should (jupyter-comm-alive-p (oref manager comm)))
-            (should (jupyter-kernel-alive-p manager)))
-        (jupyter-shutdown-kernel manager)))))
-
-(ert-deftest jupyter-server-start-new-kernel ()
-  :tags '(server)
-  (jupyter-test-with-notebook server
-    (cl-destructuring-bind (manager client)
-        (jupyter-server-start-new-kernel server "python")
-      (unwind-protect
-          (let ((jupyter-current-client client))
-            (should (jupyter-kernel-alive-p
-                     (thread-first jupyter-current-client
-                       (oref manager)
-                       (oref kernel))))
-            (should (jupyter-channels-running-p jupyter-current-client))
-            (should (eq (oref client manager) manager))
-            ;; FIXME: Remove after the transition away from a manager class
-            ;; (should (slot-boundp manager 'comm))
-            ;; (should (jupyter-comm-alive-p (oref manager comm)))
-            ;; (should (slot-boundp client 'kcomm))
-            ;; (should (eq (oref manager comm) (oref client kcomm)))
-            ;; (jupyter-comm-handler-loop (oref client kcomm) c
-            ;;   (should (eq c client)))
-            (should (equal (jupyter-eval "1 + 1") "2")))
-        (jupyter-shutdown-kernel manager)))))
 
 (ert-deftest jupyter-run-server-repl ()
   :tags '(server)
@@ -342,10 +299,8 @@
         (oref (jupyter-run-server-repl server "python") buffer)
       (unwind-protect
           (progn
-            (should (jupyter-kernel-alive-p
-                     (thread-first jupyter-current-client
-                       (oref manager)
-                       (oref kernel))))
+            (should (jupyter-alive-p
+                     (oref jupyter-current-client kernel)))
             (should (jupyter-channels-running-p jupyter-current-client))
             (should (equal (jupyter-eval "1 + 1") "2")))
         (jupyter-test-kill-buffer (current-buffer))))))
@@ -359,10 +314,8 @@
           (oref (jupyter-connect-server-repl server id) buffer)
         (unwind-protect
             (progn
-              (should (jupyter-kernel-alive-p
-                       (thread-first jupyter-current-client
-                         (oref manager)
-                         (oref kernel))))
+              (should (jupyter-alive-p
+                       (oref jupyter-current-client kernel)))
               (should (jupyter-channels-running-p jupyter-current-client))
               (should (equal (jupyter-eval "1 + 1") "2")))
           (jupyter-test-kill-buffer (current-buffer)))))))
