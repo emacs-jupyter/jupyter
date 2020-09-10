@@ -31,13 +31,6 @@
 ;; available on the server can be accessed by calling
 ;; `jupyter-server-kernelspecs'.
 ;;
-;; `jupyter-server-start-new-kernel' returns a list (KM KC) where KM is a
-;; `jupyter-server-kernel-manager' and KC is a kernel client that can
-;; communicate with the kernel managed by KM.  `jupyter-server-kernel-manager'
-;; sends requests to the server using the `jupyter-server' object to manage the
-;; lifetime of the kernel and ensures that a websocket is opened so that kernel
-;; clients created using `jupyter-make-client' can communicate with the kernel.
-;;
 ;; Communication with the channels of the kernels that are launched on the
 ;; `jupyter-server' is established via a `jupyter-server-ioloop' which
 ;; multiplexes the channels of all the kernel servers.  The kernel ID the server
@@ -75,7 +68,6 @@
 
 (eval-when-compile (require 'subr-x))
 (require 'jupyter-repl)
-(require 'jupyter-kernel-manager)
 (require 'jupyter-server-kernel)
 
 (declare-function jupyter-tramp-file-name-p "jupyter-tramp" (filename))
@@ -85,9 +77,6 @@
 (defgroup jupyter-server nil
   "Support for the Jupyter kernel gateway"
   :group 'jupyter)
-
-(defclass jupyter-server-kernel-manager (jupyter-kernel-manager)
-  ())
 
 ;;; Assigning names to kernel IDs
 
@@ -166,20 +155,7 @@ CLIENT must be communicating with a `jupyter-server-kernel', see
                (oref client kernel)))
     (jupyter-server-name-kernel server id name)))
 
-;;; Finding exisisting kernel managers and servers
-
-(defun jupyter-server-find-kernel (kserver kid)
-  "Return a kernel manager managing kernel with ID on SERVER.
-Return nil if none could be found."
-  (cl-loop
-   for client in (jupyter-all-objects 'jupyter--clients)
-   thereis (let ((manager (oref client manager)))
-             (and (cl-typep manager 'jupyter-server-kernel-manager)
-                  (pcase-let (((cl-struct jupyter-server-kernel server id)
-                               (oref manager kernel)))
-                    (and (eq server kserver)
-                         (equal id kid)))
-                  manager))))
+;;; Finding exisisting servers
 
 (defun jupyter-find-server (url &optional ws-url)
   "Return a live `jupyter-server' that lives at URL.
@@ -305,8 +281,6 @@ is used as determined by `jupyter-current-server'."
 
 ;;; REPL
 
-(require 'jupyter-server-kernel)
-
 ;; TODO: When closing the REPL buffer and it is the last connected client as
 ;; shown by the :connections key of a `jupyter-api-get-kernel' call, ask to
 ;; also shutdown the kernel.
@@ -377,9 +351,7 @@ the same meaning as in `jupyter-connect-repl'."
               (really (yes-or-no-p
                        (format "Really shutdown %s kernel? "
                                (aref (tabulated-list-get-entry) 0)))))
-    (let ((manager (jupyter-server-find-kernel jupyter-current-server id)))
-      (if manager (jupyter-shutdown-kernel manager)
-        (jupyter-api-shutdown-kernel jupyter-current-server id)))
+    (jupyter-api-shutdown-kernel jupyter-current-server id)
     (tabulated-list-delete-entry)))
 
 (defun jupyter-server-kernel-list-do-restart ()
@@ -387,9 +359,7 @@ the same meaning as in `jupyter-connect-repl'."
   (interactive)
   (when-let* ((id (tabulated-list-get-id))
               (really (yes-or-no-p "Really restart kernel? ")))
-    (let ((manager (jupyter-server-find-kernel jupyter-current-server id)))
-      (if manager (jupyter-shutdown-kernel manager 'restart)
-        (jupyter-api-restart-kernel jupyter-current-server id)))
+    (jupyter-api-restart-kernel jupyter-current-server id)
     (revert-buffer)))
 
 (defun jupyter-server-kernel-list-do-interrupt ()
