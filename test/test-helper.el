@@ -169,9 +169,9 @@ If the `current-buffer' is not a REPL, this is identical to
        (cl-loop
         for saved in (copy-sequence ,saved-sym)
         for client = (cdr saved)
-        when (and client (oref client manager)
-                  (not (jupyter-kernel-alive-p (oref client manager))))
-        do (jupyter-stop-channels client)
+        when (and client (jupyter-connected-p client)
+                  (not (jupyter-alive-p (oref client kernel))))
+        do (jupyter-disconnect client)
         (cl-callf2 delq saved ,saved-sym))
        (let* ((,spec (progn (jupyter-error-if-no-kernelspec ,kernel)
                             (car (jupyter-find-kernelspecs ,kernel))))
@@ -180,11 +180,8 @@ If the `current-buffer' is not a REPL, this is identical to
                            ,saved
                          ;; Want a fresh kernel, so shutdown the cached one
                          (when ,saved
-                           (if (oref ,saved manager)
-                               (jupyter-shutdown-kernel (oref ,saved manager))
-                             (jupyter-send ,saved :shutdown-request))
-                           ;; FIXME: This will be removed after the transition
-                           (ignore-errors (jupyter-stop-channels ,saved)))
+                           (jupyter-send ,saved (jupyter-shutdown-request))
+                           (jupyter-disconnect ,saved))
                          (let ((client (,client-fun (jupyter-kernelspec-name ,spec))))
                            (prog1 client
                              (let ((el (cons (jupyter-kernelspec-name ,spec) client)))
@@ -200,15 +197,17 @@ This only starts a single global client unless the variable
 `jupyter-test-with-new-client' is non-nil."
   (declare (indent 2) (debug (stringp symbolp &rest form)))
   `(jupyter-test-with-client-cache
-    (lambda (name) (jupyter-make-client
-               (jupyter-kernel-manager
-                :kernel (jupyter-kernel :spec name))
-               'jupyter-kernel-client))
+    (lambda (name)
+      (jupyter-client
+       (jupyter-kernel
+        :server (jupyter-current-server)
+        :spec name)
+       'jupyter-kernel-client))
        jupyter-test-global-clients ,kernel ,client
      (unwind-protect
          (progn ,@body)
        (when jupyter-test-with-new-client
-         (jupyter-shutdown-kernel (oref client manager))))))
+         (jupyter-shutdown-kernel client)))))
 
 (defmacro jupyter-test-with-python-client (client &rest body)
   "Start a new Python kernel, bind it to CLIENT, evaluate BODY."
@@ -289,18 +288,17 @@ For `url-retrieve', the callback will be called with a nil status."
   (declare (indent 1))
   `(let* ((host (format "localhost:%s" (jupyter-test-ensure-notebook-server)))
           (url (format "http://%s" host))
-          (,server (or (jupyter-find-server url)
-                       (jupyter-server :url url))))
+          (,server (jupyter-server :url url)))
      ,@body))
 
 (defmacro jupyter-test-with-server-kernel (server name kernel &rest body)
   (declare (indent 3))
   (let ((id (make-symbol "id")))
-    `(let ((,kernel (jupyter-server-kernel
+    `(let ((,kernel (jupyter-kernel
                      :server server
                      :spec (jupyter-guess-kernelspec
                             ,name (jupyter-server-kernelspecs ,server)))))
-       (jupyter-launch ,kernel)
+       (jupyter-do-launch ,kernel)
        (unwind-protect
            (progn ,@body)
          (jupyter-do-shutdown ,kernel)))))

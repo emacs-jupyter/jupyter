@@ -61,10 +61,6 @@
 (require 'jupyter-widget-client)
 (require 'ring)
 
-;; TODO: Define `jupyter-kernel-manager-after-restart-hook' to update the
-;; execution count after a restart.  More generally, define more ways to hook
-;; into differnt events of the client/kernel interaction.
-
 ;;; User variables
 
 (defface jupyter-repl-input-prompt
