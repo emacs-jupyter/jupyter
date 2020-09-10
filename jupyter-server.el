@@ -310,29 +310,12 @@ is used as determined by `jupyter-current-server'."
 ;; TODO: When closing the REPL buffer and it is the last connected client as
 ;; shown by the :connections key of a `jupyter-api-get-kernel' call, ask to
 ;; also shutdown the kernel.
-(defun jupyter-server-start-new-kernel (server kernel-name &optional client-class)
-  "Start a managed Jupyter kernel on SERVER.
-KERNEL-NAME is the name of the kernel to start.  It can also be
-the prefix of a valid kernel name, in which case the first kernel
-in ‘jupyter-server-kernelspecs’ that has KERNEL-NAME as a
-prefix will be used.
-
-Optional argument CLIENT-CLASS is a subclass
-of ‘jupyer-kernel-client’ and will be used to initialize a new
-client connected to the kernel.  CLIENT-CLASS defaults to the
-symbol ‘jupyter-kernel-client’.
-
-Return a list (KM KC) where KM is the kernel manager managing the
-lifetime of the kernel on SERVER.  KC is a new client connected to
-the kernel whose class is CLIENT-CLASS.  Note that the client’s
-‘manager’ slot will also be set to the kernel manager instance,
-see ‘jupyter-make-client’."
-  (require 'jupyter-server-kernel)
-  (or client-class (setq client-class 'jupyter-kernel-client))
-  (let* ((kernel (jupyter-kernel :server server :spec kernel-name))
-         (manager (jupyter-server-kernel-manager :kernel kernel)))
-    (let ((client (jupyter-make-client manager client-class)))
-      (list manager client))))
+(defun jupyter-server-repl (kernel &optional repl-name associate-buffer client-class display)
+  (or client-class (setq client-class 'jupyter-repl-client))
+  (jupyter-error-if-not-client-class-p client-class 'jupyter-repl-client)
+  (jupyter-bootstrap-repl
+   (jupyter-client kernel client-class)
+   repl-name associate-buffer display))
 
 ;;;###autoload
 (defun jupyter-run-server-repl
@@ -356,11 +339,9 @@ the same meaning as in `jupyter-run-repl'."
                       (y-or-n-p "Name REPL? "))
              (read-string "REPL Name: "))
            t nil t)))
-  (or client-class (setq client-class 'jupyter-repl-client))
-  (jupyter-error-if-not-client-class-p client-class 'jupyter-repl-client)
-  (cl-destructuring-bind (_manager client)
-      (jupyter-server-start-new-kernel server kernel-name client-class)
-    (jupyter-bootstrap-repl client repl-name associate-buffer display)))
+  (jupyter-server-repl
+   (jupyter-kernel :server server :spec kernel-name)
+   repl-name associate-buffer client-class display))
 
 ;;;###autoload
 (defun jupyter-connect-server-repl
@@ -383,12 +364,9 @@ the same meaning as in `jupyter-connect-repl'."
                       (y-or-n-p "Name REPL? "))
              (read-string "REPL Name: "))
            t nil t)))
-  (or client-class (setq client-class 'jupyter-repl-client))
-  (jupyter-error-if-not-client-class-p client-class 'jupyter-repl-client)
-  (let* ((manager (jupyter-server-kernel-manager
-                   :kernel (jupyter-kernel :server server :id kernel-id)))
-         (client (jupyter-make-client manager client-class)))
-    (jupyter-bootstrap-repl client repl-name associate-buffer display)))
+  (jupyter-server-repl
+   (jupyter-kernel :server server :id kernel-id)
+   repl-name associate-buffer client-class display))
 
 ;;; `jupyter-server-kernel-list'
 
@@ -426,7 +404,10 @@ the same meaning as in `jupyter-connect-repl'."
   (interactive)
   (when-let* ((id (tabulated-list-get-id)))
     (let ((jupyter-current-client
-           (jupyter-connect-server-repl jupyter-current-server id)))
+           (jupyter-server-repl
+            (jupyter-kernel
+             :server jupyter-current-server
+             :id id))))
       (revert-buffer)
       (jupyter-repl-pop-to-buffer))))
 
