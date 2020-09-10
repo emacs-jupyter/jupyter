@@ -376,41 +376,17 @@ Call the next method if ARGS does not contain :server."
                      ws))
                  (gethash server jupyter-server-websockets))))))
 
-(defun jupyter--websocket-io (kernel)
-  (pcase-let
-      (((cl-struct jupyter-server-kernel server id) kernel)
-       (msg-pub (jupyter-publisher))
-       (status-pub (jupyter-publisher)))
-    (let ((ws (jupyter-api-kernel-websocket
-               server id
-               :custom-header-alist (jupyter-api-auth-headers server)
-               ;; TODO: on-error publishes to status-pub
-               :on-message (lambda (_ws frame)
-                             (pcase (websocket-frame-opcode frame)
-                               ((or 'text 'binary)
-                                (let* ((msg (jupyter-read-plist-from-string
-                                             (websocket-frame-payload frame)))
-                                       (header (plist-get msg :header))
-                                       (pheader (plist-get msg :parent_header)))
-                                  ;; TODO: Remove the need for this by getting rid of
-                                  ;; message type keywords.
-                                  (plist-put msg :msg_type (jupyter-message-type-as-keyword
-                                                            (plist-get msg :msg_type)))
-                                  (plist-put header :msg_type (jupyter-message-type-as-keyword
-                                                               (plist-get header :msg_type)))
-                                  (plist-put pheader :msg_type (jupyter-message-type-as-keyword
-                                                                (plist-get pheader :msg_type)))
-                                  (jupyter-run-with-io msg-pub
-                                    (jupyter-publish (cons 'message msg)))))
-                               (_
-                                (jupyter-run-with-io status-pub
-                                  (jupyter-publish
-                                    (list 'error (websocket-frame-opcode frame))))))))))
-      (push ws (gethash server jupyter-server-websockets))
-      (list
-       ws
-       msg-pub
-       status-pub))))
+(defun jupyter--fix-msg-type (msg)
+  (let* ((header (plist-get msg :header))
+         (pheader (plist-get msg :parent_header)))
+    ;; TODO: Remove the need for this by getting rid of
+    ;; message type keywords.
+    (plist-put msg :msg_type (jupyter-message-type-as-keyword
+                              (plist-get msg :msg_type)))
+    (plist-put header :msg_type (jupyter-message-type-as-keyword
+                                 (plist-get header :msg_type)))
+    (plist-put pheader :msg_type (jupyter-message-type-as-keyword
+                                  (plist-get pheader :msg_type)))))
 
 (cl-defmethod jupyter-websocket-io :around (thing)
   "Cache the I/O object of THING in `jupyter-io-cache'."
@@ -433,8 +409,32 @@ STATUS-PUB is a publisher of status changes to the websocket.
 TODO The form of content each sends/consumes."
   (jupyter-do-launch kernel)
   (pcase-let*
-      ((`(,ws ,msg-pub ,status-pub) (jupyter--websocket-io kernel))
+      (((cl-struct jupyter-server-kernel server id) kernel)
+       (msg-pub (jupyter-publisher))
+       (status-pub (jupyter-publisher))
        (discarded nil)
+       (discard-io (lambda ()
+                     (websocket-close ws)
+                     (setq discarded t)))
+       (ws (jupyter-api-kernel-websocket
+            server id
+            :custom-header-alist (jupyter-api-auth-headers server)
+            ;; TODO: on-error publishes to status-pub
+            :on-message
+            (lambda (ws frame)
+              (pcase (websocket-frame-opcode frame)
+                ((or 'text 'binary)
+                 (let ((msg (jupyter-read-plist-from-string
+                             (websocket-frame-payload frame))))
+                   (jupyter--fix-msg-type msg)
+                   (jupyter-run-with-io msg-pub
+                     (jupyter-publish (cons 'message msg)))
+                   (when (eq (jupyter-message-type msg) :shutdown-reply)
+                     (funcall discard-io))))
+                (_
+                 (jupyter-run-with-io status-pub
+                   (jupyter-publish
+                     (list 'error (websocket-frame-opcode frame)))))))))
        (kernel-io
         (jupyter-publisher
           (lambda (event)
@@ -452,19 +452,12 @@ TODO The form of content each sends/consumes."
                        :content content)))
                 ('start (websocket-ensure-connected ws))
                 ('stop (websocket-close ws))))))))
+    (push ws (gethash server jupyter-server-websockets))
     (jupyter-do
       (jupyter-with-io msg-pub
         (jupyter-subscribe kernel-io))
       (jupyter-return-delayed
-        (list kernel-io
-              nil
-              ;; (make-finalizer
-              ;;  (lambda ()
-              ;;    (websocket-close ws)
-              ;;    (message "DISCARDED")
-              ;;    (setq discarded t)))
-
-              )))))
+        (list kernel-io discard-io)))))
 
 (cl-defmethod jupyter-new-repl
   ((kernel jupyter-kernel)
