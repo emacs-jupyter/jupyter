@@ -1375,8 +1375,8 @@ In addition to the above, call the function
 the REPL to disable that mode in those buffers.  See
 `jupyter-repl-associate-buffer'."
   (when (eq major-mode 'jupyter-repl-mode)
-    (let ((kernel (slot-boundp jupyter-current-client 'io)))
-      (or (not kernel)
+    (let ((connected-p (jupyter-connected-p jupyter-current-client)))
+      (or (not connected-p)
           (when (y-or-n-p (format "Jupyter REPL (%s) still connected.  Kill it? "
                                   (buffer-name (current-buffer))))
             (prog1 t
