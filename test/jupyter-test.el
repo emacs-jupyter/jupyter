@@ -47,7 +47,7 @@
     (ert-info ("Mock echo client echo's messages back to channel.")
       (let ((req (jupyter-send client :execute-request :code "foo"))
             (msg (jupyter-test-message
-                  (jupyter-request) :execute-request '(:code "foo"))))
+                  (make-jupyter-request) :execute-request '(:code "foo"))))
         (sleep-for 0.3)
         (setq msgs (nreverse (ring-elements (oref client messages))))
         (should (= (length msgs) 3))
@@ -480,7 +480,7 @@
 (ert-deftest jupyter-message-lambda ()
   :tags '(messages)
   (let ((msg (jupyter-test-message
-              (jupyter-request) :execute-reply
+              (make-jupyter-request) :execute-reply
               (list :status "idle" :data (list :text/plain "foo")))))
     (should (equal (funcall (jupyter-message-lambda (status)
                               status)
@@ -613,14 +613,14 @@
   :tags '(client handlers)
   (jupyter-test-with-python-client client
     (let* ((jupyter-inhibit-handlers '(:stream))
-           (req (jupyter-send client :kernel-info-request)))
+           (req (jupyter-send client (jupyter-kernel-info-request))))
       (should (equal (jupyter-request-inhibited-handlers req)
                      '(:stream)))
       (should-not (jupyter--request-allows-handler-p
                    req (jupyter-test-message
                         req :stream (list :name "stdout" :text "foo"))))
       (setq jupyter-inhibit-handlers '(:foo))
-      (should-error (jupyter-send client :kernel-info-request)))))
+      (should-error (jupyter-send client (jupyter-kernel-info-request))))))
 
 (ert-deftest jupyter-requests-pending-p ()
   :tags '(client)
@@ -634,7 +634,7 @@
       ;; print the class object on failure and will fail at doing so.
       (setq pending (jupyter-requests-pending-p client))
       (should-not pending)
-      (let ((req (jupyter-send client :kernel-info-request)))
+      (let ((req (jupyter-send client (jupyter-kernel-info-request))))
         (ert-info ("Pending after send")
           (setq pending (jupyter-requests-pending-p client))
           (should pending)
@@ -643,8 +643,8 @@
           (should-not pending))
         (ert-info ("Pending until idle received")
           (setq req (jupyter-send client
-                                  :execute-request
-                                  :code "import time; time.sleep(0.2)"))
+                                  (jupyter-execute-request
+                                   :code "import time; time.sleep(0.2)")))
           ;; Empty out the pending-requests slot of CLIENT
           (jupyter-wait-until-received :status req)
           (setq pending (jupyter-requests-pending-p client))
@@ -730,11 +730,11 @@
 (ert-deftest jupyter-idle-sync ()
   :tags '(client hook)
   (jupyter-test-with-python-client client
-    (let ((req (jupyter-send client :execute-request :code "1 + 1")))
+    (let ((req (jupyter-send client (jupyter-execute-request :code "1 + 1"))))
       (should-not (jupyter-request-idle-p req))
       (jupyter-idle-sync req)
       (should (jupyter-request-idle-p req)))
-    (let ((req (jupyter-send client :execute-request :code "1 + 1")))
+    (let ((req (jupyter-send client (jupyter-execute-request :code "1 + 1"))))
       (should (null jupyter-test-idle-sync-hook))
       (jupyter-add-idle-sync-hook 'jupyter-test-idle-sync-hook req)
       (should-not (null jupyter-test-idle-sync-hook))
@@ -1438,8 +1438,8 @@ next(x"))))))
           (let ((msg (jupyter-wait-until-received :execute-result
                        (let ((jupyter-inhibit-handlers t))
                          (jupyter-send cclient
-                                       :execute-request
-                                       :code "1 + 1")))))
+                                       (jupyter-execute-request
+                                        :code "1 + 1"))))))
             (should msg)
             (should (equal (jupyter-message-data msg :text/plain) "2")))
         (with-current-buffer (oref cclient buffer)
