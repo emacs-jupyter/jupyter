@@ -86,18 +86,6 @@
 
 (defvar jupyter-io-cache (make-hash-table :weakness 'key))
 
-(cl-defgeneric jupyter-io (thing)
-  "Return THING's I/O.")
-
-(cl-defmethod jupyter-io :around (thing)
-  "Cache the I/O function of THING."
-  (or (gethash thing jupyter-io-cache)
-      (puthash thing (cl-call-next-method) jupyter-io-cache)))
-
-;; TODO: Any monadic value is really a kind of delayed value in some
-;; sense, since it represents some staged computation to be evaluated
-;; later.  Change the name to `jupyter-return-io' and also change
-;; `jupyter-delayed' to `jupyter-io'.
 (defun jupyter-return-delayed (value)
   "Return an I/O value that evaluates BODY in the I/O context.
 The result of BODY is the unboxed value of the I/O value.  BODY

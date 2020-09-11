@@ -46,26 +46,6 @@
   ;; FIXME: Remove this slot, used by `jupyter-widget-client'.
   (session nil :type jupyter-session))
 
-(cl-defmethod jupyter-io :around ((kernel jupyter-kernel))
-  (jupyter-do-launch kernel)
-  (jupyter-mlet* ((value (cl-call-next-method)))
-    (pcase-let ((`(,io ,discard-io) value))
-      ;; Discard the I/O connection on shutdown
-      (jupyter-run-with-io io
-        (jupyter-subscribe
-          (jupyter-subscriber
-            (lambda (msg)
-              (when (and (eq (jupyter-message-parent-type msg)
-                             :shutdown-request)
-                         (or (jupyter-message-status-idle-p msg)
-                             (eq (jupyter-message-type msg)
-                                 :shutdown-reply)))
-                (funcall discard-io)
-                ;; Cleanup the Emacs representation of a kernel.
-                (jupyter-do-shutdown kernel)
-                (jupyter-unsubscribe))))))
-      (jupyter-return-delayed io))))
-
 (cl-defmethod jupyter-alive-p ((kernel jupyter-kernel))
   "Return non-nil if KERNEL has been launched."
   (and (jupyter-kernel-session kernel) t))
