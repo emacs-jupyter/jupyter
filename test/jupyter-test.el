@@ -705,8 +705,8 @@
               :type 'wrong-type-argument)))
     (should (equal (nth 1 err) 'jupyter-kernel-client)))
   (jupyter-with-echo-client client
-    (let ((r1 (jupyter-request :id "id1"))
-          (r2 (jupyter-request :id "id2"))
+    (let ((r1 (make-jupyter-request :id "id1"))
+          (r2 (make-jupyter-request :id "id2"))
           (mapped nil))
       (puthash "last-sent" r1 (oref client requests))
       (puthash "id1" r1 (oref client requests))

@@ -87,7 +87,7 @@ handling a message is always
   (oset client messages (make-ring 10)))
 
 (cl-defmethod jupyter-send ((client jupyter-echo-client) (type symbol) &rest content)
-  (let ((req (jupyter-request :type type :content content)))
+  (let ((req (make-jupyter-request :type type :content content)))
     (if (string-match "request" (symbol-name type))
         (setq type (intern (replace-match "reply" nil nil (symbol-name type))))
       (error "Not a request message type (%s)" type))
