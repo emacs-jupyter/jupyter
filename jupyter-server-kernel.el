@@ -182,22 +182,14 @@ Call the next method if ARGS does not contain :server."
 
 ;;; Websocket IO
 
-(defvar jupyter-server-websockets (make-hash-table :weakness 'key :test 'eq))
+(defvar jupyter--reauth-subscribers (make-hash-table :weakness 'key :test 'eq))
 
 (defun jupyter-reauthenticate-websockets (server)
   "Re-authenticate WebSocket connections of SERVER."
-  (let ((headers (jupyter-api-auth-headers server)))
-    (setf (gethash server jupyter-server-websockets)
-          (delq nil
-                (mapcar
-                 (lambda (ws)
-                   (when (websocket-openp ws)
-                     (websocket-close ws)
-                     (websocket-open (websocket-url ws)
-                      :on-open (websocket-on-open ws)
-                      :custom-header-alist headers)
-                     ws))
-                 (gethash server jupyter-server-websockets))))))
+  (mapc (lambda (sub)
+          (jupyter-run-with-io sub
+            (jupyter-publish 'reauthenticate)))
+        (gethash server jupyter--reauth-subscribers)))
 
 (defun jupyter--fix-msg-type (msg)
   (let* ((header (plist-get msg :header))
@@ -235,23 +227,27 @@ TODO The form of content each sends/consumes."
       (((cl-struct jupyter-server-kernel server id) kernel)
        (msg-pub (jupyter-publisher))
        (status-pub (jupyter-publisher))
-       (ws (jupyter-api-kernel-websocket
-            server id
-            :custom-header-alist (jupyter-api-auth-headers server)
-            ;; TODO: on-error publishes to status-pub
-            :on-message
-            (lambda (ws frame)
-              (pcase (websocket-frame-opcode frame)
-                ((or 'text 'binary)
-                 (let ((msg (jupyter-read-plist-from-string
-                             (websocket-frame-payload frame))))
-                   (jupyter--fix-msg-type msg)
-                   (jupyter-run-with-io msg-pub
-                     (jupyter-publish (cons 'message msg)))))
-                (_
-                 (jupyter-run-with-io status-pub
-                   (jupyter-publish
-                     (list 'error (websocket-frame-opcode frame)))))))))
+       (on-message
+        (lambda (ws frame)
+          (pcase (websocket-frame-opcode frame)
+            ((or 'text 'binary)
+             (let ((msg (jupyter-read-plist-from-string
+                         (websocket-frame-payload frame))))
+               (jupyter--fix-msg-type msg)
+               (jupyter-run-with-io msg-pub
+                 (jupyter-publish (cons 'message msg)))))
+            (_
+             (jupyter-run-with-io status-pub
+               (jupyter-publish
+                 (list 'error (websocket-frame-opcode frame))))))))
+       (make-websocket
+        (lambda ()
+          (jupyter-api-kernel-websocket
+           server id
+           :custom-header-alist (jupyter-api-auth-headers server)
+           ;; TODO: on-error publishes to status-pub
+           :on-message on-message)))
+       (ws (funcall make-websocket))
        (kernel-io
         (jupyter-publisher
           (lambda (event)
@@ -266,7 +262,11 @@ TODO The form of content each sends/consumes."
                      :content content)))
               ('start (websocket-ensure-connected ws))
               ('stop (websocket-close ws)))))))
-    (push ws (gethash server jupyter-server-websockets))
+    (push (jupyter-subscriber
+            (lambda (_reauth)
+              (websocket-close ws)
+              (setq ws (funcall make-websocket))))
+          (gethash server jupyter--reauth-subscribers))
     (jupyter-run-with-io msg-pub
       (jupyter-subscribe kernel-io))
     kernel-io))
