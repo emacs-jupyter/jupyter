@@ -247,9 +247,7 @@ TODO The form of content each sends/consumes."
                              (websocket-frame-payload frame))))
                    (jupyter--fix-msg-type msg)
                    (jupyter-run-with-io msg-pub
-                     (jupyter-publish (cons 'message msg)))
-                   (when (eq (jupyter-message-type msg) :shutdown-reply)
-                     (websocket-close ws))))
+                     (jupyter-publish (cons 'message msg)))))
                 (_
                  (jupyter-run-with-io status-pub
                    (jupyter-publish
