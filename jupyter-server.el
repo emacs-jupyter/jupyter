@@ -172,6 +172,40 @@ Return nil if no `jupyter-server' could be found."
                           (equal (oref server ws-url) ws-url)
                           server))))
 
+;;; Launching notebook processes
+
+(defvar jupyter-notebook-procs nil)
+
+(defun jupyter-launch-notebook (&optional authentication)
+  (let ((port (car (jupyter-available-local-ports 1))))
+    (prog1 port
+      (let ((default-directory jupyter-test-temporary-directory)
+            (buffer (generate-new-buffer "*jupyter-notebook-proc*"))
+            (args (append
+                   (list "notebook" "--no-browser" "--debug"
+                         (format "--NotebookApp.port=%s" port))
+                   (cond
+                    ((eq authentication t)
+                     (list))
+                    ((stringp authentication)
+                     (list
+                      "--NotebookApp.token=''"
+                      (format "--NotebookApp.password='%s'"
+                              authentication)))
+                    (t
+                     (list
+                      "--NotebookApp.token=''"
+                      "--NotebookApp.password=''"))))))
+        (setq jupyter-notebook-procs
+              (cl-loop for (port . proc) in jupyter-notebook-procs
+                       if (process-live-p proc) collect (cons port proc)))
+        (push
+         (cons port
+               (apply #'start-process
+                      "jupyter-notebook" buffer "jupyter" args))
+         jupyter-notebook-procs)
+        (sleep-for 5)))))
+
 ;;; Helpers for commands
 
 (defun jupyter-completing-read-server-kernel (server)
@@ -264,6 +298,17 @@ a URL."
       (prog1 server
         (setq jupyter--servers
               (cons server (delq server jupyter--servers)))))))
+
+(defvar jupyter-default-server nil)
+
+;; TODO: Consider when the notebook process has been killed
+(defun jupyter-default-server ()
+  "Return the default `jupyter-server' instance for this Emacs session."
+  (or jupyter-default-server
+      (setq jupyter-default-server
+            (jupyter-server
+             :url (format "http://localhost:%s"
+                          (jupyter-launch-notebook))))))
 
 ;;; Commands
 
