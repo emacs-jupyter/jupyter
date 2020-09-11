@@ -301,7 +301,6 @@
           (progn
             (should (jupyter-alive-p
                      (oref jupyter-current-client kernel)))
-            (should (jupyter-channels-running-p jupyter-current-client))
             (should (equal (jupyter-eval "1 + 1") "2")))
         (jupyter-test-kill-buffer (current-buffer))))))
 
@@ -316,7 +315,6 @@
             (progn
               (should (jupyter-alive-p
                        (oref jupyter-current-client kernel)))
-              (should (jupyter-channels-running-p jupyter-current-client))
               (should (equal (jupyter-eval "1 + 1") "2")))
           (jupyter-test-kill-buffer (current-buffer)))))))
 

@@ -499,10 +499,6 @@ back."
   "Stop any running channels of CLIENT."
   (jupyter-disconnect client))
 
-(cl-defmethod jupyter-channels-running-p ((client jupyter-kernel-client))
-  "Are any channels of CLIENT running?"
-  (jupyter-alive-p client))
-
 (cl-defmethod jupyter-alive-p ((client jupyter-kernel-client) &optional channel)
   (when-let* ((kernel (jupyter-kernel client)))
     (and (jupyter-alive-p kernel)
