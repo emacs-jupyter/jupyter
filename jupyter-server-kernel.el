@@ -272,17 +272,6 @@ TODO The form of content each sends/consumes."
       (jupyter-subscribe kernel-io))
     kernel-io))
 
-(cl-defmethod jupyter-new-repl
-  ((kernel jupyter-kernel)
-   &optional repl-name associate-buffer client-class
-   (display t))
-  (cl-assert (jupyter-alive-p kernel))
-  (or client-class (setq client-class 'jupyter-repl-client))
-  (jupyter-error-if-not-client-class-p client-class 'jupyter-repl-client)
-  (jupyter-bootstrap-repl
-   (jupyter-client kernel client-class)
-   repl-name associate-buffer display))
-
 ;;; Kernel management
 
 ;; The KERNEL argument is optional here so that `jupyter-do-launch'
