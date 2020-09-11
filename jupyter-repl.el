@@ -2060,6 +2060,8 @@ completing all of the above.")
             (jupyter-repl-insert-banner banner)
             (jupyter-repl-insert-prompt 'in)))))))
 
+(defvar jupyter--run-repl-server nil)
+
 ;;;###autoload
 (defun jupyter-run-repl (kernel-name &optional repl-name associate-buffer client-class display)
   "Run a Jupyter REPL connected to a kernel with name, KERNEL-NAME.
@@ -2095,8 +2097,20 @@ command on the host."
   (or client-class (setq client-class 'jupyter-repl-client))
   (jupyter-error-if-not-client-class-p client-class 'jupyter-repl-client)
   (jupyter-bootstrap-repl
-   ;; TODO: Just make this `jupyter-kernelspec'
-   (jupyter-client (jupyter-guess-kernelspec kernel-name) client-class)
+   (jupyter-client
+    (jupyter-kernel
+     :server (let ((server jupyter--run-repl-server))
+               (if (and server
+                        (process-live-p
+                         (jupyter-notebook-process server)))
+                   server
+                 (let* ((port (jupyter-launch-notebook))
+                        (url (format "http://localhost:%s" port)))
+                   (setq jupyter--run-repl-server
+                         (jupyter-server :url url)))))
+     :spec (jupyter-kernelspec-name
+            (jupyter-guess-kernelspec kernel-name)))
+    client-class)
    repl-name associate-buffer display))
 
 ;;;###autoload
