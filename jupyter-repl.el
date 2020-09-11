@@ -804,9 +804,10 @@ lines, truncate it to something less than
     (ring-remove jupyter-repl-history -2))
   (ring-remove+insert+extend jupyter-repl-history code))
 
-(defun jupyter-repl-execute-cell (client)
+(defun jupyter-repl-execute-cell (&optional client)
   "Execute the last REPL cell of CLIENT.
 Return the `jupyter-request' representing the executed code."
+  (or client (setq client jupyter-current-client))
   (cl-check-type client jupyter-repl-client)
   (jupyter-with-repl-buffer client
     (jupyter-repl-truncate-buffer)
@@ -1175,7 +1176,7 @@ execute the current cell."
                      (not jupyter-repl-allow-RET-when-busy))
             (error "Kernel busy"))
           (cond
-           (force (jupyter-repl-execute-cell jupyter-current-client))
+           (force (jupyter-repl-execute-cell))
            ((or jupyter-repl-use-builtin-is-complete
                 (and jupyter-repl-allow-RET-when-busy
                      (jupyter-kernel-busy-p jupyter-current-client)))
