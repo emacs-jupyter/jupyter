@@ -1427,25 +1427,22 @@ value."
 
 (cl-defmethod jupyter-eval-string (str &context (jupyter-current-client jupyter-repl-client)
                                        &optional beg end)
-  (let (req
-        cell-previous-code)
-    (jupyter-with-repl-buffer jupyter-current-client
-      (when jupyter-repl-echo-eval-p
+  (let (req)
+    (cond
+     (jupyter-repl-echo-eval-p
+      (jupyter-with-repl-buffer jupyter-current-client
         (goto-char (point-max))
-        (setq cell-previous-code (jupyter-repl-cell-code))
-        (jupyter-repl-replace-cell-code str)
-        (setq str nil))
-      (let* ((jupyter-inhibit-handlers
-              ;; When copying the input to the REPL we need the handlers to
-              ;; update the REPL state
-              (unless jupyter-repl-echo-eval-p
-                '(not :input-request))))
-        (setq req (jupyter-send jupyter-current-client
+        (let ((code (jupyter-repl-cell-code)))
+          (jupyter-repl-replace-cell-code str)
+          (setq req (jupyter-repl-execute-cell))
+          (jupyter-repl-replace-cell-code code))))
+     (t
+      (let* ((jupyter-inhibit-handlers '(not :input-request)))
+        (setq req (jupyter-send
+                   jupyter-current-client
                    (jupyter-execute-request
                     :code str
-                    :store-history jupyter-repl-echo-eval-p)))
-        (if jupyter-repl-echo-eval-p
-            (jupyter-repl-replace-cell-code cell-previous-code))))
+                    :store-history jupyter-repl-echo-eval-p))))))
     ;; Add callbacks to display evaluation output in pop-up buffers either when
     ;; we aren't copying the input to a REPL cell or, if we are, when the REPL
     ;; buffer isn't visible.
