@@ -1430,6 +1430,7 @@ next(x"))))))
 
 (ert-deftest jupyter-connect-repl ()
   :tags '(repl)
+  (skip-unless nil)
   (jupyter-test-with-python-repl client
     (let ((cclient (jupyter-connect-repl
                     (jupyter-session-conn-info
