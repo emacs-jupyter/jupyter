@@ -255,11 +255,12 @@ TODO The form of content each sends/consumes."
               (`(message . ,rest) (jupyter-content rest))
               (`(send ,channel ,msg-type ,content ,msg-id)
                (websocket-send-text
-                ws (jupyter-encode-raw-message
-                       (plist-get (websocket-client-data ws) :session) msg-type
-                     :channel channel
-                     :msg-id msg-id
-                     :content content)))
+                ws (let* ((cd (websocket-client-data ws))
+                          (session (plist-get cd :session)))
+                     (jupyter-encode-raw-message session msg-type
+                       :channel channel
+                       :msg-id msg-id
+                       :content content))))
               ('start (websocket-ensure-connected ws))
               ('stop (websocket-close ws)))))))
     (push (jupyter-subscriber
