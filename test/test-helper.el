@@ -170,8 +170,9 @@ If the `current-buffer' is not a REPL, this is identical to
        (cl-loop
         for saved in (copy-sequence ,saved-sym)
         for client = (cdr saved)
-        when (and client (jupyter-connected-p client)
-                  (not (jupyter-alive-p (oref client kernel))))
+        when (and client
+                  (not (and (jupyter-connected-p client)
+                            (jupyter-alive-p (oref client kernel)))))
         do (jupyter-disconnect client)
         (cl-callf2 delq saved ,saved-sym))
        (let* ((,spec (progn (jupyter-error-if-no-kernelspec ,kernel)
@@ -180,7 +181,7 @@ If the `current-buffer' is not a REPL, this is identical to
               (,client (if (and ,saved (not jupyter-test-with-new-client))
                            ,saved
                          ;; Want a fresh kernel, so shutdown the cached one
-                         (when ,saved
+                         (when (and ,saved (jupyter-connected-p ,saved))
                            (jupyter-send ,saved (jupyter-shutdown-request))
                            (jupyter-disconnect ,saved))
                          (let ((client (,client-fun (jupyter-kernelspec-name ,spec))))
