@@ -2089,8 +2089,9 @@ connected to the kernel.
 Note, if `default-directory' is a remote directory, a kernel will
 start on the remote host by using the \"jupyter kernel\" shell
 command on the host."
-  (interactive (list (car (jupyter-completing-read-kernelspec
-                           nil current-prefix-arg))
+  (interactive (list (jupyter-kernelspec-name
+                      (jupyter-completing-read-kernelspec
+                       nil current-prefix-arg))
                      (when current-prefix-arg
                        (read-string "REPL Name: "))
                      t nil t))
