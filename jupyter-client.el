@@ -911,7 +911,8 @@ user.  Otherwise `read-from-minibuffer' is used."
                              (read-from-minibuffer prompt))
                          (with-timeout-unsuspend timeout-spec)))
                    (quit ""))))
-      (jupyter-mlet* ((_ (jupyter-request "input" :value value)))
+      (unwind-protect
+          (jupyter-send client (jupyter-input-reply :value value))
         (when (eq password t)
           (clear-string value)))
       value)))
