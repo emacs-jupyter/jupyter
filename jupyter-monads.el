@@ -22,18 +22,11 @@
 
 ;;; Commentary:
 
-;; TODO: Add a state monad to log state changes of a kernel, client, etc.
-;;
 ;; TODO: Generalize `jupyter-with-io' and `jupyter-do' for any monad,
 ;; not just the I/O one.
 ;;
-;; TODO: Rename delayed -> io since any monadic value really
-;; represents some kind of delayed value.
-;;
 ;; TODO: Implement seq interface?
 ;;
-;; TODO: Test unsubscribing publishers.
-;; 
 ;; TODO: Allow pcase patterns in mlet*
 ;;
 ;;     (jupyter-mlet* ((value (jupyter-server-kernel-io kernel)))
@@ -105,8 +98,7 @@ value (result of evaluating the closure) is then passed to IO-FN
 which returns another delayed value.  Thus binding involves
 unwrapping a value by evaluating a closure and giving the result
 to IO-FN which returns another delayed value to be bound at some
-future time.  Before, between, and after the two calls to
-IO-VALUE and IO-FN, the I/O context is maintained."
+future time."
   (declare (indent 1))
   (pcase (funcall (jupyter-delayed-value io-value))
 	((and req (cl-struct jupyter-request client))
@@ -201,9 +193,6 @@ The result of the returned action is the result of IO-B."
 ;;
 ;; I/O actions that manage a kernel's lifetime.
 
-;; TODO: Swap definitions with `jupyter-launch', same for the others.
-;; (jupyter-launch :kernel "python")
-;; (jupyter-launch :spec "python")
 (defun jupyter-launch (kernel)
   (make-jupyter-delayed
    :value (lambda ()
@@ -223,11 +212,6 @@ The result of the returned action is the result of IO-B."
             kernel)))
 
 ;;; Publisher/subscriber
-;;
-;; TODO: Wrap the subscriber functions in a struct
-;; (cl-defstruct jupyter-subscriber id io ...)
-;;
-;; TODO: Verify monadic laws.
 
 (define-error 'jupyter-subscribed-subscriber
   "A subscriber cannot be subscribed to.")
@@ -267,6 +251,12 @@ result of this function to cancel its subscription with the
 publisher providing content."
   (list 'unsubscribe))
 
+
+;; PUB-FN is a monadic function in the Content monad.  It takes a
+;; value and returns a value wrapped with `jupyter-content' (the
+;; return of the Content monad).  The bind operation is spread across
+;; `jupyter-publish' and `jupyter-pseudo-bind-content'.  
+
 ;; PUB-FN is a monadic function of a publisher's Content monad.  They
 ;; take normal values and produce content to send to a publisher's
 ;; subscribers.  The context of the Content monad is the set of
@@ -279,9 +269,6 @@ publisher providing content."
 ;; process on the sent content.  In this way, the initial submitted
 ;; content (submitted via `jupyter-publish') gets transformed by each
 ;; subscribed publisher, via PUB-FN, to publish to their subscribers.
-;;
-;; TODO: Verify if this is a real bind and if not, add to the above
-;; paragraph why it isn't.
 (defun jupyter-pseudo-bind-content (pub-fn content subs)
   "Apply PUB-FN on submitted CONTENT to produce published content.
 Call each subscriber in SUBS on the published content, remove
@@ -519,8 +506,6 @@ list, represents."
     ;; Anything sent to stdin is a reply not a request so consider the
     ;; "request" completed.
     (setf (jupyter-request-idle-p req) (string= ch "stdin"))
-    ;; TODO: Don't initiate the request before req-msgs-pub is
-    ;; subscribed to.
     (jupyter-do
       (jupyter-subscribe req-msgs-pub)
       (jupyter-publish (list 'send ch type content id))
