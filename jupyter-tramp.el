@@ -291,8 +291,7 @@ fails."
   (with-parsed-tramp-file-name filename nil
     (with-tramp-connection-property v "server"
       (let* ((url (jupyter-tramp-url-from-file-name filename))
-             (client (or (jupyter-find-server url)
-                         (jupyter-server :url url))))
+             (client (jupyter-server :url url)))
         (prog1 client
           (unless (jupyter-api-server-accessible-p client)
             (cond

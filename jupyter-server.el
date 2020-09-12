@@ -155,23 +155,6 @@ CLIENT must be communicating with a `jupyter-server-kernel', see
                (oref client kernel)))
     (jupyter-server-name-kernel server id name)))
 
-;;; Finding exisisting servers
-
-(defun jupyter-find-server (url &optional ws-url)
-  "Return a live `jupyter-server' that lives at URL.
-Finds a server that matches both URL and WS-URL.  When WS-URL the
-default set by `jupyter-rest-client' is used.
-
-Return nil if no `jupyter-server' could be found."
-  (with-slots (url ws-url)
-      (apply #'make-instance 'jupyter-rest-client
-             (append (list :url url)
-                     (when ws-url (list :ws-url ws-url))))
-    (cl-loop for server in (jupyter-servers)
-             thereis (and (equal (oref server url) url)
-                          (equal (oref server ws-url) ws-url)
-                          server))))
-
 ;;; Launching notebook processes
 
 (defvar jupyter-notebook-procs nil)
@@ -282,11 +265,10 @@ a URL."
                                        (let ((u (url-generic-parse-url url)))
                                          (setf (url-type u) "ws")
                                          (url-recreate-url u)))))
-             (or (jupyter-find-server url ws-url)
-                 (let ((server (jupyter-server :url url :ws-url ws-url)))
-                   (if (jupyter-api-server-exists-p server) server
-                     (delete-instance server)
-                     (signal 'jupyter-server-non-existent (list url)))))))))
+             (let ((server (jupyter-server :url url :ws-url ws-url)))
+               (if (jupyter-api-server-exists-p server) server
+                 (delete-instance server)
+                 (signal 'jupyter-server-non-existent (list url))))))))
     (let ((server
            (if ask (funcall read-url-make-server)
              (cond

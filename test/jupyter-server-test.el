@@ -30,10 +30,6 @@
 (require 'jupyter-org-client)
 (require 'subr-x)
 
-(defun jupyter-server-test-server (url)
-  (or (jupyter-find-server url)
-      (jupyter-server :url url)))
-
 ;;; REST API
 
 (ert-deftest jupyter-api-construct-endpoint ()
