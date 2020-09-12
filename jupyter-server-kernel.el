@@ -44,8 +44,6 @@ Used in, e.g. a `jupyter-server-kernel-list-mode' buffer.")
 
 (put 'jupyter-current-server 'permanent-local t)
 
-(defvar jupyter--servers-1 (make-hash-table :weakness 'value :test #'equal))
-
 (defvar jupyter--servers nil)
 
 ;; TODO: We should really rename `jupyter-server' to something like
@@ -61,17 +59,11 @@ Access should be done through `jupyter-available-kernelspecs'.")))
 
 (cl-defmethod make-instance ((class (subclass jupyter-server)) &rest slots)
   (cl-assert (plist-get slots :url))
-  (or (gethash (plist-get slots :url) jupyter--servers-1)
-      (puthash (plist-get slots :url)
-               (cl-call-next-method) jupyter--servers-1)))
-
-(cl-defmethod delete-instance ((this jupyter-server))
-  (let (key)
-    (maphash (lambda (k v) (when (eq this v) (setq key k)))
-             jupyter--servers-1)
-    (when key
-      (remhash key jupyter--servers-1)))
-  (cl-call-next-method))
+  (or (cl-loop
+       with url = (plist-get slots :url)
+       for server in jupyter--servers
+       if (equal url (oref server url)) return server)
+      (cl-call-next-method)))
 
 (defun jupyter-servers ()
   "Return a list of all `jupyter-server's."
