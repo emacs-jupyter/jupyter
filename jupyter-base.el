@@ -52,16 +52,16 @@ pop-up frames instead of windows.
 `jupyter-pop-up-frame' can also be a list of message type
 keywords for messages which will cause frames to be used.  For any
 message type not in the list, windows will be used instead.
-Currently only `:execute-result', `:error', and `:stream'
+Currently only `execute_result', `error', and `stream'
 messages consider this variable."
   :group 'jupyter
   :type '(choice (const :tag "Pop up frames" t)
                  (const :tag "Pop up windows" nil)
                  ;; TODO: These are the only ones where `jupyter-pop-up-frame'
                  ;; is checked at the moment.
-                 (set (const :execute-result)
-                      (const :error)
-                      (const :stream))))
+                 (set (const "execute_result")
+                      (const "error")
+                      (const "stream"))))
 
 (defconst jupyter-root (file-name-directory load-file-name)
   "Root directory containing emacs-jupyter.")
@@ -70,40 +70,38 @@ messages consider this variable."
   "The jupyter protocol version that is implemented.")
 
 (defconst jupyter-message-types
-  (list :execute-result "execute_result"
-        :execute-request "execute_request"
-        :execute-reply "execute_reply"
-        :inspect-request "inspect_request"
-        :inspect-reply "inspect_reply"
-        :complete-request "complete_request"
-        :complete-reply "complete_reply"
-        :history-request "history_request"
-        :history-reply "history_reply"
-        :is-complete-request "is_complete_request"
-        :is-complete-reply "is_complete_reply"
-        :comm-info-request "comm_info_request"
-        :comm-info-reply "comm_info_reply"
-        :comm-open "comm_open"
-        :comm-msg "comm_msg"
-        :comm-close "comm_close"
-        :kernel-info-request "kernel_info_request"
-        :kernel-info-reply "kernel_info_reply"
-        :shutdown-request "shutdown_request"
-        :shutdown-reply "shutdown_reply"
-        :interupt-request "interrupt_request"
-        :interrupt-reply "interrupt_reply"
-        :stream "stream"
-        :display-data "display_data"
-        :update-display-data "update_display_data"
-        :execute-input "execute_input"
-        :error "error"
-        :status "status"
-        :clear-output "clear_output"
-        :input-reply "input_reply"
-        :input-request "input_request")
-  "A plist mapping keywords to Jupyter message type strings.
-The plist values are the message types either sent or received
-from the kernel.")
+  (list "execute_result"
+        "execute_request"
+        "execute_reply"
+        "inspect_request"
+        "inspect_reply"
+        "complete_request"
+        "complete_reply"
+        "history_request"
+        "history_reply"
+        "is_complete_request"
+        "is_complete_reply"
+        "comm_info_request"
+        "comm_info_reply"
+        "comm_open"
+        "comm_msg"
+        "comm_close"
+        "kernel_info_request"
+        "kernel_info_reply"
+        "shutdown_request"
+        "shutdown_reply"
+        "interrupt_request"
+        "interrupt_reply"
+        "stream"
+        "display_data"
+        "update_display_data"
+        "execute_input"
+        "error"
+        "status"
+        "clear_output"
+        "input_reply"
+        "input_request")
+  "A list of valid Jupyter message types.")
 
 (defconst jupyter-mime-types '(:application/vnd.jupyter.widget-view+json
                                :text/html :text/markdown
@@ -335,7 +333,7 @@ new window or frame."
 (defun jupyter-pop-up-frame-p (msg-type)
   "Return non-nil if a frame should be popped up for MSG-TYPE."
   (or (eq jupyter-pop-up-frame t)
-      (memq msg-type jupyter-pop-up-frame)))
+      (member msg-type jupyter-pop-up-frame)))
 
 (defun jupyter-display-current-buffer-guess-where (msg-type)
   "Display the current buffer in a window or frame depending on MSG-TYPE.

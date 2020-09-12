@@ -463,15 +463,11 @@ Ex. Subscribe to a publisher and unsubscribe after receiving two
 TYPE is the message type of the message that CONTENT, a property
 list, represents."
   (declare (indent 1))
-  ;; TODO: Get rid of having to do this conversion.
-  (unless (symbolp type)
-    (setq type (intern (format ":%s-request"
-                               (replace-regexp-in-string "_" "-" type)))))
   ;; Build up a request and return an I/O action that sends it.
   (let* ((msgs '())
-         (ch (if (memq type '(:input-reply :input-request))
-                 :stdin
-               :shell))
+         (ch (if (member type '("input_reply" "input_request"))
+                 "stdin"
+               "shell"))
          (req-complete-pub (jupyter-publisher))
          (req (jupyter-generate-request
                jupyter-current-client
@@ -491,7 +487,7 @@ list, represents."
                      ;; FIXME: Is that true? Figure out the difference
                      ;; between a status: busy and a status: idle
                      ;; message.
-                     (eq (jupyter-message-type msg) :status))
+                     (string= (jupyter-message-type msg) "status"))
                 ;; What happens to the subscriber references of this
                 ;; publisher after it unsubscribes?  They remain until
                 ;; the publisher itself is no longer accessible.
@@ -512,17 +508,17 @@ list, represents."
                           ;; jupyter/notebook#3705 as the problem
                           ;; does happen after a kernel restart
                           ;; when testing.
-                          (eq (jupyter-message-type msg) :kernel-info-reply)
+                          (string= (jupyter-message-type msg) "kernel_info_reply")
                           ;; No idle message is received after a
                           ;; shutdown reply so consider REQ as
                           ;; having received an idle message in
                           ;; this case.
-                          (eq (jupyter-message-type msg) :shutdown-reply))
+                          (string= (jupyter-message-type msg) "shutdown_reply"))
                   (setf (jupyter-request-idle-p req) t))
                 (jupyter-content msg)))))))
     ;; Anything sent to stdin is a reply not a request so consider the
     ;; "request" completed.
-    (setf (jupyter-request-idle-p req) (eq ch :stdin))
+    (setf (jupyter-request-idle-p req) (string= ch "stdin"))
     ;; TODO: Don't initiate the request before req-msgs-pub is
     ;; subscribed to.
     (jupyter-do

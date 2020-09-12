@@ -61,7 +61,7 @@ buffer."
     (prog1 mime
       (cond
        ((and (eq mime :text/plain)
-             (eq (jupyter-message-type msg) :inspect-reply))
+             (string= (jupyter-message-type msg) "inspect_reply"))
         (save-excursion
           (goto-char (point-min))
           (when (re-search-forward "^Docstring:" nil t)

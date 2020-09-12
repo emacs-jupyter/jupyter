@@ -183,18 +183,6 @@ Call the next method if ARGS does not contain :server."
             (jupyter-publish 'reauthenticate)))
         (gethash server jupyter--reauth-subscribers)))
 
-(defun jupyter--fix-msg-type (msg)
-  (let* ((header (plist-get msg :header))
-         (pheader (plist-get msg :parent_header)))
-    ;; TODO: Remove the need for this by getting rid of
-    ;; message type keywords.
-    (plist-put msg :msg_type (jupyter-message-type-as-keyword
-                              (plist-get msg :msg_type)))
-    (plist-put header :msg_type (jupyter-message-type-as-keyword
-                                 (plist-get header :msg_type)))
-    (plist-put pheader :msg_type (jupyter-message-type-as-keyword
-                                  (plist-get pheader :msg_type)))))
-
 (cl-defmethod jupyter-websocket-io :around (thing)
   "Cache the I/O object of THING in `jupyter-io-cache'."
   (or (gethash thing jupyter-io-cache)
@@ -225,7 +213,6 @@ TODO The form of content each sends/consumes."
             ((or 'text 'binary)
              (let ((msg (jupyter-read-plist-from-string
                          (websocket-frame-payload frame))))
-               (jupyter--fix-msg-type msg)
                (jupyter-run-with-io msg-pub
                  (jupyter-publish (cons 'message msg)))))
             (_

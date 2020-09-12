@@ -121,7 +121,7 @@ Make the character after `point' invisible."
   "Return the Pkg prompt.
 If the Pkg prompt can't be retrieved from the kernel, return
 nil."
-  (when-let* ((msg (jupyter-wait-until-received :execute-reply
+  (when-let* ((msg (jupyter-wait-until-received "execute_reply"
                      (jupyter-send
                       jupyter-current-client
                       (jupyter-execute-request

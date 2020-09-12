@@ -86,10 +86,10 @@ handling a message is always
   (cl-call-next-method)
   (oset client messages (make-ring 10)))
 
-(cl-defmethod jupyter-send ((client jupyter-echo-client) (type symbol) &rest content)
+(cl-defmethod jupyter-send ((client jupyter-echo-client) (type string) &rest content)
   (let ((req (make-jupyter-request :type type :content content)))
-    (if (string-match "request" (symbol-name type))
-        (setq type (intern (replace-match "reply" nil nil (symbol-name type))))
+    (if (string-match "request" type)
+        (setq type (replace-match "reply" nil nil type))
       (error "Not a request message type (%s)" type))
     ;; Message flow
     ;; - status: busy
@@ -104,10 +104,10 @@ handling a message is always
      0.001 nil
      (lambda ()
        (jupyter-handle-message
-        client :iopub (jupyter-test-message req :status (list :execution_state "busy")))
-       (jupyter-handle-message client :shell (jupyter-test-message req type content))
+        client "iopub" (jupyter-test-message req "status" (list :execution_state "busy")))
+       (jupyter-handle-message client "shell" (jupyter-test-message req type content))
        (jupyter-handle-message
-        client :iopub (jupyter-test-message req :status (list :execution_state "idle")))))
+        client "iopub" (jupyter-test-message req "status" (list :execution_state "idle")))))
     req))
 
 (cl-defmethod jupyter-handle-message ((client jupyter-echo-client) _channel msg)

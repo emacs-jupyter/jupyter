@@ -45,22 +45,22 @@
   :tags '(mock)
   (jupyter-with-echo-client client
     (ert-info ("Mock echo client echo's messages back to channel.")
-      (let ((req (jupyter-send client :execute-request :code "foo"))
+      (let ((req (jupyter-send client "execute_request" :code "foo"))
             (msg (jupyter-test-message
-                  (make-jupyter-request) :execute-request '(:code "foo"))))
+                  (make-jupyter-request) "execute_request" '(:code "foo"))))
         (sleep-for 0.3)
         (setq msgs (nreverse (ring-elements (oref client messages))))
         (should (= (length msgs) 3))
-        (should (equal (jupyter-message-type (car msgs)) :status))
+        (should (equal (jupyter-message-type (car msgs)) "status"))
         (should (equal (jupyter-message-parent-id (car msgs))
                        (jupyter-request-id req)))
         (should (equal (jupyter-message-get (car msgs) :execution_state) "busy"))
-        (should (equal (jupyter-message-type (cadr msgs)) :execute-reply))
+        (should (equal (jupyter-message-type (cadr msgs)) "execute_reply"))
         (should (equal (jupyter-message-parent-id (cadr msgs))
                        (jupyter-request-id req)))
         (should (equal (jupyter-message-content (cadr msgs))
                        (plist-get msg :content)))
-        (should (equal (jupyter-message-type (caddr msgs)) :status))
+        (should (equal (jupyter-message-type (caddr msgs)) "status"))
         (should (equal (jupyter-message-parent-id (caddr msgs))
                        (jupyter-request-id req)))
         (should (equal (jupyter-message-get (caddr msgs) :execution_state) "idle"))))))
@@ -70,12 +70,12 @@
 (ert-deftest jupyter-wait-until-idle ()
   :tags '(callbacks)
   (jupyter-with-echo-client client
-    (let ((req (jupyter-send client :execute-request :code "foo")))
+    (let ((req (jupyter-send client "execute_request" :code "foo")))
       (ert-info ("Blocking callbacks")
         (jupyter-wait-until-idle req)
         (should (jupyter-request-idle-p req)))
       (ert-info ("Error after idle message has been received")
-        (should-error (jupyter-add-callback req :status #'identity))))))
+        (should-error (jupyter-add-callback req "status" #'identity))))))
 
 (ert-deftest jupyter-callbacks ()
   :tags '(callbacks)
@@ -83,20 +83,20 @@
     (ert-info ("Callbacks called on the right message types")
       (let* ((callback-count 0)
              (cb (lambda (msg)
-                   (should (eq (jupyter-message-type msg) :status))
+                   (should (string= (jupyter-message-type msg) "status"))
                    (setq callback-count (1+ callback-count))))
-             (req (jupyter-send client :execute-request :code "foo")))
-        (jupyter-add-callback req :status cb)
+             (req (jupyter-send client "execute_request" :code "foo")))
+        (jupyter-add-callback req "status" cb)
         (jupyter-wait-until-idle req)
         (should (= callback-count 2))))
     (ert-info ("Adding callbacks, message type list")
       (let* ((callback-count 0)
              (cb (lambda (msg)
                    (setq callback-count (1+ callback-count))
-                   (should (memq (jupyter-message-type msg)
-                                 '(:status :execute-reply)))))
-             (req (jupyter-send client :execute-request :code "foo")))
-        (jupyter-add-callback req '(:status :execute-reply) cb)
+                   (should (member (jupyter-message-type msg)
+                                 '("status" "execute_reply")))))
+             (req (jupyter-send client "execute_request" :code "foo")))
+        (jupyter-add-callback req '("status" "execute_reply") cb)
         (jupyter-wait-until-idle req)
         (should (= callback-count 3))))))
 
@@ -387,9 +387,9 @@
          with true-msg = (list
                           :header '(message-part
                                     "{\"msg_id\":\"1\",\"msg_type\":\"execute_reply\"}"
-                                    (:msg_id "1" :msg_type :execute-reply))
+                                    (:msg_id "1" :msg_type "execute_reply"))
                           :msg_id "1"
-                          :msg_type :execute-reply
+                          :msg_type "execute_reply"
                           :parent_header '(message-part "{}" nil)
                           :content '(message-part "{}" nil)
                           :metadata '(message-part "{}" nil)
@@ -407,34 +407,34 @@
   :tags '(client messages)
   (jupyter-test-with-python-client client
     (ert-info ("Kernel info")
-      (let ((res (jupyter-wait-until-received :kernel-info-reply
+      (let ((res (jupyter-wait-until-received "kernel_info_reply"
                    (jupyter-send client (jupyter-kernel-info-request)))))
         (should res)
         (should (json-plist-p res))
-        (should (eq (jupyter-message-type res) :kernel-info-reply))))
+        (should (string= (jupyter-message-type res) "kernel_info_reply"))))
     (ert-info ("Comm info")
-      (let ((res (jupyter-wait-until-received :comm-info-reply
+      (let ((res (jupyter-wait-until-received "comm_info_reply"
                    (jupyter-send client (jupyter-comm-info-request)))))
         (should-not (null res))
         (should (json-plist-p res))
-        (should (eq (jupyter-message-type res) :comm-info-reply))))
+        (should (string= (jupyter-message-type res) "comm_info_reply"))))
     (ert-info ("Execute")
-      (let ((res (jupyter-wait-until-received :execute-reply
+      (let ((res (jupyter-wait-until-received "execute_reply"
                    (jupyter-send client (jupyter-execute-request :code "y = 1 + 2")))))
         (should-not (null res))
         (should (json-plist-p res))
-        (should (eq (jupyter-message-type res) :execute-reply))))
+        (should (string= (jupyter-message-type res) "execute_reply"))))
     (ert-info ("Input")
       (cl-letf (((symbol-function 'read-from-minibuffer)
                  (lambda (_prompt &rest _args) "foo")))
-        (let ((res (jupyter-wait-until-received :execute-result
+        (let ((res (jupyter-wait-until-received "execute_result"
                      (jupyter-send client (jupyter-execute-request :code "input('')")))))
           (should-not (null res))
           (should (json-plist-p res))
-          (should (eq (jupyter-message-type res) :execute-result))
+          (should (string= (jupyter-message-type res) "execute_result"))
           (should (equal (jupyter-message-data res :text/plain) "'foo'")))))
     (ert-info ("Inspect")
-      (let ((res (jupyter-wait-until-received :inspect-reply
+      (let ((res (jupyter-wait-until-received "inspect_reply"
                    (jupyter-send client
                                  (jupyter-inspect-request
                                   :code "list((1, 2, 3))"
@@ -442,45 +442,45 @@
                                   :detail 0)))))
         (should-not (null res))
         (should (json-plist-p res))
-        (should (eq (jupyter-message-type res) :inspect-reply))))
+        (should (string= (jupyter-message-type res) "inspect_reply"))))
     (ert-info ("Complete")
-      (let ((res (jupyter-wait-until-received :complete-reply
+      (let ((res (jupyter-wait-until-received "complete_reply"
                    (jupyter-send client
                                  (jupyter-complete-request
                                   :code "foo = lis"
                                   :pos 8)))))
         (should-not (null res))
         (should (json-plist-p res))
-        (should (eq (jupyter-message-type res) :complete-reply))))
+        (should (string= (jupyter-message-type res) "complete_reply"))))
     (ert-info ("History")
-      (let ((res (jupyter-wait-until-received :history-reply
+      (let ((res (jupyter-wait-until-received "history_reply"
                    (jupyter-send client
                                  (jupyter-history-request
                                   :hist-access-type "tail" :n 2)))))
         (should-not (null res))
         (should (json-plist-p res))
-        (should (eq (jupyter-message-type res) :history-reply))))
+        (should (string= (jupyter-message-type res) "history_reply"))))
     (ert-info ("Is Complete")
-      (let ((res (jupyter-wait-until-received :is-complete-reply
+      (let ((res (jupyter-wait-until-received "is_complete_reply"
                    (jupyter-send client
                                  (jupyter-is-complete-request
                                   :code "for i in range(5):")))))
         (should-not (null res))
         (should (json-plist-p res))
-        (should (eq (jupyter-message-type res) :is-complete-reply))))
+        (should (string= (jupyter-message-type res) "is_complete_reply"))))
     (ert-info ("Shutdown")
-      (let ((res (jupyter-wait-until-received :shutdown-reply
+      (let ((res (jupyter-wait-until-received "shutdown_reply"
                    (jupyter-send client (jupyter-shutdown-request)))))
         (should-not (null res))
         (should (json-plist-p res))
-        (should (eq (jupyter-message-type res) :shutdown-reply))
+        (should (string= (jupyter-message-type res) "shutdown_reply"))
         ;; TODO: Ensure we give the kernel process time to die off
         ))))
 
 (ert-deftest jupyter-message-lambda ()
   :tags '(messages)
   (let ((msg (jupyter-test-message
-              (make-jupyter-request) :execute-reply
+              (make-jupyter-request) "execute_reply"
               (list :status "idle" :data (list :text/plain "foo")))))
     (should (equal (funcall (jupyter-message-lambda (status)
                               status)
@@ -612,14 +612,14 @@
 (ert-deftest jupyter-inhibited-handlers ()
   :tags '(client handlers)
   (jupyter-test-with-python-client client
-    (let* ((jupyter-inhibit-handlers '(:stream))
+    (let* ((jupyter-inhibit-handlers '("stream"))
            (req (jupyter-send client (jupyter-kernel-info-request))))
       (should (equal (jupyter-request-inhibited-handlers req)
-                     '(:stream)))
+                     '("stream")))
       (should-not (jupyter--request-allows-handler-p
                    req (jupyter-test-message
-                        req :stream (list :name "stdout" :text "foo"))))
-      (setq jupyter-inhibit-handlers '(:foo))
+                        req "stream" (list :name "stdout" :text "foo"))))
+      (setq jupyter-inhibit-handlers '("foo"))
       (should-error (jupyter-send client (jupyter-kernel-info-request))))))
 
 (ert-deftest jupyter-requests-pending-p ()
@@ -646,7 +646,7 @@
                                   (jupyter-execute-request
                                    :code "import time; time.sleep(0.2)")))
           ;; Empty out the pending-requests slot of CLIENT
-          (jupyter-wait-until-received :status req)
+          (jupyter-wait-until-received "status" req)
           (setq pending (jupyter-requests-pending-p client))
           (should pending)
           (jupyter-wait-until-idle req)
@@ -1436,7 +1436,7 @@ next(x"))))))
                     (jupyter-session-conn-info
                      (oref client session)))))
       (unwind-protect
-          (let ((msg (jupyter-wait-until-received :execute-result
+          (let ((msg (jupyter-wait-until-received "execute_result"
                        (let ((jupyter-inhibit-handlers t))
                          (jupyter-send cclient
                                        (jupyter-execute-request

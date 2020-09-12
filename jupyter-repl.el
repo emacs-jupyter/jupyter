@@ -1188,8 +1188,8 @@ execute the current cell."
                   jupyter-current-client
                 nil (if complete-p "complete" "incomplete") "")))
            (t
-            (let ((res (jupyter-wait-until-received :is-complete-reply
-                         (let ((jupyter-inhibit-handlers '(not :is-complete-reply)))
+            (let ((res (jupyter-wait-until-received "is_complete_reply"
+                         (let ((jupyter-inhibit-handlers '(not "is_complete_reply")))
                            (jupyter-send
                             jupyter-current-client
                             (jupyter-is-complete-request
@@ -1437,7 +1437,7 @@ value."
           (setq req (jupyter-repl-execute-cell))
           (jupyter-repl-replace-cell-code code))))
      (t
-      (let* ((jupyter-inhibit-handlers '(not :input-request)))
+      (let* ((jupyter-inhibit-handlers '(not "input_request")))
         (setq req (jupyter-send
                    jupyter-current-client
                    (jupyter-execute-request
@@ -1682,7 +1682,7 @@ Return the buffer switched to."
     ;; history since next/previous navigation is implemented by rotations on the
     ;; ring.
     (ring-insert jupyter-repl-history 'jupyter-repl-history)
-    (let ((jupyter-inhibit-handlers '(:status)))
+    (let ((jupyter-inhibit-handlers '("status")))
       (jupyter-send jupyter-current-client
        (jupyter-history-request
         :n jupyter-repl-history-maximum-length
@@ -1810,7 +1810,7 @@ the updated state."
                          :code ""
                          :silent t)))))
     (jupyter-add-callback req
-      :execute-reply
+      "execute_reply"
       (jupyter-message-lambda (execution_count)
         (oset client execution-count (1+ execution_count))
         (unless (equal (jupyter-execution-state client) "busy")
