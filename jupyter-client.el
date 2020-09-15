@@ -573,7 +573,8 @@ kernel whose kernelspec if SPEC."
 After CLIENT shuts down the kernel it is connected to, it is no
 longer connected to a kernel."
   (when (jupyter-connected-p client)
-    (jupyter-send client (jupyter-shutdown-request))))
+    (jupyter-do-shutdown (oref client kernel))
+    (jupyter-disconnect client)))
 
 (cl-defmethod jupyter-interrupt-kernel ((client jupyter-kernel-client))
   "Interrupt the kernel CLIENT is connected to."
