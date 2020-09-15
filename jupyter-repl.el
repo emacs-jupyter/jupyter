@@ -1185,8 +1185,10 @@ execute the current cell."
                                       (line-beginning-position) (point))
                                      "")))
               (jupyter-handle-is-complete-reply
-                  jupyter-current-client
-                nil (if complete-p "complete" "incomplete") "")))
+               jupyter-current-client
+               nil '(:content
+                     (:status (if complete-p "complete" "incomplete")
+                              :indent "")))))
            (t
             (let ((res (jupyter-wait-until-received "is_complete_reply"
                          (let ((jupyter-inhibit-handlers '(not "is_complete_reply")))
