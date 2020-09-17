@@ -206,9 +206,7 @@ client is expecting a reply from the kernel.")
     :type json-plist
     :initform nil
     :documentation "The saved kernel info created when first
-initializing this client.  When `jupyter-start-channels' is
-called, this will be set to the kernel info plist returned
-from an initial `:kernel-info-request'.")
+initializing this client.")
    (kernel
     :type jupyter-kernel
     :documentation "The kernel this client is connected to.")
@@ -488,14 +486,6 @@ back."
            (oref client requests)))
 
 ;;; Starting communication with a kernel
-
-(cl-defmethod jupyter-start-channels ((client jupyter-kernel-client))
-  (jupyter-run-with-io (oref client io)
-    (jupyter-publish 'start)))
-
-(cl-defmethod jupyter-stop-channels ((client jupyter-kernel-client))
-  "Stop any running channels of CLIENT."
-  (jupyter-disconnect client))
 
 (cl-defmethod jupyter-alive-p ((client jupyter-kernel-client) &optional channel)
   (when-let* ((kernel (jupyter-kernel client)))
