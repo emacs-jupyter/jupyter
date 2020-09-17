@@ -219,7 +219,7 @@ DATA) which contains the generating `jupyter-request' that caused
 the comm to open and the initial DATA passed to the comm for
 initialization.")
    (io
-    :type function
+    :type list
     :initarg :io
     :documentation "The I/O context kernel messages are communicated on.")
    (-buffer
@@ -388,7 +388,7 @@ If it does not contain a valid value, raise an error."
   ;; FIXME: (mlet* (pcase-let ...)) -> (mlet* ((PATTERN IO-EXP) ...) ...)
   ;; or (pcase-let (((jupyter-io PATTERN) IO-EXP) ...) ...)
   (let ((jupyter-current-io
-         (or (oref client io)
+         (or (car (oref client io))
              (error "Client not connected to a kernel"))))
     (jupyter-mlet* ((req-io dreq))
       (pcase-let ((requests (oref client requests))
@@ -541,20 +541,33 @@ kernel whose kernelspec if SPEC."
 
 (cl-defmethod jupyter-connected-p ((client jupyter-kernel-client))
   "Return non-nil if CLIENT is connected to a kernel."
-  (and (slot-boundp client 'io) (slot-boundp client 'kernel)))
+  (slot-boundp client 'io))
 
 (cl-defmethod jupyter-client ((kernel jupyter-kernel) &optional client-class)
   (or client-class (setq client-class 'jupyter-kernel-client))
   (cl-assert (child-of-class-p client-class 'jupyter-kernel-client))
   (let ((client (make-instance client-class)))
     (oset client io (jupyter-websocket-io kernel))
-    (oset client kernel kernel)
     (unless (jupyter-kernel-info client)
       (error "Kernel did not respond to :kernel-info-request"))
     ;; If the connection can resolve the kernel's heartbeat channel,
     ;; start monitoring it now.
     (jupyter-hb-unpause client)
     client))
+
+(defun jupyter-kernel-action (client fn)
+  "Evaluate FN on the kernel CLIENT is connected to.
+FN takes a single argument which will be the kernel object."
+  (declare (indent 1))
+  (cl-assert (jupyter-connected-p client))
+  (pcase-let ((`(,_ ,kaction-sub) (oref client io))
+              (res nil))
+    (jupyter-run-with-io kaction-sub
+      (jupyter-publish
+        (list 'action
+              (lambda (kernel)
+                (setq res (funcall fn kernel))))))
+    res))
 
 ;;; Shutdown and interrupt a kernel
 
@@ -563,13 +576,17 @@ kernel whose kernelspec if SPEC."
 After CLIENT shuts down the kernel it is connected to, it is no
 longer connected to a kernel."
   (when (jupyter-connected-p client)
-    (jupyter-do-shutdown (oref client kernel))
-    (jupyter-disconnect client)))
+    (pcase-let ((`(,_ ,kaction-sub) (oref client io)))
+      (jupyter-run-with-io kaction-sub
+        (jupyter-publish 'shutdown))
+      (jupyter-disconnect client))))
 
 (cl-defmethod jupyter-interrupt-kernel ((client jupyter-kernel-client))
   "Interrupt the kernel CLIENT is connected to."
   (when (jupyter-connected-p client)
-    (jupyter-do-interrupt (oref client kernel))))
+    (pcase-let ((`(,_ ,kaction-sub) (oref client io)))
+      (jupyter-run-with-io kaction-sub
+        (jupyter-publish 'interrupt)))))
 
 ;;; Message callbacks
 

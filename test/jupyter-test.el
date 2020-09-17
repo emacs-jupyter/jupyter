@@ -1666,11 +1666,11 @@ Latex(r'$\\alpha$')"
                              (locate-library "jupyter")))
          (org-babel-jupyter-resource-directory "./")
          (file (expand-file-name "jupyter.png"))
-         (py-version
-          (with-current-buffer jupyter-org-test-buffer
-            (jupyter-test-ipython-kernel-version
-             (jupyter-kernel-spec
-              (oref (jupyter-org-test-session-client "python") kernel)))))
+         (py-version (jupyter-kernel-action
+                        (jupyter-org-test-session-client "python")
+                      (lambda (kernel)
+                        (jupyter-test-ipython-kernel-version
+                         (jupyter-kernel-spec kernel)))))
          ;; There is a change in how the IPython kernel prints base64 encoded
          ;; images somewhere between [4.6.1, 5.1]. In 5.1, base64 encoded
          ;; images are printed with line breaks whereas in 4.6.1 they are not.

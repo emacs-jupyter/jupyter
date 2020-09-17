@@ -151,9 +151,10 @@ CLIENT must be communicating with a `jupyter-server-kernel', the
 CLIENT must be communicating with a `jupyter-server-kernel', see
 `jupyter-server-kernel-names'."
   (cl-check-type client jupyter-kernel-client)
-  (pcase-let (((cl-struct jupyter-server-kernel server id)
-               (oref client kernel)))
-    (jupyter-server-name-kernel server id name)))
+  (jupyter-kernel-action client
+    (lambda (kernel)
+      (pcase-let (((cl-struct jupyter-server-kernel server id) kernel))
+        (jupyter-server-name-kernel server id name)))))
 
 ;;; Launching notebook processes
 
@@ -275,9 +276,11 @@ a URL."
               (jupyter-current-server)
               ;; Server of the current kernel client
               ((and jupyter-current-client
-                    (let ((kernel (oref jupyter-current-client kernel)))
-                      (and (jupyter-server-kernel-p kernel)
-                           (jupyter-server-kernel-server kernel)))))
+                    (jupyter-kernel-action
+                        jupyter-current-client
+                      (lambda (kernel)
+                        (and (jupyter-server-kernel-p kernel)
+                             (jupyter-server-kernel-server kernel))))))
               ;; Server of the current TRAMP remote context
               ((and (file-remote-p default-directory)
                     (jupyter-tramp-file-name-p default-directory)

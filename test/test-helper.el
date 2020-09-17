@@ -172,7 +172,9 @@ If the `current-buffer' is not a REPL, this is identical to
         for client = (cdr saved)
         when (and client
                   (not (and (jupyter-connected-p client)
-                            (jupyter-alive-p (oref client kernel)))))
+                            (jupyter-kernel-action client
+                              (lambda (kernel)
+                                (jupyter-alive-p kernel))))))
         do (jupyter-disconnect client)
         (cl-callf2 delq saved ,saved-sym))
        (let* ((,spec (progn (jupyter-error-if-no-kernelspec ,kernel)

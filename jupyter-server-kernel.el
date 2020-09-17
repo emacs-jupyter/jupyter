@@ -227,21 +227,23 @@ TODO The form of content each sends/consumes."
            ;; TODO: on-error publishes to status-pub
            :on-message on-message)))
        (ws (funcall make-websocket))
+       (shutdown nil)
        (kernel-io
         (jupyter-publisher
           (lambda (event)
-            (pcase event
-              (`(message . ,rest) (jupyter-content rest))
-              (`(send ,channel ,msg-type ,content ,msg-id)
-               (websocket-send-text
-                ws (let* ((cd (websocket-client-data ws))
-                          (session (plist-get cd :session)))
-                     (jupyter-encode-raw-message session msg-type
-                       :channel channel
-                       :msg-id msg-id
-                       :content content))))
-              ('start (websocket-ensure-connected ws))
-              ('stop (websocket-close ws)))))))
+            (if shutdown (error "Kernel shutdown!")
+              (pcase event
+                (`(message . ,rest) (jupyter-content rest))
+                (`(send ,channel ,msg-type ,content ,msg-id)
+                 (websocket-send-text
+                  ws (let* ((cd (websocket-client-data ws))
+                            (session (plist-get cd :session)))
+                       (jupyter-encode-raw-message session msg-type
+                         :channel channel
+                         :msg-id msg-id
+                         :content content))))
+                ('start (websocket-ensure-connected ws))
+                ('stop (websocket-close ws))))))))
     (push (jupyter-subscriber
             (lambda (_reauth)
               (websocket-close ws)
@@ -249,7 +251,18 @@ TODO The form of content each sends/consumes."
           (gethash server jupyter--reauth-subscribers))
     (jupyter-run-with-io msg-pub
       (jupyter-subscribe kernel-io))
-    kernel-io))
+    (list kernel-io
+          (jupyter-subscriber
+            (lambda (action)
+              (pcase action
+                ('interrupt
+                 (jupyter-do-interrupt kernel))
+                ('shutdown
+                 (jupyter-do-shutdown kernel)
+                 (websocket-close ws)
+                 (setq shutdown t))
+                (`(action ,fn)
+                 (funcall fn kernel))))))))
 
 ;;; Kernel management
 

@@ -268,7 +268,9 @@
           (cl-destructuring-bind (_ client)
               (list nil (jupyter-client (jupyter-kernel :server server :spec "python")))
             (unwind-protect
-                (let ((id (jupyter-server-kernel-id (oref client kernel)))
+                (let ((id (jupyter-kernel-action client
+                            (lambda (kernel)
+                              (jupyter-server-kernel-id kernel))))
                       (jupyter-current-client client))
                   (should (equal (jupyter-eval "1 + 1") "2"))
                   (let (url-cookie-storage)
@@ -294,10 +296,7 @@
     (with-current-buffer
         (oref (jupyter-run-server-repl server "python") buffer)
       (unwind-protect
-          (progn
-            (should (jupyter-alive-p
-                     (oref jupyter-current-client kernel)))
-            (should (equal (jupyter-eval "1 + 1") "2")))
+          (should (equal (jupyter-eval "1 + 1") "2"))
         (jupyter-test-kill-buffer (current-buffer))))))
 
 (ert-deftest jupyter-connect-server-repl ()
@@ -308,10 +307,7 @@
       (with-current-buffer
           (oref (jupyter-connect-server-repl server id) buffer)
         (unwind-protect
-            (progn
-              (should (jupyter-alive-p
-                       (oref jupyter-current-client kernel)))
-              (should (equal (jupyter-eval "1 + 1") "2")))
+            (should (equal (jupyter-eval "1 + 1") "2"))
           (jupyter-test-kill-buffer (current-buffer)))))))
 
 (ert-deftest org-babel-jupyter-server-session ()
@@ -425,18 +421,16 @@
 
 (ert-deftest jupyter-server-name-client-kernel ()
   :tags '(server)
-  (let* ((jupyter-server-kernel-names
-          '(("http://localhost:8882"
-             ("id1" . "name1"))))
-         (server (jupyter-server :url "http://localhost:8882"))
-         (client (jupyter-kernel-client)))
-    (oset client kernel (jupyter-server-kernel
-                         :id "id1"
-                         :server server))
-    (jupyter-server-name-client-kernel client "foo")
-    (should (equal jupyter-server-kernel-names
-                   '(("http://localhost:8882"
-                      ("id1" . "foo")))))))
+  (jupyter-test-with-notebook server
+    (jupyter-test-with-server-kernel server "python" kernel
+      (let* ((jupyter-server-kernel-names
+              `((,(oref server url)
+                 (,(jupyter-server-kernel-id kernel) . "name1"))))
+             (client (jupyter-client kernel)))
+        (jupyter-server-name-client-kernel client "foo")
+        (should (equal jupyter-server-kernel-names
+                       `((,(oref server url)
+                          (,(jupyter-server-kernel-id kernel) . "foo")))))))))
 
 ;;; Org
 
