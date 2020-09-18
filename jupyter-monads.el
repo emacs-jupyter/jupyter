@@ -80,25 +80,17 @@
 (defvar jupyter-io-cache (make-hash-table :weakness 'key))
 
 (defun jupyter-return-delayed (value)
-  "Return an I/O value that evaluates BODY in the I/O context.
-The result of BODY is the unboxed value of the I/O value.  BODY
-is evaluated only once."
+  "Return an I/O value wrapping VALUE."
   (declare (indent 0))
   (make-jupyter-delayed :value (lambda () value)))
 
 (defvar jupyter-current-io
   (lambda (content)
-    (error "Unhandled I/O: %s" content)))
+    (error "Unhandled I/O: %s" content))
+  "The current I/O context.")
 
 (defun jupyter-bind-delayed (io-value io-fn)
-  "Bind IO-VALUE to IO-FN.
-Binding causes the evaluation of a delayed value, IO-VALUE (a
-closure), in the current I/O context.  The unwrapped
-value (result of evaluating the closure) is then passed to IO-FN
-which returns another delayed value.  Thus binding involves
-unwrapping a value by evaluating a closure and giving the result
-to IO-FN which returns another delayed value to be bound at some
-future time."
+  "Bind IO-VALUE to IO-FN."
   (declare (indent 1))
   (pcase (funcall (jupyter-delayed-value io-value))
 	((and req (cl-struct jupyter-request client))
@@ -113,8 +105,7 @@ future time."
 
 (defmacro jupyter-mlet* (varlist &rest body)
   "Bind the I/O values in VARLIST, evaluate BODY.
-Return the result of evaluating BODY, which should be another I/O
-value."
+Return the result of evaluating BODY."
   (declare (indent 1) (debug ((&rest (symbolp form)) body)))
   ;; FIXME: The below doesn't work
   ;;
@@ -140,7 +131,7 @@ value."
        ,(funcall binder varlist))))
 
 (defmacro jupyter-with-io (io &rest body)
-  "Return an I/O action evaluating BODY in IO's I/O context.
+  "Return an I/O action evaluating BODY in IO's context.
 The result of the returned action is the result of the I/O action
 BODY evaluates to."
   (declare (indent 1) (debug (form body)))
@@ -154,9 +145,9 @@ BODY evaluates to."
   "Return the result of evaluating the I/O value BODY evaluates to.
 All I/O operations are done in the context of IO."
   (declare (indent 1) (debug (form body)))
-  `(jupyter-mlet* ((result (jupyter-with-io ,io
-                             ,@body)))
-     result))
+  `(let ((jupyter-current-io ,io))
+     (jupyter-mlet* ((result (progn ,@body)))
+       result)))
 
 ;; do (for the IO monad) takes IO actions (IO values), which are
 ;; closures of zero argument wrapped in the `jupyter-delay' type, and
@@ -271,7 +262,7 @@ publisher providing content."
 ;; subscribed publisher, via PUB-FN, to publish to their subscribers.
 (defun jupyter-pseudo-bind-content (pub-fn content subs)
   "Apply PUB-FN on submitted CONTENT to produce published content.
-Call each subscriber in SUBS on the published content, remove
+Call each subscriber in SUBS on the published content.  Remove
 those subscribers that cancel their subscription.
 
 Errors signaled by a subscriber are demoted to messages."
