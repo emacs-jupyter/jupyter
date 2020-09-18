@@ -360,37 +360,6 @@ Ex. Publish 'app if 'app is given to a publisher, nothing is sent
         ('subscribe (cl-pushnew (cadr pub-value) (cdr subs)))
         (_ (error "Unhandled publisher content: %s" pub-value))))))
 
-(defun jupyter-filter-content (pub pub-fn)
-  "Return an I/O action subscribing a publisher to PUB's content.
-The subscribed publisher filters the content it publishes through
-PUB-FN.  The result of the I/O action is the subscribed
-publisher.
-
-This is the bind operation of a publisher embedded in an I/O
-context."
-  (declare (indent 1))
-  (jupyter-filter pub (jupyter-publisher pub-fn)))
-
-(defun jupyter-filter (pub-a pub-b)
-  "Return an I/O action filtering PUB-A's content through PUB-B."
-  (declare (indent 1))
-  (jupyter-with-io pub-a
-    (jupyter-do
-      (jupyter-subscribe pub-b)
-      ;; TODO: How can this be a different publisher?  Composing
-      ;; publishers should return a new publisher of the filtered
-      ;; content.
-      (jupyter-return-delayed pub-b))))
-
-(defun jupyter-consume-content (pub sub-fn)
-  "Return a subscriber subscribed to PUB's content.
-The subscriber evaluates SUB-FN on the published content."
-  (declare (indent 1))
-  (let ((sub (jupyter-subscriber sub-fn)))
-    (jupyter-run-with-io pub
-      (jupyter-subscribe sub))
-    sub))
-
 (defsubst jupyter--subscribe (sub)
   (list 'subscribe sub))
 
@@ -434,13 +403,6 @@ Ex. Subscribe to a publisher and unsubscribe after receiving two
 
 (defsubst jupyter-timeout (req)
   (list 'timeout req))
-
-(defun jupyter-idle (io-req)
-  (make-jupyter-delayed
-   :value (lambda ()
-            (jupyter-mlet* ((req io-req))
-              (if (jupyter-wait-until-idle req) req
-                (jupyter-timeout req))))))
 
 ;; When a request is bound it returns a list containing the request.
 ;; FIXME: A client monad.  What would be bound to it?  A request
