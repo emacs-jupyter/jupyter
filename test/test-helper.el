@@ -217,9 +217,10 @@ This only starts a single global client unless the variable
        'jupyter-kernel-client))
     jupyter-test-global-clients ,kernel ,client
     (unwind-protect
-        (progn ,@body)
+        (jupyter-with-client ,client
+          ,@body)
       (when jupyter-test-with-new-client
-        (jupyter-shutdown-kernel client)))))
+        (jupyter-shutdown-kernel ,client)))))
 
 (defmacro jupyter-test-with-python-client (client &rest body)
   "Start a new Python kernel, bind it to CLIENT, evaluate BODY."

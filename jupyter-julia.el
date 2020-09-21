@@ -122,13 +122,11 @@ Make the character after `point' invisible."
 If the Pkg prompt can't be retrieved from the kernel, return
 nil."
   (when-let* ((msg (jupyter-wait-until-received "execute_reply"
-                     (jupyter-send
-                      jupyter-current-client
-                      (jupyter-execute-request
-                       :code ""
-                       :silent t
-                       :user-expressions
-                       (list :prompt "import Pkg; Pkg.REPLMode.promptf()")))
+                     (jupyter-execute-request
+                      :code ""
+                      :silent t
+                      :user-expressions
+                      (list :prompt "import Pkg; Pkg.REPLMode.promptf()"))
                      ;; Longer timeout to account for initial Pkg import and
                      ;; compilation.
                      jupyter-long-timeout)))
@@ -191,16 +189,13 @@ nil."
 
 (defun jupyter-julia--setup-hooks (client)
   (let ((jupyter-inhibit-handlers t))
-    (jupyter-send
-     client
-     (jupyter-execute-request
-      :store-history nil
-      :silent t
-      ;; This is mainly for supporting the :dir header argument in `org-mode'
-      ;; source blocks.  We send this after initializing the REPL and after a
-      ;; kernel restart so that we can get proper line numbers when an error
-      ;; occurs.
-      :code "\
+    (jupyter-with-client client
+      (jupyter-execute-request
+       :store-history nil
+       :silent t
+       ;; This is mainly for supporting the :dir header argument in
+       ;; `org-mode' source blocks.
+       :code "\
 if !isdefined(Main, :__JUPY_saved_dir)
     Core.eval(Main, :(__JUPY_saved_dir = Ref(\"\")))
     let popdir = () -> begin
