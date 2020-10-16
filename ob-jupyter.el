@@ -730,11 +730,19 @@ mapped to their appropriate minted language in
         (goto-char pos)
         (ansi-color-apply-on-region (point) (org-babel-result-end))))))
 
+(defun org-babel-jupyter-handle-result-ansi-escapes ()
+  "Remove ANSI escapes from Jupyter src-block results in the current buffer."
+  (org-babel-map-src-blocks nil
+    (when (org-babel-jupyter-language-p lang)
+      (goto-char (org-babel-where-is-src-block-result))
+      (ansi-color-apply-on-region (point) (org-babel-result-end)))))
+
 ;;; Hook into `org'
 
 (org-babel-jupyter-aliases-from-kernelspecs)
 (add-hook 'org-export-before-processing-hook #'org-babel-jupyter-setup-export)
 (add-hook 'org-export-before-parsing-hook #'org-babel-jupyter-strip-ansi-escapes)
+(add-hook 'org-babel-after-execute-hook #'org-babel-jupyter-handle-result-ansi-escapes)
 
 (provide 'ob-jupyter)
 
