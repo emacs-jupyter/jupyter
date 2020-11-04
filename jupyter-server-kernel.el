@@ -96,18 +96,17 @@ REFRESH.
 The kernelspecs are returned in the same form as returned by
 `jupyter-available-kernelspecs'."
   (when (or refresh (null (oref server kernelspecs)))
-    (let ((specs (jupyter-api-get-kernelspec server)))
-      (unless specs
-        (error "Can't retrieve kernelspecs from server @ %s" (oref server url)))
-      (oset server kernelspecs specs)
-      (plist-put (oref server kernelspecs) :kernelspecs
+    (let ((specs (or (jupyter-api-get-kernelspec server)
+                     (error "Can't retrieve kernelspecs from server @ %s"
+                            (oref server url)))))
+      (plist-put specs :kernelspecs
                  (cl-loop
-                  with specs = (plist-get specs :kernelspecs)
-                  for (_ spec) on specs by #'cddr
+                  for (_ spec) on (plist-get specs :kernelspecs) by #'cddr
                   for name = (plist-get spec :name)
                   collect (make-jupyter-kernelspec
                            :name name
-                           :plist (plist-get spec :spec))))))
+                           :plist (plist-get spec :spec))))
+      (oset server kernelspecs specs)))
   (plist-get (oref server kernelspecs) :kernelspecs))
 
 (cl-defmethod jupyter-server-has-kernelspec-p ((server jupyter-server) name)
