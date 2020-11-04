@@ -256,24 +256,6 @@ The cell is narrowed to the region between and including
                          (jupyter-repl-cell-code-end-position))
        ,@body)))
 
-(defmacro jupyter-repl-inhibit-undo-when (cond &rest body)
-  "Evaluate BODY, disabling undo beforehand if COND is non-nil.
-Undo is re-enabled after BODY is evaluated.
-
-Note, any changes to `buffer-undo-list' during evaluation of BODY
-will not be present when undo is re-enabled if COND is non-nil."
-  (declare (indent 1) (debug ([&or symbolp form] &rest form)))
-  (let ((new-undo-list (make-symbol "new"))
-        (disable-undo (make-symbol "disable")))
-    `(let ((,disable-undo ,cond) ,new-undo-list)
-       (let ((buffer-undo-list (if ,disable-undo t buffer-undo-list)))
-         (unwind-protect
-             (progn ,@body)
-           (unless ,disable-undo
-             (setq ,new-undo-list buffer-undo-list))))
-       (when ,new-undo-list
-         (setq buffer-undo-list ,new-undo-list)))))
-
 (defmacro jupyter-repl-with-single-undo (&rest body)
   "Evaluate BODY, remove all undo boundaries created during its evaluation."
   (declare (indent 0) (debug (&rest form)))
