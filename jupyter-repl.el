@@ -385,11 +385,13 @@ interpreted as `in'."
        ;; Prevent prompt overlay from inheriting text properties of code at the
        ;; beginning of a cell.
        ;;
-       ;; rear-nonsticky is to prevent code inserted after this character to
-       ;; inherit any of its text properties.
+       ;; The rear-nonsticky property prevents code inserted after
+       ;; this character from inheriting any of this character's text
+       ;; properties.
        ;;
-       ;; front-sticky is to prevent `point' from being trapped between the
-       ;; newline of the prompt overlay and this invisible character.
+       ;; The front-sticky property prevents `point' from being
+       ;; trapped between the newline of the prompt overlay and this
+       ;; invisible character.
        (insert (propertize " "
                            'read-only t 'invisible t
                            'rear-nonsticky t 'front-sticky t))
@@ -1239,8 +1241,8 @@ BOUND without inserting any continuation prompts."
       bound
     (setq bound (set-marker (make-marker) bound))
     (set-marker-insertion-type bound t)
-    ;; Don't record these changes as it adds unnecessary undo information which
-    ;; interferes with undo.
+    ;; Don't record these changes.  They add unnecessary undo
+    ;; information that interferes with undo.
     (let ((buffer-undo-list t))
       (while (and (< (point) bound)
                   (search-forward "\n" bound 'noerror))
