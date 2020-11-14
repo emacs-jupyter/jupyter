@@ -885,7 +885,7 @@ attempting to run the message handler.  Then remove old,
 completed, requests from CLIENT's request table."
   (when msg
     (let ((jupyter-current-client client)
-          (req (gethash (jupyter-message-parent-id msg) (oref client requests))))
+          (req (plist-get msg :parent-request)))
       (jupyter--update-execution-state client msg req)
       (cond
        (req

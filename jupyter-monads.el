@@ -446,7 +446,8 @@ list, represents."
                             ;; this case.
                             (string= (jupyter-message-type msg) "shutdown_reply"))
                     (setf (jupyter-request-idle-p req) t))
-                  (jupyter-content msg)))))))
+                  (jupyter-content
+                   (cl-list* :parent-request req msg))))))))
          (ch (if (member type '("input_reply" "input_request"))
                  "stdin"
                "shell")))
