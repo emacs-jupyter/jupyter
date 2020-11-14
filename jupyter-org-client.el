@@ -132,21 +132,27 @@ See also the docstring of `org-image-actual-width' for more details."
         (goto-char org-babel-current-src-block-location)
         (let* ((context (org-element-context))
                (block-params org-babel-jupyter-current-src-block-params)
-               (result-params (alist-get :result-params block-params)))
-          (apply #'jupyter-org-request
-                 (append
-                  (list
-                   :marker (copy-marker org-babel-current-src-block-location)
-                   :inline-block-p (and (memq (org-element-type context)
-                                              '(inline-babel-call inline-src-block))
-                                        t)
-                   :result-type (alist-get :result-type block-params)
-                   :file (alist-get :file block-params)
-                   :block-params block-params
-                   :async-p (equal (alist-get :async block-params) "yes")
-                   :silent-p (car (or (member "none" result-params)
-                                      (member "silent" result-params))))
-                  slots))))
+               (result-params (alist-get :result-params block-params))
+               (req
+                (apply #'jupyter-org-request
+                       (append
+                        (list
+                         :marker (copy-marker org-babel-current-src-block-location)
+                         :inline-block-p (and (memq (org-element-type context)
+                                                    '(inline-babel-call inline-src-block))
+                                              t)
+                         :result-type (alist-get :result-type block-params)
+                         :file (alist-get :file block-params)
+                         :block-params block-params
+                         :async-p (equal (alist-get :async block-params) "yes")
+                         :silent-p (car (or (member "none" result-params)
+                                            (member "silent" result-params))))
+                        slots))))
+          (put-text-property
+           org-babel-current-src-block-location
+           (1+ org-babel-current-src-block-location)
+           'jupyter-request req)
+          req))
     (cl-call-next-method)))
 
 (cl-defmethod jupyter-drop-request ((_client jupyter-org-client)
@@ -158,16 +164,14 @@ See also the docstring of `org-image-actual-width' for more details."
 
 (defun jupyter-org-request-at-point ()
   "Return the `jupyter-org-request' associated with `point' or nil."
-  (when-let* ((session (org-babel-jupyter-src-block-session))
-              (client (gethash session org-babel-jupyter-session-clients)))
-    (catch 'req
-      (jupyter-map-pending-requests client
-        (lambda (req)
-          (when (jupyter-org-request-p req)
-            (let ((marker (jupyter-org-request-marker req)))
-              (and (equal (marker-position marker) (point))
-                   (equal (marker-buffer marker) (current-buffer))
-                   (throw 'req req)))))))))
+  (when-let* ((context (org-element-context))
+              (babel-p (memq (org-element-type context)
+                             '(src-block babel-call
+                               inline-babel-call inline-src-block)))
+              (pos (jupyter-org-element-begin-after-affiliated context))
+              (req (get-text-property pos 'jupyter-request)))
+    (and (not (jupyter-request-idle-p req))
+         req)))
 
 ;;;; Stream
 
