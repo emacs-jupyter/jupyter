@@ -461,10 +461,6 @@ response to the sent message, see `jupyter-add-callback' and
 (cl-defmethod jupyter-send ((type string) &rest content)
   (jupyter-send jupyter-current-client type content))
 
-(defsubst jupyter-last-sent-request (client)
-  "Return the most recent `jupyter-request' made by CLIENT."
-  (gethash "last-sent" (oref client requests)))
-
 ;;; Starting communication with a kernel
 
 (cl-defmethod jupyter-alive-p ((client jupyter-kernel-client) &optional channel)

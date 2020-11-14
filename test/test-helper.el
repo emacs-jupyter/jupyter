@@ -503,10 +503,9 @@ results instead of an equality match."
       (save-window-excursion
         (org-babel-execute-src-block nil info)
         (when (equal (alist-get :async args) "yes")
-          (jupyter-idle-sync
-           (jupyter-last-sent-request
-            (jupyter-org-test-client-from-info info)))))
-      (org-with-point-at (org-babel-where-is-src-block-result nil info)
+          ;; Add a delay to try and ensure the last request of the
+          ;; client has been completed.
+          (sleep-for 0.2))
         (let ((element (org-element-context)))
           ;; Handle empty results with just a RESULTS keyword
           ;;
