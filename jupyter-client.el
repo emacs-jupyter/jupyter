@@ -461,35 +461,9 @@ response to the sent message, see `jupyter-add-callback' and
 (cl-defmethod jupyter-send ((type string) &rest content)
   (jupyter-send jupyter-current-client type content))
 
-;;; Pending requests
-
-(defun jupyter-requests-pending-p (client)
-  "Return non-nil if CLIENT has open requests that the kernel has not handled.
-Specifically, this returns non-nil if the last request message
-sent to the kernel using CLIENT has not received an idle message
-back."
-  (cl-check-type client jupyter-kernel-client)
-  (jupyter--drop-idle-requests client)
-  (with-slots (requests) client
-    ;; If there are two requests, then there is really only one since
-    ;; "last-sent" is an alias for the other.
-    (or (> (hash-table-count requests) 2)
-        (when-let* ((last-sent (gethash "last-sent" requests)))
-          (not (jupyter-request-idle-p last-sent))))))
-
 (defsubst jupyter-last-sent-request (client)
   "Return the most recent `jupyter-request' made by CLIENT."
   (gethash "last-sent" (oref client requests)))
-
-(defun jupyter-map-pending-requests (client function)
-  "Call FUNCTION for all pending requests of CLIENT."
-  (declare (indent 1))
-  (cl-check-type client jupyter-kernel-client)
-  (maphash (lambda (k v)
-             (unless (or (equal k "last-sent")
-                         (jupyter-request-idle-p v))
-               (funcall function v)))
-           (oref client requests)))
 
 ;;; Starting communication with a kernel
 

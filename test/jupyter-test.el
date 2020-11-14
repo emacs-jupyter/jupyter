@@ -621,36 +621,6 @@
       (setq jupyter-inhibit-handlers '("foo"))
       (should-error (jupyter-kernel-info-request)))))
 
-(ert-deftest jupyter-requests-pending-p ()
-  :tags '(client)
-  (jupyter-test-with-python-client client
-    (let (pending)
-      (jupyter-with-timeout (nil jupyter-long-timeout)
-        (while (jupyter-requests-pending-p client)
-          (when-let* ((last-sent (gethash "last-sent" (oref client requests))))
-            (jupyter-wait-until-idle last-sent))))
-      ;; Don't pass CLIENT to `should-not' because `ert' will attempt to
-      ;; print the class object on failure and will fail at doing so.
-      (setq pending (jupyter-requests-pending-p client))
-      (should-not pending)
-      (let ((req (jupyter-kernel-info-request)))
-        (ert-info ("Pending after send")
-          (setq pending (jupyter-requests-pending-p client))
-          (should pending)
-          (jupyter-wait-until-idle req)
-          (setq pending (jupyter-requests-pending-p client))
-          (should-not pending))
-        (ert-info ("Pending until idle received")
-          (setq req (jupyter-execute-request
-                     :code "import time; time.sleep(0.2)"))
-          ;; Empty out the pending-requests slot of CLIENT
-          (jupyter-wait-until-received "status" req)
-          (setq pending (jupyter-requests-pending-p client))
-          (should pending)
-          (jupyter-wait-until-idle req)
-          (setq pending (jupyter-requests-pending-p client))
-          (should-not pending))))))
-
 (ert-deftest jupyter-eval ()
   :tags '(client)
   (jupyter-test-with-python-client client
@@ -695,33 +665,6 @@
         (should jupyter-current-client)
         (sleep-for 0.1)
         (should-not jupyter-current-client)))))
-
-(ert-deftest jupyter-map-pending-requests ()
-  :tags '(client)
-  (let ((err (should-error
-              (jupyter-map-pending-requests nil #'identity)
-              :type 'wrong-type-argument)))
-    (should (equal (nth 1 err) 'jupyter-kernel-client)))
-  (jupyter-with-echo-client client
-    (let ((r1 (make-jupyter-request :id "id1"))
-          (r2 (make-jupyter-request :id "id2"))
-          (mapped nil))
-      (puthash "last-sent" r1 (oref client requests))
-      (puthash "id1" r1 (oref client requests))
-      (puthash "id2" r2 (oref client requests))
-      (jupyter-map-pending-requests client
-        (lambda (req) (push req mapped)))
-      (should (= (length mapped) 2))
-      (should (memq r1 mapped))
-      (should (memq r2 mapped))
-
-      (setq mapped nil)
-      (setf (jupyter-request-idle-p r2) t)
-      (jupyter-map-pending-requests client
-        (lambda (req) (push req mapped)))
-      (should (= (length mapped) 1))
-      (should (memq r1 mapped))
-      (should-not (memq r2 mapped)))))
 
 (defvar jupyter-test-idle-sync-hook nil)
 
