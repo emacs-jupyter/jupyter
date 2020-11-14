@@ -730,28 +730,6 @@ waiting."
 
 ;;; Client handlers
 
-(cl-defgeneric jupyter-drop-request ((_client jupyter-kernel-client) _req)
-  "Called when CLIENT removes REQ, from its request table."
-  nil)
-
-(cl-defmethod jupyter-drop-request :before ((_client jupyter-kernel-client) req)
-  (when jupyter--debug
-    (message "DROPPING-REQ: %s" (jupyter-request-id req))))
-
-(defun jupyter--drop-idle-requests (client)
-  "Drop completed requests from CLIENT's request table.
-A request is deemed complete when an idle message has been
-received for it and it is not the most recently sent request."
-  (with-slots (requests) client
-    (cl-loop
-     with last-sent = (gethash "last-sent" requests)
-     for req in (hash-table-values requests)
-     when (and (jupyter-request-idle-p req)
-               (not (eq req last-sent)))
-     do (unwind-protect
-            (jupyter-drop-request client req)
-          (remhash (jupyter-request-id req) requests)))))
-
 (defsubst jupyter--request-allows-handler-p (req msg)
   "Return non-nil if REQ doesn't inhibit the handler for MSG."
   (let* ((ihandlers (and req (jupyter-request-inhibited-handlers req)))
@@ -869,11 +847,6 @@ completed, requests from CLIENT's request table."
           (unwind-protect
               (jupyter--run-handler-maybe client channel msg req)
             (when (jupyter--message-completes-request-p msg)
-              ;; Order matters here.  We want to remove idle requests *before*
-              ;; setting another request idle to account for idle messages
-              ;; coming in out of order, e.g. before their respective reply
-              ;; messages.
-              (jupyter--drop-idle-requests client)
               (setf (jupyter-request-idle-p req) t)))))
        ((or (jupyter-get client 'jupyter-include-other-output)
             ;; Always handle a startup message

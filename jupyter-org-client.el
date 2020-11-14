@@ -155,13 +155,6 @@ See also the docstring of `org-image-actual-width' for more details."
           req))
     (cl-call-next-method)))
 
-(cl-defmethod jupyter-drop-request ((_client jupyter-org-client)
-                                    (req jupyter-org-request))
-  (when (markerp (jupyter-org-request-marker req))
-    (set-marker (jupyter-org-request-marker req) nil)))
-
-(defvar org-babel-jupyter-session-clients) ; in ob-jupyter.el
-
 (defun jupyter-org-request-at-point ()
   "Return the `jupyter-org-request' associated with `point' or nil."
   (when-let* ((context (org-element-context))
