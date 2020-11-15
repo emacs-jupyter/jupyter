@@ -96,9 +96,6 @@ handling a message is always
     ;; - reply message
     ;; - status: idle
     ;;
-    ;; Needed internally by a `jupyter-kernel-client', this is mainly handled
-    ;; by the eventloop.
-    (puthash (jupyter-request-id req) req (oref client requests))
     ;; Simulate a delay
     (run-at-time
      0.001 nil

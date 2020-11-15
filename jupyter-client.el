@@ -189,19 +189,6 @@ either \"idle\", \"busy\", or \"starting\".")
     :documentation "The *next* execution count of the kernel.
 I.e., the execution count that will be assigned to the
 next :execute-request sent to the kernel.")
-   (requests
-    :type hash-table
-    :initform (make-hash-table :test 'equal)
-    :documentation "A hash table with message ID's as keys.
-This is used to register callback functions to run once a reply
-from a previously sent request is received.  See
-`jupyter-add-callback'.  Note that this is also used to filter
-received messages that originated from a previous request by this
-client.  Whenever the client sends a message in which a reply is
-expected, it sets an entry in this table to represent the fact
-that the message has been sent.  So if there is a non-nil value
-for a message ID it means that a message has been sent and the
-client is expecting a reply from the kernel.")
    (kernel-info
     :type json-plist
     :initform nil
@@ -397,10 +384,9 @@ If it does not contain a valid value, raise an error."
          (or (car (oref client io))
              (error "Client not connected to a kernel"))))
     (jupyter-mlet* ((req-io dreq))
-      (pcase-let ((requests (oref client requests))
-                  ;; FIXME: Only give access to a request once its
-                  ;; completed.
-                  (`(,req-msgs-pub ,req) req-io))
+      ;; FIXME: Only give access to a request once its
+      ;; completed.
+      (pcase-let ((`(,req-msgs-pub ,req) req-io))
         (setf (jupyter-request-client req) client)
         (setf (jupyter-request-inhibited-handlers req)
               (progn
@@ -425,8 +411,7 @@ If it does not contain a valid value, raise an error."
               (lambda (msg)
                 (let ((channel (plist-get msg :channel)))
                   (jupyter-handle-message client channel msg))))))
-        (puthash (jupyter-request-id req) req requests)
-        (puthash "last-sent" req requests)))))
+        req))))
 
 (cl-defmethod jupyter-send ((client jupyter-kernel-client) (type string) &rest content)
   "Send a message to the kernel CLIENT is connected to.
