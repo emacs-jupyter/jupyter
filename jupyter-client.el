@@ -931,16 +931,15 @@ representation of the result.  If MIME is nil, return the
 text/plain representation."
   (interactive (list (jupyter-read-expression) nil))
   (let ((msg (jupyter-wait-until-received "execute_result"
-               (let* ((jupyter-inhibit-handlers t)
-                      (req (jupyter-execute-request
-                            :code code
-                            :store-history nil)))
-                 (prog1 req
-                   (jupyter-add-callback req
-                     "execute_reply"
-                     (jupyter-message-lambda (status evalue)
-                       (unless (equal status "ok")
-                         (error "%s" (ansi-color-apply evalue))))))))))
+               (jupyter-execute-request
+                :code code
+                :store-history nil
+                :handlers nil
+                :callbacks
+                `(("execute_reply"
+                   ,(jupyter-message-lambda (status evalue)
+                      (unless (equal status "ok")
+                        (error "%s" (ansi-color-apply evalue))))))))))
     (when msg
       (jupyter-message-data msg (or mime :text/plain)))))
 
@@ -1086,10 +1085,10 @@ current buffer that STR was extracted from.")
   "Evaluate STR using the `jupyter-current-client'."
   (cl-check-type jupyter-current-client jupyter-kernel-client
                  "Not a valid client")
-  (let ((jupyter-inhibit-handlers '(not "input_request"))
-        (req (jupyter-execute-request
+  (let ((req (jupyter-execute-request
               :code str
-              :store-history nil)))
+              :store-history nil
+              :handlers '("input_request"))))
     (prog1 req
       (jupyter-eval-add-callbacks req beg end))))
 
@@ -1715,11 +1714,11 @@ candidates can be used for PREFIX."
 Run FUN when the completions are available."
   (cl-destructuring-bind (code pos)
       (jupyter-code-context 'completion)
-    (let ((req (let ((jupyter-inhibit-handlers t))
-                 (jupyter-complete-request
-                  :code code :pos pos))))
-      (prog1 req
-        (jupyter-add-callback req "complete_reply" fun)))))
+    (jupyter-complete-request
+     :code code
+     :pos pos
+     :handlers nil
+     :callbacks `(("complete_reply" ,fun)))))
 
 (defvar company-minimum-prefix-length)
 (defvar company-timer)
@@ -1869,14 +1868,14 @@ name are changed to \"-\" and all uppercase characters lowered."
   ;; TODO: This needs to be reset when a client is disconnected.  This
   ;; should be part of the connection process.
   (or (oref client kernel-info)
-      (let* ((jupyter-inhibit-handlers t)
-             (msg (jupyter-wait-until-received "kernel_info_reply"
-                    (jupyter-with-client client
-                      (jupyter-kernel-info-request))
-                    ;; Go to great lengths to ensure we have waited long
-                    ;; enough.  When communicating with slow to start kernels
-                    ;; behind a kernel server this is necessary.
-                    (* 3 jupyter-long-timeout) "Requesting kernel info...")))
+      (let ((msg (jupyter-wait-until-received "kernel_info_reply"
+                   (jupyter-with-client client
+                     (jupyter-kernel-info-request
+                      :handlers nil))
+                   ;; Go to great lengths to ensure we have waited long
+                   ;; enough.  When communicating with slow to start kernels
+                   ;; behind a kernel server this is necessary.
+                   (* 3 jupyter-long-timeout) "Requesting kernel info...")))
         (unless msg
           (error "Kernel did not respond to kernel-info request"))
         (prog1 (oset client kernel-info (jupyter-message-content msg))

@@ -1175,9 +1175,9 @@ execute the current cell."
                               :indent "")))))
            (t
             (let ((res (jupyter-wait-until-received "is_complete_reply"
-                         (let ((jupyter-inhibit-handlers '(not "is_complete_reply")))
-                           (jupyter-is-complete-request
-                            :code (jupyter-repl-cell-code)))
+                         (jupyter-is-complete-request
+                          :code (jupyter-repl-cell-code)
+                          :handlers '("is_complete_reply"))
                          jupyter-repl-maximum-is-complete-timeout)))
               (unless res
                 (message "\
@@ -1421,10 +1421,10 @@ value."
           (setq req (jupyter-repl-execute-cell))
           (jupyter-repl-replace-cell-code code))))
      (t
-      (let* ((jupyter-inhibit-handlers '(not "input_request")))
-        (setq req (jupyter-execute-request
-                   :code str
-                   :store-history jupyter-repl-echo-eval-p)))))
+      (setq req (jupyter-execute-request
+                 :code str
+                 :store-history jupyter-repl-echo-eval-p
+                 :handlers '("input_request")))))
     ;; Add callbacks to display evaluation output in pop-up buffers either when
     ;; we aren't copying the input to a REPL cell or, if we are, when the REPL
     ;; buffer isn't visible.
@@ -1664,11 +1664,11 @@ Return the buffer switched to."
     ;; history since next/previous navigation is implemented by rotations on the
     ;; ring.
     (ring-insert jupyter-repl-history 'jupyter-repl-history)
-    (let ((jupyter-inhibit-handlers '("status")))
-      (jupyter-history-request
-       :n jupyter-repl-history-maximum-length
-       :raw nil
-       :unique t))
+    (jupyter-history-request
+     :n jupyter-repl-history-maximum-length
+     :raw nil
+     :unique t
+     :handlers '(not "status"))
     (erase-buffer)
     ;; Add local hooks
     (add-hook 'kill-buffer-query-functions #'jupyter-repl-kill-buffer-query-function nil t)
@@ -1784,26 +1784,27 @@ it."
   "Synchronize the `jupyter-current-client's kernel state.
 Also update the cell count of the current REPL input prompt using
 the updated state."
-  (let* ((client jupyter-current-client)
-         (req (let ((jupyter-inhibit-handlers t))
-                (jupyter-execute-request
-                 :code ""
-                 :silent t))))
-    (jupyter-add-callback req
-      "execute_reply"
-      (jupyter-message-lambda (execution_count)
-        (oset client execution-count (1+ execution_count))
-        (unless (equal (jupyter-execution-state client) "busy")
-          ;; Set the cell count and update the prompt
-          (jupyter-with-repl-buffer client
-            (save-excursion
-              (goto-char (point-max))
-              (jupyter-repl-update-cell-count
-               (oref client execution-count)))))))
-    ;; Waiting longer here to account for initial startup of the Jupyter
-    ;; kernel.  Sometimes the idle message won't be received if another long
-    ;; running execute request is sent right after.
-    (jupyter-wait-until-idle req jupyter-long-timeout)))
+  (let ((client jupyter-current-client))
+    (jupyter-wait-until-idle
+     (jupyter-execute-request
+      :code ""
+      :silent t
+      :handlers nil
+      :callbacks
+      `(("execute_reply"
+         ,(jupyter-message-lambda (execution_count)
+            (oset client execution-count (1+ execution_count))
+            (unless (equal (jupyter-execution-state client) "busy")
+              ;; Set the cell count and update the prompt
+              (jupyter-with-repl-buffer client
+                (save-excursion
+                  (goto-char (point-max))
+                  (jupyter-repl-update-cell-count
+                   (oref client execution-count)))))))))
+     ;; Waiting longer here to account for initial startup of the Jupyter
+     ;; kernel.  Sometimes the idle message won't be received if another long
+     ;; running execute request is sent right after.
+     jupyter-long-timeout)))
 
 ;;; `jupyter-repl-interaction-mode'
 

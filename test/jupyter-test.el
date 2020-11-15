@@ -611,15 +611,15 @@
 (ert-deftest jupyter-inhibited-handlers ()
   :tags '(client handlers)
   (jupyter-test-with-python-client client
-    (let* ((jupyter-inhibit-handlers '("stream"))
-           (req (jupyter-kernel-info-request)))
+    (let* ((req (jupyter-kernel-info-request
+                 :handlers '(not "stream"))))
       (should (equal (jupyter-request-inhibited-handlers req)
                      '("stream")))
       (should-not (jupyter--request-allows-handler-p
                    req (jupyter-test-message
                         req "stream" (list :name "stdout" :text "foo"))))
-      (setq jupyter-inhibit-handlers '("foo"))
-      (should-error (jupyter-kernel-info-request)))))
+      (should-error (jupyter-kernel-info-request
+                     :handlers '(not "foo"))))))
 
 (ert-deftest jupyter-eval ()
   :tags '(client)
@@ -1378,10 +1378,10 @@ next(x"))))))
                      (oref client session)))))
       (unwind-protect
           (let ((msg (jupyter-wait-until-received "execute_result"
-                       (let ((jupyter-inhibit-handlers t))
-                         (jupyter-with-client cclient
-                           (jupyter-execute-request
-                            :code "1 + 1"))))))
+                       (jupyter-with-client cclient
+                         (jupyter-execute-request
+                          :handlers nil
+                          :code "1 + 1")))))
             (should msg)
             (should (equal (jupyter-message-data msg :text/plain) "2")))
         (with-current-buffer (oref cclient buffer)

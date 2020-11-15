@@ -188,14 +188,14 @@ nil."
 ;;; `jupyter-repl-after-init'
 
 (defun jupyter-julia--setup-hooks (client)
-  (let ((jupyter-inhibit-handlers t))
-    (jupyter-with-client client
-      (jupyter-execute-request
-       :store-history nil
-       :silent t
-       ;; This is mainly for supporting the :dir header argument in
-       ;; `org-mode' source blocks.
-       :code "\
+  (jupyter-with-client client
+    (jupyter-execute-request
+     :handlers nil
+     :store-history nil
+     :silent t
+     ;; This is mainly for supporting the :dir header argument in
+     ;; `org-mode' source blocks.
+     :code "\
 if !isdefined(Main, :__JUPY_saved_dir)
     Core.eval(Main, :(__JUPY_saved_dir = Ref(\"\")))
     let popdir = () -> begin
@@ -207,7 +207,7 @@ if !isdefined(Main, :__JUPY_saved_dir)
         IJulia.push_posterror_hook(popdir)
         IJulia.push_postexecute_hook(popdir)
     end
-end"))))
+end")))
 
 (cl-defmethod jupyter-repl-after-init (&context (jupyter-lang julia))
   (add-function
