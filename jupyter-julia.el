@@ -121,21 +121,27 @@ Make the character after `point' invisible."
   "Return the Pkg prompt.
 If the Pkg prompt can't be retrieved from the kernel, return
 nil."
-  (when-let* ((msg (jupyter-wait-until-received "execute_reply"
-                     (jupyter-execute-request
-                      :code ""
-                      :silent t
-                      :user-expressions
-                      (list :prompt "import Pkg; Pkg.REPLMode.promptf()"))
-                     ;; Longer timeout to account for initial Pkg import and
-                     ;; compilation.
-                     jupyter-long-timeout)))
-    (cl-destructuring-bind (&key prompt &allow-other-keys)
-        (jupyter-message-get msg :user_expressions)
-      (cl-destructuring-bind (&key status data &allow-other-keys)
-          prompt
-        (when (equal status "ok")
-          (plist-get data :text/plain))))))
+  (cl-labels ((req (reply-cb)
+                   (jupyter-execute-request
+                    :code ""
+                    :silent t
+                    :user-expressions
+                    (list :prompt "import Pkg; Pkg.REPLMode.promptf()")
+                    :callbacks `(("execute_reply" ,reply-cb)))))
+    (let (pkg-prompt)
+      (jupyter-wait-until-idle
+       (req
+        (lambda (msg)
+          (cl-destructuring-bind (&key prompt &allow-other-keys)
+              (jupyter-message-get msg :user_expressions)
+            (cl-destructuring-bind (&key status data &allow-other-keys)
+                prompt
+              (when (equal status "ok")
+                (setq pkg-prompt (plist-get data :text/plain)))))))
+       ;; Longer timeout to account for initial Pkg import and
+       ;; compilation.
+       jupyter-long-timeout)
+      pkg-prompt)))
 
 (cl-defmethod jupyter-repl-after-change ((_type (eql insert)) beg _end
                                          &context (jupyter-lang julia))

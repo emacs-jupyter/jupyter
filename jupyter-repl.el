@@ -1174,17 +1174,21 @@ execute the current cell."
                      (:status (if complete-p "complete" "incomplete")
                               :indent "")))))
            (t
-            (let ((res (jupyter-wait-until-received "is_complete_reply"
-                         (jupyter-is-complete-request
-                          :code (jupyter-repl-cell-code)
-                          :handlers '("is_complete_reply"))
-                         jupyter-repl-maximum-is-complete-timeout)))
-              (unless res
-                (message "\
+            (cl-labels ((req (reply-cb)
+                             (jupyter-is-complete-request
+                              :code (jupyter-repl-cell-code)
+                              :handlers '("is_complete_reply")
+                              :callbacks `(("is_complete_reply" ,reply-cb)))))
+              (let (reply-received)
+                (jupyter-wait-until-idle
+                 (req (lambda (_) (setq reply-received t)))
+                 jupyter-repl-maximum-is-complete-timeout)
+                (unless reply-received
+                  (message "\
 Kernel did not respond to is-complete-request, using built-in is-complete.
 Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
-                (setq jupyter-repl-use-builtin-is-complete t)
-                (jupyter-repl-ret force)))))))
+                  (setq jupyter-repl-use-builtin-is-complete t)
+                  (jupyter-repl-ret force))))))))
     (beginning-of-buffer
      ;; No cells in the current buffer, just insert one
      (jupyter-repl-insert-prompt 'in))))
@@ -1785,26 +1789,27 @@ it."
 Also update the cell count of the current REPL input prompt using
 the updated state."
   (let ((client jupyter-current-client))
-    (jupyter-wait-until-idle
-     (jupyter-execute-request
-      :code ""
-      :silent t
-      :handlers nil
-      :callbacks
-      `(("execute_reply"
-         ,(jupyter-message-lambda (execution_count)
-            (oset client execution-count (1+ execution_count))
-            (unless (equal (jupyter-execution-state client) "busy")
-              ;; Set the cell count and update the prompt
-              (jupyter-with-repl-buffer client
-                (save-excursion
-                  (goto-char (point-max))
-                  (jupyter-repl-update-cell-count
-                   (oref client execution-count)))))))))
-     ;; Waiting longer here to account for initial startup of the Jupyter
-     ;; kernel.  Sometimes the idle message won't be received if another long
-     ;; running execute request is sent right after.
-     jupyter-long-timeout)))
+    (cl-labels ((req (reply-cb)
+                     (jupyter-execute-request
+                      :code ""
+                      :silent t
+                      :handlers nil
+                      :callbacks `(("execute_reply" ,reply-cb)))))
+      (jupyter-wait-until-idle
+       (req
+        (jupyter-message-lambda (execution_count)
+          (oset client execution-count (1+ execution_count))
+          (unless (equal (jupyter-execution-state client) "busy")
+            ;; Set the cell count and update the prompt
+            (jupyter-with-repl-buffer client
+              (save-excursion
+                (goto-char (point-max))
+                (jupyter-repl-update-cell-count
+                 (oref client execution-count)))))))
+       ;; Waiting longer here to account for initial startup of the Jupyter
+       ;; kernel.  Sometimes the idle message won't be received if another long
+       ;; running execute request is sent right after.
+       jupyter-long-timeout))))
 
 ;;; `jupyter-repl-interaction-mode'
 
