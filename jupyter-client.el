@@ -943,7 +943,7 @@ text/plain representation."
     (when msg
       (jupyter-message-data msg (or mime :text/plain)))))
 
-(defun jupyter-eval-result-callbacks (req beg end)
+(defun jupyter-eval-result-callbacks (beg end)
   "Return a plist containing callbacks used to display evaluation results.
 The plist contains default callbacks for the :execute-reply,
 :execute-result, and :display-data messages that may be used for
@@ -976,67 +976,68 @@ and END or in pop-up buffers/frames.  See
                        (jupyter-eval-display-overlay beg end val)))))
              #'ignore))
           had-result)
-      (list
-       "execute_reply"
-       (jupyter-message-lambda (status ename evalue)
-         (cond
-          ((equal status "ok")
-           (unless had-result
-             (unless (funcall display-overlay "✔")
-               (message "jupyter: eval done"))))
-          (t
-           (setq ename (ansi-color-apply ename))
-           (setq evalue (ansi-color-apply evalue))
-           (unless
-               ;; Happens in IJulia
-               (> (+ (length ename) (length evalue)) 250)
-             (if (string-prefix-p ename evalue)
-                 ;; Also happens in IJulia
-                 (message evalue)
-               (message "%s: %s" ename evalue))))))
-       "execute_result"
-       (lambda (msg)
-         (setq had-result t)
-         (jupyter-with-message-data msg
-             ((res text/plain)
-              ;; Prefer to display the markdown representation if available.  The
-              ;; IJulia kernel will return both plain text and markdown.
-              (md text/markdown))
-           (let ((jupyter-pop-up-frame (jupyter-pop-up-frame-p "execute_result")))
-             (cond
-              ((or md (null res))
-               (jupyter-with-display-buffer "result" 'reset
-                 (jupyter-with-message-content msg (data metadata)
-                   (jupyter-insert data metadata))
-                 (goto-char (point-min))
-                 (jupyter-display-current-buffer-reuse-window)))
-              (res
-               (setq res (ansi-color-apply res))
-               (cond
-                ((funcall display-overlay res))
-                ((jupyter-line-count-greater-p
-                  res jupyter-eval-short-result-max-lines)
-                 (jupyter-with-display-buffer "result" 'reset
-                   (insert res)
-                   (goto-char (point-min))
-                   (jupyter-display-current-buffer-reuse-window)))
-                (t
-                 (funcall jupyter-eval-short-result-display-function
-                          (format "%s" res)))))))))
-       "display_data"
-       (jupyter-message-lambda (data metadata)
-         (setq had-result t)
-         (jupyter-with-display-buffer "display" req
-           (jupyter-insert data metadata)
-           ;; Don't pop-up the display when it's empty (e.g. jupyter-R
-           ;; will open some HTML results in an external browser)
-           (when (and (/= (point-min) (point-max)))
-             (jupyter-display-current-buffer-guess-where :display-data)))
-         ;; TODO: Also inline images?
-         (funcall display-overlay "✔"))))))
+      `(("execute_reply"
+         ,(jupyter-message-lambda (status ename evalue)
+            (cond
+             ((equal status "ok")
+              (unless had-result
+                (unless (funcall display-overlay "✔")
+                  (message "jupyter: eval done"))))
+             (t
+              (setq ename (ansi-color-apply ename))
+              (setq evalue (ansi-color-apply evalue))
+              (unless
+                  ;; Happens in IJulia
+                  (> (+ (length ename) (length evalue)) 250)
+                (if (string-prefix-p ename evalue)
+                    ;; Also happens in IJulia
+                    (message evalue)
+                  (message "%s: %s" ename evalue)))))))
+        ("execute_result"
+         ,(lambda (msg)
+            (setq had-result t)
+            (jupyter-with-message-data msg
+                ((res text/plain)
+                 ;; Prefer to display the markdown representation if available.  The
+                 ;; IJulia kernel will return both plain text and markdown.
+                 (md text/markdown))
+              (let ((jupyter-pop-up-frame (jupyter-pop-up-frame-p "execute_result")))
+                (cond
+                 ((or md (null res))
+                  (jupyter-with-display-buffer "result" 'reset
+                    (jupyter-with-message-content msg (data metadata)
+                      (jupyter-insert data metadata))
+                    (goto-char (point-min))
+                    (jupyter-display-current-buffer-reuse-window)))
+                 (res
+                  (setq res (ansi-color-apply res))
+                  (cond
+                   ((funcall display-overlay res))
+                   ((jupyter-line-count-greater-p
+                     res jupyter-eval-short-result-max-lines)
+                    (jupyter-with-display-buffer "result" 'reset
+                      (insert res)
+                      (goto-char (point-min))
+                      (jupyter-display-current-buffer-reuse-window)))
+                   (t
+                    (funcall jupyter-eval-short-result-display-function
+                             (format "%s" res))))))))))
+        ("display_data"
+         ,(lambda (msg)
+            (jupyter-with-message-content msg (data metadata)
+              (setq had-result t)
+              (jupyter-with-display-buffer "display"
+                  (plist-get msg :parent-request)
+                (jupyter-insert data metadata)
+                ;; Don't pop-up the display when it's empty (e.g. jupyter-R
+                ;; will open some HTML results in an external browser)
+                (when (and (/= (point-min) (point-max)))
+                  (jupyter-display-current-buffer-guess-where :display-data)))
+              ;; TODO: Also inline images?
+              (funcall display-overlay "✔"))))))))
 
-(defun jupyter-eval-add-callbacks (req &optional beg end)
-  "Add evaluation callbacks for REQ.
+(defun jupyter-eval-callbacks (&optional beg end)
+  "Return evaluation callbacks.
 
 The callbacks are designed to handle the various message types
 that can be generated by an execute-request to, e.g. display the
@@ -1051,28 +1052,23 @@ buffer corresponding to the evaluated code.
 
 See `jupyter-eval-short-result-max-lines' and
 `jupyter-eval-use-overlays'."
-  (let* ((eval-callbacks (jupyter-eval-result-callbacks req beg end)))
-    (apply
-     #'jupyter-add-callback req
-     (nconc
-      eval-callbacks
-      (list
-       "error"
-       (jupyter-message-lambda (traceback)
+  (nconc
+   (jupyter-eval-result-callbacks beg end)
+   `(("error"
+      ,(jupyter-message-lambda (traceback)
          ;; FIXME: Assumes the error in the
          ;; execute-reply is good enough
          (when (> (apply #'+ (mapcar #'length traceback)) 250)
-           (jupyter-display-traceback traceback)))
-       "stream"
-       (jupyter-message-lambda (name text)
+           (jupyter-display-traceback traceback))))
+     ("stream"
+      ,(jupyter-message-lambda (name text)
          (jupyter-with-display-buffer (pcase name
                                         ("stderr" "error")
                                         (_ "output"))
              req
            (jupyter-insert-ansi-coded-text text)
            (when-let* ((window (jupyter-display-current-buffer-guess-where :stream)))
-             (set-window-point window (point-max))))))))
-    req))
+             (set-window-point window (point-max)))))))))
 
 (cl-defgeneric jupyter-eval-string (str &optional beg end)
   "Evaluate STR using the `jupyter-current-client'.
@@ -1085,12 +1081,11 @@ current buffer that STR was extracted from.")
   "Evaluate STR using the `jupyter-current-client'."
   (cl-check-type jupyter-current-client jupyter-kernel-client
                  "Not a valid client")
-  (let ((req (jupyter-execute-request
-              :code str
-              :store-history nil
-              :handlers '("input_request"))))
-    (prog1 req
-      (jupyter-eval-add-callbacks req beg end))))
+  (jupyter-execute-request
+   :code str
+   :store-history nil
+   :handlers '("input_request")
+   :callbacks (jupyter-eval-callbacks beg end)))
 
 (defun jupyter-eval-string-command (str)
   "Evaluate STR using the `jupyter-current-client'.

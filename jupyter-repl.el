@@ -1421,20 +1421,20 @@ value."
           (setq req (jupyter-repl-execute-cell))
           (jupyter-repl-replace-cell-code code))))
      (t
-      (setq req (jupyter-execute-request
-                 :code str
-                 :store-history jupyter-repl-echo-eval-p
-                 :handlers '("input_request")))))
-    ;; Add callbacks to display evaluation output in pop-up buffers either when
-    ;; we aren't copying the input to a REPL cell or, if we are, when the REPL
-    ;; buffer isn't visible.
-    ;;
-    ;; Make sure we do this in the original buffer where STR originated from
-    ;; when BEG and END are non-nil.
-    (prog1 req
-      (unless (and jupyter-repl-echo-eval-p
-                   (get-buffer-window (oref jupyter-current-client buffer) 'visible))
-        (jupyter-eval-add-callbacks req beg end)))))
+      (jupyter-execute-request
+       :code str
+       :store-history jupyter-repl-echo-eval-p
+       :handlers '("input_request")
+       :callbacks
+       ;; Add callbacks to display evaluation output in pop-up buffers
+       ;; either when we aren't copying the input to a REPL cell or,
+       ;; if we are, when the REPL buffer isn't visible.
+       ;;
+       ;; Make sure we do this in the original buffer where STR
+       ;; originated from when BEG and END are non-nil.
+       (unless (and jupyter-repl-echo-eval-p
+                    (get-buffer-window (oref jupyter-current-client buffer) 'visible))
+         (jupyter-eval-callbacks beg end)))))))
 
 ;;; Kernel management
 
