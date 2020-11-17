@@ -244,59 +244,63 @@ to."
   (jupyter-with-message-content msg (traceback)
     (setq traceback (org-element-normalize-string
                      (mapconcat #'identity traceback "\n")))
-    (cond
-     ((or (jupyter-org-request-inline-block-p req)
-          (jupyter-org-request-silent-p req))
-      ;; Remove old inline results when an error happens since, if this was not
-      ;; done, it would look like the code which caused the error produced the
-      ;; old result.
-      (when (jupyter-org-request-inline-block-p req)
-        (org-with-point-at (jupyter-org-request-marker req)
-          (org-babel-remove-inline-result)))
-      (jupyter-with-display-buffer "traceback" 'reset
-        (jupyter-insert-ansi-coded-text traceback)
-        (goto-char (point-min))
-        (when (jupyter-org-request-silent-p req)
-          (insert (jupyter-org--goto-error-string req) "\n\n"))
-        (pop-to-buffer (current-buffer))))
-     (t
-      ;; The keymap property in the string returned by
-      ;; `jupyter-org--goto-error-string' gets removed by font-lock so ensure it
-      ;; is re-added.
-      (unless (memq 'jupyter-org-add-error-keymap org-font-lock-hook)
-        (add-hook 'org-font-lock-hook 'jupyter-org-add-error-keymap nil t))
-      (jupyter-org--add-result
-       req (jupyter-org-comment
-            (with-temp-buffer
-              (insert traceback)
-              (jupyter-org--goto-error-string req))))
-      (jupyter-org--add-result req traceback)))))
+    (pcase-let (((cl-struct jupyter-org-request
+                            marker inline-block-p silent-p)
+                 req))
+      (cond
+       ((or inline-block-p silent-p)
+        ;; Remove old inline results when an error happens since, if this was not
+        ;; done, it would look like the code which caused the error produced the
+        ;; old result.
+        (when inline-block-p
+          (org-with-point-at marker
+            (org-babel-remove-inline-result)))
+        (jupyter-with-display-buffer "traceback" 'reset
+          (jupyter-insert-ansi-coded-text traceback)
+          (goto-char (point-min))
+          (when silent-p
+            (insert (jupyter-org--goto-error-string req) "\n\n"))
+          (pop-to-buffer (current-buffer))))
+       (t
+        ;; The keymap property in the string returned by
+        ;; `jupyter-org--goto-error-string' gets removed by font-lock so ensure it
+        ;; is re-added.
+        (unless (memq 'jupyter-org-add-error-keymap org-font-lock-hook)
+          (add-hook 'org-font-lock-hook 'jupyter-org-add-error-keymap nil t))
+        (jupyter-org--add-result
+         req (jupyter-org-comment
+              (with-temp-buffer
+                (insert traceback)
+                (jupyter-org--goto-error-string req))))
+        (jupyter-org--add-result req traceback))))))
 
 ;;;; Execute result
 
 (cl-defmethod jupyter-handle-execute-result ((client jupyter-org-client) (req jupyter-org-request) msg)
   (unless (eq (jupyter-org-request-result-type req) 'output)
     (jupyter-with-message-content msg (data metadata)
-      (cond
-       ((jupyter-org-request-inline-block-p req)
-        ;; For inline results, only text/plain results are allowed at the moment.
-        ;;
-        ;; TODO: Handle all of the different macro types for inline results, see
-        ;; `org-babel-insert-result'.
-        (setq data `(:text/plain ,(plist-get data :text/plain)))
-        (let ((result (let ((r (jupyter-org-result req data metadata)))
-                        (if (stringp r) r
-                          (or (org-element-property :value r) "")))))
-          (if (jupyter-org-request-async-p req)
-              (org-with-point-at (jupyter-org-request-marker req)
-                (org-babel-insert-result
-                 result (jupyter-org-request-block-params req)
-                 nil nil (jupyter-kernel-language client)))
-            ;; The results are returned in `org-babel-execute:jupyter' in the
-            ;; synchronous case
-            (jupyter-org--add-result req result))))
-       (t
-        (jupyter-org--add-result req (jupyter-org-result req data metadata)))))))
+      (pcase-let (((cl-struct jupyter-org-request
+                              inline-block-p async-p marker block-params)
+                   req))
+        (cond
+         (inline-block-p
+          ;; For inline results, only text/plain results are allowed at the moment.
+          ;;
+          ;; TODO: Handle all of the different macro types for inline results, see
+          ;; `org-babel-insert-result'.
+          (setq data `(:text/plain ,(plist-get data :text/plain)))
+          (let ((result (let ((r (jupyter-org-result req data metadata)))
+                          (if (stringp r) r
+                            (or (org-element-property :value r) "")))))
+            (if async-p
+                (org-with-point-at marker
+                  (org-babel-insert-result
+                   result block-params nil nil (jupyter-kernel-language client)))
+              ;; The results are returned in `org-babel-execute:jupyter' in the
+              ;; synchronous case
+              (jupyter-org--add-result req result))))
+         (t
+          (jupyter-org--add-result req (jupyter-org-result req data metadata))))))))
 
 ;;;; Display data
 
