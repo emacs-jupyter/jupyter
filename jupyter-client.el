@@ -239,9 +239,14 @@ passed as the argument has a language of LANG."
 ;;; Macros
 
 (defmacro jupyter-with-client (client &rest body)
-  "Set CLIENT as the `jupyter-current-client', evaluate BODY."
+  "Set CLIENT as the `jupyter-current-client', evaluate BODY.
+In addition, set `jupyter-current-io' to the value of CLIENT's IO
+slot."
   (declare (indent 1))
-  `(let ((jupyter-current-client ,client))
+  `(let* ((jupyter-current-client ,client)
+          (jupyter-current-io
+           (or (car (oref jupyter-current-client io))
+               (error "Client not connected to a kernel"))))
      ,@body))
 
 (defmacro define-jupyter-client-handler (type &optional args doc &rest body)
