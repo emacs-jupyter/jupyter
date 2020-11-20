@@ -378,7 +378,9 @@ and `:msg_type'."
                  ('nil t)
                  (`(not . ,els) els)
                  (_ (cons 'not handlers))))
-              (req (progn ,@body)))
+              (req (progn
+                     (jupyter-verify-inhibited-handlers)
+                     ,@body)))
          (prog1 req
            (when callbacks
              (apply #'jupyter-add-callback req
