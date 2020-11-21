@@ -372,39 +372,31 @@ and `:msg_type'."
                   (if (not has-kws) (list '&key))
                   (list (list 'callbacks nil)
                         (list 'handlers t)))
-       (let* ((jupyter-inhibit-handlers
-               (pcase handlers
-                 ('t nil)
-                 ('nil t)
-                 (`(not . ,els) els)
-                 (_ (cons 'not handlers))))
-              (req (progn
-                     (jupyter-verify-inhibited-handlers)
-                     ,@body)))
-         (prog1 req
-           (when callbacks
-             (apply #'jupyter-add-callback req
-                    (apply #'append callbacks))))))))
+       (let ((jupyter-inhibit-handlers
+              (pcase handlers
+                ('t nil)
+                ('nil t)
+                (`(not . ,els) els)
+                (_ (cons 'not handlers)))))
+         (jupyter-verify-inhibited-handlers)
+         ,@body))))
 
 ;;; Control messages
 
 (jupyter--defun interrupt-request ()
-  (jupyter-send jupyter-current-client
-                (jupyter-request "interrupt_request")))
+  (jupyter-request "interrupt_request"))
 
 ;;; stdin messages
 
 (jupyter--defun input-reply (&key value)
   (cl-check-type value string)
-  (jupyter-send jupyter-current-client
-                (jupyter-request "input_reply"
-                  :value value)))
+  (jupyter-request "input_reply"
+    :value value))
 
 ;;; shell messages
 
 (jupyter--defun kernel-info-request ()
-  (jupyter-send jupyter-current-client
-                (jupyter-request "kernel_info_request")))
+  (jupyter-request "kernel_info_request"))
 
 (jupyter--defun execute-request (&key
                                 code
@@ -415,13 +407,12 @@ and `:msg_type'."
                                 (stop-on-error nil))
   (cl-check-type code string)
   (cl-check-type user-expressions json-plist)
-  (jupyter-send jupyter-current-client
-                (jupyter-request "execute_request"
-                  :code code :silent (if silent t jupyter--false)
-                  :store_history (if store-history t jupyter--false)
-                  :user_expressions (or user-expressions jupyter--empty-dict)
-                  :allow_stdin (if allow-stdin t jupyter--false)
-                  :stop_on_error (if stop-on-error t jupyter--false))))
+  (jupyter-request "execute_request"
+    :code code :silent (if silent t jupyter--false)
+    :store_history (if store-history t jupyter--false)
+    :user_expressions (or user-expressions jupyter--empty-dict)
+    :allow_stdin (if allow-stdin t jupyter--false)
+    :stop_on_error (if stop-on-error t jupyter--false)))
 
 (jupyter--defun inspect-request (&key code (pos 0) (detail 0))
   (setq detail (or detail 0))
@@ -431,18 +422,16 @@ and `:msg_type'."
     (setq pos (marker-position pos)))
   (cl-check-type code string)
   (cl-check-type pos integer)
-  (jupyter-send jupyter-current-client
-                (jupyter-request "inspect_request"
-                  :code code :cursor_pos pos :detail_level detail)))
+  (jupyter-request "inspect_request"
+    :code code :cursor_pos pos :detail_level detail))
 
 (jupyter--defun complete-request (&key code (pos 0))
   (when (markerp pos)
     (setq pos (marker-position pos)))
   (cl-check-type code string)
   (cl-check-type pos integer)
-  (jupyter-send jupyter-current-client
-                (jupyter-request "complete_request"
-                  :code code :cursor_pos pos)))
+  (jupyter-request "complete_request"
+    :code code :cursor_pos pos))
 
 (jupyter--defun history-request (&key
                                 output
@@ -456,63 +445,56 @@ and `:msg_type'."
                                 unique)
   (unless (member hist-access-type '("range" "tail" "search"))
     (error "History access type can only be one of (range, tail, search)"))
-  (jupyter-send jupyter-current-client
-                (apply #'jupyter-request "history_request"
-                       (append
-                        (list :output (if output t jupyter--false) :raw (if raw t jupyter--false)
-                              :hist_access_type hist-access-type)
-                        (cond
-                         ((equal hist-access-type "range")
-                          (cl-check-type session integer)
-                          (cl-check-type start integer)
-                          (cl-check-type stop integer)
-                          (list :session session :start start :stop stop))
-                         ((equal hist-access-type "tail")
-                          (cl-check-type n integer)
-                          (list :n n))
-                         ((equal hist-access-type "search")
-                          (cl-check-type pattern string)
-                          (cl-check-type n integer)
-                          (list :pattern pattern :unique (if unique t jupyter--false) :n n)))))))
+  (apply #'jupyter-request "history_request"
+         (append
+          (list :output (if output t jupyter--false) :raw (if raw t jupyter--false)
+                :hist_access_type hist-access-type)
+          (cond
+           ((equal hist-access-type "range")
+            (cl-check-type session integer)
+            (cl-check-type start integer)
+            (cl-check-type stop integer)
+            (list :session session :start start :stop stop))
+           ((equal hist-access-type "tail")
+            (cl-check-type n integer)
+            (list :n n))
+           ((equal hist-access-type "search")
+            (cl-check-type pattern string)
+            (cl-check-type n integer)
+            (list :pattern pattern :unique (if unique t jupyter--false) :n n))))))
 
 (jupyter--defun is-complete-request (&key code)
   (cl-check-type code string)
-  (jupyter-send jupyter-current-client
-                (jupyter-request "is_complete_request"
-                  :code code)))
+  (jupyter-request "is_complete_request"
+    :code code))
 
 (jupyter--defun comm-info-request (&key (target-name ""))
   (cl-check-type target-name string)
-  (jupyter-send jupyter-current-client
-                (jupyter-request "comm_info_request"
-                  :target_name target-name)))
+  (jupyter-request "comm_info_request"
+    :target_name target-name))
 
 (jupyter--defun comm-open (&key id target-name data)
   (cl-check-type id string)
   (cl-check-type target-name string)
   (cl-check-type data json-plist)
-  (jupyter-send jupyter-current-client
-                (jupyter-request "comm_open"
-                  :comm_id id :target_name target-name :data data)))
+  (jupyter-request "comm_open"
+    :comm_id id :target_name target-name :data data))
 
 (jupyter--defun comm-msg (&key id data)
   (cl-check-type id string)
   (cl-check-type data json-plist)
-  (jupyter-send jupyter-current-client
-                (jupyter-request "comm_msg"
-                  :comm_id id :data data)))
+  (jupyter-request "comm_msg"
+    :comm_id id :data data))
 
 (jupyter--defun comm-close (&key id data)
   (cl-check-type id string)
   (cl-check-type data json-plist)
-  (jupyter-send jupyter-current-client
-                (jupyter-request "comm_close"
-                  :comm_id id :data data)))
+  (jupyter-request "comm_close"
+    :comm_id id :data data))
 
 (jupyter--defun shutdown-request (&key restart)
-  (jupyter-send jupyter-current-client
-                (jupyter-request "shutdown_request"
-                  :restart (if restart t jupyter--false))))
+  (jupyter-request "shutdown_request"
+    :restart (if restart t jupyter--false)))
 
 ;;; Convenience functions and macros
 

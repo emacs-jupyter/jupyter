@@ -428,7 +428,7 @@ These parameters are handled internally."
     (delq fparam params)))
 
 (defun org-babel-jupyter--execute (code async-p)
-  (let ((req (jupyter-execute-request :code code)))
+  (jupyter-mlet* ((req (jupyter-execute-request :code code)))
     `(,req
       ,(cond
         (async-p

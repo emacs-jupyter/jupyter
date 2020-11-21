@@ -181,7 +181,8 @@ If the `current-buffer' is not a REPL, this is identical to
                            ,saved
                          ;; Want a fresh kernel, so shutdown the cached one
                          (when (and ,saved (jupyter-connected-p ,saved))
-                           (jupyter-send ,saved (jupyter-shutdown-request))
+                           (let ((jupyter-current-client ,saved))
+                             (jupyter-mlet* ((_ (jupyter-shutdown-request)))))
                            (jupyter-disconnect ,saved))
                          (let ((client (,client-fun (jupyter-kernelspec-name ,spec))))
                            (prog1 client

@@ -382,60 +382,6 @@ If it does not contain a valid value, raise an error."
   (let ((req (intern (concat "jupyter-" (substring (symbol-name type) 1)))))
     (apply req content)))
 
-(cl-defmethod jupyter-send ((client jupyter-kernel-client) (dreq jupyter-delayed))
-  ;; FIXME: (mlet* (pcase-let ...)) -> (mlet* ((PATTERN IO-EXP) ...) ...)
-  ;; or (pcase-let (((jupyter-io PATTERN) IO-EXP) ...) ...)
-  (let ((jupyter-current-io
-         (or (car (oref client io))
-             (error "Client not connected to a kernel"))))
-    (jupyter-mlet* ((req-io dreq))
-      ;; FIXME: Only give access to a request once its
-      ;; completed.
-      (pcase-let ((`(,req-msgs-pub ,req) req-io))
-        (setf (jupyter-request-client req) client)
-        (setf (jupyter-request-inhibited-handlers req)
-              jupyter-inhibit-handlers)
-        (jupyter-run-with-io req-msgs-pub
-          (jupyter-subscribe
-            (jupyter-subscriber
-              (lambda (msg)
-                (let ((channel (plist-get msg :channel)))
-                  (jupyter-handle-message client channel msg))))))
-        req))))
-
-(cl-defmethod jupyter-send ((client jupyter-kernel-client) (type string) &rest content)
-  "Send a message to the kernel CLIENT is connected to.
-Return a `jupyter-request' representing the sent message.
-
-TYPE is one of the message types in `jupyter-message-types' that
-can be sent on either the stdin or shell channels of a kernel.
-
-CONTENT is a property list representing the message contents to
-send.  As a special case if the first element of CONTENT is a
-string, it is used as the message ID of the request.
-
-Note that you can manipulate how to handle messages received in
-response to the sent message, see `jupyter-add-callback' and
-`jupyter-request-inhibited-handlers'."
-  (declare (indent 1))
-  (jupyter-send client (apply #'jupyter-request type content)))
-
-(cl-defmethod jupyter-send :after ((client jupyter-kernel-client)
-                                   type
-                                   &rest _content)
-  (when (and (stringp type) (string= type "execute"))
-    (jupyter-server-mode-set-client client)))
-
-;; NOTE: At least two arguments are needed, so instead of
-;;
-;;     (jupyter-send :kernel-info-request)
-;;
-;; you do
-;;
-;;     (jupyter-send :kernel-info-request nil)
-(cl-defmethod jupyter-send ((type string) &rest content)
-  (jupyter-send jupyter-current-client type content))
-
 ;;; Starting communication with a kernel
 
 (cl-defmethod jupyter-alive-p ((client jupyter-kernel-client) &optional channel)
@@ -920,22 +866,19 @@ the history of the request is not stored.  Return the MIME
 representation of the result.  If MIME is nil, return the
 text/plain representation."
   (interactive (list (jupyter-read-expression) nil))
-  (cl-labels ((req (result-cb)
-                   (jupyter-execute-request
-                    :code code
-                    :store-history nil
-                    :handlers nil
-                    :callbacks
-                    `(("execute_reply"
-                       ,(jupyter-message-lambda (status evalue)
-                          (unless (equal status "ok")
-                            (error "%s" (ansi-color-apply evalue)))))
-                      ("execute_result" ,result-cb)))))
-    (let (data)
-      (jupyter-wait-until-idle
-       (req (lambda (msg)
-              (setq data (jupyter-message-data msg (or mime :text/plain))))))
-      data)))
+  (jupyter-mlet*
+      ((msgs (jupyter-messages
+              (jupyter-message-subscribed
+               (jupyter-execute-request
+                :code code
+                :store-history nil
+                :handlers nil)
+               `(("execute_reply"
+                  ,(jupyter-message-lambda (status evalue)
+                     (unless (equal status "ok")
+                       (error "%s" (ansi-color-apply evalue))))))))))
+    (when-let* ((msg (jupyter-find-message "execute_result" msgs)))
+      (jupyter-message-data msg (or mime :text/plain)))))
 
 (defun jupyter-eval-result-callbacks (beg end)
   "Return a plist containing callbacks used to display evaluation results.
@@ -1075,11 +1018,13 @@ current buffer that STR was extracted from.")
   "Evaluate STR using the `jupyter-current-client'."
   (cl-check-type jupyter-current-client jupyter-kernel-client
                  "Not a valid client")
-  (jupyter-execute-request
-   :code str
-   :store-history nil
-   :handlers '("input_request")
-   :callbacks (jupyter-eval-callbacks beg end)))
+  (jupyter-mlet* ((req (jupyter-message-subscribed
+                        (jupyter-execute-request
+                         :code str
+                         :store-history nil
+                         :handlers '("input_request"))
+                        (jupyter-eval-callbacks beg end))))
+    req))
 
 (defun jupyter-eval-string-command (str)
   "Evaluate STR using the `jupyter-current-client'.
@@ -1357,16 +1302,15 @@ DETAIL is the detail level to use for the request and defaults to
   (unless (and jupyter-current-client
                (object-of-class-p jupyter-current-client 'jupyter-kernel-client))
     (error "Need a valid `jupyter-current-client'"))
-  (cl-labels ((req (reply-cb)
-                   (jupyter-inspect-request
-                    :code code :pos pos :detail detail
-                    :callbacks `(("inspect_reply" ,reply-cb)))))
-    (let ((client jupyter-current-client)
-          (reply-received nil))
-      (jupyter-wait-until-idle
-       (req
-        (lambda (msg)
-          (setq reply-received t)
+  (condition-case nil
+      (jupyter-mlet* ((msgs
+                       (jupyter-messages
+                        (jupyter-inspect-request
+                         :code code
+                         :pos pos
+                         :detail detail)
+                        jupyter-long-timeout)))
+        (when-let* ((msg (jupyter-find-message "inspect_reply" msgs)))
           (jupyter-with-message-content msg
               (status found)
             (if (and (equal status "ok") (eq found t))
@@ -1405,10 +1349,8 @@ DETAIL is the detail level to use for the request and defaults to
                          (insert code)
                          (goto-char pos)
                          (symbol-at-point)))))))
-       ;; Longer timeout for the Julia kernel
-       jupyter-long-timeout)
-      (unless reply-received
-        (message "Inspect timed out")))))
+    (jupyter-timeout-before-idle
+     (message "Inspect timed out"))))
 
 (define-jupyter-client-handler inspect-reply)
 
@@ -1711,11 +1653,13 @@ candidates can be used for PREFIX."
 Run FUN when the completions are available."
   (cl-destructuring-bind (code pos)
       (jupyter-code-context 'completion)
-    (jupyter-complete-request
-     :code code
-     :pos pos
-     :handlers nil
-     :callbacks `(("complete_reply" ,fun)))))
+    (jupyter-mlet* ((req (jupyter-message-subscribed
+                          (jupyter-complete-request
+                           :code code
+                           :pos pos
+                           :handlers nil)
+                          `(("complete_reply" ,fun)))))
+      req)))
 
 (defvar company-minimum-prefix-length)
 (defvar company-timer)
@@ -1865,28 +1809,23 @@ name are changed to \"-\" and all uppercase characters lowered."
   ;; TODO: This needs to be reset when a client is disconnected.  This
   ;; should be part of the connection process.
   (or (oref client kernel-info)
-      (cl-labels ((req (reply-cb)
-                       (jupyter-with-client client
-                         (jupyter-kernel-info-request
-                          :handlers nil
-                          :callbacks `(("kernel_info_reply" ,reply-cb))))))
-        (let (reply-received)
-          (message "Requesting kernel info...")
-          (jupyter-wait-until-idle
-           (req
-            (lambda (msg)
-              (setq reply-received t)
+      (progn
+        (message "Requesting kernel info...")
+        (let ((jupyter-current-client client))
+          (jupyter-mlet* ((msgs (jupyter-messages
+                                 (jupyter-kernel-info-request
+                                  :handlers nil)
+                                 (* 3 jupyter-long-timeout))))
+            (message "Requesting kernel info...done")
+            (let ((msg (jupyter-find-message "kernel_info_reply" msgs)))
               (oset client kernel-info (jupyter-message-content msg))
               ;; Canonicalize language name to a language symbol for
               ;; method dispatching
               (let* ((info (plist-get (oref client kernel-info) :language_info))
-                     (lang (plist-get info :name)))
-                (plist-put info :name (intern (jupyter-canonicalize-language-string lang))))
-              ))
-           (* 3 jupyter-long-timeout))
-          (if reply-received (message "Requesting kernel info...done")
-            (error "Kernel did not respond to kernel-info request"))
-          (oref client kernel-info)))))
+                     (lang (plist-get info :name))
+                     (name (jupyter-canonicalize-language-string lang)))
+                (plist-put info :name (intern name))))))
+        (oref client kernel-info))))
 
 (defun jupyter-kernel-language-mode-properties (client)
   "Get the `major-mode' info of CLIENT's kernel language.

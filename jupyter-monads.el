@@ -390,87 +390,155 @@ Ex. Subscribe to a publisher and unsubscribe after receiving two
             (funcall jupyter-current-io (jupyter-content value))
             nil)))
 
+(define-error 'jupyter-timeout-before-idle "Timeout before idle")
+
+(defun jupyter-idle (io-req &optional timeout)
+  "Return an IO action that returns the request wrapped in IO-REQ
+when it is idle."
+  (make-jupyter-delayed
+   :value (lambda ()
+            (jupyter-mlet* ((req io-req))
+              (or (jupyter-wait-until-idle req timeout)
+                  (signal 'jupyter-timeout-before-idle (list req)))
+              req))))
+
+(defun jupyter-messages (io-req &optional timeout)
+  (make-jupyter-delayed
+   :value (lambda ()
+            (jupyter-mlet* ((req (jupyter-idle io-req timeout)))
+              (jupyter-request-messages req)))))
+
+(defun jupyter-find-message (msg-type msgs)
+  (cl-find-if
+   (lambda (msg)
+     (let ((type (jupyter-message-type msg)))
+       (string= type msg-type)))
+   msgs))
+
+(defun jupyter-reply-message (msgs)
+  (cl-find-if
+   (lambda (msg)
+     (let ((type (jupyter-message-type msg)))
+       (string-suffix-p "_reply" type)))
+   msgs))
+
+(defun jupyter-message-subscribed (io-req cbs)
+  (make-jupyter-delayed
+   :value (lambda ()
+            (jupyter-mlet* ((req io-req))
+              (jupyter-run-with-io
+                  (jupyter-request-message-publisher req)
+                (jupyter-subscribe
+                  (jupyter-subscriber
+                    (lambda (msg)
+                      (when-let*
+                          ((msg-type (jupyter-message-type msg))
+                           (fn (car (alist-get msg-type cbs nil nil #'string=))))
+                        (funcall fn msg))))))
+              req))))
+
 ;;; Request
 
 (defsubst jupyter-timeout (req)
   (list 'timeout req))
 
-;; When a request is bound it returns a list containing the request.
-;; FIXME: A client monad.  What would be bound to it?  A request
-;; message?  What would be a values of the client monad?  Requests?
+(defun jupyter-client-subscribed (io-req)
+  (make-jupyter-delayed
+   :value (lambda ()
+            (jupyter-with-client jupyter-current-client
+              (let ((client jupyter-current-client))
+                (jupyter-mlet* ((req io-req))
+                  (jupyter-run-with-io
+                      (jupyter-request-message-publisher req)
+                    (jupyter-subscribe
+                      (jupyter-subscriber
+                        (lambda (msg)
+                          (let ((channel (plist-get msg :channel)))
+                            (jupyter-handle-message client channel msg))))))
+                  req))))))
+
+(defun jupyter-message-publisher (req)
+  (let ((id (jupyter-request-id req)))
+    (jupyter-publisher
+      (lambda (msg)
+        (cond
+         ((and (jupyter-request-idle-p req)
+               ;; A status message after a request goes idle
+               ;; means there is a new request and there will,
+               ;; theoretically, be no more messages for the
+               ;; idle one.
+               ;;
+               ;; FIXME: Is that true? Figure out the difference
+               ;; between a status: busy and a status: idle
+               ;; message.
+               (string= (jupyter-message-type msg) "status"))
+          ;; What happens to the subscriber references of this
+          ;; publisher after it unsubscribes?  They remain until
+          ;; the publisher itself is no longer accessible.
+          (jupyter-unsubscribe))
+         ;; TODO: `jupyter-message-parent-id' -> `jupyter-parent-id'
+         ;; and the like.
+         ((string= id (jupyter-message-parent-id msg))
+          (cl-callf nconc (jupyter-request-messages req) (list msg))
+          (when (or (jupyter-message-status-idle-p msg)
+                    ;; Jupyter protocol 5.1, IPython
+                    ;; implementation 7.5.0 doesn't give
+                    ;; status: busy or status: idle messages
+                    ;; on kernel-info-requests.  Whereas
+                    ;; IPython implementation 6.5.0 does.
+                    ;; Seen on Appveyor tests.
+                    ;;
+                    ;; TODO: May be related
+                    ;; jupyter/notebook#3705 as the problem
+                    ;; does happen after a kernel restart
+                    ;; when testing.
+                    (string= (jupyter-message-type msg) "kernel_info_reply")
+                    ;; No idle message is received after a
+                    ;; shutdown reply so consider REQ as
+                    ;; having received an idle message in
+                    ;; this case.
+                    (string= (jupyter-message-type msg) "shutdown_reply"))
+            (setf (jupyter-request-idle-p req) t))
+          (jupyter-content
+           (cl-list* :parent-request req msg))))))))
+
+(defun jupyter--request (type content)
+  (let ((ih jupyter-inhibit-handlers))
+    (make-jupyter-delayed
+     :value
+     (lambda ()
+       (let* ((ch (if (member type '("input_reply" "input_request"))
+                      "stdin"
+                    "shell"))
+              (req (jupyter-generate-request
+                    jupyter-current-client
+                    :type type
+                    :content content
+                    :client jupyter-current-client
+                    ;; Anything sent to stdin is a reply not a request
+                    ;; so consider the "request" completed.
+                    :idle-p (string= ch "stdin")
+                    :inhibited-handlers ih)))
+         (setf (jupyter-request-message-publisher req)
+               (jupyter-message-publisher req))
+         (jupyter-run-with-io jupyter-current-io
+           (jupyter-do
+             (jupyter-subscribe
+               (jupyter-request-message-publisher req))
+             (jupyter-publish
+               (list 'send ch type content
+                     (jupyter-request-id req)))))
+         (when (string= type "execute")
+           (jupyter-server-mode-set-client jupyter-current-client))
+         req)))))
+
 (cl-defun jupyter-request (type &rest content)
   "Return an IO action that sends a `jupyter-request'.
 TYPE is the message type of the message that CONTENT, a property
 list, represents."
   (declare (indent 1))
-  ;; Build up a request and return an I/O action that sends it.
-  (let* ((msgs-pub
-          (lambda (req)
-            (let ((id (jupyter-request-id req)))
-              (lambda (msg)
-                (cond
-                 ((and (jupyter-request-idle-p req)
-                       ;; A status message after a request goes idle
-                       ;; means there is a new request and there will,
-                       ;; theoretically, be no more messages for the
-                       ;; idle one.
-                       ;;
-                       ;; FIXME: Is that true? Figure out the difference
-                       ;; between a status: busy and a status: idle
-                       ;; message.
-                       (string= (jupyter-message-type msg) "status"))
-                  ;; What happens to the subscriber references of this
-                  ;; publisher after it unsubscribes?  They remain until
-                  ;; the publisher itself is no longer accessible.
-                  (jupyter-unsubscribe))
-                 ;; TODO: `jupyter-message-parent-id' -> `jupyter-parent-id'
-                 ;; and the like.
-                 ((string= id (jupyter-message-parent-id msg))
-                  (cl-callf nconc (jupyter-request-messages req) (list msg))
-                  (when (or (jupyter-message-status-idle-p msg)
-                            ;; Jupyter protocol 5.1, IPython
-                            ;; implementation 7.5.0 doesn't give
-                            ;; status: busy or status: idle messages
-                            ;; on kernel-info-requests.  Whereas
-                            ;; IPython implementation 6.5.0 does.
-                            ;; Seen on Appveyor tests.
-                            ;;
-                            ;; TODO: May be related
-                            ;; jupyter/notebook#3705 as the problem
-                            ;; does happen after a kernel restart
-                            ;; when testing.
-                            (string= (jupyter-message-type msg) "kernel_info_reply")
-                            ;; No idle message is received after a
-                            ;; shutdown reply so consider REQ as
-                            ;; having received an idle message in
-                            ;; this case.
-                            (string= (jupyter-message-type msg) "shutdown_reply"))
-                    (setf (jupyter-request-idle-p req) t))
-                  (jupyter-content
-                   (cl-list* :parent-request req msg))))))))
-         (ch (if (member type '("input_reply" "input_request"))
-                 "stdin"
-               "shell")))
-    (make-jupyter-delayed
-     :value
-     (lambda ()
-       (let* ((req (jupyter-generate-request
-                    jupyter-current-client
-                    :type type
-                    :content content))
-              (req-msgs-pub
-               (jupyter-publisher
-                 (funcall msgs-pub req)))
-              (req-complete-pub (jupyter-publisher)))
-         ;; Anything sent to stdin is a reply not a request so consider the
-         ;; "request" completed.
-         (setf (jupyter-request-idle-p req) (string= ch "stdin"))
-         (jupyter-mlet* ((_ (jupyter-subscribe req-msgs-pub))
-                         (_ (jupyter-publish (list 'send ch type content (jupyter-request-id req)))))
-           ;; FIXME: Return the request for now, but use req-complete-pub
-           ;; (or something better) later on so that an incomplete request
-           ;; isn't accessible until it is completed.
-           (list req-msgs-pub req)))))))
+  (jupyter-client-subscribed
+   (jupyter--request type content)))
 
 (provide 'jupyter-monads)
 

@@ -445,6 +445,7 @@ types to callback functions a client should call."
   (idle-p nil)
   (last-message nil)
   (messages nil)
+  (message-publisher nil)
   (inhibited-handlers nil)
   (callbacks nil))
 
