@@ -71,11 +71,9 @@
   :tags '(callbacks)
   (jupyter-with-echo-client client
     (let ((req (jupyter-send client "execute_request" :code "foo")))
-      (ert-info ("Blocking callbacks")
-        (jupyter-wait-until-idle req)
-        (should (jupyter-request-idle-p req)))
-      (ert-info ("Error after idle message has been received")
-        (should-error (jupyter-add-callback req "status" #'identity))))))
+      (should-not (jupyter-request-idle-p req))
+      (jupyter-wait-until-idle req)
+      (should (jupyter-request-idle-p req)))))
 
 (ert-deftest jupyter-callbacks ()
   :tags '(callbacks)

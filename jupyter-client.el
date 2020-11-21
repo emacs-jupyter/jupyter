@@ -607,8 +607,9 @@ within TIMEOUT.  Note that if no TIMEOUT is given, it defaults to
 If PROGRESS-MSG is non-nil, it is a message string to display for
 reporting progress to the user while waiting."
   (or (jupyter-request-idle-p req)
-      (jupyter-wait-until req "status"
-        #'jupyter-message-status-idle-p timeout progress-msg)))
+      (jupyter-with-timeout
+          (progress-msg (or timeout jupyter-default-timeout))
+        (jupyter-request-idle-p req))))
 
 (defun jupyter-wait-until-received (msg-type req &optional timeout progress-msg)
   "Wait until a message of a certain type is received for a request.
