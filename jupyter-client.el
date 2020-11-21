@@ -881,6 +881,8 @@ text/plain representation."
     (when-let* ((msg (jupyter-find-message "execute_result" msgs)))
       (jupyter-message-data msg (or mime :text/plain)))))
 
+(defvar jupyter--eval-insert-execute-result nil)
+
 (defun jupyter-eval-result-callbacks (beg end)
   "Return a plist containing callbacks used to display evaluation results.
 The plist contains default callbacks for the :execute-reply,
@@ -932,34 +934,52 @@ and END or in pop-up buffers/frames.  See
                     (message evalue)
                   (message "%s: %s" ename evalue)))))))
         ("execute_result"
-         ,(lambda (msg)
-            (setq had-result t)
-            (jupyter-with-message-data msg
-                ((res text/plain)
-                 ;; Prefer to display the markdown representation if available.  The
-                 ;; IJulia kernel will return both plain text and markdown.
-                 (md text/markdown))
-              (let ((jupyter-pop-up-frame (jupyter-pop-up-frame-p "execute_result")))
-                (cond
-                 ((or md (null res))
-                  (jupyter-with-display-buffer "result" 'reset
-                    (jupyter-with-message-content msg (data metadata)
-                      (jupyter-insert data metadata))
-                    (goto-char (point-min))
-                    (jupyter-display-current-buffer-reuse-window)))
-                 (res
-                  (setq res (ansi-color-apply res))
+         ,(if jupyter--eval-insert-execute-result
+              (let ((pos (point-marker)))
+                (jupyter-message-lambda ((res text/plain))
+                  (when res
+                    (setq res (ansi-color-apply res))
+                    (with-current-buffer (marker-buffer pos)
+                      (save-excursion
+                        (cond
+                         (region
+                          (goto-char (car region))
+                          (delete-region (car region) (cdr region)))
+                         (t
+                          (goto-char pos)
+                          (end-of-line)
+                          (insert "\n")))
+                        (set-marker pos nil)
+                        (insert res)
+                        (when region (push-mark)))))))
+            (lambda (msg)
+              (setq had-result t)
+              (jupyter-with-message-data msg
+                  ((res text/plain)
+                   ;; Prefer to display the markdown representation if available.  The
+                   ;; IJulia kernel will return both plain text and markdown.
+                   (md text/markdown))
+                (let ((jupyter-pop-up-frame (jupyter-pop-up-frame-p "execute_result")))
                   (cond
-                   ((funcall display-overlay res))
-                   ((jupyter-line-count-greater-p
-                     res jupyter-eval-short-result-max-lines)
+                   ((or md (null res))
                     (jupyter-with-display-buffer "result" 'reset
-                      (insert res)
+                      (jupyter-with-message-content msg (data metadata)
+                        (jupyter-insert data metadata))
                       (goto-char (point-min))
                       (jupyter-display-current-buffer-reuse-window)))
-                   (t
-                    (funcall jupyter-eval-short-result-display-function
-                             (format "%s" res))))))))))
+                   (res
+                    (setq res (ansi-color-apply res))
+                    (cond
+                     ((funcall display-overlay res))
+                     ((jupyter-line-count-greater-p
+                       res jupyter-eval-short-result-max-lines)
+                      (jupyter-with-display-buffer "result" 'reset
+                        (insert res)
+                        (goto-char (point-min))
+                        (jupyter-display-current-buffer-reuse-window)))
+                     (t
+                      (funcall jupyter-eval-short-result-display-function
+                               (format "%s" res)))))))))))
         ("display_data"
          ,(lambda (msg)
             (jupyter-with-message-content msg (data metadata)
@@ -1063,30 +1083,10 @@ representation of the results in the current buffer."
   (interactive "P")
   (let* ((region (when (use-region-p)
                    (car (region-bounds))))
-         (req (jupyter-eval-region
-               (or (car region) (line-beginning-position))
-               (or (cdr region) (line-end-position)))))
-    (prog1 req
-      (when insert
-        (setf (alist-get "execute_result" (jupyter-request-callbacks req)
-                         nil nil #'string=)
-              (let ((pos (point-marker)))
-                (jupyter-message-lambda ((res text/plain))
-                  (when res
-                    (setq res (ansi-color-apply res))
-                    (with-current-buffer (marker-buffer pos)
-                      (save-excursion
-                        (cond
-                         (region
-                          (goto-char (car region))
-                          (delete-region (car region) (cdr region)))
-                         (t
-                          (goto-char pos)
-                          (end-of-line)
-                          (insert "\n")))
-                        (set-marker pos nil)
-                        (insert res)
-                        (when region (push-mark))))))))))))
+         (jupyter--eval-insert-execute-result insert))
+    (jupyter-eval-region
+     (or (car region) (line-beginning-position))
+     (or (cdr region) (line-end-position)))))
 
 (defun jupyter-load-file (file)
   "Send the contents of FILE using `jupyter-current-client'."
