@@ -792,12 +792,11 @@ user.  Otherwise `read-from-minibuffer' is used."
                    (quit ""))))
       (unwind-protect
           (jupyter-with-client client
-            (jupyter-input-reply :value value))
+            (jupyter-mlet* ((_ (jupyter-input-reply
+                                :value value)))))
         (when (eq password t)
           (clear-string value)))
       value)))
-
-(defalias 'jupyter-handle-input-reply 'jupyter-handle-input-request)
 
 ;;;; Evaluation
 

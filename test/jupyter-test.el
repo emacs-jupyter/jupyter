@@ -425,18 +425,17 @@
           (should-not (null res))
           (should (json-plist-p res))
           (should (string= (jupyter-message-type res) "execute_reply")))))
-    ;; FIXME
-    ;; (ert-info ("Input")
-    ;;   (cl-letf (((symbol-function 'read-from-minibuffer)
-    ;;              (lambda (_prompt &rest _args) "foo")))
-    ;;     (jupyter-mlet* ((msgs (jupyter-messages
-    ;;                            (jupyter-execute-request :code "input('')")
-    ;;                            jupyter-long-timeout)))
-    ;;       (let ((res (jupyter-find-message "execute_result" msgs)))
-    ;;         (should-not (null res))
-    ;;         (should (json-plist-p res))
-    ;;         (should (string= (jupyter-message-type res) "execute_result"))
-    ;;         (should (equal (jupyter-message-data res :text/plain) "'foo'"))))))
+    (ert-info ("Input")
+      (cl-letf (((symbol-function 'read-from-minibuffer)
+                 (lambda (_prompt &rest _args) "foo")))
+        (jupyter-mlet* ((msgs (jupyter-messages
+                               (jupyter-execute-request :code "input('')")
+                               jupyter-long-timeout)))
+          (let ((res (jupyter-find-message "execute_result" msgs)))
+            (should-not (null res))
+            (should (json-plist-p res))
+            (should (string= (jupyter-message-type res) "execute_result"))
+            (should (equal (jupyter-message-data res :text/plain) "'foo'"))))))
     (ert-info ("Inspect")
       (jupyter-mlet* ((msgs (jupyter-messages
                              (jupyter-inspect-request
