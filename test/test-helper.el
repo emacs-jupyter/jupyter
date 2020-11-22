@@ -104,7 +104,8 @@ handling a message is always
         client "iopub" (jupyter-test-message req "status" (list :execution_state "busy")))
        (jupyter-handle-message client "shell" (jupyter-test-message req type content))
        (jupyter-handle-message
-        client "iopub" (jupyter-test-message req "status" (list :execution_state "idle")))))
+        client "iopub" (jupyter-test-message req "status" (list :execution_state "idle")))
+       (setf (jupyter-request-idle-p req) t)))
     req))
 
 (cl-defmethod jupyter-handle-message ((client jupyter-echo-client) _channel msg)
