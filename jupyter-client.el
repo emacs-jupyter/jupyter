@@ -485,71 +485,6 @@ longer connected to a kernel."
       (jupyter-run-with-io kaction-sub
         (jupyter-publish 'interrupt)))))
 
-;;; Message callbacks
-
-(defsubst jupyter--run-callbacks (req msg)
-  "Run REQ's MSG callbacks.
-See `jupyter-add-callback'."
-  (when-let (callbacks (and req (jupyter-request-callbacks req)))
-    ;; Callback for all message types
-    (when-let (f (alist-get t callbacks))
-      (funcall f msg))
-    (when-let (f (alist-get (jupyter-message-type msg) callbacks
-                            nil nil #'equal))
-      (funcall f msg))))
-
-(defun jupyter--add-callback (req msg-type cb)
-  "Helper function for `jupyter-add-callback'.
-REQ is a `jupyter-request' object, MSG-TYPE is one of the
-keywords corresponding to a received message type in
-`jupyter-message-types', and CB is the callback that will be run
-when MSG-TYPE is received for REQ."
-  (unless (or (member msg-type jupyter-message-types)
-              ;; A msg-type of t means that FUNCTION is run for all messages
-              ;; associated with a request.
-              (eq msg-type t))
-    (error "Not a valid message type (`%s')" msg-type))
-  (add-function
-   :after (alist-get
-           msg-type (jupyter-request-callbacks req)
-           #'identity nil #'equal)
-   cb))
-
-(defun jupyter-add-callback (req msg-type cb &rest callbacks)
-  "Add a callback to run when a message is received for a request.
-REQ is a `jupyter-request' returned by one of the request methods
-of a kernel client.  MSG-TYPE is one of the keys in
-`jupyter-message-types'.  CB is the callback function to run when
-a message with MSG-TYPE is received for REQ.
-
-MSG-TYPE can also be a list, in which case run CB for every
-MSG-TYPE in the list.  If MSG-TYPE is t, run CB for every message
-received for REQ.
-
-Multiple callbacks can be added for the same MSG-TYPE.  The
-callbacks will be called in the order they were added.
-
-Any additional arguments to `jupyter-add-callback' are
-interpreted as additional CALLBACKS to add to REQ.  So to add
-multiple callbacks you would do
-
-    (jupyter-add-callback
-        (jupyter-execute-request :code \"1 + 2\")
-      \"status\" (lambda (msg) ...)
-      \"execute_reply\" (lambda (msg) ...)
-      \"execute_result\" (lambda (msg) ...))"
-  (declare (indent 1))
-  (if (jupyter-request-idle-p req)
-      (error "Request already received idle message")
-    (while (and msg-type cb)
-      (cl-check-type cb function "Callback should be a function")
-      (if (listp msg-type)
-          (cl-loop for mt in msg-type
-                   do (jupyter--add-callback req mt cb))
-        (jupyter--add-callback req msg-type cb))
-      (setq msg-type (pop callbacks)
-            cb (pop callbacks)))))
-
 ;;; Waiting for messages
 
 (defvar jupyter--already-waiting-p nil)
@@ -712,22 +647,6 @@ waiting."
      (oset client execution-count
            (1+ (jupyter-message-get msg :execution_count))))))
 
-(defsubst jupyter--message-completes-request-p (msg)
-  (or (jupyter-message-status-idle-p msg)
-      ;; Jupyter protocol 5.1, IPython implementation 7.5.0
-      ;; doesn't give status: busy or status: idle messages on
-      ;; kernel-info-requests.  Whereas IPython implementation
-      ;; 6.5.0 does.  Seen on Appveyor tests.
-      ;;
-      ;; TODO: May be related jupyter/notebook#3705 as the
-      ;; problem does happen after a kernel restart when
-      ;; testing.
-      (string= (jupyter-message-type msg) "kernel_info_reply")
-      ;; No idle message is received after a shutdown reply so
-      ;; consider REQ as having received an idle message in
-      ;; this case.
-      (string= (jupyter-message-type msg) "shutdown_reply")))
-
 (cl-defgeneric jupyter-handle-message ((client jupyter-kernel-client) channel msg)
   "Process a message received on CLIENT's CHANNEL.
 CHANNEL is the Jupyter channel that MSG was received on by
@@ -758,14 +677,7 @@ completed, requests from CLIENT's request table."
           (req (plist-get msg :parent-request)))
       (jupyter--update-execution-state client msg req)
       (cond
-       (req
-        (setf (jupyter-request-last-message req) msg)
-        (unwind-protect
-            (jupyter--run-callbacks req msg)
-          (unwind-protect
-              (jupyter--run-handler-maybe client channel msg req)
-            (when (jupyter--message-completes-request-p msg)
-              (setf (jupyter-request-idle-p req) t)))))
+       (req (jupyter--run-handler-maybe client channel msg req))
        ((or (jupyter-get client 'jupyter-include-other-output)
             ;; Always handle a startup message
             (jupyter-message-status-starting-p msg))

@@ -434,9 +434,8 @@ request is also kept track of.
 
 Each request contains: a message ID, a request type, a request
 message, a time sent, a last message received by the client that
-sent it, a list of message types that tell the client to not call
-the handler methods of those types, and an alist mapping message
-types to callback functions a client should call."
+sent it, and a list of message types that tell the client to not
+call the handler methods of those types."
   (id (jupyter-new-uuid) :read-only t)
   (type nil :read-only t)
   (content nil :read-only t)
@@ -446,8 +445,7 @@ types to callback functions a client should call."
   (last-message nil)
   (messages nil)
   (message-publisher nil)
-  (inhibited-handlers nil)
-  (callbacks nil))
+  (inhibited-handlers nil))
 
 ;;; Connecting to a kernel's channels
 

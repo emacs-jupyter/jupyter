@@ -362,16 +362,13 @@ and `:msg_type'."
        :content (list 'message-part content nil)
        :buffers buffers))))
 
-(defvar jupyter-current-client)
-
 (defmacro jupyter--defun (name args &rest body)
   (declare (indent defun))
   (let ((has-kws (memq '&key args)))
     `(cl-defun ,(intern (format "jupyter-%s" name))
          ,(append args
                   (if (not has-kws) (list '&key))
-                  (list (list 'callbacks nil)
-                        (list 'handlers t)))
+                  (list (list 'handlers t)))
        (let ((jupyter-inhibit-handlers
               (pcase handlers
                 ('t nil)

@@ -479,6 +479,7 @@ when it is idle."
          ;; TODO: `jupyter-message-parent-id' -> `jupyter-parent-id'
          ;; and the like.
          ((string= id (jupyter-message-parent-id msg))
+          (setf (jupyter-request-last-message req) msg)
           (cl-callf nconc (jupyter-request-messages req) (list msg))
           (when (or (jupyter-message-status-idle-p msg)
                     ;; Jupyter protocol 5.1, IPython
