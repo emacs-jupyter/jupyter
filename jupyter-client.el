@@ -1182,52 +1182,49 @@ DETAIL is the detail level to use for the request and defaults to
                (object-of-class-p jupyter-current-client 'jupyter-kernel-client))
     (error "Need a valid `jupyter-current-client'"))
   (condition-case nil
-      (jupyter-mlet* ((msgs
-                       (jupyter-messages
-                        (jupyter-inspect-request
-                         :code code
-                         :pos pos
-                         :detail detail)
-                        jupyter-long-timeout)))
-        (when-let* ((msg (jupyter-find-message "inspect_reply" msgs)))
-          (jupyter-with-message-content msg
-              (status found)
-            (if (and (equal status "ok") (eq found t))
-                (let ((inhibit-read-only t))
-                  (if (buffer-live-p buffer)
-                      (with-current-buffer buffer
-                        ;; Insert MSG here so that `jupyter-insert'
-                        ;; has access to the message type.  This is
-                        ;; needed since the python kernel and others
-                        ;; may use this information.
-                        (jupyter-insert msg)
-                        (current-buffer))
-                    (with-help-window (help-buffer)
-                      (with-current-buffer standard-output
-                        (setq other-window-scroll-buffer (current-buffer))
-                        (setq jupyter-current-client client)
-                        (help-setup-xref
-                         (list
-                          ;; Don't capture a strong reference to the
-                          ;; client object since we don't know when
-                          ;; this reference will be cleaned up.
-                          (let ((ref (jupyter-weak-ref client)))
-                            (lambda ()
-                              (let ((jupyter-current-client
-                                     (jupyter-weak-ref-resolve ref)))
-                                (if jupyter-current-client
-                                    (jupyter-inspect code pos nil detail)
-                                  ;; TODO: Skip over this xref, need
-                                  ;; to figure out if going forward or
-                                  ;; backward first.
-                                  (error "Client has been removed"))))))
-                         nil)
-                        (jupyter-insert msg)))))
-              (message "Nothing found for %s"
-                       (with-temp-buffer
-                         (insert code)
-                         (goto-char pos)
-                         (symbol-at-point)))))))
+      (jupyter-mlet* ((msg (jupyter-reply-message
+                            (jupyter-inspect-request
+                             :code code
+                             :pos pos
+                             :detail detail))))
+        (jupyter-with-message-content msg
+            (status found)
+          (if (and (equal status "ok") (eq found t))
+              (let ((inhibit-read-only t))
+                (if (buffer-live-p buffer)
+                    (with-current-buffer buffer
+                      ;; Insert MSG here so that `jupyter-insert'
+                      ;; has access to the message type.  This is
+                      ;; needed since the python kernel and others
+                      ;; may use this information.
+                      (jupyter-insert msg)
+                      (current-buffer))
+                  (with-help-window (help-buffer)
+                    (with-current-buffer standard-output
+                      (setq other-window-scroll-buffer (current-buffer))
+                      (setq jupyter-current-client client)
+                      (help-setup-xref
+                       (list
+                        ;; Don't capture a strong reference to the
+                        ;; client object since we don't know when
+                        ;; this reference will be cleaned up.
+                        (let ((ref (jupyter-weak-ref client)))
+                          (lambda ()
+                            (let ((jupyter-current-client
+                                   (jupyter-weak-ref-resolve ref)))
+                              (if jupyter-current-client
+                                  (jupyter-inspect code pos nil detail)
+                                ;; TODO: Skip over this xref, need
+                                ;; to figure out if going forward or
+                                ;; backward first.
+                                (error "Client has been removed"))))))
+                       nil)
+                      (jupyter-insert msg)))))
+            (message "Nothing found for %s"
+                     (with-temp-buffer
+                       (insert code)
+                       (goto-char pos)
+                       (symbol-at-point))))))
     (jupyter-timeout-before-idle
      (message "Inspect timed out"))))
 
@@ -1686,19 +1683,18 @@ name are changed to \"-\" and all uppercase characters lowered."
       (progn
         (message "Requesting kernel info...")
         (let ((jupyter-current-client client))
-          (jupyter-mlet* ((msgs (jupyter-messages
-                                 (jupyter-kernel-info-request
-                                  :handlers nil)
-                                 (* 3 jupyter-long-timeout))))
+          (jupyter-mlet* ((msg (jupyter-reply-message
+                                (jupyter-kernel-info-request
+                                 :handlers nil)
+                                (* 3 jupyter-long-timeout))))
             (message "Requesting kernel info...done")
-            (let ((msg (jupyter-find-message "kernel_info_reply" msgs)))
-              (oset client kernel-info (jupyter-message-content msg))
-              ;; Canonicalize language name to a language symbol for
-              ;; method dispatching
-              (let* ((info (plist-get (oref client kernel-info) :language_info))
-                     (lang (plist-get info :name))
-                     (name (jupyter-canonicalize-language-string lang)))
-                (plist-put info :name (intern name))))))
+            (oset client kernel-info (jupyter-message-content msg))
+            ;; Canonicalize language name to a language symbol for
+            ;; method dispatching
+            (let* ((info (plist-get (oref client kernel-info) :language_info))
+                   (lang (plist-get info :name))
+                   (name (jupyter-canonicalize-language-string lang)))
+              (plist-put info :name (intern name)))))
         (oref client kernel-info))))
 
 (defun jupyter-kernel-language-mode-properties (client)

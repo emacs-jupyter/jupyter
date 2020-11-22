@@ -122,19 +122,18 @@ Make the character after `point' invisible."
 If the Pkg prompt can't be retrieved from the kernel, return
 nil."
   (let ((prompt-code "import Pkg; Pkg.REPLMode.promptf()"))
-    (jupyter-mlet* ((msgs
-                     (jupyter-messages
+    (jupyter-mlet* ((msg
+                     (jupyter-reply-message
                       (jupyter-execute-request
                        :code ""
                        :silent t
                        :user-expressions (list :prompt prompt-code)))))
-      (when-let* ((msg (jupyter-find-message "execute_reply" msgs)))
-        (cl-destructuring-bind (&key prompt &allow-other-keys)
-            (jupyter-message-get msg :user_expressions)
-          (cl-destructuring-bind (&key status data &allow-other-keys)
-              prompt
-            (when (equal status "ok")
-              (plist-get data :text/plain))))))))
+      (cl-destructuring-bind (&key prompt &allow-other-keys)
+          (jupyter-message-get msg :user_expressions)
+        (cl-destructuring-bind (&key status data &allow-other-keys)
+            prompt
+          (when (equal status "ok")
+            (plist-get data :text/plain)))))))
 
 (cl-defmethod jupyter-repl-after-change ((_type (eql insert)) beg _end
                                          &context (jupyter-lang julia))

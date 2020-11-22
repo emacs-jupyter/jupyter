@@ -1792,28 +1792,27 @@ it."
   "Synchronize the `jupyter-current-client's kernel state.
 Also update the cell count of the current REPL input prompt using
 the updated state."
-  (jupyter-mlet* ((msgs (jupyter-messages
-                         (jupyter-execute-request
-                          :code ""
-                          :silent t
-                          :handlers nil)
-                         ;; Waiting longer here to account for initial
-                         ;; startup of the Jupyter kernel.  Sometimes
-                         ;; the idle message won't be received if
-                         ;; another long running execute request is
-                         ;; sent right after.
-                         jupyter-long-timeout)))
-    (when-let* ((msg (jupyter-find-message "execute_reply" msgs)))
-      (jupyter-with-message-content msg (execution_count)
-        (let ((client jupyter-current-client))
-          (oset client execution-count (1+ execution_count))
-          (unless (equal (jupyter-execution-state client) "busy")
-            ;; Set the cell count and update the prompt
-            (jupyter-with-repl-buffer client
-              (save-excursion
-                (goto-char (point-max))
-                (jupyter-repl-update-cell-count
-                 (oref client execution-count))))))))))
+  (jupyter-mlet* ((msg (jupyter-reply-message
+                        (jupyter-execute-request
+                         :code ""
+                         :silent t
+                         :handlers nil)
+                        ;; Waiting longer here to account for initial
+                        ;; startup of the Jupyter kernel.  Sometimes
+                        ;; the idle message won't be received if
+                        ;; another long running execute request is
+                        ;; sent right after.
+                        jupyter-long-timeout)))
+    (jupyter-with-message-content msg (execution_count)
+      (let ((client jupyter-current-client))
+        (oset client execution-count (1+ execution_count))
+        (unless (equal (jupyter-execution-state client) "busy")
+          ;; Set the cell count and update the prompt
+          (jupyter-with-repl-buffer client
+            (save-excursion
+              (goto-char (point-max))
+              (jupyter-repl-update-cell-count
+               (oref client execution-count)))))))))
 
 ;;; `jupyter-repl-interaction-mode'
 

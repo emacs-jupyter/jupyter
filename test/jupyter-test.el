@@ -382,26 +382,23 @@
   :tags '(client messages)
   (jupyter-test-with-python-client client
     (ert-info ("Kernel info")
-      (jupyter-mlet* ((msgs (jupyter-messages
+      (jupyter-mlet* ((res (jupyter-reply-message
                              (jupyter-kernel-info-request))))
-        (let ((res (jupyter-reply-message msgs)))
-          (should res)
-          (should (json-plist-p res))
-          (should (string= (jupyter-message-type res) "kernel_info_reply")))))
+        (should res)
+        (should (json-plist-p res))
+        (should (string= (jupyter-message-type res) "kernel_info_reply"))))
     (ert-info ("Comm info")
-      (jupyter-mlet* ((msgs (jupyter-messages
-                             (jupyter-comm-info-request))))
-        (let ((res (jupyter-reply-message msgs)))
-          (should-not (null res))
-          (should (json-plist-p res))
-          (should (string= (jupyter-message-type res) "comm_info_reply")))))
+      (jupyter-mlet* ((res (jupyter-reply-message
+                            (jupyter-comm-info-request))))
+        (should-not (null res))
+        (should (json-plist-p res))
+        (should (string= (jupyter-message-type res) "comm_info_reply"))))
     (ert-info ("Execute")
-      (jupyter-mlet* ((msgs (jupyter-messages
+      (jupyter-mlet* ((res (jupyter-reply-message
                    (jupyter-execute-request :code "y = 1 + 2"))))
-        (let ((res (jupyter-reply-message msgs)))
-          (should-not (null res))
-          (should (json-plist-p res))
-          (should (string= (jupyter-message-type res) "execute_reply")))))
+        (should-not (null res))
+        (should (json-plist-p res))
+        (should (string= (jupyter-message-type res) "execute_reply"))))
     (ert-info ("Input")
       (cl-letf (((symbol-function 'read-from-minibuffer)
                  (lambda (_prompt &rest _args) "foo")))
@@ -414,40 +411,36 @@
             (should (string= (jupyter-message-type res) "execute_result"))
             (should (equal (jupyter-message-data res :text/plain) "'foo'"))))))
     (ert-info ("Inspect")
-      (jupyter-mlet* ((msgs (jupyter-messages
+      (jupyter-mlet* ((res (jupyter-reply-message
                              (jupyter-inspect-request
                               :code "list((1, 2, 3))"
                               :pos 2
                               :detail 0))))
-        (let ((res (jupyter-reply-message msgs)))
-          (should-not (null res))
-          (should (json-plist-p res))
-          (should (string= (jupyter-message-type res) "inspect_reply")))))
+        (should-not (null res))
+        (should (json-plist-p res))
+        (should (string= (jupyter-message-type res) "inspect_reply"))))
     (ert-info ("Complete")
-      (jupyter-mlet* ((msgs (jupyter-messages
+      (jupyter-mlet* ((res (jupyter-reply-message
                              (jupyter-complete-request
                               :code "foo = lis"
                               :pos 8))))
-        (let ((res (jupyter-reply-message msgs)))
-          (should-not (null res))
-          (should (json-plist-p res))
-          (should (string= (jupyter-message-type res) "complete_reply")))))
+        (should-not (null res))
+        (should (json-plist-p res))
+        (should (string= (jupyter-message-type res) "complete_reply"))))
     (ert-info ("History")
-      (jupyter-mlet* ((msgs (jupyter-messages
+      (jupyter-mlet* ((msgs (jupyter-reply-message
                              (jupyter-history-request
                               :hist-access-type "tail" :n 2))))
-        (let ((res (jupyter-reply-message msgs)))
-          (should-not (null res))
-          (should (json-plist-p res))
-          (should (string= (jupyter-message-type res) "history_reply")))))
+        (should-not (null res))
+        (should (json-plist-p res))
+        (should (string= (jupyter-message-type res) "history_reply"))))
     (ert-info ("Is Complete")
-      (jupyter-mlet* ((msgs (jupyter-messages
+      (jupyter-mlet* ((msgs (jupyter-reply-message
                             (jupyter-is-complete-request
                              :code "for i in range(5):"))))
-        (let ((res (jupyter-reply-message msgs)))
-          (should-not (null res))
-          (should (json-plist-p res))
-          (should (string= (jupyter-message-type res) "is_complete_reply")))))
+        (should-not (null res))
+        (should (json-plist-p res))
+        (should (string= (jupyter-message-type res) "is_complete_reply"))))
     ;; TODO: Why does this fail now?
     ;; (ert-info ("Shutdown")
     ;;   (let ((res (jupyter-wait-until-received "shutdown_reply"

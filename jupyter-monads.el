@@ -415,12 +415,15 @@ when it is idle."
        (string= type msg-type)))
    msgs))
 
-(defun jupyter-reply-message (msgs)
-  (cl-find-if
-   (lambda (msg)
-     (let ((type (jupyter-message-type msg)))
-       (string-suffix-p "_reply" type)))
-   msgs))
+(defun jupyter-reply-message (io-req &optional timeout)
+  (make-jupyter-delayed
+   :value (lambda ()
+            (jupyter-mlet* ((msgs (jupyter-messages io-req timeout)))
+              (cl-find-if
+               (lambda (msg)
+                 (let ((type (jupyter-message-type msg)))
+                   (string-suffix-p "_reply" type)))
+               msgs)))))
 
 (defun jupyter-message-subscribed (io-req cbs)
   (make-jupyter-delayed
