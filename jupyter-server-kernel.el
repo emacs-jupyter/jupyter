@@ -177,10 +177,9 @@ Call the next method if ARGS does not contain :server."
 
 (defun jupyter-reauthenticate-websockets (server)
   "Re-authenticate WebSocket connections of SERVER."
-  (mapc (lambda (sub)
-          (jupyter-run-with-io sub
-            (jupyter-publish 'reauthenticate)))
-        (gethash server jupyter--reauth-subscribers)))
+  (when-let* ((pub (gethash server jupyter--reauth-subscribers)))
+    (jupyter-run-with-io pub
+      (jupyter-publish 'reauthenticate))))
 
 (cl-defmethod jupyter-websocket-io :around (thing)
   "Cache the I/O object of THING in `jupyter-io-cache'."
@@ -243,11 +242,15 @@ TODO The form of content each sends/consumes."
                          :content content))))
                 ('start (websocket-ensure-connected ws))
                 ('stop (websocket-close ws))))))))
-    (push (jupyter-subscriber
+    (unless (gethash server jupyter--reauth-subscribers)
+      (puthash server (jupyter-publisher) jupyter--reauth-subscribers))
+    (let ((pub (gethash server jupyter--reauth-subscribers)))
+      (jupyter-run-with-io pub
+        (jupyter-subscribe
+          (jupyter-subscriber
             (lambda (_reauth)
               (websocket-close ws)
-              (setq ws (funcall make-websocket))))
-          (gethash server jupyter--reauth-subscribers))
+              (setq ws (funcall make-websocket)))))))
     (jupyter-run-with-io msg-pub
       (jupyter-subscribe kernel-io))
     (list kernel-io
