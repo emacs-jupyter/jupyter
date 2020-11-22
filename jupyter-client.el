@@ -1682,7 +1682,7 @@ Run FUN when the completions are available."
 
 (defun jupyter-completion-at-point ()
   "Function to add to `completion-at-point-functions'."
-  (let ((prefix (jupyter-completion-prefix)) req)
+  (let ((prefix (jupyter-completion-prefix)))
     (when (and
            prefix jupyter-current-client
            ;; Don't try to send completion requests when the kernel is busy
@@ -1697,20 +1697,15 @@ Run FUN when the completions are available."
                    (< (length prefix) company-minimum-prefix-length))
           (jupyter-completion--company-idle-begin)))
       (when (jupyter-completion-prefetch-p prefix)
-        (setq jupyter-completion-cache nil
-              req (jupyter-completion-prefetch
-                   (lambda (msg) (setq jupyter-completion-cache
-                                       (list 'fetched prefix msg))))))
+        (setq jupyter-completion-cache nil)
+        (jupyter-completion-prefetch
+         (lambda (msg) (setq jupyter-completion-cache
+                        (list 'fetched prefix msg)))))
       (list
        (- (point) (length prefix)) (point)
        (completion-table-dynamic
         (lambda (_)
-          (when (and req (not (jupyter-request-idle-p req))
-                     (not (string= (jupyter-message-type
-                                    (jupyter-request-last-message req))
-                                   "complete_reply")))
-            ;; Introduce a delay so that we give a chance for the
-            ;; :complete-reply message to get handled.
+          (when (null jupyter-completion-cache)
             (sit-for 0.1))
           (when (eq (car jupyter-completion-cache) 'fetched)
             (jupyter-with-message-content (nth 2 jupyter-completion-cache)
