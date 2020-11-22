@@ -513,24 +513,6 @@ display for reporting progress to the user while waiting."
         (when timeout-spec
           (with-timeout-unsuspend timeout-spec))))))
 
-(defun jupyter-wait-until-startup (client &optional timeout progress-msg)
-  "Wait for CLIENT to receive a status: startup message.
-Return non-nil if CLIENT receives the message within TIMEOUT,
-otherwise nil.  TIMEOUT defaults to `jupyter-long-timeout'.
-
-If PROGRESS-MSG is non-nil, it should be a message string to
-display for reporting progress to the user while waiting."
-  (let* ((msg nil)
-         (check (lambda (_ m)
-                  (when (jupyter-message-status-starting-p m)
-                    (setq msg m)))))
-    (jupyter-add-hook client 'jupyter-iopub-message-hook check)
-    (unwind-protect
-        (jupyter-with-timeout
-            (progress-msg (or timeout jupyter-long-timeout))
-          msg)
-      (jupyter-remove-hook client 'jupyter-iopub-message-hook check))))
-
 (defun jupyter-wait-until-idle (req &optional timeout progress-msg)
   "Wait until a status: idle message is received for a request.
 REQ has the same meaning as in `jupyter-add-callback'.  If an idle
@@ -545,20 +527,6 @@ reporting progress to the user while waiting."
       (jupyter-with-timeout
           (progress-msg (or timeout jupyter-default-timeout))
         (jupyter-request-idle-p req))))
-
-(defun jupyter-wait-until-received (msg-type req &optional timeout progress-msg)
-  "Wait until a message of a certain type is received for a request.
-MSG-TYPE and REQ have the same meaning as their corresponding
-arguments in `jupyter-add-callback'.  If no message that matches
-MSG-TYPE is received for REQ within TIMEOUT seconds, return nil.
-Otherwise return the first message that matched MSG-TYPE.  Note
-that if no TIMEOUT is given, it defaults to
-`jupyter-default-timeout'.
-
-If PROGRESS-MSG is non-nil, it is a message string to display for
-reporting progress to the user while waiting."
-  (declare (indent 1))
-  (jupyter-wait-until req msg-type #'identity timeout progress-msg))
 
 (defun jupyter-idle-sync (req)
   "Return only when REQ has received a status: idle message."
@@ -693,9 +661,8 @@ user.  Otherwise `read-from-minibuffer' is used."
   ;; TODO: with-message-content -> with-content
   (jupyter-with-message-content msg (prompt password)
     (let ((value (condition-case nil
-                     ;; Disallow any `with-timeout's from timing out.  This
-                     ;; prevents any calls to `jupyter-wait-until-received' from
-                     ;; timing out when reading input.  See #35.
+                     ;; Disallow any `with-timeout's from timing out.
+                     ;; See #35.
                      (let ((timeout-spec (with-timeout-suspend)))
                        (unwind-protect
                            (if (eq password t) (read-passwd prompt)
