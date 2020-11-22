@@ -448,6 +448,9 @@ when it is idle."
             (jupyter-with-client jupyter-current-client
               (let ((client jupyter-current-client))
                 (jupyter-mlet* ((req io-req))
+                  (when (string= (jupyter-request-type req)
+                                 "execute_request")
+                    (jupyter-server-mode-set-client client))
                   (jupyter-run-with-io
                       (jupyter-request-message-publisher req)
                     (jupyter-subscribe
@@ -529,8 +532,6 @@ when it is idle."
              (jupyter-publish
                (list 'send ch type content
                      (jupyter-request-id req)))))
-         (when (string= type "execute")
-           (jupyter-server-mode-set-client jupyter-current-client))
          req)))))
 
 (cl-defun jupyter-request (type &rest content)
