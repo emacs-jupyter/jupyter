@@ -103,23 +103,26 @@ callbacks."
        ;; Any other message the browser sends is meant for the kernel so do the
        ;; redirection and setup the callbacks
        (let* ((msg-id (jupyter-message-id msg))
-              (msg-type (jupyter-message-type-as-keyword
-                         (jupyter-message-type msg)))
+              (msg-type (jupyter-message-type msg))
               (channel (pcase (plist-get msg :channel)
                          ("shell" :shell)
                          ("iopub" :iopub)
                          ("stdin" :stdin)
                          (_ (error "Invalid channel"))))
-              (content (jupyter-message-content msg))
-              (jupyter-inhibit-handlers
-               ;; Only let the browser handle these messages
-               (if (memq msg-type '(:comm-info-request))
-                   '(:comm-msg :status :comm-info-reply)
-                 '(:comm-msg)))
-              (req (jupyter-send client msg-type msg-id content)))
-         (jupyter-add-callback req
-           '(:comm-open :comm-close :comm-info-reply :comm-msg :status)
-           (apply-partially #'jupyter-widgets-send-message client)))))))
+              (content (jupyter-message-content msg)))
+         (jupyter-mlet*
+             ((_ (jupyter-message-subscribed
+                  (let ((jupyter-inhibit-handlers
+                         (if (member msg-type '("comm_info_request"))
+                             '("comm_msg" "status" "comm_info_reply")
+                           '("comm_msg"))))
+                    (apply #'jupyter-request msg-type content))
+                  (let ((fn (apply-partially #'jupyter-widgets-send-message client)))
+                    `(("comm_open" ,fn)
+                      ("comm_close" ,fn)
+                      ("comm_info_reply" ,fn)
+                      ("comm_msg" ,fn)
+                      ("status" ,fn))))))))))))
 
 (defun jupyter-widgets-on-close (ws)
   "Uninitialize the client whose widget-sock is WS."
@@ -138,8 +141,8 @@ For example, for fields that are supposed to be arrays, ensure
 that they will be encoded as such.  In addition, add fields
 required by the JupyterLab widget manager."
   (prog1 msg
-    (when (memq (jupyter-message-type msg)
-                '(:comm-open :comm-close :comm-msg))
+    (when (member (jupyter-message-type msg)
+                  '("comm_open" "comm_close" "comm_msg"))
       (let ((buffers (plist-member msg :buffers)))
         (if (null buffers) (plist-put msg :buffers [])
           (when (eq (cadr buffers) nil)
@@ -161,9 +164,10 @@ required by the JupyterLab widget manager."
   (let ((msg-type (jupyter-message-type msg)))
     (plist-put msg :channel
                (cond
-                ((memq msg-type '(:status :comm-msg :comm-close :comm-open))
+                ((member msg-type '("status" "comm_msg"
+                                    "comm_close" "comm_open"))
                  :iopub)
-                ((memq msg-type '(:comm-info-reply))
+                ((member msg-type '("comm_info_reply"))
                  :shell)))
     (push (jupyter--encode msg) (oref client widget-messages))
     (when (websocket-openp (oref client widget-sock))
