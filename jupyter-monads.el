@@ -210,7 +210,8 @@ The result of the returned action is the result of IO-B."
 (defun jupyter-subscriber (sub-fn)
   "Return a subscriber evaluating SUB-FN on published content.
 SUB-FN should return the result of evaluating
-`jupyter-unsubscribe' if a subscription should be canceled.
+`jupyter-unsubscribe' if the subscriber's subscription should be
+canceled.
 
 Ex. Unsubscribe after consuming one message
 
@@ -390,11 +391,16 @@ Ex. Subscribe to a publisher and unsubscribe after receiving two
             (funcall jupyter-current-io (jupyter-content value))
             nil)))
 
+;;; Working with requests
+
 (define-error 'jupyter-timeout-before-idle "Timeout before idle")
 
 (defun jupyter-idle (io-req &optional timeout)
-  "Return an IO action that returns the request wrapped in IO-REQ
-when it is idle."
+  "Return an IO action that waits for a request to become idle.
+Evaluate IO-REQ, an IO action that results in a sent request, and
+wait for that request to become idle.  Signal a
+`jupyter-timeout-before-idle' error if TIMEOUT seconds elapses
+and the request has not become idle yet."
   (make-jupyter-delayed
    :value (lambda ()
             (jupyter-mlet* ((req io-req))
@@ -403,12 +409,16 @@ when it is idle."
               req))))
 
 (defun jupyter-messages (io-req &optional timeout)
+  "Return an IO action that returns the messages of IO-REQ.
+IO-REQ is an IO action that evaluates to a sent request.  TIMEOUT
+has the same meaning as in `jupyter-idle'."
   (make-jupyter-delayed
    :value (lambda ()
             (jupyter-mlet* ((req (jupyter-idle io-req timeout)))
               (jupyter-request-messages req)))))
 
 (defun jupyter-find-message (msg-type msgs)
+  "Return a message whose type is MSG-TYPE in MSGS."
   (cl-find-if
    (lambda (msg)
      (let ((type (jupyter-message-type msg)))
@@ -416,6 +426,9 @@ when it is idle."
    msgs))
 
 (defun jupyter-reply-message (io-req &optional timeout)
+  "Return an IO action that returns the reply message of IO-REQ.
+IO-REQ is an IO action that evaluates to a sent request.  TIMEOUT
+has the same meaning as in `jupyter-idle'."
   (make-jupyter-delayed
    :value (lambda ()
             (jupyter-mlet* ((msgs (jupyter-messages io-req timeout)))
@@ -426,6 +439,15 @@ when it is idle."
                msgs)))))
 
 (defun jupyter-message-subscribed (io-req cbs)
+  "Return an IO action that subscribes CBS to a request's message publisher.
+IO-REQ is an IO action that evaluates to a sent request.  CBS is
+an alist mapping message types to callback functions like
+
+    `((\"execute_reply\" ,(lambda (msg) ...))
+      ...)
+
+The returned IO action returns the sent request after subscribing
+the callbacks."
   (make-jupyter-delayed
    :value (lambda ()
             (jupyter-mlet* ((req io-req))
@@ -440,12 +462,14 @@ when it is idle."
                         (funcall fn msg))))))
               req))))
 
-;;; Request
-
-(defsubst jupyter-timeout (req)
-  (list 'timeout req))
-
 (defun jupyter-client-subscribed (io-req)
+  "Return an IO action that subscribes a client to a request's message publisher.
+IO-REQ is an IO action that evaluates to a sent request.  The
+client to subscribe is the `jupyter-current-client' at the time
+of evaluation of the action.
+
+The returned IO action returns the sent request after subscribing
+the client."
   (make-jupyter-delayed
    :value (lambda ()
             (jupyter-with-client jupyter-current-client
