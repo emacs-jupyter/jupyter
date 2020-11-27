@@ -31,19 +31,6 @@
 ;; available on the server can be accessed by calling
 ;; `jupyter-server-kernelspecs'.
 ;;
-;; Communication with the channels of the kernels that are launched on the
-;; `jupyter-server' is established via a `jupyter-server-ioloop' which
-;; multiplexes the channels of all the kernel servers.  The kernel ID the server
-;; associated with a kernel can then be used to filter messages for a
-;; particular kernel and to send messages to a kernel through the
-;; `jupyter-server-ioloop'.
-;;
-;; `jupyter-server-kernel-comm' is a `jupyter-comm-layer' that handles the
-;; communication of a client with a server kernel.  The job of the
-;; `jupyter-server-kernel-comm' is to connect to the `jupyter-server's event
-;; stream and filter the messages to handle those of a particular kernel
-;; identified by kernel ID.
-;;
 ;; Starting REPLs
 ;;
 ;; You can launch kernels without connecting clients to them by using
