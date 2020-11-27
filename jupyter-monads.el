@@ -180,28 +180,6 @@ The result of the returned action is the result of IO-B."
                             (result io-b))
               result))))
 
-;;; Kernel
-;;
-;; I/O actions that manage a kernel's lifetime.
-
-(defun jupyter-launch (kernel)
-  (make-jupyter-delayed
-   :value (lambda ()
-            (jupyter-do-launch kernel)
-            kernel)))
-
-(defun jupyter-interrupt (kernel)
-  (make-jupyter-delayed
-   :value (lambda ()
-            (jupyter-do-interrupt kernel)
-            kernel)))
-
-(defun jupyter-shutdown (kernel)
-  (make-jupyter-delayed
-   :value (lambda ()
-            (jupyter-do-shutdown kernel)
-            kernel)))
-
 ;;; Publisher/subscriber
 
 (define-error 'jupyter-subscribed-subscriber

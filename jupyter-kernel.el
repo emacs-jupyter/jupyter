@@ -95,19 +95,19 @@ need the default behavior."
   (jupyter-kernelspec-name
    (jupyter-kernel-spec kernel)))
 
-(cl-defgeneric jupyter-do-launch ((kernel jupyter-kernel))
+(cl-defgeneric jupyter-launch ((kernel jupyter-kernel))
   "Launch KERNEL."
   (cl-assert (jupyter-alive-p kernel)))
 
-(cl-defmethod jupyter-do-launch :before ((kernel jupyter-kernel))
+(cl-defmethod jupyter-launch :before ((kernel jupyter-kernel))
   "Notify that the kernel launched."
   (message "Launching %s kernel..." (jupyter-kernel-name kernel)))
 
-(cl-defmethod jupyter-do-launch :after ((kernel jupyter-kernel))
+(cl-defmethod jupyter-launch :after ((kernel jupyter-kernel))
   "Notify that the kernel launched."
   (message "Launching %s kernel...done" (jupyter-kernel-name kernel)))
 
-(cl-defgeneric jupyter-do-shutdown ((kernel jupyter-kernel))
+(cl-defgeneric jupyter-shutdown ((kernel jupyter-kernel))
   "Shutdown KERNEL.
 Once a kernel has been shutdown it has no more connected clients
 and the process it represents no longer exists.
@@ -117,20 +117,20 @@ connected clients of KERNEL and sets KERNEL's session slot to
 nil."
   (setf (jupyter-kernel-session kernel) nil))
 
-(cl-defmethod jupyter-do-shutdown :before ((kernel jupyter-kernel))
+(cl-defmethod jupyter-shutdown :before ((kernel jupyter-kernel))
   "Notify that the kernel will be shutdown."
   (message "%s kernel shutdown..." (jupyter-kernel-name kernel)))
 
-(cl-defmethod jupyter-do-shutdown :after ((kernel jupyter-kernel))
+(cl-defmethod jupyter-shutdown :after ((kernel jupyter-kernel))
   "Notify that the kernel launched."
   (message "%s kernel shutdown...done" (jupyter-kernel-name kernel)))
 
 (defun jupyter-restart (kernel)
   "Shutdown then re-launch KERNEL."
-  (jupyter-do-shutdown kernel)
-  (jupyter-do-launch kernel))
+  (jupyter-shutdown kernel)
+  (jupyter-launch kernel))
 
-(cl-defgeneric jupyter-do-interrupt ((kernel jupyter-kernel))
+(cl-defgeneric jupyter-interrupt ((kernel jupyter-kernel))
   "Interrupt KERNEL."
   (ignore))
 

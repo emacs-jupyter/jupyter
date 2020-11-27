@@ -303,10 +303,10 @@ For `url-retrieve', the callback will be called with a nil status."
                      :server server
                      :spec (jupyter-guess-kernelspec
                             ,name (jupyter-server-kernelspecs ,server)))))
-       (jupyter-do-launch ,kernel)
+       (jupyter-launch ,kernel)
        (unwind-protect
            (progn ,@body)
-         (jupyter-do-shutdown ,kernel)))))
+         (jupyter-shutdown ,kernel)))))
 
 (defmacro jupyter-test-with-some-kernelspecs (names &rest body)
   "Execute BODY in the context where extra kernelspecs with NAMES are available.
