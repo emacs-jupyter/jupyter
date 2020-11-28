@@ -377,11 +377,6 @@ If it does not contain a valid value, raise an error."
        unless (member msg-type jupyter-message-types)
        do (error "Not a valid message type (`%s')" msg-type))))
 
-;; FIXME: Remove the need for this
-(defun jupyter--merge-message-defaults (type content)
-  (let ((req (intern (concat "jupyter-" (substring (symbol-name type) 1)))))
-    (apply req content)))
-
 ;;; Starting communication with a kernel
 
 (cl-defmethod jupyter-alive-p ((client jupyter-kernel-client) &optional channel)
