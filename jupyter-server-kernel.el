@@ -187,19 +187,33 @@ Call the next method if ARGS does not contain :server."
       (puthash thing (cl-call-next-method) jupyter-io-cache)))
 
 (cl-defmethod jupyter-websocket-io ((kernel jupyter-server-kernel))
-  "Return a list of three elements representing an I/O connection to kernel.
-The returned list looks like (ACTION-SUB MSG-PUB STATUS-PUB)
-where
+  "Return a list representing an IO connection to KERNEL.
+The list is composed of two elements (IO-PUB ACTION-SUB), IO-PUB
+is a publisher used to send/receive messages to/from KERNEL and
+ACTION-SUB is a subscriber of kernel actions to perform on
+KERNEL.
 
-ACTION-SUB is a subscriber of websocket actions to start, stop,
-or send a Jupyter message on the websocket.
+To send a message to KERNEL, publish a list of the form
 
-MSG-PUB is a publisher of Jupyter messages received from the
-websocket.
+    (list 'send CHANNEL MSG-TYPE CONTENT MSG-ID)
 
-STATUS-PUB is a publisher of status changes to the websocket.
+to IO-PUB, e.g.
 
-TODO The form of content each sends/consumes."
+    (jupyter-run-with-io IO-PUB
+      (jupyter-publish (list 'send CHANNEL MSG-TYPE CONTENT MSG-ID)))
+
+To receive messages from KERNEL, subscribe to IO-PUB e.g.
+
+    (jupyter-run-with-io IO-PUB
+      (jupyter-subscribe
+        (jupyter-subscriber
+          (lambda (msg)
+             ...))))
+
+The value 'interrupt or 'shutdown can be published to ACTION-SUB
+to interrupt or shutdown KERNEL.  The value (list 'action FN)
+where FN is a single argument function can also be published, in
+this case FN will be evaluated on KERNEL."
   (jupyter-launch kernel)
   (pcase-let*
       (((cl-struct jupyter-server-kernel server id) kernel)
