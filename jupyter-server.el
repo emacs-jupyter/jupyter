@@ -306,6 +306,18 @@ is used as determined by `jupyter-current-server'."
    (jupyter-client kernel client-class)
    repl-name associate-buffer display))
 
+(defun jupyter-server-repl-interactive-spec ()
+  (let ((server (jupyter-current-server current-prefix-arg)))
+    (list server
+          (car (jupyter-completing-read-kernelspec
+                (jupyter-server-kernelspecs server)))
+          ;; FIXME: Ambiguity with `jupyter-current-server' and
+          ;; `current-prefix-arg'
+          (when (and current-prefix-arg
+                     (y-or-n-p "Name REPL? "))
+            (read-string "REPL Name: "))
+          t nil t)))
+
 ;;;###autoload
 (defun jupyter-run-server-repl
     (server kernel-name &optional repl-name associate-buffer client-class display)
@@ -317,17 +329,7 @@ is used as determined by `jupyter-current-server'.
 
 REPL-NAME, ASSOCIATE-BUFFER, CLIENT-CLASS, and DISPLAY all have
 the same meaning as in `jupyter-run-repl'."
-  (interactive
-   (let ((server (jupyter-current-server current-prefix-arg)))
-     (list server
-           (car (jupyter-completing-read-kernelspec
-                 (jupyter-server-kernelspecs server)))
-           ;; FIXME: Ambiguity with `jupyter-current-server' and
-           ;; `current-prefix-arg'
-           (when (and current-prefix-arg
-                      (y-or-n-p "Name REPL? "))
-             (read-string "REPL Name: "))
-           t nil t)))
+  (interactive (jupyter-server-repl-interactive-spec))
   (jupyter-server-repl
    (jupyter-kernel :server server :spec kernel-name)
    repl-name associate-buffer client-class display))
@@ -343,16 +345,7 @@ is used as determined by `jupyter-current-server'.
 
 REPL-NAME, ASSOCIATE-BUFFER, CLIENT-CLASS, and DISPLAY all have
 the same meaning as in `jupyter-connect-repl'."
-  (interactive
-   (let ((server (jupyter-current-server current-prefix-arg)))
-     (list server
-           (plist-get (jupyter-completing-read-server-kernel server) :id)
-           ;; FIXME: Ambiguity with `jupyter-current-server' and
-           ;; `current-prefix-arg'
-           (when (and current-prefix-arg
-                      (y-or-n-p "Name REPL? "))
-             (read-string "REPL Name: "))
-           t nil t)))
+  (interactive (jupyter-server-repl-interactive-spec))
   (jupyter-server-repl
    (jupyter-kernel :server server :id kernel-id)
    repl-name associate-buffer client-class display))
