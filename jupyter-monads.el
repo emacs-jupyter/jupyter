@@ -273,9 +273,6 @@ Ex. Publish 'app if 'app is given to a publisher, nothing is sent
         ('subscribe (cl-pushnew (cadr pub-value) (cdr subs)))
         (_ (error "Unhandled publisher content: %s" pub-value))))))
 
-(defsubst jupyter--subscribe (sub)
-  (list 'subscribe sub))
-
 (defun jupyter-subscribe (sub)
   "Return an I/O action that subscribes SUB to published content.
 If a subscriber (or a publisher with a subscription to another
@@ -301,7 +298,7 @@ Ex. Subscribe to a publisher and unsubscribe after receiving two
   (declare (indent 0))
   (make-jupyter-delayed
    :value (lambda ()
-            (funcall jupyter-current-io (jupyter--subscribe sub))
+            (funcall jupyter-current-io (list 'subscribe sub))
             nil)))
 
 (defun jupyter-publish (value)
