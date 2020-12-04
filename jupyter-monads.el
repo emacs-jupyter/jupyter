@@ -25,8 +25,6 @@
 ;; TODO: Generalize `jupyter-with-io' and `jupyter-do' for any monad,
 ;; not just the I/O one.
 ;;
-;; TODO: Implement seq interface?
-;;
 ;; TODO: Allow pcase patterns in mlet*
 ;;
 ;;     (jupyter-mlet* ((value (jupyter-server-kernel-io kernel)))
@@ -38,32 +36,6 @@
 ;;     (jupyter-mlet* ((`(,kernel-sub ,event-pub)
 ;;                      (jupyter-server-kernel-io kernel)))
 ;;       ...)
-
-;; The context of an I/O action is the current I/O publisher.
-;;
-;; The context of a publisher is its list of subscribers.
-;;
-;; The context of a subscriber is whether or not it remains subscribed
-;; to a publisher.
-
-;; Publisher/subscriber
-;;
-;; - A value is submitted to a publisher via `jupyter-publish'.
-;;
-;; - A publishing function takes the value and optionally returns
-;;   content (by returning the result of `jupyter-content' on a
-;;   value).
-;;
-;; - If no content is returned, nothing is published to subscribers.
-;;
-;; - When content is returned, that content is published to
-;;   subscribers (the subscriber functions called on the content).
-;;
-;; - The result of distributing content to a subscriber is the
-;;   subscriber's subscription status.
-;;
-;;   - If a subscriber returns anything other than the result of
-;;    `jupyter-unsubscribe', the subscription is kept.
 
 ;;; Code:
 
@@ -221,24 +193,6 @@ result of this function to cancel its subscription with the
 publisher providing content."
   (list 'unsubscribe))
 
-
-;; PUB-FN is a monadic function in the Content monad.  It takes a
-;; value and returns a value wrapped with `jupyter-content' (the
-;; return of the Content monad).  The bind operation is spread across
-;; `jupyter-publish' and `jupyter-pseudo-bind-content'.  
-
-;; PUB-FN is a monadic function of a publisher's Content monad.  They
-;; take normal values and produce content to send to a publisher's
-;; subscribers.  The context of the Content monad is the set of
-;; publishers/subscribers that the content is filtered through.
-;;
-;; When a publisher function is called, it takes submitted content,
-;; binds it to PUB-FN to produce content to send, and distributes the
-;; content to subscribers.  When a publisher is a subscriber of
-;; another publisher, the subscribed publisher is called to repeat the
-;; process on the sent content.  In this way, the initial submitted
-;; content (submitted via `jupyter-publish') gets transformed by each
-;; subscribed publisher, via PUB-FN, to publish to their subscribers.
 (defun jupyter-pseudo-bind-content (pub-fn content subs)
   "Apply PUB-FN on submitted CONTENT to produce published content.
 Call each subscriber in SUBS on the published content.  Remove
@@ -254,10 +208,10 @@ Errors signaled by a subscriber are demoted to messages."
        ;; destructively removed.
        (when (cadr subs)
          (with-demoted-errors "Jupyter: I/O subscriber error: %S"
-           ;; This recursion may be a problem if
-           ;; there is a lot of content filtering (by
-           ;; subscribing publishers to publishers).
+           ;; Publish subscriber content to subscribers
            (pcase (funcall (cadr subs) sub-content)
+             ;; Destructively remove the subscriber when it returns an
+             ;; unsubscribe value.
              ('(unsubscribe) (setcdr subs (cddr subs))))))
        (pop subs))
      nil)
@@ -265,17 +219,6 @@ Errors signaled by a subscriber are demoted to messages."
     ('(unsubscribe) '(unsubscribe))
     (_ nil)))
 
-;; In the context external to a publisher, i.e. in the context where a
-;; message was published, the content is built up and then published.
-;; In the context of a publisher, that content is filtered through
-;; PUB-FN before being passed along to subscribers.  So PUB-FN is a
-;; filter of content.  Subscribers receive filtered content or no
-;; content at all depending on the return value of PUB-FN, in
-;; particular if it returns a value wrapped by `jupyter-content'.
-;;
-;; PUB-FN is a monadic function in the Publisher monad.  It takes a
-;; value and produces content to send to subscribers.  The monadic
-;; value is the content, created by `jupyter-content'.
 (defun jupyter-publisher (&optional pub-fn)
   "Return a publisher function.
 A publisher function is a closure, function with a local scope,
@@ -464,6 +407,8 @@ the client."
                           (let ((channel (plist-get msg :channel)))
                             (jupyter-handle-message client channel msg))))))
                   req))))))
+
+;;; Request
 
 (defun jupyter-message-publisher (req)
   (let ((id (jupyter-request-id req)))
