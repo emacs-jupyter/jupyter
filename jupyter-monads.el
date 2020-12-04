@@ -457,14 +457,14 @@ the client."
            (cl-list* :parent-request req msg))))))))
 
 (defun jupyter--request (type content)
-  (let ((ih jupyter-inhibit-handlers))
+  (let ((ih jupyter-inhibit-handlers)
+        (ch (if (member type '("input_reply" "input_request"))
+                "stdin"
+              "shell")))
     (make-jupyter-delayed
      :value
      (lambda ()
-       (let* ((ch (if (member type '("input_reply" "input_request"))
-                      "stdin"
-                    "shell"))
-              (req (jupyter-generate-request
+       (let ((req (jupyter-generate-request
                     jupyter-current-client
                     :type type
                     :content content
@@ -475,13 +475,13 @@ the client."
                     :inhibited-handlers ih)))
          (setf (jupyter-request-message-publisher req)
                (jupyter-message-publisher req))
-         (jupyter-run-with-io jupyter-current-io
-           (jupyter-do
-             (jupyter-subscribe
-               (jupyter-request-message-publisher req))
-             (jupyter-publish
-               (list 'send ch type content
-                     (jupyter-request-id req)))))
+         (jupyter-mlet*
+             ((_ (jupyter-do
+                   (jupyter-subscribe
+                     (jupyter-request-message-publisher req))
+                   (jupyter-publish
+                     (list 'send ch type content
+                           (jupyter-request-id req)))))))
          req)))))
 
 (cl-defun jupyter-request (type &rest content)
