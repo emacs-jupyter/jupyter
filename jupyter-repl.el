@@ -840,8 +840,8 @@ Return the `jupyter-request' representing the executed code."
 (cl-defmethod jupyter-handle-display-data ((client jupyter-repl-client) req msg)
   (let ((clear (prog1 (oref client wait-to-clear)
                  (oset client wait-to-clear nil)))
-        (req (if (eq (jupyter-message-parent-type msg) :comm-msg)
-                 ;; For comm messages which produce a `:display-data' message,
+        (req (if (eq (jupyter-message-parent-type msg) "comm_msg")
+                 ;; For comm messages which produce a display_data message,
                  ;; the request is assumed to be the most recently completed
                  ;; one.
                  (jupyter-with-repl-buffer client
@@ -871,7 +871,7 @@ Return the `jupyter-request' representing the executed code."
     (cl-destructuring-bind (&key display_id &allow-other-keys)
         transient
       (unless display_id
-        (error "No display ID in `:update-display-data' message"))
+        (error "No display ID in `update_display_data' message"))
       (jupyter-with-repl-buffer client
         (jupyter-update-display display_id data metadata)))))
 
@@ -890,7 +890,7 @@ Return the `jupyter-request' representing the executed code."
                 (jupyter-with-message-content msg (wait)
                   (eq wait t)))
     (cond
-     ((eq (jupyter-message-parent-type msg) :comm-msg)
+     ((eq (jupyter-message-parent-type msg) "comm_msg")
       (with-current-buffer (jupyter-get-buffer-create "output")
         (erase-buffer)))
      (t
@@ -931,7 +931,7 @@ buffer to display TEXT."
       (cond
        ((eq (jupyter-message-parent-type
              (jupyter-request-last-message req))
-            :comm-msg)
+            "comm_msg")
         (jupyter-with-display-buffer "output" req
           (jupyter-insert-ansi-coded-text text)
           (jupyter-display-current-buffer-reuse-window)))
@@ -943,7 +943,7 @@ buffer to display TEXT."
   (when req
     (jupyter-with-message-content msg (traceback)
       (cond
-       ((eq (jupyter-message-parent-type msg) :comm-msg)
+       ((eq (jupyter-message-parent-type msg) "comm_msg")
         (jupyter-display-traceback traceback))
        (t
         (jupyter-repl-append-output client req
