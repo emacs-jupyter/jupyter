@@ -726,8 +726,8 @@ mapped to their appropriate minted language in
   (cond
    ((org-export-derived-backend-p backend 'latex)
     (cl-loop
-     for (_kernel . (_dir . spec)) in (jupyter-available-kernelspecs)
-     for lang = (plist-get spec :language)
+     for spec in (jupyter-available-kernelspecs)
+     for lang = (plist-get (jupyter-kernelspec-plist spec) :language)
      do (cl-pushnew (list (intern (concat "jupyter-" lang)) lang)
                     org-latex-minted-langs :test #'equal)))))
 
