@@ -598,9 +598,9 @@ see the documentation on the --NotebookApp.password argument."
  'kill-emacs-hook
  (lambda ()
    (ignore-errors (delete-directory jupyter-test-temporary-directory t))
-   (ignore-errors (delete-process (car jupyter-test-notebook)))
    (cl-loop
     for client in (jupyter-all-objects 'jupyter--clients)
-    do (ignore-errors (jupyter-shutdown-kernel client)))))
+    do (ignore-errors (jupyter-shutdown-kernel client)))
+   (ignore-errors (delete-process (car jupyter-test-notebook)))))
 
 ;;; test-helper.el ends here
