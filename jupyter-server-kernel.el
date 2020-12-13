@@ -256,9 +256,9 @@ this case FN will be evaluated on KERNEL."
                          :content content))))
                 ('start (websocket-ensure-connected ws))
                 ('stop (websocket-close ws))))))))
-    (unless (gethash server jupyter--reauth-subscribers)
-      (puthash server (jupyter-publisher) jupyter--reauth-subscribers))
-    (let ((pub (gethash server jupyter--reauth-subscribers)))
+    (let ((pub (or (gethash server jupyter--reauth-subscribers)
+                   (setf (gethash server jupyter--reauth-subscribers)
+                         (jupyter-publisher)))))
       (jupyter-run-with-io pub
         (jupyter-subscribe
           (jupyter-subscriber
