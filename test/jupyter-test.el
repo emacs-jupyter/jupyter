@@ -441,17 +441,14 @@
         (should-not (null res))
         (should (json-plist-p res))
         (should (string= (jupyter-message-type res) "is_complete_reply"))))
-    ;; TODO: Why does this fail now?
-    ;; (ert-info ("Shutdown")
-    ;;   (let ((res (jupyter-wait-until-received "shutdown_reply"
-    ;;                (jupyter-send client (jupyter-shutdown-request)))))
-    ;;     (should-not (null res))
-    ;;     (should (json-plist-p res))
-    ;;     (should (string= (jupyter-message-type res) "shutdown_reply"))
-    ;;     ;; TODO: Ensure we give the kernel process time to die off
-    ;;     ))
-
-    ))
+    (ert-info ("Shutdown")
+      (jupyter-mlet* ((res (jupyter-reply-message
+                            (jupyter-shutdown-request))))
+        (should-not (null res))
+        (should (json-plist-p res))
+        (should (string= (jupyter-message-type res) "shutdown_reply"))
+        ;; TODO: Ensure we give the kernel process time to die off
+        ))))
 
 (ert-deftest jupyter-message-lambda ()
   :tags '(messages)
