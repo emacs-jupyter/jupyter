@@ -428,14 +428,14 @@
         (should (json-plist-p res))
         (should (string= (jupyter-message-type res) "complete_reply"))))
     (ert-info ("History")
-      (jupyter-mlet* ((msgs (jupyter-reply-message
+      (jupyter-mlet* ((res (jupyter-reply-message
                              (jupyter-history-request
                               :hist-access-type "tail" :n 2))))
         (should-not (null res))
         (should (json-plist-p res))
         (should (string= (jupyter-message-type res) "history_reply"))))
     (ert-info ("Is Complete")
-      (jupyter-mlet* ((msgs (jupyter-reply-message
+      (jupyter-mlet* ((res (jupyter-reply-message
                             (jupyter-is-complete-request
                              :code "for i in range(5):"))))
         (should-not (null res))
