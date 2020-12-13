@@ -282,6 +282,8 @@ this case FN will be evaluated on KERNEL."
                  (jupyter-shutdown kernel)
                  (websocket-close ws)
                  (setq shutdown t))
+                ('restart
+                 (jupyter-restart kernel))
                 (`(action ,fn)
                  (funcall fn kernel))))))))
 
@@ -332,6 +334,11 @@ using its SPEC."
     (cl-call-next-method)
     (when session
       (jupyter-api-shutdown-kernel server id))))
+
+(cl-defmethod jupyter-restart ((kernel jupyter-server-kernel))
+  (pcase-let (((cl-struct jupyter-server-kernel server id session) kernel))
+    (when session
+      (jupyter-api-restart-kernel server id))))
 
 (cl-defmethod jupyter-interrupt ((kernel jupyter-server-kernel))
   (pcase-let (((cl-struct jupyter-server-kernel server id) kernel))

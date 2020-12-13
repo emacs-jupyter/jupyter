@@ -473,6 +473,14 @@ longer connected to a kernel."
         (jupyter-publish 'shutdown))
       (jupyter-disconnect client))))
 
+(cl-defmethod jupyter-restart-kernel ((client jupyter-kernel-client))
+  "Restart the kernel CLIENT is connected to."
+  (when (jupyter-connected-p client)
+    (pcase-let ((`(,_ ,kaction-sub) (oref client io)))
+      (jupyter-run-with-io kaction-sub
+        (jupyter-publish 'restart))
+      (jupyter-disconnect client))))
+
 (cl-defmethod jupyter-interrupt-kernel ((client jupyter-kernel-client))
   "Interrupt the kernel CLIENT is connected to."
   (when (jupyter-connected-p client)

@@ -125,8 +125,11 @@ nil."
   "Notify that the kernel launched."
   (message "%s kernel shutdown...done" (jupyter-kernel-name kernel)))
 
-(defun jupyter-restart (kernel)
-  "Shutdown then re-launch KERNEL."
+(cl-defgeneric jupyter-restart ((kernel jupyter-kernel))
+  "Restart KERNEL.
+
+The default implementation shuts down and then re-launches
+KERNEL."
   (jupyter-shutdown kernel)
   (jupyter-launch kernel))
 
