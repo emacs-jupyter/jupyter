@@ -105,7 +105,9 @@ assumed to not be inside a source block."
                                (point))))))))
         ;; If all else fails, query for the language to use
         (let* ((kernelspec (jupyter-completing-read-kernelspec))
-               (lang (plist-get (cddr kernelspec) :language)))
+               (lang (plist-get
+                      (jupyter-kernelspec-plist kernelspec)
+                      :language)))
           (if (org-babel-jupyter-language-p lang) lang
             (format "jupyter-%s" lang))))))
 
