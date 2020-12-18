@@ -478,8 +478,7 @@ longer connected to a kernel."
   (when (jupyter-connected-p client)
     (pcase-let ((`(,_ ,kaction-sub) (oref client io)))
       (jupyter-run-with-io kaction-sub
-        (jupyter-publish 'restart))
-      (jupyter-disconnect client))))
+        (jupyter-publish 'restart)))))
 
 (cl-defmethod jupyter-interrupt-kernel ((client jupyter-kernel-client))
   "Interrupt the kernel CLIENT is connected to."
