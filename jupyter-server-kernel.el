@@ -220,72 +220,70 @@ to interrupt or shutdown KERNEL.  The value (list 'action FN)
 where FN is a single argument function can also be published, in
 this case FN will be evaluated on KERNEL."
   (jupyter-launch kernel)
-  (pcase-let*
-      (((cl-struct jupyter-server-kernel server id) kernel)
-       (msg-pub (jupyter-publisher))
-       (status-pub (jupyter-publisher))
-       (on-message
-        (lambda (ws frame)
-          (pcase (websocket-frame-opcode frame)
-            ((or 'text 'binary)
-             (let ((msg (jupyter-read-plist-from-string
-                         (websocket-frame-payload frame))))
-               (jupyter-run-with-io msg-pub
-                 (jupyter-publish (cons 'message msg)))))
-            (_
-             (jupyter-run-with-io status-pub
-               (jupyter-publish
-                 (list 'error (websocket-frame-opcode frame))))))))
-       (make-websocket
-        (lambda ()
-          (jupyter-api-kernel-websocket
-           server id
-           :custom-header-alist (jupyter-api-auth-headers server)
-           ;; TODO: on-error publishes to status-pub
-           :on-message on-message)))
-       (ws (funcall make-websocket))
-       (shutdown nil)
-       (kernel-io
-        (jupyter-publisher
-          (lambda (event)
-            (if shutdown (error "Kernel shutdown!")
-              (pcase event
-                (`(message . ,rest) (jupyter-content rest))
-                (`(send ,channel ,msg-type ,content ,msg-id)
-                 (websocket-send-text
-                  ws (let* ((cd (websocket-client-data ws))
-                            (session (plist-get cd :session)))
-                       (jupyter-encode-raw-message session msg-type
-                         :channel channel
-                         :msg-id msg-id
-                         :content content))))
-                ('start (websocket-ensure-connected ws))
-                ('stop (websocket-close ws))))))))
-    (let ((pub (or (gethash server jupyter--reauth-subscribers)
-                   (setf (gethash server jupyter--reauth-subscribers)
-                         (jupyter-publisher)))))
-      (jupyter-run-with-io pub
-        (jupyter-subscribe
-          (jupyter-subscriber
-            (lambda (_reauth)
-              (websocket-close ws)
-              (setq ws (funcall make-websocket)))))))
-    (jupyter-run-with-io msg-pub
-      (jupyter-subscribe kernel-io))
-    (list kernel-io
-          (jupyter-subscriber
-            (lambda (action)
-              (pcase action
-                ('interrupt
-                 (jupyter-interrupt kernel))
-                ('shutdown
-                 (jupyter-shutdown kernel)
-                 (websocket-close ws)
-                 (setq shutdown t))
-                ('restart
-                 (jupyter-restart kernel))
-                (`(action ,fn)
-                 (funcall fn kernel))))))))
+  (let* ((ws nil)
+         (shutdown nil)
+         (kernel-io
+          (jupyter-publisher
+            (lambda (event)
+              (if shutdown (error "Kernel shutdown!")
+                (pcase event
+                  (`(message . ,rest) (jupyter-content rest))
+                  (`(send ,channel ,msg-type ,content ,msg-id)
+                   (websocket-send-text
+                    ws (let* ((cd (websocket-client-data ws))
+                              (session (plist-get cd :session)))
+                         (jupyter-encode-raw-message session msg-type
+                           :channel channel
+                           :msg-id msg-id
+                           :content content))))
+                  ('start (websocket-ensure-connected ws))
+                  ('stop (websocket-close ws)))))))
+         (status-pub (jupyter-publisher))
+         (on-message
+          (lambda (ws frame)
+            (pcase (websocket-frame-opcode frame)
+              ((or 'text 'binary)
+               (let ((msg (jupyter-read-plist-from-string
+                           (websocket-frame-payload frame))))
+                 (jupyter-run-with-io kernel-io
+                   (jupyter-publish (cons 'message msg)))))
+              (_
+               (jupyter-run-with-io status-pub
+                 (jupyter-publish
+                   (list 'error (websocket-frame-opcode frame)))))))))
+    (pcase-let*
+        (((cl-struct jupyter-server-kernel server id) kernel)
+         (make-websocket
+          (lambda ()
+            (jupyter-api-kernel-websocket
+             server id
+             :custom-header-alist (jupyter-api-auth-headers server)
+             ;; TODO: on-error publishes to status-pub
+             :on-message on-message))))
+      (setq ws (funcall make-websocket))
+      (let ((pub (or (gethash server jupyter--reauth-subscribers)
+                     (setf (gethash server jupyter--reauth-subscribers)
+                           (jupyter-publisher)))))
+        (jupyter-run-with-io pub
+          (jupyter-subscribe
+            (jupyter-subscriber
+              (lambda (_reauth)
+                (websocket-close ws)
+                (setq ws (funcall make-websocket)))))))
+      (list kernel-io
+            (jupyter-subscriber
+              (lambda (action)
+                (pcase action
+                  ('interrupt
+                   (jupyter-interrupt kernel))
+                  ('shutdown
+                   (jupyter-shutdown kernel)
+                   (websocket-close ws)
+                   (setq shutdown t))
+                  ('restart
+                   (jupyter-restart kernel))
+                  (`(action ,fn)
+                   (funcall fn kernel)))))))))
 
 ;;; Kernel management
 
