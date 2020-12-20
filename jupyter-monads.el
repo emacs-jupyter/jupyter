@@ -47,14 +47,19 @@
 
 (cl-defstruct jupyter-delayed value)
 
-(defconst jupyter-io-nil (make-jupyter-delayed :value (lambda () nil)))
-
-(defvar jupyter-io-cache (make-hash-table :weakness 'key))
-
 (defun jupyter-return-delayed (value)
   "Return an I/O value wrapping VALUE."
   (declare (indent 0))
   (make-jupyter-delayed :value (lambda () value)))
+
+(defmacro jupyter-return-delayed-thunk (&rest body)
+  "Return an I/O value that evaluates BODY."
+  (declare (debug (body)) (indent 0))
+  `(make-jupyter-delayed :value (lambda () ,@body)))
+
+(defconst jupyter-io-nil (jupyter-return-delayed nil))
+
+(defvar jupyter-io-cache (make-hash-table :weakness 'key))
 
 (defvar jupyter-current-io
   (lambda (content)
@@ -107,11 +112,10 @@ Return the result of evaluating BODY."
 The result of the returned action is the result of the I/O action
 BODY evaluates to."
   (declare (indent 1) (debug (form body)))
-  `(make-jupyter-delayed
-    :value (lambda ()
-             (let ((jupyter-current-io ,io))
-               (jupyter-mlet* ((result (progn ,@body)))
-                 result)))))
+  `(jupyter-return-delayed-thunk
+     (let ((jupyter-current-io ,io))
+       (jupyter-mlet* ((result (progn ,@body)))
+         result))))
 
 (defmacro jupyter-run-with-io (io &rest body)
   "Return the result of evaluating the I/O value BODY evaluates to.
@@ -146,11 +150,10 @@ returned action is the result of the last action in IO-ACTIONS."
   "Return an I/O action that performs IO-A then IO-B.
 The result of the returned action is the result of IO-B."
   (declare (indent 1))
-  (make-jupyter-delayed
-   :value (lambda ()
-            (jupyter-mlet* ((_ io-a)
-                            (result io-b))
-              result))))
+  (jupyter-return-delayed-thunk
+    (jupyter-mlet* ((_ io-a)
+                    (result io-b))
+      result)))
 
 ;;; Publisher/subscriber
 
@@ -296,18 +299,16 @@ Ex. Subscribe to a publisher and unsubscribe after receiving two
             (jupyter-publish x)))
       (reverse msgs)) ; => '(1 2)"
   (declare (indent 0))
-  (make-jupyter-delayed
-   :value (lambda ()
-            (funcall jupyter-current-io (list 'subscribe sub))
-            nil)))
+  (jupyter-return-delayed-thunk
+    (funcall jupyter-current-io (list 'subscribe sub))
+    nil))
 
 (defun jupyter-publish (value)
   "Return an I/O action that submits VALUE to publish as content."
   (declare (indent 0))
-  (make-jupyter-delayed
-   :value (lambda ()
-            (funcall jupyter-current-io (jupyter-content value))
-            nil)))
+  (jupyter-return-delayed-thunk
+    (funcall jupyter-current-io (jupyter-content value))
+    nil))
 
 ;;; Working with requests
 
@@ -319,21 +320,20 @@ Evaluate IO-REQ, an IO action that results in a sent request, and
 wait for that request to become idle.  Signal a
 `jupyter-timeout-before-idle' error if TIMEOUT seconds elapses
 and the request has not become idle yet."
-  (make-jupyter-delayed
-   :value (lambda ()
-            (jupyter-mlet* ((req io-req))
-              (or (jupyter-wait-until-idle req timeout)
-                  (signal 'jupyter-timeout-before-idle (list req)))
-              req))))
+  (jupyter-return-delayed-thunk
+    (jupyter-mlet* ((req io-req))
+      (or (jupyter-wait-until-idle req timeout)
+          (signal 'jupyter-timeout-before-idle (list req)))
+      req)))
 
 (defun jupyter-messages (io-req &optional timeout)
   "Return an IO action that returns the messages of IO-REQ.
 IO-REQ is an IO action that evaluates to a sent request.  TIMEOUT
 has the same meaning as in `jupyter-idle'."
-  (make-jupyter-delayed
-   :value (lambda ()
-            (jupyter-mlet* ((req (jupyter-idle io-req timeout)))
-              (jupyter-request-messages req)))))
+  (let ((idle-req (jupyter-idle io-req timeout)))
+    (jupyter-return-delayed-thunk
+      (jupyter-mlet* ((req idle-req))
+        (jupyter-request-messages req)))))
 
 (defun jupyter-find-message (msg-type msgs)
   "Return a message whose type is MSG-TYPE in MSGS."
@@ -347,14 +347,13 @@ has the same meaning as in `jupyter-idle'."
   "Return an IO action that returns the reply message of IO-REQ.
 IO-REQ is an IO action that evaluates to a sent request.  TIMEOUT
 has the same meaning as in `jupyter-idle'."
-  (make-jupyter-delayed
-   :value (lambda ()
-            (jupyter-mlet* ((msgs (jupyter-messages io-req timeout)))
-              (cl-find-if
-               (lambda (msg)
-                 (let ((type (jupyter-message-type msg)))
-                   (string-suffix-p "_reply" type)))
-               msgs)))))
+  (jupyter-return-delayed-thunk
+    (jupyter-mlet* ((msgs (jupyter-messages io-req timeout)))
+      (cl-find-if
+       (lambda (msg)
+         (let ((type (jupyter-message-type msg)))
+           (string-suffix-p "_reply" type)))
+       msgs))))
 
 (defun jupyter-message-subscribed (io-req cbs)
   "Return an IO action that subscribes CBS to a request's message publisher.
@@ -366,19 +365,18 @@ an alist mapping message types to callback functions like
 
 The returned IO action returns the sent request after subscribing
 the callbacks."
-  (make-jupyter-delayed
-   :value (lambda ()
-            (jupyter-mlet* ((req io-req))
-              (jupyter-run-with-io
-                  (jupyter-request-message-publisher req)
-                (jupyter-subscribe
-                  (jupyter-subscriber
-                    (lambda (msg)
-                      (when-let*
-                          ((msg-type (jupyter-message-type msg))
-                           (fn (car (alist-get msg-type cbs nil nil #'string=))))
-                        (funcall fn msg))))))
-              req))))
+  (jupyter-return-delayed-thunk
+    (jupyter-mlet* ((req io-req))
+      (jupyter-run-with-io
+          (jupyter-request-message-publisher req)
+        (jupyter-subscribe
+          (jupyter-subscriber
+            (lambda (msg)
+              (when-let*
+                  ((msg-type (jupyter-message-type msg))
+                   (fn (car (alist-get msg-type cbs nil nil #'string=))))
+                (funcall fn msg))))))
+      req)))
 
 (defun jupyter-client-subscribed (io-req)
   "Return an IO action that subscribes a client to a request's message publisher.
@@ -388,22 +386,21 @@ of evaluation of the action.
 
 The returned IO action returns the sent request after subscribing
 the client."
-  (make-jupyter-delayed
-   :value (lambda ()
-            (jupyter-with-client jupyter-current-client
-              (let ((client jupyter-current-client))
-                (jupyter-mlet* ((req io-req))
-                  (when (string= (jupyter-request-type req)
-                                 "execute_request")
-                    (jupyter-server-mode-set-client client))
-                  (jupyter-run-with-io
-                      (jupyter-request-message-publisher req)
-                    (jupyter-subscribe
-                      (jupyter-subscriber
-                        (lambda (msg)
-                          (let ((channel (plist-get msg :channel)))
-                            (jupyter-handle-message client channel msg))))))
-                  req))))))
+  (jupyter-return-delayed-thunk
+    (jupyter-with-client jupyter-current-client
+      (let ((client jupyter-current-client))
+        (jupyter-mlet* ((req io-req))
+          (when (string= (jupyter-request-type req)
+                         "execute_request")
+            (jupyter-server-mode-set-client client))
+          (jupyter-run-with-io
+              (jupyter-request-message-publisher req)
+            (jupyter-subscribe
+              (jupyter-subscriber
+                (lambda (msg)
+                  (let ((channel (plist-get msg :channel)))
+                    (jupyter-handle-message client channel msg))))))
+          req)))))
 
 ;;; Request
 
@@ -458,28 +455,26 @@ the client."
         (ch (if (member type '("input_reply" "input_request"))
                 "stdin"
               "shell")))
-    (make-jupyter-delayed
-     :value
-     (lambda ()
-       (let ((req (jupyter-generate-request
-                    jupyter-current-client
-                    :type type
-                    :content content
-                    :client jupyter-current-client
-                    ;; Anything sent to stdin is a reply not a request
-                    ;; so consider the "request" completed.
-                    :idle-p (string= ch "stdin")
-                    :inhibited-handlers ih)))
-         (setf (jupyter-request-message-publisher req)
-               (jupyter-message-publisher req))
-         (jupyter-mlet*
-             ((_ (jupyter-do
-                   (jupyter-subscribe
-                     (jupyter-request-message-publisher req))
-                   (jupyter-publish
-                     (list 'send ch type content
-                           (jupyter-request-id req)))))))
-         req)))))
+    (jupyter-return-delayed-thunk
+      (let ((req (jupyter-generate-request
+                  jupyter-current-client
+                  :type type
+                  :content content
+                  :client jupyter-current-client
+                  ;; Anything sent to stdin is a reply not a request
+                  ;; so consider the "request" completed.
+                  :idle-p (string= ch "stdin")
+                  :inhibited-handlers ih)))
+        (setf (jupyter-request-message-publisher req)
+              (jupyter-message-publisher req))
+        (jupyter-mlet*
+            ((_ (jupyter-do
+                  (jupyter-subscribe
+                    (jupyter-request-message-publisher req))
+                  (jupyter-publish
+                    (list 'send ch type content
+                          (jupyter-request-id req)))))))
+        req))))
 
 (cl-defun jupyter-request (type &rest content)
   "Return an IO action that sends a `jupyter-request'.
