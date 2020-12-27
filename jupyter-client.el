@@ -195,9 +195,6 @@ next :execute-request sent to the kernel.")
     :initform nil
     :documentation "The saved kernel info created when first
 initializing this client.")
-   (kernel
-    :type jupyter-kernel
-    :documentation "The kernel this client is connected to.")
    (comms
     :type hash-table
     :initform (make-hash-table :test 'equal)
