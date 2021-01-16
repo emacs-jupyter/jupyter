@@ -739,9 +739,7 @@ Place `point' at `point-max'."
     ;; cell or after any continuation prompts.  See
     ;; `jupyter-repl-insert-prompt'.
     (remove-text-properties beg (point) '(rear-nonsticky))
-    ;; font-lock-multiline to avoid improper syntactic elements from
-    ;; spilling over to the rest of the buffer.
-    (add-text-properties beg (point) '(read-only t font-lock-multiline t))
+    (add-text-properties beg (point) '(read-only t))
     ;; reset the undo list so that a completed cell doesn't get undone.
     (setq buffer-undo-list '((t . 0)))))
 
