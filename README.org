@@ -11,7 +11,6 @@ An interface to communicate with Jupyter kernels in Emacs.
 - [[#what-does-this-package-do][What does this package do?]]
 - [[#how-do-i-install-this-package][How do I install this package?]]
   - [[#using-melpa][Using MELPA]]
-  - [[#building-a-package-archive-using-cask][Building a package archive using cask]]
   - [[#manual-installation][Manual installation]]
   - [[#building-the-widget-support-experimental][Building the widget support (EXPERIMENTAL)]]
 - [[#related-packages][Related packages]]
@@ -22,52 +21,22 @@ An interface to communicate with Jupyter kernels in Emacs.
   - [[#org-mode-source-blocks][=org-mode= source blocks]]
   - [[#kernelnotebook-server][Kernel/notebook server]]
   - [[#customizable-variables-available-for-all-frontends][Customizable variables available for all frontends]]
-- [[#api][API]]
-  - [[#naming-conventions][Naming conventions]]
-  - [[#overview][Overview]]
-  - [[#jupyter-kernel-client][=jupyter-kernel-client=]]
-  - [[#jupyter-kernel-manager][=jupyter-kernel-manager=]]
-  - [[#jupyter-widget-client][=jupyter-widget-client=]]
-  - [[#jupyter-repl-client][=jupyter-repl-client=]]
-  - [[#jupyter-ioloop][=jupyter-ioloop=]]
-  - [[#jupyter-channel-ioloop][=jupyter-channel-ioloop=]]
-  - [[#jupyter-zmq-channel-ioloop][=jupyter-zmq-channel-ioloop=]]
-  - [[#jupyter-comm-layer][=jupyter-comm-layer=]]
-  - [[#callbacks-and-hooks][Callbacks and hooks]]
-  - [[#waiting-for-messages][Waiting for messages]]
-  - [[#message-property-lists][Message property lists]]
-  - [[#modify-behavior-depending-on-kernel-language][Modify behavior depending on kernel language]]
-  - [[#org-mode][=org-mode=]]
 
 * What does this package do?
 
-- Provides an API for creating Jupyter kernel frontends in Emacs based on the
-  built-in =eieio= and =cl-generic= libraries.
+- Provides REPL and =org-mode= source block frontends to Jupyter kernels.
 
-  - Communication with a kernel is either done through =zmq= sockets using the
-    [[http://github.com/dzop/emacs-zmq][emacs-zmq]] library or (coming soon) through the Jupyter notebook REST API.
-
-    - All of this communication is abstracted so that a frontend developer
-      should only need to extend a few =cl-defmethod= definitions in order to
-      implement a frontend.
-
-  - Make it easy to define kernel language specific behavior. See the files
-    =jupyter-python.el= and =jupyter-julia.el= for examples.
-
-- Provides REPL and =org-mode= source block based frontends.
-
-- Jupyter kernel interactions are integrated with Emacs's built-in features.
-  For example
+- Kernel interactions integrated with Emacs's built-in features.  For
+  example
 
   - Inspecting a piece of code under =point= will display the information for
     that symbol in the =*Help*= buffer. You can re-visit inspection requests
     made to the kernel by calling =help-go-back= or =help-go-forward= while in
     the =*Help*= buffer.
 
-  - Code completion is done through the =completion-at-point= interface.
+  - Uses the =completion-at-point= interface for code completion.
 
-  - If the kernel asks for input from the user, a prompt is displayed in the
-    minibuffer.
+  - Kernel requests for user input entered through the minibuffer.
 
   - You can search through REPL history using =isearch=.
 
@@ -75,46 +44,26 @@ An interface to communicate with Jupyter kernels in Emacs.
 
 ** Using MELPA
 
-*NOTE:* Your Emacs needs to have been built with module support for this
-package to work since it relies on the =emacs-zmq= package. See the README of
+*NOTE:* This package relies on the =emacs-zmq= package which means your
+Emacs needs to have been built with module support.  See the README of
 that package for more information.
 
-The recommended way to install this package is through the built-in package
-manager in Emacs.
+You can install this package with any package manager that allows you
+to install MELPA packages.  For Emacs's built-in package manager:
 
-Ensure MELPA is in your =package-archives=
+1. Ensure MELPA is in =package-archives=
 
-#+BEGIN_SRC elisp
-(add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/"))
-#+END_SRC
+   #+BEGIN_SRC elisp
+   (add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/"))
+   #+END_SRC
 
-Ensure the latest versions of MELPA packages are available
+2. Ensure the latest versions of MELPA packages are available
 
-=M-x package-refresh-contents RET=
+   =M-x package-refresh-contents RET=
 
-Install Jupyter
+3. Install Jupyter
 
-=M-x package-install RET jupyter RET=
-
-** Building a package archive using cask
-
-One way to install this package is to build a package archive using =cask=
-(https://github.com/cask/cask) to build a local Emacs package file. To do this,
-clone the repository, enter its directory, and run the following at the command
-line:
-
-#+BEGIN_SRC shell
-cask package
-#+END_SRC
-
-This creates a file =dist/jupyter-0.6.0.tar= containing the package archive. To
-install it
-
-1. Start your Emacs normally
-2. Ensure MELPA is in your =package-archives=
-3. =M-x package-initialize=
-4. =M-x package-refresh-contents=
-5. =M-x package-install-file ~/path/to/jupyter/dist/jupyter-0.6.0.tar=
+   =M-x package-install RET jupyter RET=
 
 ** Manual installation
 
@@ -136,18 +85,20 @@ For a manual installation you can add the repository directory to your
 :ID:       59559FA3-59AD-453F-93E7-113B43F85493
 :END:
 
-There is also support for interacting with Jupyter widgets through an external
-browser. If a widget is to be displayed, an external browser is opened first to
-display the widget. In this case, Emacs acts as a relay for passing messages
-between the kernel and the external browser.
+There is limited support for interacting with Jupyter widgets through
+an external browser.  In this case, Emacs acts as a relay for passing
+messages between the kernel and the browser.
 
-If you would like to try out this limited support, you will need to have =node=
-installed on your system to build the necessary javascript. Then you will have
-to run the following commands from the root project directory:
+To try it out, install =node= (https://nodejs.org/en/) then run the
+following shell command from the top-level directory of this project.
 
 #+BEGIN_SRC shell
 make widgets
 #+END_SRC
+
+After, launch Emacs, connect to a kernel (e.g. through a REPL), and
+run some code that creates a widget.
+
 * Related packages
 
 ** =ob-ipython=
@@ -160,35 +111,33 @@ offered by [[https://github.com/gregsexton/ob-ipython][ob-ipython]] (and also th
 [[https://github.com/millejoh/emacs-ipython-notebook][ein]] is a complete Jupyter notebook interface in Emacs with many powerful
 features for Python kernels. There is some overlap in the features provided by
 =emacs-jupyter= and =ein=, but I have never used =ein= so I cannot speak very
-much about their similarities/differences.
+much about any similarities/differences.
 
 * How do I use the built-in frontends?
 ** REPL
 
-To start a new kernel on the =localhost= and connect a REPL client to it
-=M-x jupyter-run-repl=. Alternatively you can connect to an existing
-kernel by supplying the kernel's connection file using
-=M-x jupyter-connect-repl=.
+=M-x jupyter-run-repl= launches a new local kernel and displays a REPL
+buffer.
 
-The REPL supports most of the rich output that a kernel may send to a client.
-If the kernel requests a widget to be displayed, a browser is opened that
-displays the widget. If the kernel sends image data, the image will be
-displayed in the REPL buffer. If LaTeX is sent, it will be compiled (using
-=org-mode=) and displayed.
+=M-x jupyter-connect-repl= connects to an existing kernel using the
+kernel's [[https://jupyter-client.readthedocs.io/en/stable/kernels.html#connection-files][connection file]], which is supplied by the user, and displays
+a REPL buffer.
+
+The REPL supports some of the [[https://ipython.readthedocs.io/en/stable/interactive/plotting.html#rich-outputs][rich output]] that a kernel may send to a
+client, e.g. images, LaTeX, and HTML.
 
 *** Rich kernel output
 
-A Jupyter kernel provides many representations of results that may be used by
-the frontend, in this case Emacs. Luckily, Emacs provides
-good support for most of the available representations.
+Below is a table of the supported output mimetypes and their
+dependencies.  If a dependency is not available for a particular
+mimetype, a mimetype of lower priority gets displayed instead.
 
-The supported mimetypes along with their dependencies are shown below in order
-of priority if multiple representations are returned. Note, if a dependency is
-not available in your Emacs, a mimetype with a lower priority will be used to
-display output.
+For widgets, before attempting to open one, you also need to run the
+shell command =make widgets= in the top-level directory of this project
+to build some JavaScript files.
 
-| Mimetype                                   | Dependency                |
-|--------------------------------------------+---------------------------|
+| Mimetype                                 | Dependencies              |
+|------------------------------------------+---------------------------|
 | =application/vnd.jupyter.widget-view+json= | [[https://github.com/ahyatt/emacs-websocket][websocket]], [[https://github.com/skeeto/emacs-web-server][simple-httpd]]   |
 | =text/html=                                | Emacs built with libxml2  |
 | =text/markdown=                            | [[https://jblevins.org/projects/markdown-mode/][markdown-mode]]             |
@@ -198,37 +147,37 @@ display output.
 | =text/plain=                               | none                      |
 *** Inspection
 
-To send an inspect request to the kernel, press =M-i= when the cursor is at the
-location of the code you would like to inspect.
+To inspect the code around =point= press =M-i=.
+
 *** Completion
 
-Completion is implemented through the =completion-at-point= interface. In
-addition to completing symbols in the REPL buffer, completion also works in
-buffers [[id:DA597E05-E9A9-4DCE-BBD7-6D25238638C5][associated]] with a REPL. For =org-mode= users, there is even completion
-in the =org-mode= buffer when editing the contents of a Jupyter source code
-block.
+Completion is implemented through the =completion-at-point= interface
+and should just work.
+
+
+
+In addition to completing symbols in the REPL buffer, completion also
+works in buffers [[id:DA597E05-E9A9-4DCE-BBD7-6D25238638C5][associated]] with a REPL. For =org-mode= users, there is
+even completion in the =org-mode= buffer when editing the contents of a
+Jupyter source code block.
 *** REPL history
 
-You can navigate through the REPL history using =C-n= and =C-p= or =M-n= and
-=M-p=.
+To navigate the REPL history: =M-n= and =M-p=.
 
-You can also search through the history using =isearch=. To search through
-history, use the standard =isearch= keybindings: =C-s= to search forward
-through history and =C-s C-r= to search backward.
-*** Associating other buffers with a REPL (=jupyter-repl-interaction-mode=)
+To search the REPL history: =C-s= and =C-s C-r=.
+
+*** Associating buffers with a REPL (=jupyter-repl-interaction-mode=)
 :PROPERTIES:
 :ID:       DA597E05-E9A9-4DCE-BBD7-6D25238638C5
 :END:
 
-After starting a REPL, it is possible to associate the REPL with other buffers
-if they pass certain criteria. Currently, the buffer must have the =major-mode=
-that corresponds to the REPL's kernel language. To associate a buffer with a
-REPL you can run the command =jupyter-repl-associate-buffer=.
+=M-x jupyter-repl-associate-buffer= sets the =jupyter-current-client= of
+the current buffer to an existing REPL client and
+enables =jupyter-repl-interaction-mode=, allowing you to, for example,
+send the current line for evaluation by the client's kernel.
 
-=jupyter-repl-associate-buffer= will ask you for the REPL you would like to
-associate with the =current-buffer= and enable the minor mode
-=jupyter-repl-interaction-mode=. This minor mode populates the following
-keybindings for interacting with the REPL:
+When =jupyter-repl-interaction-mode= is enabled, the following
+keybindings are available
 
 | Key binding | Command                       |
 |-------------+-------------------------------|
@@ -244,65 +193,42 @@ keybindings for interacting with the REPL:
 
 **** Integration with =emacsclient=
 
-If code sent for evaluation causes a file to be opened via =emacsclient=, the
-opened file is associated with the corresponding REPL client if possible. This
-behavior is most useful, for example, when using the =edit= function in IJulia.
+If =emacsclient= is set as the =EDITOR= and evaluated code opens a file in
+a =major-mode= compatible with the client that sent the code, the opened
+file will automatically be associated with the client and have
+=jupyter-repl-interaction-mode= enabled.
 
-To enable =server-mode= in Emacs you should have something like the following
-in your Emacs configuration before starting any kernels.
-
-#+BEGIN_SRC elisp
-(server-mode 1)
-(setenv "EDITOR" "emacsclient")
-#+END_SRC
-
-Note this probably wont work properly when there are multiple competing clients
-sending requests to their underlying kernels that want to open files. Or if the
-underlying kernel takes longer than =jupyter-long-timeout= seconds to open a
-file.
+This feature probably wont work correctly when there are multiple
+competing clients sending requests to their underlying kernels that
+want to open files or if the underlying kernel takes longer
+than =jupyter-long-timeout= seconds to open a file.
 
 See =jupyter-server-mode-set-client= for more details.
 
-*** =jupyter-repl-persistent-mode=
-
-A global minor mode that will persist a kernel connection to a buffer about to
-be displayed if the current buffer is in =jupyter-repl-interaction-mode= and
-the buffer being switched to has the same =major-mode=. This mode is
-automatically enabled whenever =jupyter-run-repl= or =jupyter-connect-repl= is
-called.
 *** =jupyter-repl-maximum-size=
 
-Set the maximum number of lines before the REPL buffer is truncated.
+A variable that determines the maximum number of lines a REPL buffer
+can have before being truncated.
+
 *** =jupyter-repl-allow-RET-when-busy=
 
-If non-nil, allow inserting a newline in a REPL cell whenever the kernel is
-busy. Normally this isn't allowed since the REPL relies on the kernel
-responding to messages when =RET= is pressed, but a kernel does not respond to
-messages when it is busy.
+A variable that determines whether to allow insertion of newlines in a
+REPL cell when a kernel is busy or not.  See the variable
+documentation for more details.
+
 *** =jupyter-repl-echo-eval-p=
 
-If non-nil, when evaluating code using the =jupyter-eval-*= functions
-like =M-x jupyter-eval-line-or-region=, copy the evaluated code as a REPL input
-cell and display any output generated in the REPL. When this variable is nil,
-copying to the REPL does not occur and output/results are inserted in pop-up
-buffers or added to the =*Messages*= buffer according to
-=jupyter-eval-short-result-max-lines= and
-=jupyter-eval-short-result-display-function=.
+A variable that determines whether code evaluated with
+the =jupyter-eval-*= commands gets copied over to a REPL input cell or
+not.  You can set this variable to =t= if you prefer having the history
+of all evaluated code visible in the REPL.
 
-*** Widget support
-
-There is also support for Jupyter widgets integrated into the REPL. If any of
-the results returned by a kernel have a widget representation, a browser is
-opened and the widget is displayed in the browser. There is only one browser
-per client.
-
-This feature is currently considered experimental and has only been tested for
-simple uses of widgets. See [[id:B15FF43B-114C-4D73-B69C-2095F108EBBB][=jupyter-widget-client=]].
 ** =org-mode= source blocks
 
-For users of =org-mode=, integration with =org-babel= is provided through the
-=ob-jupyter= library. To enable Jupyter support for source code blocks, add
-=jupyter= to =org-babel-load-languages=.
+To enable support for Jupyter based source code blocks, add =jupyter=
+to =org-babel-load-languages=.  Ensure the =jupyter= entry is added last
+since loading =ob-jupyter= depends on the value of variables such
+as =org-src-lang-modes= and =org-babel-tangle-lang-exts=.
 
 #+BEGIN_SRC elisp
 (org-babel-do-load-languages
@@ -313,106 +239,88 @@ For users of =org-mode=, integration with =org-babel= is provided through the
    (jupyter . t)))
 #+END_SRC
 
-Note, =jupyter= should be added as the last element when loading languages
-since it depends on the values of variables such as =org-src-lang-modes= and
-=org-babel-tangle-lang-exts=. After =ob-jupyter= has been loaded, new source
-code blocks with names of the form =jupyter-LANG= will be available. =LANG= can be
-any one of the kernel languages found on your system. See
-=jupyter-available-kernelspecs=.
+After loading, source code blocks with names like =jupyter-LANG= will be
+available for use.  =LANG= can be any one of the kernel languages found
+on your system.  See =jupyter-available-kernelspecs=.
 
-Every Jupyter source code block requires that the =:session= parameter be
-specified since all interaction with a kernel is through a REPL. For example,
-to interact with a =python= kernel you would create a new source block like so
+- The =:session= parameter is required for all Jupyter based source code
+  blocks.
 
-#+BEGIN_SRC org
-,#+BEGIN_SRC jupyter-python :session py
-x = 'foo'
-y = 'bar'
-x + ' ' + y
-,#+END_SRC
-#+END_SRC
+  #+BEGIN_SRC org
+  ,#+BEGIN_SRC jupyter-python :session py
+  x = 'foo'
+  y = 'bar'
+  x + ' ' + y
+  ,#+END_SRC
+  #+END_SRC
 
-By default, source blocks are executed synchronously. To execute a source block
-asynchronously set the =:async= parameter to =yes=:
+- By default, source blocks are executed synchronously. To execute a
+  source block asynchronously set the =:async= parameter to =yes=:
 
-#+BEGIN_SRC org
-,#+BEGIN_SRC jupyter-python :session py :async yes
-x = 'foo'
-y = 'bar'
-x + ' ' + y
-,#+END_SRC
-#+END_SRC
+  #+BEGIN_SRC org
+  ,#+BEGIN_SRC jupyter-python :session py :async yes
+  x = 'foo'
+  y = 'bar'
+  x + ' ' + y
+  ,#+END_SRC
+  #+END_SRC
 
-Since a particular language may have multiple kernels available, the default
-kernel used will be the first one found by =jupyter-available-kernelspecs= for
-the language. To change the kernel, set the =:kernel= parameter:
+- To change the kernel, set the =:kernel= parameter.
+  
+  #+BEGIN_SRC org
+  ,#+BEGIN_SRC jupyter-python :session py :async yes :kernel python2
+  x = 'foo'
+  y = 'bar'
+  x + ' ' + y
+  ,#+END_SRC
+  #+END_SRC
 
-#+BEGIN_SRC org
-,#+BEGIN_SRC jupyter-python :session py :async yes :kernel python2
-x = 'foo'
-y = 'bar'
-x + ' ' + y
-,#+END_SRC
-#+END_SRC
+  Note, the same session name can be used for different values of =:kernel= since
+  the underlying REPL buffer's name is based on both =:session= and =:kernel=.
 
-Note, the same session name can be used for different values of =:kernel= since
-the underlying REPL buffer's name is based on both =:session= and =:kernel=.
+- Any of the default parameters for a language can be changed by
+  setting =org-babel-default-header-args:jupyter-LANG= to an appropriate
+  value. For example to change the defaults for the =julia= kernel, you
+  can set =org-babel-default-header-args:jupyter-julia= to something
+  like
 
-Any of the defaults for a language can be changed by setting
-=org-babel-default-header-args:jupyter-LANG= to an appropriate value. For example
-to change the defaults for the =julia= kernel, you can set
-=org-babel-default-header-args:jupyter-julia= to something like
-
-#+BEGIN_SRC elisp
-(setq org-babel-default-header-args:jupyter-julia '((:async . "yes")
-                                                    (:session . "jl")
-                                                    (:kernel . "julia-1.0")))
-#+END_SRC
+  #+BEGIN_SRC elisp
+  (setq org-babel-default-header-args:jupyter-julia '((:async . "yes")
+                                                      (:session . "jl")
+                                                      (:kernel . "julia-1.0")))
+  #+END_SRC
 *** Note on the language name provided by a kernelspec
 
 Some kernelspecs use spaces in the name of the kernel language. Those
 get replaced by dashes in the language name you need to use for the
-source block, e.g. =Wolfram Language= becomes =jupyter-Wolfram-Language=.
+corresponding source blocks, e.g. =Wolfram Language= has the source
+block language =jupyter-Wolfram-Language=.
 
 *** Integration with =ob-async=
 
-If you use the =ob-async= package, make sure you add the Jupyter source block
-languages to [[https://github.com/astahlman/ob-async#ob-async-no-async-languages-alist][ob-async-no-async-languages-alist]] so that =ob-async= doesn't
-override =emacs-jupyter= when the =:async= header argument is specified. For
-example you can put the following in your configuration:
+If you have =ob-async= installed and are getting errors when your source
+block specifies the =:async= header argument, try putting something like
+the following in your configuration:
 
 #+BEGIN_SRC elisp
 (setq ob-async-no-async-languages-alist '("jupyter-python" "jupyter-julia"))
 #+END_SRC
 
+See [[https://github.com/astahlman/ob-async#ob-async-no-async-languages-alist][ob-async-no-async-languages-alist]] for more details.
+
 *** Issues with =ob-ipython=
-If you already have =ob-ipython= installed, you /may/ experience
-issues with it conflicting with =emacs-jupyter=
-(e.g. [[https://github.com/dzop/emacs-jupyter/issues/133#issuecomment-502444999][this
-issue]]): i.e. instead of actual results of source block execution,
-you'll got only long GUIDs, and message like =error in process
-sentinel: Search failed: "b5d6bfb3-e37f-4c58-a2e5-edcf1ad2430f"= in
-minibuffer
 
-This is because both =emacs-jupyter= and =ob-ipython= try to own
-=jupyter-LANG= source blocks, and conflicts with each other. It seems
-there is no way to make them both work together.
-
-If you have issues like described above, then try disable =ob-ipython=
-and see, is it help. Usually, it is enough to remove =ipython= from
-=(org-babel-do-load-languages ...)= list, and restart your Emacs.
+If both =ob-ipython= and this package are installed, you may experience
+issues such as [[https://github.com/dzop/emacs-jupyter/issues/133#issuecomment-502444999][this one]], causing =Search failed= errors.  To avoid such
+errors, remove =ipython= from =org-babel-do-load-languages= and restart
+your Emacs.
 
 *** Overriding built-in src-block languages
 
-You may find having to specify the names of Jupyter source blocks using
-=jupyter-LANG= a bit verbose and want to have the built-in support for =LANG=
-source blocks overridden to use the machinery of =jupyter-LANG= source blocks.
-This can be done by calling the function
-=org-babel-jupyter-override-src-block=.
-
-For example, to override the behavior of =python= source blocks so that they
-act like =jupyter-python= source blocks, you can add the following in your
-initialization (after calling =org-babel-do-load-languages=):
+Instead of having to specify =jupyter-LANG= as a source block name, you
+can have =LANG= source blocks use the Jupyter machinery.  To do so,
+place a call to =org-babel-jupyter-override-src-block= somewhere in your
+config (after the call to =org-babel-do-load-languages=).
 
 #+BEGIN_SRC elisp
 (org-babel-jupyter-override-src-block "python")
@@ -421,15 +329,15 @@ initialization (after calling =org-babel-do-load-languages=):
 After calling the above function, all =python= source blocks are effectively
 aliases of =jupyter-python= source blocks and the variable
 =org-babel-default-header-args:python= will be set to the value of
-=org-babel-default-header-args:jupyter-python=. Note,
-=org-babel-default-header-args:python= will *not* be an alias of
-=org-babel-default-header-args:jupyter-python=, the value of the former is
-merely set to the value of the latter after calling
-=org-babel-jupyter-override-src-block=.
+=org-babel-default-header-args:jupyter-python=.
 
-If you decide you want to go back to the original behavior or =python= source
-blocks, you can restore the overridden functions by calling
-=org-babel-jupyter-restore-src-block=.
+Note, =org-babel-default-header-args:python= will *not* be an alias
+of =org-babel-default-header-args:jupyter-python=, the value of the
+former is merely set to the value of the latter after
+calling =org-babel-jupyter-override-src-block=.
+
+You can restore the original behavior by
+calling =org-babel-jupyter-restore-src-block=.
 
 #+BEGIN_SRC elisp
 (org-babel-jupyter-restore-src-block "python")
@@ -437,19 +345,7 @@ blocks, you can restore the overridden functions by calling
 
 *** Rich kernel output
 
-In =org-mode= a code block returns scalar data (plain text, numbers, lists,
-tables, \dots), an image file name, or code from another language. All of this
-information must be specified in the code block's header arguments, but all of
-this information is already provided in the messages passed between a Jupyter
-kernel and its frontends.
-
-When a kernel provides representations of results other than plain text, those
-richer representations have priority. For example if the kernel returns LaTeX
-code, the results are wrapped in a LaTeX source block. Similarly for HTML and
-markdown. If an image is returned, the image is automatically saved to file and
-a link to the file will be the result of the code block.
-
-Below are the supported mimetypes ordered by priority
+The supported display mimetypes ordered by priority are:
 - text/org
 - image/svg+xml, image/jpeg, image/png
 - text/html
@@ -457,15 +353,11 @@ Below are the supported mimetypes ordered by priority
 - text/latex
 - text/plain
 
-Since it is possible to determine how a result should be represented in
-=org-mode= via its MIME type, only a few header arguments are supported.
-
 **** A note on using the =:results= header argument
 
-Results are inserted in the =org-mode= buffer in such a way that most header
-arguments that control how results should be inserted don't need to specified.
-There are some cases where this behavior is not wanted and which can be
-controlled by setting the =:results= header argument.
+There are some cases where the normal result insertion mechanism may
+not be wanted.  To control result insertion somewhat, use the =:results=
+header argument:
 
 - Insert unwrapped LaTeX :: Normally LaTeX results are wrapped in a
      =BEGIN_EXPORT= block, in order to insert LaTeX unwrapped, specify
@@ -477,10 +369,10 @@ controlled by setting the =:results= header argument.
 
 **** Fixing the file name of images with the =:file= argument
 
-Whenever an image result is returned, a random image file name is generated and
-the image is written into =org-babel-jupyter-resource-directory=. In order to
-specify your own file name for the image, you can give an appropriate value to
-the =:file= header argument.
+Whenever an image result is returned, a random image file name is
+generated and the image is written
+to =org-babel-jupyter-resource-directory=. To specify your own file name
+for the image, set the =:file= header argument.
 
 **** Changing the mime-type priority with the =:display= argument
 
@@ -656,7 +548,7 @@ available when =jupyter-org-interaction-mode= is enabled
 ** Kernel/notebook server
 *** Managing live kernels
 
-The main entry point for working working with a kernel server is the
+The main entry point for working with a kernel server is the
 =jupyter-server-list-kernels= command which shows a list of all live kernels
 from the server URL that you provide when first calling the command. Any
 subsequent calls to the command will use the same URL as the first call. To
@@ -713,746 +605,27 @@ connection.
 
 *** =jupyter-eval-use-overlays=
 
-The variable =jupyter-eval-use-overlays= controls whether or not the results of
-evaluations, e.g. results obtained by pressing =C-c C-c=
-(=jupyter-eval-line-or-region=) or similar, should be displayed as overlays in
-the current buffer. If non-nil, then the results of evaluation are displayed
-at the end of the line or region being evaluated using an overlay. Only
-the =text/plain= representation of a result is displayed inline, images and
-non-text results are still displayed in pop-up buffers.
+When non-nil, display the =text/plain= representation of evaluation
+results inline using overlays.  All other representations are
+displayed in the usual way.  This only works with the =jupyter-eval-*=
+commands like =jupyter-eval-line-or-region=.
 
-You can control how the overlay looks by modifying the =jupyter-eval-overlay=
-face. You can also change the prefix string added before the evaluation result,
-see =jupyter-eval-overlay-prefix=.
+You can control the appearance of the overlay,
+see =jupyter-eval-overlay-prefix= and the =jupyter-eval-overlay= face.
 
-All evaluation result overlays can be cleared from the buffer by
-calling =jupyter-eval-remove-overlays= (=C-c C-o=). Individual overlays are removed
-whenever the text in the region that was evaluated is modified.
+To clear all overlays from the buffer,
+bind =jupyter-eval-remove-overlays= to some key.  Its bound to =C-c C-o=
+when =jupyter-repl-interaction-mode= is enabled.  Individual overlays
+are removed whenever the text in the region that was evaluated is
+modified.
 
-For multi-line overlays you can fold/unfold the overlay by pressing =S-RET=
-when =point= is inside the region of code that caused the overlay to be created.
-See =jupyter-eval-overlay-keymap=.
+For multi-line overlays you can fold/unfold the overlay by
+pressing =S-RET= when =point= is inside the region of code that caused the
+overlay to be created.  See =jupyter-eval-overlay-keymap=.
 
 *** =jupyter-eval-short-result-max-lines=
 
-If the number of lines of an evaluation result is smaller than this variable,
-the function stored in =jupyter-eval-short-result-display-function= is used to
-display the result. Otherwise the result is displayed in a pop-up buffer.
-
-This variable is mainly used by the =jupyter-eval-*= commands such as
-=M-x jupyter-eval-line-or-region=.
-
-* API
-** Naming conventions
-
-Methods that send messages to a kernel are named =jupyter-send-<msg-type>=
-where =<msg-type>= is any message type. The message types are identical to
-those defined in the [[http://jupyter-client.readthedocs.io/en/stable/messaging.html][Jupyter spec]] with ~_~ characters replaced by ~-~
-characters. So to send an =execute-request= you would call
-=jupyter-send-execute-request=.
-
-Similarly, methods that are responsible for handling messages received from a
-kernel are named =jupyter-handle-<msg-type>=.
-
-Methods that require a message type as an argument such as
-=jupyter-add-callback= should do so by passing a message type keyword such as
-=:execute-request=.
-** Overview
-*** Classes
-
-- =jupyter-kernel-client= :: The base class for Jupyter frontends. Handles all
-     message sending and receiving to/from a Jupyter kernel.
-- =jupyter-kernel-manager= :: The base class for starting local kernel
-     processes.
-- =jupyter-widget-client= :: (EXPERIMENTAL) A subclass of
-     =jupyter-kernel-client= that adds support for displaying Jupyter widgets in
-     an external browser.
-- =jupyter-repl-client= :: A subclass of =jupyter-kernel-client= that implements
-     a REPL. Note, a =jupyter-repl-client= also has a =jupyter-widget-client= as
-     a parent class.
-- =jupyter-org-client= :: A subclass of =jupyter-repl-client= that adds support
-     for evaluating =org-mode= source code blocks and inserting the results in
-     the =org-mode= buffer.
-**** Lower level classes
-
-- =jupyter-ioloop= :: A general class for asynchronous communication with a
-     subprocess. The subprocess polls its standard input for "events" from the
-     parent process. To add a new event to be handled by the subprocess you use
-     =jupyter-ioloop-add-event=. The resulting subprocess event handler created
-     using =jupyter-ioloop-add-event= can potentially send an event back to the
-     parent process. In the parent, events are handled by extending the
-     =jupyter-ioloop-handler= method.
-- =jupyter-zmq-channel-ioloop= :: A subclass of =jupyter-ioloop= configured to
-     start a subprocess that handles messages being passed on Jupyter channels
-     between a kernel and the parent Emacs process. This is what
-     =jupyter-kernel-client= uses to communicate with a kernel.
-*** Communicating with a kernel
-**** Initializing a connection
-
-For a =jupyter-kernel-client= to start communicating with a kernel, the
-following steps are taken:
-
-1. Initialize the connection using =jupyter-comm-initialize=
-2. Start listening on the client's channels with =jupyter-start-channels=
-
-When starting a local kernel process, both steps are taken care of in
-=jupyter-start-new-kernel=.
-
-For remote kernels, you will have to manually supply the connection JSON file
-to =jupyter-comm-initialize= and start the kernel channels.
-**** Sending messages
-
-Once a connection is initialized, messages can be sent to the kernel using the
-=jupyter-send-<msg-type>= family of methods, where =<msg-type>= is any valid
-request message type (see =jupyter-message-types=). These methods
-asynchronously send a message to the kernel using a subprocess associated with
-each client, see help:jupyter-zmq-channel-ioloop, and they each return a
-=jupyter-request= object which encapsulates the information necessary for
-handling reply messages associated with the request in the future.
-**** Receiving messages
-
-There are two ways to handle the reply messages sent by the kernel: (1)
-subclass the =jupyter-kernel-client= and override the
-=jupyter-handle-<msg-type>= family of methods or (2) attach callbacks to the
-=jupyter-request= objects returned by the =jupyter-send-<msg-type>= methods.
-Both ways can occur in parallel.
-
-When a message is received, =jupyter-handle-message= is called on the client to
-kick off the message handling process. Any callbacks associated with the
-=jupyter-request= of the message are evaluated and the appropriate
-=jupyter-handle-<msg-type>= method called.
-
-Note, the default handler methods of =jupyter-kernel-client= are no-ops with
-the exception of =jupyter-handle-input-request= which requests input from the
-user and sends it to the kernel.
-** =jupyter-kernel-client=
-
-Represents a client connected to a Jupyter kernel.
-*** Initializing a connection
-
-=jupyter-comm-initialize= takes a client and a connection file as
-arguments and configures the client to communicate with the kernel whose
-connection information is contained in the [[http://jupyter-client.readthedocs.io/en/stable/kernels.html#connection-files][connection file]].
-
-After initializing a connection, to begin communicating with a kernel call
-=jupyter-start-channels=.
-
-#+BEGIN_SRC elisp
-(let ((client (jupyter-kernel-client)))
-  (jupyter-comm-initialize client "kernel1234.json")
-  (jupyter-start-channels client))
-#+END_SRC
-
-=jupyter-comm-initialize= is mainly useful when initializing a remote
-connection or connecting to an existing kernel. In order to start a new kernel
-on the =localhost= use =jupyter-start-new-kernel=
-
-#+BEGIN_SRC elisp
-(cl-destructuring-bind (manager client)
-    (jupyter-start-new-kernel "python")
-  BODY)
-#+END_SRC
-
-The above code starts a new =python= kernel and returns the
-=jupyter-kernel-manager= object used to manage the lifetime of the local kernel
-process and the =jupyter-kernel-client= connected to the manager's kernel.
-=jupyter-start-channels= will already have been called on the returned client
-when =jupyter-start-new-kernel= returns.
-
-To create multiple client's connected to the kernel of a
-=jupyter-kernel-manager= use =jupyter-make-client=.
-*** Starting/stopping channels
-
-To start a client's channels, use =jupyter-start-channels=. To stop a client's
-channels, =jupyter-stop-channels=. To determine if at least one channel is
-alive, =jupyter-channels-running-p=.
-
-You can also start individual channels with
-
-#+BEGIN_SRC elisp
-(jupyter-start-channel client :shell)
-#+END_SRC
-
-and stop a channel with
-
-#+BEGIN_SRC elisp
-(jupyter-stop-channel client :shell)
-#+END_SRC
-*** Making requests to a kernel
-:PROPERTIES:
-:ID:       9D893914-E769-4AEF-8928-826B67038C2A
-:END:
-
-To free up Emacs from having to process messages sent to and received from a
-kernel, an Emacs subprocess is created for every client. This subprocess is
-responsible for polling the client's channels for messages and taking care of
-message signing, encoding, and decoding. The parent Emacs process is only
-responsible for supplying the message property lists (the representation used
-for Jupyter messages in Emacs) when sending a message and will receive the
-decoded message property list when receiving a message. The exception to this is
-the heartbeat channel which is implemented using timers in the parent Emacs
-process.
-
-Note, the message property lists should not be accessed directly. There are
-helper functions which should be used to access the message fields. See [[id:D09FDD89-43A9-41DA-A6E8-6D6C73336981][Message property lists]].
-**** The lifetime of a request
-
-Sending a request to a kernel is done through one of the
-=jupyter-send-<msg-type>= methods of a =jupyter-kernel-client=. The arguments
-of the Jupyter message that each method represents are passed as keyword
-arguments, the keywords all have names according to the Jupyter messaging spec
-but with ~_~ replaced by ~-~. These methods construct the message property
-lists based on their arguments and pass the constructed message to the
-=jupyter-send= method of a client. The =jupyter-send= method then returns a new
-=jupyter-request= representing the sent message.
-
-#+BEGIN_SRC elisp
-(jupyter-send-execute-request client :code "1 + 2") ; Returns a `jupyter-request'
-#+END_SRC
-
-When a request is sent, the message ID of the request is added to the client's
-request table which maps message IDs to their corresponding =jupyter-request=
-objects.
-
-When a message is received from the kernel the request that generated it is
-found in the request table by using the =jupyter-message-parent-id= of the
-message. The slots of the =jupyter-request= are updated, any callbacks
-associated with the =jupyter-request= are run for the message, and the message
-is dispatched to the appropriate channel handler method of the client (one of
-the =jupyter-handle-<msg-type>= methods).
-
-A request is considered complete and is dropped from the request table once a
-=status: idle= message has been received for the request and it is not the most
-recently made request.
-**** =jupyter-generate-request=
-
-When one of the send methods are called, a =jupyter-request= object is
-instantiated by a call to =jupyter-generate-request= and the instantiated
-request is returned by the send method so that the caller can attach their
-callbacks as described above.
-
-Most likely, subclasses would want to attach extra information to a request.
-For example, an =org-mode= client that sends an =:execute-request= based on the
-contents of a source code block might want to keep track of the code block's
-buffer position so that it can insert the results at the right location when
-they are ready.
-
-This is the purpose of the =jupyter-generate-request= method. If a
-=jupyter-request= object is not general enough for some purpose, a subclass of
-=jupyter-kernel-client= can define a new request object, ensuring that the slots
-of a =jupyter-request= are included, and return the new type of request when
-=jupyter-generate-request= is called for a message.
-
-For example, below is the definition of the =jupyter-org-request= type for
-handling requests made in an =org-mode= buffer
-
-#+BEGIN_SRC elisp
-(cl-defstruct (jupyter-org-request
-               (:include jupyter-request))
-  result-type
-  block-params
-  results
-  silent
-  id-cleared-p
-  marker
-  async)
-#+END_SRC
-
-And the context specializers used are
-
-#+BEGIN_SRC elisp
-(cl-defmethod jupyter-generate-request ((client jupyter-org-client) msg
-                                        &context (major-mode org-mode))
-  ...) ; Return a `jupyter-org-request'
-#+END_SRC
-
-Notice that the =major-mode= context allows for =jupyter-org-request= objects
-to be used by =jupyter-generate-request= when the request is generated in
-=org-mode= buffers and to use the less specialized =jupyter-request= in other
-contexts.
-**** =jupyter-drop-request=
-
-When a request is completed, i.e. when the kernel sends an idle message for a
-request, you may want to do some final cleanup of the request. This is the
-purpose of the =jupyter-drop-request= method, it gets called when an idle
-message has been received for a kernel but only when the request is not the
-most recently sent request.
-*** Handling received messages
-
-The handler methods of a =jupyter-kernel-client= are called whenever the
-corresponding message is received from the kernel. They are intended to be
-overwritten by subclasses and most of the default implementations do nothing
-with the exception of the =:input-reply=, =:comm-open=, and =:comm-close=
-messages. The =:input-reply= handler asks for input from the user through the
-minibuffer and sends it to the kernel whereas the =:comm-open= / =:comm-close=
-default message handlers store the state of open =comms= in the client's =comms=
-slot.
-
-The handler methods have the following signature
-
-#+BEGIN_SRC elisp
-(cl-defmethod jupyter-handle-<msg-type> ((client jupyter-kernel-client) req arg1 arg2 ...)
-  BODY)
-#+END_SRC
-
-=req= will be the =jupyter-request= object that generated the message. =arg1=,
-=arg2=, ... will be the unwrapped message contents passed to the handler, their
-number of arguments and their order are dependent on the message type.
-Alternatively you may work with the full message property list by accessing the
-=jupyter-request-last-message= slot of the =juptyer-request= object.
-
-See [[id:0E7CA280-8D14-4994-A3C7-C3B7204AC9D2][message callbacks]] for another way of handling received messages.
-**** A note on boolean arguments
-
-For message types that have boolean message fields, the symbol in the variable
-=jupyter--false= represents a false value so when checking the contents of
-these arguments it is best to explicitly check for =t=.
-
-#+BEGIN_SRC elisp
-(if (eq arg1 t) ...)
-#+END_SRC
-
-This is because there are some ambiguities between translating JSON values to
-their Emacs Lisp equivalents, since =nil= in Emacs is used both as signifying
-=false= or nothing whereas JSON has =null= for nothing.
-*** Client local variables
-
-Some variables which are used internally by =jupyter-kernel-client= have client
-local values. For example the variable =jupyter-include-other-output= tells a
-=jupyter-kernel-client= to pass IOPub messages originating from a different
-client to their corresponding handlers and defaults to =nil=, i.e. do not
-handle IOPub messages from other clients. To modify a client local variable you
-would use =jupyter-set=
-
-#+BEGIN_SRC elisp
-(jupyter-set client 'jupyter-include-other-output t)
-#+END_SRC
-
-and to retrieve the client local value, use =jupyter-get=
-
-#+BEGIN_SRC elisp
-(jupyter-get client 'jupyter-include-other-output)
-#+END_SRC
-
-These functions just set/get the value of a buffer local variable in a private
-buffer of the client. You may work with these buffer local variables directly
-by using the =jupyter-with-client-buffer= macro, just be sure to use
-=setq-local= if you are setting a new client local variable otherwise you may
-change the global value of the variable. Alternatively you can define a
-variable as automatically buffer local when set with =defvar-local=.
-
-#+BEGIN_SRC elisp
-(jupyter-with-client-buffer client
-  (message "jupyter-include-other-output: %s" jupyter-include-other-output)
-  (setq-local jupyter-include-other-output (not jupyter-include-other-output)))
-#+END_SRC
-**** Channel hooks
-
-The channel hook variables =jupyter-iopub-message-hook=,
-=jupyter-shell-message-hook=, and =jupyter-stdin-message-hook= are all client
-local variables and functions can be added to or removed from them using
-=jupyter-add-hook= and =jupyter-remove-hook=. See [[id:B29776AA-2ACF-4A4F-A4EA-3F194262465D][Channel hooks]].
-** =jupyter-kernel-manager=
-
-Manage the lifetime of a kernel on the =localhost=.
-*** Kernelspecs
-
-To get a list of kernelspecs on your system, as represented in Emacs, use
-=jupyter-available-kernelspecs= which processes the output of the shell command
-
-#+BEGIN_SRC sh
-jupyter kernelspec list
-#+END_SRC
-
-to construct the list of kernelspecs. =jupyter-available-kernelspecs= also
-supports remote hosts. If the =default-directory= points to a remote system,
-the returned kernelspecs are those on the remote system.
-
-To find all kernelspecs whose kernels match some regular expression use
-=jupyter-find-kernelspecs=. In case you would like to get the kernelspec for a
-specific kernel, use =jupyter-get-kernelspec=.
-
-You may also use =jupyter-completing-read-kernelspec= in an
-=interactive= spec to ask the user to select a kernel from
-the list of available kernelspecs.
-*** Managing the lifetime of a kernel
-**** Starting a kernel
-As was mentioned previously, to start a new kernel on the =localhost= and
-create a connected client, use =jupyter-start-new-kernel= which takes a kernel
-name and returns a =jupyter-kernel-manager= which manages the lifetime of the
-kernel, and a connected =jupyter-kernel-client=.
-
-#+BEGIN_SRC elisp
-(cl-destructuring-bind (manager client)
-    (jupyter-start-new-kernel "python")
-  BODY)
-#+END_SRC
-
-Instead of supplying an exact kernel name, you may also supply the prefix of
-one. Then the first available kernel that has the same prefix will be started.
-See =jupyter-find-kernelspecs=.
-**** Stopping a kernel
-
-To shutdown a kernel, use =jupyter-shutdown-kernel=. To check if a kernel is
-alive, =jupyter-kernel-alive-p=.
-**** Interrupting a kernel
-
-To interrupt a kernel, use =jupyter-interrupt-kernel=.
-*** Making clients connected to a kernel
-
-Once you have a kernel manager you can make new =jupyter-kernel-client= (or a
-subclass of one) instances using =jupyter-make-client=.
-** =jupyter-widget-client=
-:PROPERTIES:
-:ID:       F8C2EB90-1DF3-4880-B684-31FE4784FAD1
-:END:
-
-This class adds support for interacting with Jupyter widgets using an external
-browser for the widget display. In order for this to work properly you will
-need to have =simple-httpd= and the =websocket= packages installed, in
-addition, you will have to build the required javascript files as described in
-[[id:59559FA3-59AD-453F-93E7-113B43F85493][Widget support]].
-
-The default implementation of =jupyter-widget-client= overrides the following
-methods of a =jupyter-kernel-client=
-
-#+BEGIN_SRC elisp
-(jupyter-handle-comm-close)
-(jupyter-handle-comm-open)
-(jupyter-handle-comm-msg)
-#+END_SRC
-
-Comm messages in Jupyter are a way to allow for custom messages between the
-kernel and a client. In the case of Jupyter widgets they are used to sync
-widget state between the kernel and client.
-
-It would be amazing to add custom Jupyter widgets to Emacs using the built
-=widget= library which would work for widgets such as text boxes, buttons, and
-other simple widgets, but there doesn't seem to be a way to support more
-complex widgets in Emacs that require embedded javascript.
-
-The default implementation of =jupyter-kernel-client= only keeps track of open
-comms through a client's =comms= slot. The =jupyter-widget-client= subclass
-adds the functionality to display and interact with widgets through an external
-browser. This works by relaying the comm messages between the browser and the
-kernel through a websocket. For this to work, you will also need to have the
-=simple-httpd= and =websocket= Emacs packages available.
-
-This feature is currently experimental, but seems to work well. I was able to
-interact with an [[https://github.com/jupyter-widgets/ipyleaflet][ipyleaflet]] map without any noticeable delay.
-** TODO =jupyter-repl-client=
-** TODO =jupyter-ioloop=
-** TODO =jupyter-channel-ioloop=
-** TODO =jupyter-zmq-channel-ioloop=
-** TODO =jupyter-comm-layer=
-** Callbacks and hooks
-:PROPERTIES:
-:ID:       0E7CA280-8D14-4994-A3C7-C3B7204AC9D2
-:END:
-
-There are mainly two ways of evaluating code when receiving a message from the
-kernel. Either sub-classing =jupyter-kernel-client= and overriding the handler
-methods or adding message callbacks to the =jupyter-request= objects returned
-by the send methods. If both methods are used in parallel, the message
-callbacks will run before the handler methods.
-
-When working with a subclass of =jupyter-kernel-client=, to prevent a subset of
-handler methods from firing when a message is received for a request, see
-=jupyter-inhibit-handlers= below.
-
-Also provided are message hook variables which are local to each client object
-and look like =jupyter-<channel>-message-hook=, where =<channel>= can be one of
-=iopub=, =shell=, or =stdin=. These hooks also provide an alternative method of
-suppressing client handlers from running based on the received message.
-*** =jupyter-request= callbacks
-:PROPERTIES:
-:ID:       BFCFCD3B-138A-4471-BEED-0EA3258493E5
-:END:
-
-To add callbacks to a request, use =jupyter-add-callback= which accepts a
-=jupyter-request= as its first argument and alternating (message type,
-callback) pairs as the remaining arguments. The callbacks are registered with
-the request object to run whenever a message of the appropriate type is
-received. For example, to do something when a client receives a
-=:kernel-info-reply= you would do the following:
-
-#+BEGIN_SRC elisp
-(jupyter-add-callback (jupyter-send-kernel-info-request client)
-  :kernel-info-reply (lambda (msg)
-                       (let ((info (jupyter-message-content msg)))
-                         BODY)))
-#+END_SRC
-
-To print out the results of an execute request:
-
-#+BEGIN_SRC elisp
-(jupyter-add-callback (jupyter-send-execute-request client :code "1 + 2")
-  :execute-result (lambda (msg)
-                    (message (jupyter-message-data msg :text/plain))))
-#+END_SRC
-
-To add multiple callbacks to a request:
-
-#+BEGIN_SRC elisp
-(jupyter-add-callback (jupyter-send-execute-request client :code "1 + 2")
-  :execute-result (lambda (msg)
-                    (message (jupyter-message-data msg :text/plain)))
-  :status (lambda (msg)
-            (when (jupyter-message-status-idle-p msg)
-              (message "DONE!"))))
-#+END_SRC
-
-There is also the possibility of running the same handler for different message
-types:
-
-#+BEGIN_SRC elisp
-(jupyter-add-callback (jupyter-send-execute-request client :code "1 + 2")
-  '(:status :execute-result :execute-reply)
-  (lambda (msg)
-    (pcase (jupyter-message-type msg)
-      (:status ...)
-      (:execute-reply ...)
-      (:execute-result ...))))
-#+END_SRC
-*** Channel hooks
-:PROPERTIES:
-:ID:       B29776AA-2ACF-4A4F-A4EA-3F194262465D
-:END:
-
-Hook variables are available for each channel: =jupyter-iopub-message-hook=,
-=jupyter-stdin-message-hook=, and =jupyter-shell-message-hook=. Unless you want
-to run a channel hook for every client, use =jupyter-add-hook= to add a
-function to one of the channel hooks. =jupyter-add-hook= only adds to the
-client local value of the hook variables.
-
-#+BEGIN_SRC elisp
-(jupyter-add-hook
- client 'jupyter-iopub-message-hook
- (lambda (msg)
-   (when (jupyter-message-status-idle-p msg)
-     (message "Kernel idle."))))
-#+END_SRC
-
-To remove a client local hook, use =jupyter-remove-hook=.
-
-Channel hooks also provide a way of suppressing the handler methods. If any of
-the channel hooks return a non-nil value, the handler method for that message
-will be suppressed.
-*** =jupyter-inhibit-handlers=
-
-In addition to suppressing handler methods using channel hooks, to prevent a
-client from running its handler methods for a particular request you can =let=
-bind =jupyter-inhibit-handlers= to an appropriate value before the request is
-made. For example, to prevent a client from running its stream handler for a
-request you would do the following:
-
-#+BEGIN_SRC elisp
-(let ((jupyter-inhibit-handlers '(:stream)))
-  (jupyter-send-execute-request client :code "print(\"foo\")\n1 + 2"))
-#+END_SRC
-
-=jupyter-inhibit-handlers= can be either a list of message types or =t=, the
-latter meaning inhibit handlers for all message types. Alternatively you can
-set the =jupyter-request-inhibited-handlers= slot of a =jupyter-request=
-object. This slot can take the same values as =jupyter-inhibit-handlers=.
-** Waiting for messages
-
-All message passing between the kernel and Emacs happens asynchronously. So if
-a code path in Emacs Lisp is dependent on some message already having been
-received, e.g. an idle message, there needs to be primitives that will block so
-that there is a guarantee that a particular message has been received before
-proceeding.
-
-The following functions all wait for different conditions to be met on the
-received messages of a request and return the message that caused the function
-to stop waiting or =nil= if no message was received within a timeout period.
-The default timeout is =jupyter-default-timeout= seconds.
-
-For example, to wait until an idle message has been received for a request:
-
-#+BEGIN_SRC elisp
-(let ((timeout 4))
-  (jupyter-wait-until-idle
-   (jupyter-send-execute-request
-    client :code "import time\ntime.sleep(3)")
-   timeout))
-#+END_SRC
-
-To wait until a message of a specific type is received for a request:
-
-#+BEGIN_SRC elisp
-(jupyter-wait-until-received :execute-reply
-  (jupyter-send-execute-request client :code "[i*10 for i in range(100000)]"))
-#+END_SRC
-
-The most general form of the blocking functions is =jupyter-wait-until= which
-takes a message type and a predicate function of a single argument. Whenever a
-message is received that matches the message type, the message is passed to the
-function to determine if =jupyter-wait-until= should return from waiting.
-
-#+BEGIN_SRC elisp
-(defun stream-prints-50-p (msg)
-  (let ((text (jupyter-message-get msg :text)))
-    (cl-loop for line in (split-string text "\n")
-             thereis (equal line "50"))))
-
-(let ((timeout 2))
-  (jupyter-wait-until
-      (jupyter-send-execute-request client :code "[print(i) for i in range(100)]")
-      :stream #'stream-prints-50-p
-    timeout))
-#+END_SRC
-
-The above code runs =stream-prints-50-p= for every =stream= message received
-from a kernel (here assumed to be a python kernel) for an execute request that
-prints the numbers 0 to 99 and waits until the kernel has printed the number 50
-before returning from the =jupyter-wait-until= call. If the number 50 is not
-printed before the two second timeout, =jupyter-wait-until= returns =nil=.
-Otherwise it returns the stream message whose content contains the number 50.
-** Message property lists
-:PROPERTIES:
-:ID:       D09FDD89-43A9-41DA-A6E8-6D6C73336981
-:END:
-
-There is really no need to construct or access message property lists directly.
-The =jupyter-send-<msg-type>= client methods already handle creating them by
-calling the =jupyter-message-<msg-type>= family of functions. Similarly, when a
-message is received from a kernel the message properties are unwrapped and
-passed as arguments to the =jupyter-handle-<msg-type>= client methods. If
-required, the message property list is available in the
-=jupyter-request-last-message= slot of the =jupyter-request= passed to the
-=jupyter-handle-<msg-type>= client methods.
-
-On the other hand, message callbacks pass the message property list directly to
-the callback. In this case, the following functions can be used to access the
-fields of the property list:
-
-#+BEGIN_SRC elisp
-;; Get the `:content' propery of MSG
-(jupyter-message-content msg)
-;; Get the message type (one of the keys in `jupyter-message-types')
-(jupyter-message-type msg)
-;; Get the value of KEY in the MSG contents
-(jupyter-message-get msg key)
-;; Get the value of the MIMETYPE in MSG's :data property
-;; MIMETYPE should be one of `:image/png', `:text/plain', ...
-(jupyter-message-data msg mimetype)
-#+END_SRC
-
-Note that access of the message property lists should only occur through the
-=jupyter-message-*= functions since the main parts of a message such as the
-content and header are lazily decoded.
-*** Convenience macros
-
-=jupyter-with-message-content= gives a way to extract and
-bind the keys of a =jupyter-message-content= easily
-
-#+BEGIN_SRC elisp
-(jupyter-with-message-content msg (status ename)
-  ...) ; status and ename keys of (jupyter-message-content msg) are bound
-#+END_SRC
-
-There is also =jupyter-with-message-data= which extracts
-and binds the mimetypes of =jupyter-message-data=
-
-#+BEGIN_SRC elisp
-(jupyter-with-message-data msg ((res text/plain))
-  ...) ; res is bound to (jupyter-message-data msg :text/plain)
-#+END_SRC
-** Modify behavior depending on kernel language
-
-Since Jupyter supports many different programming language kernels, each with
-varying degrees of support in Emacs there needs to be a general way of
-modifying the behavior of the client to take this into account.
-
-This is achieved using the =&context= specializer of =cl-defmethod=. There are
-currently two specializers in use, =jupyter-lang= and =jupyter-repl-mode=.
-=jupyter-lang= is a context specializer that matches when the kernel language
-of the =jupyter-current-client= is equal to the specializer's argument. For
-example, below is the function that gets called in the REPL buffer when the
-kernel language is =julia= for indenting the current line:
-
-#+BEGIN_SRC elisp
-(cl-defmethod jupyter-indent-line (&context (jupyter-lang julia))
-  (call-interactively #'julia-latexsub-or-indent))
-#+END_SRC
-
-Note, when spaces appear in the name of the kernel language they
-become dashes in the symbol used for the =jupyter-lang= context,
-e.g. =Wolfram Language= becomes =Wolfram-Language=.
-
-There are many other entry points where methods may be overridden in such a
-way. Below is the full list of methods that can be overridden in this way
-
-| Method                               | Purpose                                                       |
-|--------------------------------------+---------------------------------------------------------------|
-| =jupyter-insert=                     | Insert Jupyter results into the buffer                        |
-| =jupyter-code-context=               | Return code and position for inspect and complete requests    |
-| =jupyter-indent-line=                | Indent the current cell in the REPL buffer                    |
-| =jupyter-completion-prefix=          | Return the completion prefix for the current context          |
-| =jupyter-completion-post-completion= | Evaluate code when a completion candidate has been selected   |
-| =jupyter-repl-after-init=            | Evaluate code after a REPL buffer has been initialized        |
-| =jupyter-repl-after-change=          | Evaluate code when the input cell code changes                |
-| =jupyter-markdown-follow-link=       | Follow a markdown link at point                               |
-| =jupyter-handle-payload=             | Handle a payload sent by the kernel                           |
-| =jupyter-org-result=                 | Transform result of execution into an =org= representation    |
-| =org-babel-jupyter-transform-code=   | Transform code of a src-block before sending it to the kernel |
-
-In addition to the =jupyter-lang= context, there is also the
-=jupyter-repl-mode= context which is identical to the =derived-mode= context
-but does its check against =jupyter-repl-lang-mode= if the
-=jupyter-current-client= is a =jupyter-repl-client=. This is useful to modify
-behavior depending on the =major-mode= that is used for a particular language.
-For example for =javascript= kernels, it used to setup code highlighting when
-=js2-mode= is used as the REPL languages =major-mode= since =js2-mode= does not
-use =font-lock=.
-
-** =org-mode=
-*** =jupyter-org-client=
-
-A =jupyter-org-client= is a subclass of =jupyter-kernel-client= meant to
-display the results of a Jupyter code block in an =org-mode= buffer.
-
-**** =jupyter-org-result=
-
-The main entry point for extending how results are inserted into the =org-mode=
-buffer is the method help:jupyter-org-result, which dispatches on the MIME type
-of a result returned from a kernel. The MIME type priority is given in
-=jupyter-org-mime-types=. =jupyter-org-result= can return either an
-=org-element= object or a string. In the former case, the =org-element= is
-transformed into its string representation before insertion into the buffer. In
-the later case, the string is inserted into the =org-mode= buffer as is,
-without any further processing.
-
-There are helper functions for generating =org-element= objects which have
-names like =jupyter-org-scalar=, =jupyter-org-export-block=,
-=jupyter-org-file-link=, etc.
-***** Extending =jupyter-org-result=
-
-For a kernel language to extend the behavior of how results are inserted, the
-=jupyter-lang= method specializer can be used. For example, below is how
-=:text/plain= results are modified for Python code blocks
-
-#+BEGIN_SRC elisp
-(cl-defmethod jupyter-org-result ((_mime (eql :text/plain)) _content _params
-                                  &context (jupyter-lang python))
-  (let ((result (cl-call-next-method)))
-    (cond
-     ((stringp result)
-      (org-babel-python-table-or-string result))
-     (t result))))
-#+END_SRC
-
-=cl-call-next-method= calls down to a less specialized method of
-=jupyter-org-result= and if the returned result is still expected to be plain
-text, calls =org-babel-python-table-org-string= to convert any results that
-look like Python arrays into =org-mode= tables before returning its result.
-*** =jupyter-org-define-key=
-
-Bind a key that is only available when =point= is inside a Jupyter code block.
-When the command bound to the key is evaluated, =jupyter-current-client= will
-be bound to the client of the current code block, also the syntax table will be
-the same as the underlying kernel language's (see
-=jupyter-org-with-src-block-client=).
-
-These keys only have an effect when =jupyter-org-interaction-mode= is enabled.
+If the number of lines of an evaluation result is smaller than this
+variable, the function stored
+in =jupyter-eval-short-result-display-function= is used to display a
+result.
