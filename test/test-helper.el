@@ -26,6 +26,9 @@
 
 ;;; Code:
 
+(require 'zmq)
+(require 'jupyter-zmq-channel-ioloop)
+(require 'jupyter-kernel-process)
 (require 'jupyter-repl)
 (require 'jupyter-server)
 (require 'jupyter-org-client)
@@ -258,6 +261,29 @@ running BODY."
   `(jupyter-test-with-kernel-repl "python" ,client
      ,@body))
 
+(defun jupyter-test-ioloop-eval-event (ioloop event)
+  (eval
+   `(progn
+      ,@(oref ioloop setup)
+      ,(jupyter-ioloop--event-dispatcher ioloop event))))
+
+(defmacro jupyter-test-channel-ioloop (ioloop &rest body)
+  (declare (indent 1))
+  (let ((var (car ioloop))
+        (val (cadr ioloop)))
+    (with-temp-buffer
+      `(let* ((,var ,val)
+              (standard-output (current-buffer))
+              (jupyter-channel-ioloop-channels nil)
+              (jupyter-channel-ioloop-session nil)
+              ;; Needed so that `jupyter-ioloop-environment-p' passes
+              (jupyter-ioloop-stdin t)
+              (jupyter-ioloop-poller (zmq-poller)))
+         (unwind-protect
+             (progn ,@body)
+           (zmq-poller-destroy jupyter-ioloop-poller)
+           (jupyter-ioloop-stop ,var))))))
+
 (defmacro jupyter-test-rest-api-request (bodyform &rest check-forms)
   "Replace the body of `url-retrieve*' with CHECK-FORMS, evaluate BODYFORM.
 For `url-retrieve', the callback will be called with a nil status."
@@ -385,6 +411,29 @@ message contents."
   (sleep-for 0.2)
   (jupyter-test-wait-until-idle-repl
    jupyter-current-client))
+
+(defun jupyter-test-conn-info-plist ()
+  "Return a connection info plist suitable for testing."
+  (let* ((ports
+          (cl-loop
+           with ports = (jupyter-available-local-ports 5)
+           for c in '(:shell :hb :iopub :stdin :control)
+           collect c and collect (pop ports))))
+    `(:shell_port
+      ,(plist-get ports :shell)
+      :key  "8671b7e4-5656e6c9d24edfce81916780"
+      :hb_port
+      ,(plist-get ports :hb)
+      :kernel_name "python"
+      :control_port
+      ,(plist-get ports :control)
+      :signature_scheme "hmac-sha256"
+      :ip "127.0.0.1"
+      :stdin_port
+      ,(plist-get ports :stdin)
+      :transport "tcp"
+      :iopub_port
+      ,(plist-get ports :iopub))))
 
 (defun jupyter-test-text-has-property (prop val &optional positions)
   "Ensure PROP has VAL for text at POSITIONS.
@@ -592,6 +641,14 @@ see the documentation on the --NotebookApp.password argument."
                                   (process-buffer (car jupyter-test-notebook))
                                 (buffer-string)))))))
 
+(defvar jupyter-test-zmq-sockets (make-hash-table :weakness 'key))
+
+(advice-add 'zmq-socket
+            :around (lambda (&rest args)
+                      (let ((sock (apply args)))
+                        (prog1 sock
+                          (puthash sock t jupyter-test-zmq-sockets)))))
+
 ;; Do lots of cleanup to avoid core dumps on Travis due to epoll reconnect
 ;; attempts.
 (add-hook
@@ -601,6 +658,12 @@ see the documentation on the --NotebookApp.password argument."
    (cl-loop
     for client in (jupyter-all-objects 'jupyter--clients)
     do (ignore-errors (jupyter-shutdown-kernel client)))
-   (ignore-errors (delete-process (car jupyter-test-notebook)))))
+   (ignore-errors (delete-process (car jupyter-test-notebook)))
+   (cl-loop
+    for sock being the hash-keys of jupyter-test-zmq-sockets do
+    (ignore-errors
+      (zmq-set-option sock zmq-LINGER 0)
+      (zmq-close sock)))
+   (ignore-errors (zmq-context-terminate (zmq-current-context)))))
 
 ;;; test-helper.el ends here
