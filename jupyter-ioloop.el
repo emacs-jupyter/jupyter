@@ -84,7 +84,7 @@ events have the same value as the return value of
   "Return non-nil if this Emacs instance is an IOLoop subprocess."
   (and noninteractive jupyter-ioloop-stdin jupyter-ioloop-poller))
 
-(defclass jupyter-ioloop ()
+(defclass jupyter-ioloop (jupyter-finalized-object)
   ((process :type (or null process) :initform nil)
    (callbacks :type list :initform nil)
    (events :type list :initform nil)
