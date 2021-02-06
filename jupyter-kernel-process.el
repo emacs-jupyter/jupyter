@@ -323,7 +323,9 @@ See also https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-spe
             (lambda (process _)
               (pcase (process-status process)
                 ('signal
-                 (jupyter-kernel-died (process-get process :kernel))))))))
+                 ;; If a kernel dies unexpectedly, run the shutdown
+                 ;; procedure on it.
+                 (jupyter-shutdown (process-get process :kernel))))))))
   (cl-call-next-method))
 
 (cl-defmethod jupyter-shutdown ((kernel jupyter-kernel-process))
