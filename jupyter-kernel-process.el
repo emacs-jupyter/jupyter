@@ -92,6 +92,7 @@ Call the next method if ARGS does not contain :spec."
 ;;; Client connection
 
 (cl-defmethod jupyter-zmq-io ((kernel jupyter-kernel-process))
+  (jupyter-launch kernel)
   (let* ((session (jupyter-kernel-session kernel))
          (channels '(:shell :iopub :stdin))
          (ch-group (let ((endpoints (jupyter-session-endpoints session)))
