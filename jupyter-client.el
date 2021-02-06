@@ -419,8 +419,7 @@ shell command."
   (jupyter-client (jupyter-get-kernelspec kernel) client-class))
 
 (cl-defmethod jupyter-disconnect ((client jupyter-kernel-client))
-  (slot-makeunbound client 'io)
-  (slot-makeunbound client 'kernel))
+  (slot-makeunbound client 'io))
 
 (cl-defmethod jupyter-client ((spec jupyter-kernelspec) &optional client-class)
   "Return a client connected to kernel created from SPEC.
