@@ -10,5 +10,6 @@
 
 (development
  (depends-on "ert-runner")
+ (depends-on "zmq")
  (depends-on "org-plus-contrib")
  (depends-on "julia-mode"))
