@@ -571,9 +571,9 @@
 
 ;; FIXME: Revisit after transition
 (ert-deftest jupyter-kernel-process ()
-  :tags '(kernel)
-  ;; TODO: `jupyter-do-interrupt'
-  (ert-info ("`jupyter-do-launch', `jupyter-do-shutdown'")
+  :tags '(kernel process)
+  ;; TODO: `jupyter-interrupt'
+  (ert-info ("`jupyter-launch', `jupyter-shutdown'")
     (cl-macrolet
         ((confirm-shutdown-state
           ()
@@ -594,7 +594,7 @@
         (confirm-shutdown-state)
         (jupyter-launch kernel)
         (confirm-launch-state)
-        (jupyter-do-shutdown kernel)
+        (jupyter-shutdown kernel)
         (confirm-shutdown-state))))
 ;; (let (called)
 ;;   (let* ((plist '(:argv ["sleep" "60"] :env nil :interrupt_mode "signal"))
@@ -611,32 +611,14 @@
 ;;     (should called)
 ;;     (setq called nil)
 ;;     (jupyter-do-shutdown kernel)))
-  )
-
-
-
-;; (let ((kernel (jupyter--kernel-process
-;;                :spec (jupyter-guess-kernelspec "python"))))
-;;   (ert-info ("Session set after kernel starts")
-;;     (should-not (jupyter-kernel-alive-p kernel))
-;;     (jupyter-start-kernel kernel)
-;;     (should (jupyter-kernel-alive-p kernel))
-;;     (should (oref kernel session))
-;;     (jupyter-kill-kernel kernel)
-;;     (should-not (jupyter-kernel-alive-p kernel)))
-;;   (ert-info ("Can we communicate?")
-;;     (let ((manager (jupyter-kernel-manager :kernel kernel)))
-;;       (jupyter-start-kernel manager)
-;;       (unwind-protect
-;;           (let ((jupyter-current-client
-;;                  (jupyter-make-client manager 'jupyter-kernel-client)))
-;;             (jupyter-start-channels jupyter-current-client)
-;;             (unwind-protect
-;;                 (progn
-;;                   (jupyter-wait-until-startup jupyter-current-client)
-;;                   (should (equal (jupyter-eval "1 + 1") "2")))
-;;               (jupyter-stop-channels jupyter-current-client)))
-;;         (jupyter-shutdown-kernel manager)))))
+  (ert-info ("Can we communicate?")
+    (let ((jupyter-current-client
+           (jupyter-client
+            (jupyter-kernel-process
+             :spec (jupyter-guess-kernelspec "python")))))
+      (unwind-protect
+          (should (equal (jupyter-eval "1 + 1") "2"))
+        (jupyter-shutdown-kernel jupyter-current-client)))))
 
 (ert-deftest jupyter-delete-connection-files ()
   :tags '(kernel process)
