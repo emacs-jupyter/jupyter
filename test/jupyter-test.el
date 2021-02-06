@@ -660,8 +660,8 @@
       (unwind-protect
           (pcase-let* ((`(,processA ,conn-fileA) (car jupyter--kernel-processes))
                        (process-bufferA (process-buffer processA)))
-            (should (eq processA (jupyter-kernel-process-process kernelA)))
-            (jupyter-do-shutdown kernelA)
+            (should (eq processA (jupyter-process kernelA)))
+            (jupyter-shutdown kernelA)
             (should-not (process-live-p processA))
             (should (file-exists-p conn-fileA))
             (should (buffer-live-p process-bufferA))
@@ -673,8 +673,8 @@
                          (car jupyter--kernel-processes)))
               (should-not (eq processA processB))
               (should-not (string= conn-fileA conn-fileB))))
-        (jupyter-do-shutdown kernelA)
-        (jupyter-do-shutdown kernelB)))))
+        (jupyter-shutdown kernelA)
+        (jupyter-shutdown kernelB)))))
 
 (ert-deftest jupyter-kernel-process/on-unexpected-exit ()
   :tags '(kernel process)

@@ -277,7 +277,7 @@ Call the next method if ARGS does not contain :spec."
     (push (list process conn-file) jupyter--kernel-processes)
     process))
 
-(cl-defmethod jupyter-do-launch :before ((kernel jupyter-kernel-process))
+(cl-defmethod jupyter-launch :before ((kernel jupyter-kernel-process))
   "Ensure KERNEL has a non-nil SESSION slot.
 A `jupyter-session' with random port numbers for the channels and
 a newly generated message signing key will be set as the value of
@@ -292,7 +292,7 @@ KERNEL's SESSION slot if it is nil."
       ;; kernel.
       (sit-for 0.2))))
 
-(cl-defmethod jupyter-do-launch ((kernel jupyter-kernel-process))
+(cl-defmethod jupyter-launch ((kernel jupyter-kernel-process))
   "Start KERNEL's process.
 Do nothing if KERNEL's process is already live.
 
@@ -316,8 +316,7 @@ See also https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-spe
                  (jupyter-kernel-died (process-get process :kernel))))))))
   (cl-call-next-method))
 
-;; TODO: Add restart argument
-(cl-defmethod jupyter-do-shutdown ((kernel jupyter-kernel-process))
+(cl-defmethod jupyter-shutdown ((kernel jupyter-kernel-process))
   "Shutdown KERNEL by killing its process unconditionally."
   (let ((process (jupyter-process kernel)))
     (when process
@@ -325,12 +324,15 @@ See also https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-spe
       (setf (process-get process :kernel) nil))
     (cl-call-next-method)))
 
-(cl-defmethod jupyter-do-interrupt ((kernel jupyter-kernel-process))
+;; TODO
+(cl-defmethod jupyter-restart ((kernel jupyter-kernel-process))
+  (cl-call-next-method))
+
+;; TODO Fallback to interrupt_request on kernel's control channel
+(cl-defmethod jupyter-interrupt ((kernel jupyter-kernel-process))
   "Interrupt KERNEL's process.
 The process can be interrupted when the interrupt mode of
-KERNEL's SPEC is \"signal\" or not specified, otherwise the
-KERNEL is interrupted by sending an :interrupt-request on
-KERNEL's control channel.
+KERNEL's spec. is \"signal\" or not specified.
 
 See also https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-specs"
   (pcase-let* ((process (jupyter-process kernel))
