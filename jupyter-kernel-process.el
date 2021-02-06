@@ -91,8 +91,9 @@ Call the next method if ARGS does not contain :spec."
 
 ;;; Client connection
 
-(defun jupyter-kernel-process-io (session)
-  (let* ((channels '(:shell :iopub :stdin))
+(cl-defmethod jupyter-zmq-io ((kernel jupyter-kernel-process))
+  (let* ((session (jupyter-kernel-session kernel))
+         (channels '(:shell :iopub :stdin))
          (ch-group (let ((endpoints (jupyter-session-endpoints session)))
                      (cl-loop
                       for ch in channels
@@ -212,7 +213,7 @@ Call the next method if ARGS does not contain :spec."
 
 (cl-defmethod jupyter-io ((kernel jupyter-kernel-process))
   "Return an I/O connection to KERNEL's session."
-  (jupyter-kernel-process-io (jupyter-kernel-session kernel)))
+  (jupyter-zmq-io kernel))
 
 ;;; Kernel management
 
