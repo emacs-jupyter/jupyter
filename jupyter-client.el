@@ -436,7 +436,7 @@ kernel whose kernelspec if SPEC."
   (or client-class (setq client-class 'jupyter-kernel-client))
   (cl-assert (child-of-class-p client-class 'jupyter-kernel-client))
   (let ((client (make-instance client-class)))
-    (oset client io (jupyter-websocket-io kernel))
+    (oset client io (jupyter-io kernel))
     (unless (jupyter-kernel-info client)
       (error "Kernel did not respond to :kernel-info-request"))
     ;; If the connection can resolve the kernel's heartbeat channel,

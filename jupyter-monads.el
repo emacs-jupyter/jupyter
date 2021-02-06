@@ -66,6 +66,14 @@
     (error "Unhandled I/O: %s" content))
   "The current I/O context.")
 
+(cl-defgeneric jupyter-io (thing)
+  "Return the I/O object of THING.")
+
+(cl-defmethod jupyter-io :around (thing)
+  "Cache the I/O object of THING in `jupyter-io-cache'."
+  (or (gethash thing jupyter-io-cache)
+      (puthash thing (cl-call-next-method) jupyter-io-cache)))
+
 (defun jupyter-bind-delayed (io-value io-fn)
   "Bind IO-VALUE to IO-FN."
   (declare (indent 1))

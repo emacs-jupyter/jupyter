@@ -186,11 +186,6 @@ Call the next method if ARGS does not contain :server."
     (jupyter-run-with-io pub
       (jupyter-publish 'reauthenticate))))
 
-(cl-defmethod jupyter-websocket-io :around (thing)
-  "Cache the I/O object of THING in `jupyter-io-cache'."
-  (or (gethash thing jupyter-io-cache)
-      (puthash thing (cl-call-next-method) jupyter-io-cache)))
-
 (cl-defmethod jupyter-websocket-io ((kernel jupyter-server-kernel))
   "Return a list representing an IO connection to KERNEL.
 The list is composed of two elements (IO-PUB ACTION-SUB), IO-PUB
@@ -284,6 +279,9 @@ this case FN will be evaluated on KERNEL."
                    (jupyter-restart kernel))
                   (`(action ,fn)
                    (funcall fn kernel)))))))))
+
+(cl-defmethod jupyter-io ((kernel jupyter-server-kernel))
+  (jupyter-websocket-io kernel))
 
 ;;; Kernel management
 
