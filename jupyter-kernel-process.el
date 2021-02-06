@@ -186,13 +186,19 @@ Call the next method if ARGS does not contain :spec."
                       ;; ('message channel idents . msg)
                       ('message
                        (pop content)
-                       ;; TODO: Get rid of this.  Have the ioloop do
-                       ;; this.
+                       ;; Set the channel key of the message property list
                        (plist-put
                         (cddr content) :channel
                         (substring (symbol-name (car content)) 1))
                        (jupyter-content (cddr content)))
-                      ('send (apply #'jupyter-send (start) content))
+                      ('send
+                       ;; Set the channel argument to a keyword so its
+                       ;; recognized by the ioloop
+                       (setq content
+                             (cons (car content)
+                                   (cons (intern (concat ":" (cadr content)))
+                                         (cddr content))))
+                       (apply #'jupyter-send (start) content))
                       ('hb
                        (unless hb
                          (setq hb
