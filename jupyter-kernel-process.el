@@ -204,12 +204,21 @@ Call the next method if ARGS does not contain :spec."
                        (jupyter-run-with-io (cadr content)
                          (jupyter-publish hb)))
                       (_ (error "Unhandled I/O: %s" content)))))))
-        (jupyter-return-delayed
-          (list kernel-io
-                (lambda ()
-                  (and hb (jupyter-hb-pause hb))
-                  (stop)
-                  (setq hb nil ioloop nil discarded t))))))))
+        (list kernel-io
+              (jupyter-subscriber
+                (lambda (action)
+                  (pcase action
+                    ('interrupt
+                     (jupyter-interrupt kernel))
+                    ('shutdown
+                     (jupyter-shutdown kernel)
+                     (and hb (jupyter-hb-pause hb))
+                     (stop)
+                     (setq hb nil ioloop nil discarded t))
+                    ('restart
+                     (jupyter-restart kernel))
+                    (`(action ,fn)
+                     (funcall fn kernel))))))))))
 
 (cl-defmethod jupyter-io ((kernel jupyter-kernel-process))
   "Return an I/O connection to KERNEL's session."
