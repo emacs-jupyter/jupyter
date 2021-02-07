@@ -1807,11 +1807,6 @@ VERBOSE has the same meaning as in
         (forward-char)
         (skip-syntax-forward "^()\"")))))
 
-(defun jupyter-repl-font-lock-syntactic-face-function (face-fun state)
-  "Narrow to the input cell, use FACE-FUN to obtain the face given STATE."
-  (jupyter-with-repl-cell
-    (funcall face-fun state)))
-
 (cl-defgeneric jupyter-repl-initialize-fontification ()
   "Initialize fontification for the current REPL buffer."
   (let (fld frf sff spf comment)
@@ -1837,9 +1832,7 @@ VERBOSE has the same meaning as in
                      (cons 'font-lock-fontify-region-function
                            (apply-partially
                             #'jupyter-repl-font-lock-fontify-region frf))
-                     (cons 'font-lock-syntactic-face-function
-                           (apply-partially
-                            #'jupyter-repl-font-lock-syntactic-face-function sff)))))
+                     (cons 'font-lock-syntactic-face-function sff))))
       (setq-local comment-start comment)
       (setq font-lock-defaults
             (apply #'list kws kws-only case-fold syntax-alist vars)))
