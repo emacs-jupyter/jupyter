@@ -63,6 +63,13 @@ messages consider this variable."
                       (const "error")
                       (const "stream"))))
 
+(defcustom jupyter-use-zmq (and (locate-library "zmq") t)
+  "Whether or not ZMQ can be used to communicate with kernels.
+If ZMQ is not available for use, kernels can only be launched
+from a backing notebook server."
+  :group 'jupyter
+  :type 'boolean)
+
 (defconst jupyter-root (file-name-directory load-file-name)
   "Root directory containing emacs-jupyter.")
 

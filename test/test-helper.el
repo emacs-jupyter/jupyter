@@ -39,6 +39,8 @@
 
 (declare-function jupyter-servers "jupyter-server")
 
+(setq jupyter-use-zmq nil)
+
 ;; Increase timeouts when testing for consistency. I think what is going on is
 ;; that communication with subprocesses gets slowed down when many processes
 ;; are being open and closed? The kernel processes are cached so they are

@@ -2087,20 +2087,23 @@ command on the host."
   (or client-class (setq client-class 'jupyter-repl-client))
   (jupyter-error-if-not-client-class-p client-class 'jupyter-repl-client)
   (jupyter-bootstrap-repl
-   (jupyter-client
-    (jupyter-kernel
-     :server (let ((server jupyter--run-repl-server))
-               (if (and server
-                        (process-live-p
-                         (jupyter-notebook-process server)))
-                   server
-                 (let* ((port (jupyter-launch-notebook))
-                        (url (format "http://localhost:%s" port)))
-                   (setq jupyter--run-repl-server
-                         (jupyter-server :url url)))))
-     :spec (jupyter-kernelspec-name
-            (jupyter-guess-kernelspec kernel-name)))
-    client-class)
+   (let ((spec (jupyter-kernelspec-name
+                (jupyter-guess-kernelspec kernel-name))))
+     (jupyter-client
+      (if jupyter-use-zmq
+          (jupyter-kernel :spec spec)
+        (jupyter-kernel
+         :server (let ((server jupyter--run-repl-server))
+                   (if (and server
+                            (process-live-p
+                             (jupyter-notebook-process server)))
+                       server
+                     (let* ((port (jupyter-launch-notebook))
+                            (url (format "http://localhost:%s" port)))
+                       (setq jupyter--run-repl-server
+                             (jupyter-server :url url)))))
+         :spec spec))
+      client-class))
    repl-name associate-buffer display))
 
 ;;;###autoload
