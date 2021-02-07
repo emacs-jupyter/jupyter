@@ -79,6 +79,7 @@ need the default behavior."
      (conn-info
       (when (stringp conn-info)
         (setq conn-info (jupyter-read-connection conn-info)))
+      ;; TODO: A `jupyter-io' method that handles this case.
       (apply #'make-jupyter-kernel
              :session (jupyter-session
                        :conn-info conn-info
