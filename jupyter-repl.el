@@ -2049,7 +2049,21 @@ completing all of the above.")
             (jupyter-repl-insert-banner banner)
             (jupyter-repl-insert-prompt 'in)))))))
 
-(defvar jupyter--run-repl-server nil)
+(defvar jupyter--repl-server nil)
+
+(defun jupyter-repl-server ()
+  "Return a `jupyter-server' that can be used to launch REPLs with.
+The server is used by the `jupyter-run-repl' command to launch
+all of its REPLs if ZMQ based connections are not being used."
+  (let ((server jupyter--repl-server))
+    (if (and server
+             (process-live-p
+              (jupyter-notebook-process server)))
+        server
+      (let* ((port (jupyter-launch-notebook))
+             (url (format "http://localhost:%s" port)))
+        (setq jupyter--repl-server
+              (jupyter-server :url url))))))
 
 ;;;###autoload
 (defun jupyter-run-repl (kernel-name &optional repl-name associate-buffer client-class display)
@@ -2093,15 +2107,7 @@ command on the host."
       (if jupyter-use-zmq
           (jupyter-kernel :spec spec)
         (jupyter-kernel
-         :server (let ((server jupyter--run-repl-server))
-                   (if (and server
-                            (process-live-p
-                             (jupyter-notebook-process server)))
-                       server
-                     (let* ((port (jupyter-launch-notebook))
-                            (url (format "http://localhost:%s" port)))
-                       (setq jupyter--run-repl-server
-                             (jupyter-server :url url)))))
+         :server (jupyter-repl-server)
          :spec spec))
       client-class))
    repl-name associate-buffer display))
