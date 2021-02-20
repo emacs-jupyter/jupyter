@@ -363,6 +363,18 @@ has the same meaning as in `jupyter-idle'."
            (string-suffix-p "_reply" type)))
        msgs))))
 
+(defun jupyter-result (io-req &optional timeout)
+  "Return an IO action that returns the result message of IO-REQ.
+IO-REQ is an IO action that evaluates to a sent request.  TIMEOUT
+has the same meaning as in `jupyter-idle'."
+  (jupyter-return-delayed-thunk
+    (jupyter-mlet* ((msgs (jupyter-messages io-req timeout)))
+      (cl-find-if
+       (lambda (msg)
+         (let ((type (jupyter-message-type msg)))
+           (string-suffix-p "_result" type)))
+       msgs))))
+
 (defun jupyter-message-subscribed (io-req cbs)
   "Return an IO action that subscribes CBS to a request's message publisher.
 IO-REQ is an IO action that evaluates to a sent request.  CBS is
