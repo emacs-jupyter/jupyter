@@ -269,12 +269,14 @@ file name, with `org-babel-jupyter-remote-session-connect-repl-p'
 set to nil.  The CONNECT-REPL-P slot indicates that a connection
 file is read to connect to the session, as oppossed to launcing a
 kernel."
-  (let ((json-p (string-suffix-p ".json" session)))
-    (if (or json-p (file-remote-p session))
-        (org-babel-jupyter-remote-session
-         :name session
-         :connect-repl-p json-p)
-      (cl-call-next-method))))
+  (if jupyter-use-zmq
+      (let ((json-p (string-suffix-p ".json" session)))
+        (if (or json-p (file-remote-p session))
+            (org-babel-jupyter-remote-session
+             :name session
+             :connect-repl-p json-p)
+          (cl-call-next-method)))
+    (cl-call-next-method)))
 
 (cl-defmethod org-babel-jupyter-initiate-client :before ((session org-babel-jupyter-remote-session) _kernel)
   "Raise an error if SESSION's name is a remote file name without a local name.
