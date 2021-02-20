@@ -923,7 +923,7 @@
 ;;; IOloop
 
 (ert-deftest jupyter-ioloop-lifetime ()
-  :tags '(ioloop)
+  :tags '(zmq ioloop)
   (let ((ioloop (jupyter-ioloop))
         (jupyter-default-timeout 2))
     (should-not (process-live-p (oref ioloop process)))
@@ -946,7 +946,7 @@
             (setq jupyter-ioloop-test-handler-called t))))
 
 (ert-deftest jupyter-ioloop-wait-until ()
-  :tags '(ioloop)
+  :tags '(zmq ioloop)
   (let ((ioloop (jupyter-ioloop)))
     (should-not (jupyter-ioloop-last-event ioloop))
     (jupyter-test-ioloop-start ioloop)
@@ -954,7 +954,7 @@
     (jupyter-ioloop-stop ioloop)))
 
 (ert-deftest jupyter-ioloop-callbacks ()
-  :tags '(ioloop)
+  :tags '(zmq ioloop)
   (ert-info ("Callback added before starting the ioloop")
     (let ((ioloop (jupyter-ioloop)))
       (setq jupyter-ioloop-test-handler-called nil)
@@ -975,7 +975,7 @@
       (should jupyter-ioloop-test-handler-called))))
 
 (ert-deftest jupyter-ioloop-setup ()
-  :tags '(ioloop)
+  :tags '(zmq ioloop)
   (let ((ioloop (jupyter-ioloop)))
     (setq jupyter-ioloop-test-handler-called nil)
     (jupyter-ioloop-add-setup ioloop
@@ -985,7 +985,7 @@
     (should jupyter-ioloop-test-handler-called)))
 
 (ert-deftest jupyter-ioloop-teardown ()
-  :tags '(ioloop)
+  :tags '(zmq ioloop)
   (let ((ioloop (jupyter-ioloop)))
     (setq jupyter-ioloop-test-handler-called nil)
     (jupyter-ioloop-add-teardown ioloop
@@ -995,7 +995,7 @@
     (should jupyter-ioloop-test-handler-called)))
 
 (ert-deftest jupyter-ioloop-add-event ()
-  :tags '(ioloop)
+  :tags '(zmq ioloop)
   (let ((ioloop (jupyter-ioloop)))
     (setq jupyter-ioloop-test-handler-called nil)
     (jupyter-ioloop-add-event ioloop test (data)
@@ -1007,7 +1007,7 @@
     (should jupyter-ioloop-test-handler-called)))
 
 (ert-deftest jupyter-channel-ioloop-send-event ()
-  :tags '(ioloop)
+  :tags '(zmq ioloop)
   (jupyter-test-channel-ioloop
       (ioloop (jupyter-zmq-channel-ioloop))
     (cl-letf (((symbol-function #'jupyter-send)
@@ -1022,7 +1022,7 @@
             (should (equal result `(sent :shell ,msg-id)))))))))
 
 (ert-deftest jupyter-channel-ioloop-start-channel-event ()
-  :tags '(ioloop)
+  :tags '(zmq ioloop)
   (jupyter-test-channel-ioloop
       (ioloop (jupyter-zmq-channel-ioloop))
     (setq jupyter-channel-ioloop-session (jupyter-session :key "foo"))
@@ -1056,7 +1056,7 @@
             (should (equal result `(start-channel :shell)))))))))
 
 (ert-deftest jupyter-channel-ioloop-stop-channel-event ()
-  :tags '(ioloop)
+  :tags '(zmq ioloop)
   (jupyter-test-channel-ioloop
       (ioloop (jupyter-zmq-channel-ioloop))
     (setq jupyter-channel-ioloop-session (jupyter-session :key "foo"))
