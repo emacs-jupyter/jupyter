@@ -613,13 +613,11 @@ waiting."
      (oset client execution-count
            (1+ (jupyter-message-get msg :execution_count))))))
 
-(cl-defgeneric jupyter-handle-message ((client jupyter-kernel-client) channel msg)
+(cl-defmethod jupyter-handle-message ((client jupyter-kernel-client) channel msg)
   "Process a message received on CLIENT's CHANNEL.
 CHANNEL is the Jupyter channel that MSG was received on by
 CLIENT.  MSG is a message property list and is the Jupyter
-message being handled.")
-
-(cl-defmethod jupyter-handle-message ((client jupyter-kernel-client) channel msg)
+message being handled."
   (when msg
     (let ((jupyter-current-client client)
           (req (plist-get msg :parent-request)))
