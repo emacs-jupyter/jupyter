@@ -1803,16 +1803,14 @@ the updated state."
                         ;; another long running execute request is
                         ;; sent right after.
                         jupyter-long-timeout)))
-    (jupyter-with-message-content msg (execution_count)
-      (let ((client jupyter-current-client))
-        (oset client execution-count (1+ execution_count))
-        (unless (equal (jupyter-execution-state client) "busy")
-          ;; Set the cell count and update the prompt
-          (jupyter-with-repl-buffer client
-            (save-excursion
-              (goto-char (point-max))
-              (jupyter-repl-update-cell-count
-               (oref client execution-count)))))))))
+    (let ((client jupyter-current-client))
+      (unless (equal (jupyter-execution-state client) "busy")
+        ;; Set the cell count and update the prompt
+        (jupyter-with-repl-buffer client
+          (save-excursion
+            (goto-char (point-max))
+            (jupyter-repl-update-cell-count
+             (oref client execution-count))))))))
 
 ;;; `jupyter-repl-interaction-mode'
 
