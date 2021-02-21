@@ -364,10 +364,15 @@ STR is used as the prompt string and FACE is its
     (add-text-properties (overlay-start ov) (overlay-end ov) props)
     (overlay-recenter (point))))
 
-(defun jupyter-repl-insert-prompt (&optional type)
+(defun jupyter-repl-insert-prompt (&optional type count)
   "Insert a REPL prompt according to TYPE.
 TYPE can either be `in', `out', or `continuation'.  A nil TYPE is
-interpreted as `in'."
+interpreted as `in'.
+
+When TYPE is `in' and COUNT is a number, insert a prompt with a
+count equal to COUNT.  For TYPE `in' and COUNT not a number, the
+execution-count of the `jupyter-current-client' will be used as
+count.  COUNT is ignored otherwise."
   (setq type (or type 'in))
   (unless (memq type '(in out continuation))
     (error "Prompt type can only be (`in', `out', or `continuation')"))
@@ -377,7 +382,8 @@ interpreted as `in'."
      (insert (propertize "\n" 'read-only (not (eq type 'continuation))))
      (cond
       ((eq type 'in)
-       (let ((count (oref jupyter-current-client execution-count)))
+       (let ((count (if (numberp count) count
+                      (oref jupyter-current-client execution-count))))
          (jupyter-repl--make-prompt
           (format jupyter-repl-input-prompt-format count)
           'jupyter-repl-input-prompt
@@ -809,9 +815,8 @@ Return the `jupyter-request' representing the executed code."
            (jupyter-repl-cell-mark-busy)
            (jupyter-repl-finalize-cell req)
            (jupyter-repl-history-add code)
-           ;; Needed by the prompt insertion below
-           (oset client execution-count (1+ (oref client execution-count)))
-           (jupyter-repl-insert-prompt 'in))
+           (jupyter-repl-insert-prompt
+            'in (1+ (oref client execution-count))))
           (save-excursion
             (jupyter-repl-backward-cell)
             (run-hooks 'jupyter-repl-cell-post-send-hook))
