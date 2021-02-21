@@ -724,18 +724,17 @@ representation of the result.  If MIME is nil, return the
 text/plain representation."
   (interactive (list (jupyter-read-expression) nil))
   (jupyter-mlet*
-      ((msgs (jupyter-messages
-              (jupyter-message-subscribed
-               (jupyter-execute-request
-                :code code
-                :store-history nil
-                :handlers nil)
-               `(("execute_reply"
-                  ,(jupyter-message-lambda (status evalue)
-                     (unless (equal status "ok")
-                       (error "%s" (ansi-color-apply evalue))))))))))
-    (when-let* ((msg (jupyter-find-message "execute_result" msgs)))
-      (jupyter-message-data msg (or mime :text/plain)))))
+      ((res (jupyter-result
+             (jupyter-message-subscribed
+              (jupyter-execute-request
+               :code code
+               :store-history nil
+               :handlers nil)
+              `(("execute_reply"
+                 ,(jupyter-message-lambda (status evalue)
+                    (unless (equal status "ok")
+                      (error "%s" (ansi-color-apply evalue))))))))))
+    (jupyter-message-data res (or mime :text/plain))))
 
 (defvar jupyter--eval-insert-execute-result nil)
 
