@@ -351,7 +351,7 @@ has the same meaning as in `jupyter-idle'."
        (string= type msg-type)))
    msgs))
 
-(defun jupyter-reply-message (io-req &optional timeout)
+(defun jupyter-reply (io-req &optional timeout)
   "Return an IO action that returns the reply message of IO-REQ.
 IO-REQ is an IO action that evaluates to a sent request.  TIMEOUT
 has the same meaning as in `jupyter-idle'."

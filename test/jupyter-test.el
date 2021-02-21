@@ -382,19 +382,19 @@
   :tags '(client messages)
   (jupyter-test-with-python-client client
     (ert-info ("Kernel info")
-      (jupyter-mlet* ((res (jupyter-reply-message
+      (jupyter-mlet* ((res (jupyter-reply
                              (jupyter-kernel-info-request))))
         (should res)
         (should (json-plist-p res))
         (should (string= (jupyter-message-type res) "kernel_info_reply"))))
     (ert-info ("Comm info")
-      (jupyter-mlet* ((res (jupyter-reply-message
+      (jupyter-mlet* ((res (jupyter-reply
                             (jupyter-comm-info-request))))
         (should-not (null res))
         (should (json-plist-p res))
         (should (string= (jupyter-message-type res) "comm_info_reply"))))
     (ert-info ("Execute")
-      (jupyter-mlet* ((res (jupyter-reply-message
+      (jupyter-mlet* ((res (jupyter-reply
                    (jupyter-execute-request :code "y = 1 + 2"))))
         (should-not (null res))
         (should (json-plist-p res))
@@ -411,7 +411,7 @@
             (should (string= (jupyter-message-type res) "execute_result"))
             (should (equal (jupyter-message-data res :text/plain) "'foo'"))))))
     (ert-info ("Inspect")
-      (jupyter-mlet* ((res (jupyter-reply-message
+      (jupyter-mlet* ((res (jupyter-reply
                              (jupyter-inspect-request
                               :code "list((1, 2, 3))"
                               :pos 2
@@ -420,7 +420,7 @@
         (should (json-plist-p res))
         (should (string= (jupyter-message-type res) "inspect_reply"))))
     (ert-info ("Complete")
-      (jupyter-mlet* ((res (jupyter-reply-message
+      (jupyter-mlet* ((res (jupyter-reply
                              (jupyter-complete-request
                               :code "foo = lis"
                               :pos 8))))
@@ -428,21 +428,21 @@
         (should (json-plist-p res))
         (should (string= (jupyter-message-type res) "complete_reply"))))
     (ert-info ("History")
-      (jupyter-mlet* ((res (jupyter-reply-message
+      (jupyter-mlet* ((res (jupyter-reply
                              (jupyter-history-request
                               :hist-access-type "tail" :n 2))))
         (should-not (null res))
         (should (json-plist-p res))
         (should (string= (jupyter-message-type res) "history_reply"))))
     (ert-info ("Is Complete")
-      (jupyter-mlet* ((res (jupyter-reply-message
+      (jupyter-mlet* ((res (jupyter-reply
                             (jupyter-is-complete-request
                              :code "for i in range(5):"))))
         (should-not (null res))
         (should (json-plist-p res))
         (should (string= (jupyter-message-type res) "is_complete_reply"))))
     (ert-info ("Shutdown")
-      (jupyter-mlet* ((res (jupyter-reply-message
+      (jupyter-mlet* ((res (jupyter-reply
                             (jupyter-shutdown-request))))
         (should-not (null res))
         (should (json-plist-p res))

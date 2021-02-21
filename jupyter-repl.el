@@ -1792,7 +1792,7 @@ it."
   "Synchronize the `jupyter-current-client's kernel state.
 Also update the cell count of the current REPL input prompt using
 the updated state."
-  (jupyter-mlet* ((msg (jupyter-reply-message
+  (jupyter-mlet* ((msg (jupyter-reply
                         (jupyter-execute-request
                          :code ""
                          :silent t

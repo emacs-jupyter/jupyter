@@ -123,7 +123,7 @@ If the Pkg prompt can't be retrieved from the kernel, return
 nil."
   (let ((prompt-code "import Pkg; Pkg.REPLMode.promptf()"))
     (jupyter-mlet* ((msg
-                     (jupyter-reply-message
+                     (jupyter-reply
                       (jupyter-execute-request
                        :code ""
                        :silent t

@@ -1160,7 +1160,7 @@ DETAIL is the detail level to use for the request and defaults to
     (error "Need a valid `jupyter-current-client'"))
   (condition-case nil
       (let ((client jupyter-current-client))
-        (jupyter-mlet* ((msg (jupyter-reply-message
+        (jupyter-mlet* ((msg (jupyter-reply
                               (jupyter-inspect-request
                                :code code
                                :pos pos
@@ -1661,7 +1661,7 @@ name are changed to \"-\" and all uppercase characters lowered."
       (progn
         (message "Requesting kernel info...")
         (let ((jupyter-current-client client))
-          (jupyter-mlet* ((msg (jupyter-reply-message
+          (jupyter-mlet* ((msg (jupyter-reply
                                 (jupyter-kernel-info-request
                                  :handlers nil)
                                 (* 3 jupyter-long-timeout))))
