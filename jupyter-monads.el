@@ -40,6 +40,7 @@
 ;;; Code:
 
 (require 'jupyter-base)
+(require 'thunk)
 
 (defgroup jupyter-monads nil
   "Monadic Jupyter I/O"
@@ -55,7 +56,7 @@
 (defmacro jupyter-return-delayed-thunk (&rest body)
   "Return an I/O value that evaluates BODY."
   (declare (debug (body)) (indent 0))
-  `(make-jupyter-delayed :value (lambda () ,@body)))
+  `(make-jupyter-delayed :value (thunk-delay ,@body)))
 
 (defconst jupyter-io-nil (jupyter-return-delayed nil))
 
