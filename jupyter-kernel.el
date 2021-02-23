@@ -62,33 +62,9 @@
 
 (cl-defgeneric jupyter-kernel (&rest args)
   "Return a kernel constructed from ARGS.
-ARGS are keyword arguments used to initialize the returned
-kernel.
-
-The default implementation will return a `jupyter-kernel' with a
-session initialized from the value of :conn-info in ARGS, either
-the name of a connection file to read or itself a connection
-property list (see `jupyter-read-connection').  A client can
-connect to the returned kernel using `jupyter-client'.
 
 This method can be extended with extra primary methods for the
-purposes of handling different forms of ARGS that do not just
-need the default behavior."
-  (let ((conn-info (plist-get args :conn-info)))
-    (cond
-     (conn-info
-      (when (stringp conn-info)
-        (setq conn-info (jupyter-read-connection conn-info)))
-      ;; TODO: A `jupyter-io' method that handles this case.
-      (apply #'make-jupyter-kernel
-             :session (jupyter-session
-                       :conn-info conn-info
-                       :key (plist-get conn-info :key))
-             (cl-loop
-              for (k v) on args by #'cddr
-              unless (eq k :conn-info) collect k and collect v)))
-     (t
-      (cl-call-next-method)))))
+purposes of handling different forms of ARGS.")
 
 ;;; Kernel management
 

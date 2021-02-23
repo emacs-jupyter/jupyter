@@ -72,22 +72,43 @@ Return nil if KERNEL does not have an associated process."
   (apply #'make-jupyter-kernel-process args))
 
 (cl-defmethod jupyter-kernel :extra "process" (&rest args)
-  "Return a representation of a kernel based on an Emacs process.
-If ARGS contains a :spec key, return a `jupyter-kernel-process'
-initialized using ARGS.  If the value is the name of a
-kernelspec, the returned kernel's spec slot will be set to the
-corresponding `jupyter-kernelspec'.  The session of the returned
-kernel will be initialized with the return value of
-`jupyter-session-with-random-ports'.
+  "Return a kernel as an Emacs process.
+If ARGS contains a :spec key with a value being a
+`jupyter-kernelspec', a `jupyter-kernel-process' initialized from
+it will be returned.  The value can also be a string, in which
+case it is considered the name of a kernelspec to use.
 
-Call the next method if ARGS does not contain :spec."
-  (let ((spec (plist-get args :spec)))
-    (if (not spec) (cl-call-next-method)
-      (when (stringp spec)
-        (plist-put args :spec
-                   (or (jupyter-guess-kernelspec spec)
-                       (error "No kernelspec matching name (%s)" spec))))
-      (apply #'jupyter-kernel-process args))))
+If ARGS contains a :conn-info key, a `jupyter-kernel-process'
+with a session initialized from its value, either the name of a
+connection file to read or a connection property list itself (see
+`jupyter-read-connection'), will be returned.  The remaining ARGS
+will be used to initialize the returned kernel.
+
+Call the next method if ARGS does not contain a :spec or
+:conn-info key."
+  (if (plist-get args :server) (cl-call-next-method)
+    (let ((spec (plist-get args :spec))
+          (conn-info (plist-get args :conn-info)))
+      (cond
+       (spec
+        (when (stringp spec)
+          (plist-put args :spec
+                     (or (jupyter-guess-kernelspec spec)
+                         (error "No kernelspec matching name (%s)" spec))))
+        (cl-check-type (plist-get args :spec) jupyter-kernelspec)
+        (apply #'jupyter-kernel-process args))
+       (conn-info
+        (when (stringp conn-info)
+          (setq conn-info (jupyter-read-connection conn-info)))
+        (apply #'jupyter-kernel-process
+               :session (jupyter-session
+                         :conn-info conn-info
+                         :key (plist-get conn-info :key))
+               (cl-loop
+                for (k v) on args by #'cddr
+                unless (eq k :conn-info) collect k and collect v)))
+       (t
+        (cl-call-next-method))))))
 
 ;;; Client connection
 
