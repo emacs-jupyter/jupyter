@@ -1366,6 +1366,7 @@ the REPL to disable that mode in those buffers.  See
           (when (y-or-n-p (format "Jupyter REPL (%s) still connected.  Disconnect? "
                                   (buffer-name (current-buffer))))
             (prog1 t
+              (jupyter-repl--deactivate-interaction-buffers)
               (jupyter-disconnect jupyter-current-client)))))))
 
 (defun jupyter-repl-error-before-major-mode-change ()
