@@ -64,7 +64,18 @@
   "Return a kernel constructed from ARGS.
 
 This method can be extended with extra primary methods for the
-purposes of handling different forms of ARGS.")
+purposes of handling different forms of ARGS."
+  (let ((server (plist-get args :server))
+        (conn-info (plist-get args :conn-info))
+        (spec (plist-get args :spec)))
+    (cond
+     (server
+      (require 'jupyter-server-kernel)
+      (apply #'jupyter-kernel args))
+     ((or conn-info spec)
+      (require 'jupyter-kernel-process)
+      (apply #'jupyter-kernel args))
+     (t (cl-call-next-method)))))
 
 ;;; Kernel management
 
