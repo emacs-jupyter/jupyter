@@ -1351,15 +1351,14 @@ this method is called."
           (jupyter-repl-interaction-mode -1)))))
 
 (defun jupyter-repl-kill-buffer-query-function ()
-  "Ask before killing a Jupyter REPL buffer.
-If the REPL buffer is killed, stop the client's channels.  When
-the client is connected to a managed kernel, ask to also shutdown
-the kernel.
+  "Ask to shutdown the kernel before killing a Jupyter REPL buffer.
+If the current client is not connected to a kernel, kill the
+buffer.  If the current client is connected to a kernel, only
+kill the buffer if the user wants to also disconnect the client.
 
-In addition to the above, call the function
+Before disconnecting the client, deactivate
 `jupyter-repl-interaction-mode' in all buffers associated with
-the REPL to disable that mode in those buffers.  See
-`jupyter-repl-associate-buffer'."
+the REPL."
   (when (eq major-mode 'jupyter-repl-mode)
     (let ((connected-p (jupyter-connected-p jupyter-current-client)))
       (or (not connected-p)
