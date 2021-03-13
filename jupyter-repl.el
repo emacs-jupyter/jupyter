@@ -1351,22 +1351,22 @@ this method is called."
           (jupyter-repl-interaction-mode -1)))))
 
 (defun jupyter-repl-kill-buffer-query-function ()
-  "Ask to shutdown the kernel before killing a Jupyter REPL buffer.
+  "Ask to shutdown the kernel before killing a REPL buffer.
 If the current client is not connected to a kernel, kill the
 buffer.  If the current client is connected to a kernel, only
-kill the buffer if the user wants to also disconnect the client.
+kill the buffer if the user wants to also shutdown the kernel.
 
-Before disconnecting the client, deactivate
+Before shutting down the kernel, deactivate
 `jupyter-repl-interaction-mode' in all buffers associated with
 the REPL."
   (when (eq major-mode 'jupyter-repl-mode)
     (let ((connected-p (jupyter-connected-p jupyter-current-client)))
       (or (not connected-p)
-          (when (y-or-n-p (format "Jupyter REPL (%s) still connected.  Disconnect? "
+          (when (y-or-n-p (format "Jupyter REPL (%s) still connected.  Shutdown kernel? "
                                   (buffer-name (current-buffer))))
-            (prog1 t
-              (jupyter-repl--deactivate-interaction-buffers)
-              (jupyter-disconnect jupyter-current-client)))))))
+            (jupyter-repl--deactivate-interaction-buffers)
+            (jupyter-shutdown-kernel jupyter-current-client)
+            t)))))
 
 (defun jupyter-repl-error-before-major-mode-change ()
   "Error if attempting to change the `major-mode' in a REPL buffer."
