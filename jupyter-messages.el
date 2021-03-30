@@ -152,38 +152,34 @@ If PART is a list whose first element is the symbol,
 is non-nil.  If it is nil, then set the list's second element to
 the result of calling `jupyter--encode' on the third element and
 return the result."
-  (if (eq (car-safe part) 'message-part)
-      (cl-destructuring-bind (_ encoded-rep decoded-rep) part
-        (or encoded-rep (setf (nth 1 part) (jupyter--encode decoded-rep))))
-    (cl-letf (((symbol-function 'json-encode)
-               (lambda (object)
-                 (cond ((memq object (list t json-null json-false))
-                        (json-encode-keyword object))
-                       ((stringp object)      (json-encode-string object))
-                       ((keywordp object)
-                        ;; Handle `jupyter-message-type'
-                        (let ((msg-type (plist-get jupyter-message-types object)))
-                          (json-encode-string
-                           (or msg-type (substring (symbol-name object) 1)))))
-                       ((symbolp object)      (json-encode-string (symbol-name object)))
-                       ((numberp object)      (json-encode-number object))
-                       ((arrayp object)       (json-encode-array object))
-                       ((hash-table-p object) (json-encode-hash-table object))
-                       ((listp object)
-                        (cond
-                         ((eq (car object) 'message-part)
-                          (jupyter--encode object))
-                         ;; Turn time objects into ISO 8601 time strings
-                         ((and (= (length object) 4)
-                               (cl-every #'integerp object))
-                          (jupyter-encode-time object))
-                         (t (json-encode-list object))))
-                       (t                     (signal 'json-error (list object)))))))
-      (encode-coding-string
-       (cond
-        ((stringp part) part)
-        (t (json-encode part)))
-       'utf-8 t))))
+  (let ((json-recursive-encoder-sym (if (fboundp 'json--print) 'json--print 'json-encode)))
+    (unwind-protect
+        (progn
+          (add-function :around (symbol-function json-recursive-encoder-sym) #'jupyter--json-encode-preproc)
+          (encode-coding-string
+           (cond
+            ((stringp part) part)
+            (t (json-encode part)))
+           'utf-8 t))
+      (remove-function (symbol-function json-recursive-encoder-sym) #'jupyter--json-encode-preproc))))
+
+(defun jupyter--json-encode-preproc (old-json-recursive-encoder object)
+  (let (msg-type)
+    (cl-flet ((json-encode
+               (object)
+               (jupyter--json-encode-preproc old-json-recursive-encoder object)))
+     (cond
+      ((eq (car-safe object) 'message-part)
+       (cl-destructuring-bind (_ encoded-rep decoded-rep) object
+         (or encoded-rep (setf (nth 1 object) (json-encode decoded-rep)))))
+      ((and (keywordp object)
+            (setf msg-type (plist-get jupyter-message-types object)))
+       (json-encode msg-type))
+      ((and (listp object)
+            (= (length object) 4)
+            (cl-every #'integerp object))
+       (jupyter-encode-time object))
+      (t (funcall old-json-recursive-encoder object))))))
 
 (defun jupyter--decode (part)
   "Decode a message PART.
