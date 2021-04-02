@@ -299,11 +299,13 @@ Do this only when the `major-mode' is `jupyter-repl-mode'."
 
 (defun jupyter-repl-completing-read-repl-buffer (&optional mode)
   "Return a REPL buffer, selecting from all available ones.
+Return nil if no REPL buffers are available.
+
 MODE has the same meaning as in
 `jupyter-repl-available-repl-buffers'."
-  (let* ((buffers (or (jupyter-repl-available-repl-buffers mode)
-                      (error "No REPLs available")))
-         (buffer (completing-read "REPL buffer: " (mapcar #'buffer-name buffers) nil t)))
+  (when-let* ((buffers (jupyter-repl-available-repl-buffers mode))
+              (names (mapcar #'buffer-name buffers))
+              (buffer (completing-read "REPL buffer: " names nil t)))
     (when (equal buffer "")
       (error "No REPL buffer selected"))
     (get-buffer buffer)))
@@ -1475,7 +1477,8 @@ the kernel `jupyter-current-client' is connected to."
               ;; selecting a client based on the REPL buffer.
               (buffer-local-value
                'jupyter-current-client
-               (jupyter-repl-completing-read-repl-buffer)))))
+               (or (jupyter-repl-completing-read-repl-buffer)
+                   (error "No REPLs available"))))))
   (cl-check-type client jupyter-repl-client)
   (unless shutdown
     ;; This may have been set to t due to a non-responsive kernel so make sure
@@ -1922,11 +1925,8 @@ of a subclass.  If CLIENT is a buffer or the name of a buffer, use
 the `jupyter-current-client' local to the buffer."
   (interactive
    (list
-    (let ((buffer
-           (when (jupyter-repl-available-repl-buffers major-mode)
-             (jupyter-repl-completing-read-repl-buffer major-mode))))
-      (when buffer
-        (buffer-local-value 'jupyter-current-client buffer)))))
+    (when-let* ((buffer (jupyter-repl-completing-read-repl-buffer major-mode)))
+      (buffer-local-value 'jupyter-current-client buffer))))
   (if (not client)
       (when (y-or-n-p "No REPL for `major-mode' exists.  Start one? ")
         (call-interactively #'jupyter-run-repl))
