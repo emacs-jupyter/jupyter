@@ -1,6 +1,6 @@
 # https://github.com/travis-ci/travis-ci/issues/9061
 sudo: required
-dist: trusty
+dist: xenial
 language: nix
 matrix:
   # Report build failure/success before allowed failures complete
@@ -10,22 +10,35 @@ matrix:
 env:
   - EMACS_CI=emacs-26-1
   - EMACS_CI=emacs-26-3
+  - EMACS_CI=emacs-27-1
   - EMACS_CI=emacs-snapshot
 install:
   # Install Emacs
   - bash <(curl https://raw.githubusercontent.com/purcell/nix-emacs-ci/master/travis-install)
   # Install cask
   - curl -fsSL https://raw.githubusercontent.com/cask/cask/master/go | python
-  - sudo apt-get install -y python3 python3-pip &> /dev/null
-  - sudo pip3 install --upgrade setuptools pip &> /dev/null
+  # We go the route of installing Python3.6 like this because the
+  # python3 apt package on Xenial maxes out at 3.5 and for some reason
+  # installing setuptools using the python3-pip apt package installs a
+  # setuptools that uses f-strings, a feature in 3.6.
+  #
+  # One option would have been to update to Bionic, but apparently we
+  # can't since we use language: nix, see
+  # https://travis-ci.community/t/for-dist-bionic-xenial-vm-is-used-instead-with-language-rust/4487/3
+  - sudo add-apt-repository ppa:deadsnakes/ppa -y
+  - sudo apt-get update
+  - sudo apt-get install -y python3.6
+  - wget https://bootstrap.pypa.io/get-pip.py
+  - sudo python3.6 get-pip.py
+  - sudo python3.6 -m pip install --upgrade setuptools pip
   # --ignore-installed six since jupyter tries to upgrade it, but it can't be
   # upgraded since it is a distutils package
-  - sudo pip3 install --ignore-installed six jupyter &> /dev/null
+  - sudo python3.6 -m pip install --ignore-installed six jupyter
   # Install the kernelspec using the right python. Jupyter installs a default
   # python kernelspec that uses "python" for the command in
   # /usr/local/share/jupyter. This installs one with an absolute path using our
   # python3
-  - sudo python3 -m ipykernel.kernelspec
+  - sudo python3.6 -m ipykernel.kernelspec
 before_script:
   # Ensure Jupyter runtime dir can be written to
   - mkdir -p $(jupyter --runtime-dir)
