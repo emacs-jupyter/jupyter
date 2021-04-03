@@ -48,7 +48,7 @@
 
 (declare-function jupyter-run-server-repl "jupyter-server")
 (declare-function jupyter-connect-server-repl "jupyter-server")
-(declare-function jupyter-server-kernelspecs "jupyter-server")
+(declare-function jupyter-kernelspecs "jupyter-server")
 (declare-function jupyter-server-kernel-id-from-name "jupyter-server")
 (declare-function jupyter-server-name-client-kernel "jupyter-server")
 (declare-function jupyter-api-get-kernel "jupyter-rest-api")
@@ -316,7 +316,7 @@ session."
     ;; Language aliases may not exist for the kernels that are accessible on
     ;; the server so ensure they do.
     (org-babel-jupyter-aliases-from-kernelspecs
-     nil (jupyter-server-kernelspecs server))
+     nil (jupyter-kernelspecs server))
     (let ((sname (file-local-name rsession)))
       (if-let ((id (jupyter-server-kernel-id-from-name server sname)))
           ;; Connecting to an existing kernel
@@ -682,9 +682,9 @@ For all kernel SPECS, make a language alias for the kernel
 language if one does not already exist.  The alias is created with
 `org-babel-jupyter-make-language-alias'.
 
-SPECS defaults to `jupyter-available-kernelspecs'.  Optional
-argument REFRESH has the same meaning as in
-`jupyter-available-kernelspecs'.
+SPECS defaults to those associated with the `default-directory'.
+Optional argument REFRESH has the same meaning as in
+`jupyter-kernelspecs'.
 
 Note, spaces in the kernel language name are converted into
 dashes in the language alias, e.g.
@@ -701,7 +701,7 @@ language to exist on someone's system."
   (cl-loop
    for spec in (or specs
                    (with-demoted-errors "Error retrieving kernelspecs: %S"
-                     (jupyter-available-kernelspecs refresh)))
+                     (jupyter-kernelspecs default-directory refresh)))
    for kernel = (jupyter-kernelspec-name spec)
    for lang = (jupyter-canonicalize-language-string
                (plist-get (jupyter-kernelspec-plist spec) :language))
@@ -726,7 +726,7 @@ mapped to their appropriate minted language in
   (cond
    ((org-export-derived-backend-p backend 'latex)
     (cl-loop
-     for spec in (jupyter-available-kernelspecs)
+     for spec in (jupyter-kernelspecs default-directory)
      for lang = (plist-get (jupyter-kernelspec-plist spec) :language)
      do (cl-pushnew (list (intern (concat "jupyter-" lang)) lang)
                     org-latex-minted-langs :test #'equal)))))

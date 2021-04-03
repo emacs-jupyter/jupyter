@@ -29,7 +29,7 @@
 ;; Websocket URL for the server, the `jupyter-server' object can launch kernels
 ;; using the function `jupyter-server-start-new-kernel'.  The kernelspecs
 ;; available on the server can be accessed by calling
-;; `jupyter-server-kernelspecs'.
+;; `jupyter-kernelspecs'.
 ;;
 ;; Starting REPLs
 ;;
@@ -290,7 +290,7 @@ With a prefix argument, ask to select a server if there are
 mutiple to choose from, otherwise the most recently used server
 is used as determined by `jupyter-current-server'."
   (interactive (list (jupyter-current-server current-prefix-arg)))
-  (let* ((specs (jupyter-server-kernelspecs server))
+  (let* ((specs (jupyter-kernelspecs server))
          (spec (jupyter-completing-read-kernelspec specs)))
     (jupyter-api-start-kernel server (jupyter-kernelspec-name spec))))
 
@@ -310,7 +310,7 @@ is used as determined by `jupyter-current-server'."
   (let ((server (jupyter-current-server current-prefix-arg)))
     (list server
           (car (jupyter-completing-read-kernelspec
-                (jupyter-server-kernelspecs server)))
+                (jupyter-kernelspecs server)))
           ;; FIXME: Ambiguity with `jupyter-current-server' and
           ;; `current-prefix-arg'
           (when (and current-prefix-arg

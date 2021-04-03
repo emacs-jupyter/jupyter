@@ -26,11 +26,11 @@
 ;;
 ;; The main entry points are `jupyter-run-repl' and `jupyter-connect-repl'.
 ;;
-;; When called interactively, `jupyter-run-repl' asks for a kernel to start
-;; (based on the kernels found using `jupyter-available-kernelspecs'), connects
-;; a `jupyter-repl-client' to the selected kernel, and pops up a REPL buffer.
-;; The main difference of `jupyter-connect-repl' is that it will obtain the
-;; kernel's connection info by asking for the JSON file containing it to start
+;; When called interactively, `jupyter-run-repl' asks for a kernel to
+;; start, connects a `jupyter-repl-client' to the selected kernel, and
+;; pops up a REPL buffer.  The main difference of
+;; `jupyter-connect-repl' is that it will obtain the kernel's
+;; connection info by asking for the JSON file containing it to start
 ;; connection to a kernel.
 ;;
 ;; Additionally, `jupyter-repl-associate-buffer' associates the

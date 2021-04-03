@@ -302,7 +302,7 @@ For `url-retrieve', the callback will be called with a nil status."
     `(let ((,kernel (jupyter-kernel
                      :server server
                      :spec (jupyter-guess-kernelspec
-                            ,name (jupyter-server-kernelspecs ,server)))))
+                            ,name (jupyter-kernelspecs ,server)))))
        (jupyter-launch ,kernel)
        (unwind-protect
            (progn ,@body)

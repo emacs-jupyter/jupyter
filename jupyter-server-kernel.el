@@ -54,8 +54,8 @@ Used in, e.g. a `jupyter-server-kernel-list-mode' buffer.")
    (kernelspecs
     :type json-plist
     :initform nil
-    :documentation "Kernelspecs for the kernels available behind this gateway.
-Access should be done through `jupyter-available-kernelspecs'.")))
+    :documentation "Kernelspecs for the kernels available behind
+this gateway.  Access them through `jupyter-kernelspecs'.")))
 
 (cl-defmethod make-instance ((class (subclass jupyter-server)) &rest slots)
   (cl-assert (plist-get slots :url))
@@ -87,18 +87,18 @@ with default `jupyter-api-authentication-method'"))
      (prog1 (cl-call-next-method)
        (jupyter-reauthenticate-websockets server)))))
 
-(cl-defmethod jupyter-server-kernelspecs ((server jupyter-server) &optional refresh)
+(cl-defmethod jupyter-kernelspecs ((client jupyter-rest-client) &optional _refresh)
+  (or (jupyter-api-get-kernelspec client)
+      (error "Can't retrieve kernelspecs from server @ %s"
+             (oref client url))))
+
+(cl-defmethod jupyter-kernelspecs ((server jupyter-server) &optional refresh)
   "Return the kernelspecs on SERVER.
 By default the available kernelspecs are cached.  To force an
 update of the cached kernelspecs, give a non-nil value to
-REFRESH.
-
-The kernelspecs are returned in the same form as returned by
-`jupyter-available-kernelspecs'."
+REFRESH."
   (when (or refresh (null (oref server kernelspecs)))
-    (let ((specs (or (jupyter-api-get-kernelspec server)
-                     (error "Can't retrieve kernelspecs from server @ %s"
-                            (oref server url)))))
+    (let ((specs (cl-call-next-method)))
       (plist-put specs :kernelspecs
                  (cl-loop
                   for (_ spec) on (plist-get specs :kernelspecs) by #'cddr
@@ -109,9 +109,14 @@ The kernelspecs are returned in the same form as returned by
       (oset server kernelspecs specs)))
   (plist-get (oref server kernelspecs) :kernelspecs))
 
+(cl-defmethod jupyter-kernelspecs :extra "server" ((host string) &optional refresh)
+  (if (jupyter-tramp-file-name-p host)
+      (jupyter-kernelspecs (jupyter-tramp-server-from-file-name host) refresh)
+    (cl-call-next-method)))
+
 (cl-defmethod jupyter-server-has-kernelspec-p ((server jupyter-server) name)
   "Return non-nil if SERVER can launch kernels with kernelspec NAME."
-  (jupyter-guess-kernelspec name (jupyter-server-kernelspecs server)))
+  (jupyter-guess-kernelspec name (jupyter-kernelspecs server)))
 
 ;;; Kernel definition
 
@@ -165,7 +170,7 @@ Call the next method if ARGS does not contain :server."
                      ;; the server connection already open and
                      ;; kernelspecs already retrieved.
                      (or (jupyter-guess-kernelspec
-                          spec (jupyter-server-kernelspecs server))
+                          spec (jupyter-kernelspecs server))
                          ;; TODO: Return the error to the I/O context.
                          (error "No kernelspec matching %s @ %s" spec
                                 (oref server url))))))
@@ -287,7 +292,7 @@ this case FN will be evaluated on KERNEL."
 (cl-defmethod jupyter-launch ((server jupyter-server) &optional (kernel string))
   (cl-check-type kernel string)
   (let* ((spec (jupyter-guess-kernelspec
-                kernel (jupyter-server-kernelspecs server)))
+                kernel (jupyter-kernelspecs server)))
          (plist (jupyter-api-start-kernel
                  server (jupyter-kernelspec-name spec))))
     (jupyter-kernel :server server :id (plist-get plist :id) :spec spec)))
@@ -313,7 +318,7 @@ using its SPEC."
 			  (setf (jupyter-kernel-spec kernel)
 					(jupyter-guess-kernelspec
 					 (plist-get model :name)
-					 (jupyter-server-kernelspecs server)))))
+					 (jupyter-kernelspecs server)))))
 		(let ((plist (jupyter-api-start-kernel
 					  server (jupyter-kernelspec-name spec))))
           (setf (jupyter-server-kernel-id kernel) (plist-get plist :id))

@@ -94,18 +94,26 @@ REFRESH."
                  jupyter--kernelspecs)))))
     kernelspecs))
 
+(cl-defgeneric jupyter-kernelspecs (host &optional refresh)
+  "Return a list of kernelspecs on HOST.")
+
+(cl-defmethod jupyter-kernelspecs ((host string) &optional refresh)
+  (let ((default-directory host))
+    (jupyter-available-kernelspecs refresh)))
+
 (defun jupyter-get-kernelspec (name &optional specs refresh)
   "Get the kernelspec for a kernel named NAME.
 If no kernelspec is found, return nil.  Otherwise return the
-kernelspec plist for the kernel names NAME.  Optional argument
-REFRESH has the same meaning as in
-`jupyter-available-kernelspecs'.
+kernelspec for the kernel named NAME.
 
 If SPECS is provided, it is a list of kernelspecs that will be
-searched, otherwise the kernelspecs returned by
-`jupyter-available-kernelspecs' are used."
+searched.  Otherwise the kernelspecs associated with the
+`default-directory' are used.
+
+Optional argument REFRESH has the same meaning as in
+`jupyter-kernelspecs'."
   (cl-loop
-   for kernelspec in (or specs (jupyter-available-kernelspecs refresh))
+   for kernelspec in (or specs (jupyter-kernelspecs default-directory refresh))
    thereis (when (string= (jupyter-kernelspec-name kernelspec) name)
              kernelspec)))
 
@@ -114,15 +122,15 @@ searched, otherwise the kernelspecs returned by
 RE is a regular expression use to match the name of a kernel.
 Return a list of `jupyter-kernelspec' objects.
 
-If SPECS is non-nil search SPECS, otherwise search the specs
-returned by `jupyter-available-kernelspecs'.
+If SPECS is non-nil search SPECS, otherwise search the
+kernelspecs associated with the `default-directory'.
 
 Optional argument REFRESH has the same meaning as in
-`jupyter-available-kernelspecs'."
+`jupyter-kernelspecs'."
   (cl-remove-if-not
    (lambda (kernelspec)
      (string-match-p re (jupyter-kernelspec-name kernelspec)))
-   (or specs (jupyter-available-kernelspecs refresh))))
+   (or specs (jupyter-kernelspecs default-directory refresh))))
 
 (defun jupyter-guess-kernelspec (name &optional specs refresh)
   "Return the first kernelspec starting with NAME.
@@ -137,11 +145,12 @@ SPECS and REFRESH have the same meaning as in
   "Use `completing-read' to select a kernel and return its kernelspec.
 
 SPECS is a list of kernelspecs that will be used for completion,
-if it is nil the `jupyter-available-kernelspecs' will be used.
+if it is nil the kernelspecs associated with the
+`default-directory' will be used.
 
 Optional argument REFRESH has the same meaning as in
-`jupyter-available-kernelspecs'."
-  (let* ((specs (or specs (jupyter-available-kernelspecs refresh)))
+`jupyter-kernelspecs'."
+  (let* ((specs (or specs (jupyter-kernelspecs default-directory refresh)))
          (display-names (if (null specs) (error "No kernelspecs available")
                           (mapcar (lambda (k)
                                     (plist-get
