@@ -231,55 +231,15 @@ return nil."
                (:constructor org-babel-jupyter-remote-session))
   connect-repl-p)
 
-(cl-defstruct (org-babel-jupyter-server-session
-               (:include org-babel-jupyter-remote-session)
-               (:constructor org-babel-jupyter-server-session)))
+(cl-defgeneric org-babel-jupyter-parse-session ((session string))
+  "Return a parsed representation of SESSION."
+  (org-babel-jupyter-session :name session))
 
-(defun org-babel-jupyter-parse-session (session)
-  "Return a session object according to a SESSION string.
-If SESSION ends in \".json\", and is not a Jupyter remote file
-name, return a `org-babel-jupyter-remote-session' that indicates
-an Org Babel Jupyter client initiates its channels based on a
-kernel connection file.
-
-If SESSION is a Jupyter TRAMP file name return a
-`org-babel-jupyter-server-session', otherwise if SESSION is a
-remote file return an `org-babel-jupyter-remote-session'.  In the
-latter case, a kernel will be launched on the remote and a
-connection file read via TRAMP and SSH tunnels created to connect
-to the kernel.
-
-Otherwise an `org-babel-jupyter-session' is returned which
-indicates that the session is local."
-  (cond
-   ((and (string-suffix-p ".json" session)
-         (not (jupyter-tramp-file-name-p session)))
-    (org-babel-jupyter-remote-session
-     :name session
-     :connect-repl-p t))
-   ((file-remote-p session)
-    (if (jupyter-tramp-file-name-p session)
-        (org-babel-jupyter-server-session :name session)
-      (org-babel-jupyter-remote-session :name session)))
-   (t
-    (org-babel-jupyter-session :name session))))
-
-(cl-defgeneric org-babel-jupyter-initiate-client (session kernel)
+(cl-defgeneric org-babel-jupyter-initiate-client ((_session org-babel-jupyter-session) kernel)
   "Launch SESSION's KERNEL, return a `jupyter-org-client' connected to it.
 SESSION is the :session header argument of a source block and
-KERNEL is the name of the kernel to launch.")
-
-(cl-defmethod org-babel-jupyter-initiate-client ((_session org-babel-jupyter-session) kernel)
-  "Call `jupyter-run-repl', passing KERNEL as argument."
+KERNEL is the name of the kernel to launch."
   (jupyter-run-repl kernel nil nil 'jupyter-org-client))
-
-(cl-defmethod org-babel-jupyter-initiate-client :before ((session org-babel-jupyter-remote-session) _kernel)
-  "Raise an error if SESSION's name is a remote file name without a local name.
-The local name is used as a unique identifier of a remote
-session."
-  (unless (not (zerop (length (file-local-name
-                               (org-babel-jupyter-session-name session)))))
-    (error "No remote session name")))
 
 (cl-defmethod org-babel-jupyter-initiate-client :around (session _kernel)
   "Rename the returned client's REPL buffer to include SESSION's name.
@@ -300,6 +260,29 @@ client."
                      "*")
              'unique)))))))
 
+(cl-defmethod org-babel-jupyter-parse-session :extra "remote" ((session string))
+  "If SESSION is a remote file name, return a `org-babel-jupyter-remote-session'.
+A `org-babel-jupyter-remote-session' session is also returned if
+SESSION ends in \".json\", regardless of SESSION being a remote
+file name, with `org-babel-jupyter-remote-session-connect-repl-p'
+set to nil.  The CONNECT-REPL-P slot indicates that a connection
+file is read to connect to the session, as oppossed to launcing a
+kernel."
+  (let ((json-p (string-suffix-p ".json" session)))
+    (if (or json-p (file-remote-p session))
+        (org-babel-jupyter-remote-session
+         :name session
+         :connect-repl-p json-p)
+      (cl-call-next-method))))
+
+(cl-defmethod org-babel-jupyter-initiate-client :before ((session org-babel-jupyter-remote-session) _kernel)
+  "Raise an error if SESSION's name is a remote file name without a local name.
+The local name is used as a unique identifier of a remote
+session."
+  (unless (not (zerop (length (file-local-name
+                               (org-babel-jupyter-session-name session)))))
+    (error "No remote session name")))
+
 (cl-defmethod org-babel-jupyter-initiate-client ((session org-babel-jupyter-remote-session) kernel)
   "Initiate a client connected to a remote kernel process."
   (pcase-let (((cl-struct org-babel-jupyter-remote-session name connect-repl-p) session))
@@ -309,25 +292,36 @@ client."
         (org-babel-jupyter-aliases-from-kernelspecs)
         (jupyter-run-repl kernel nil nil 'jupyter-org-client)))))
 
+(require 'jupyter-server)
+(require 'jupyter-tramp)
+
+(cl-defstruct (org-babel-jupyter-server-session
+               (:include org-babel-jupyter-remote-session)
+               (:constructor org-babel-jupyter-server-session)))
+
+(cl-defmethod org-babel-jupyter-parse-session :extra "server" ((session string))
+  "If SESSION is a Jupyter TRAMP file name return a
+`org-babel-jupyter-server-session'."
+  (if (jupyter-tramp-file-name-p session)
+      (org-babel-jupyter-server-session :name session)
+    (cl-call-next-method)))
+
 (cl-defmethod org-babel-jupyter-initiate-client ((session org-babel-jupyter-server-session) kernel)
-  (require 'jupyter-server)
-  (let* ((session (org-babel-jupyter-server-session-name session))
-         (server (or (jupyter-tramp-server-from-file-name session)
-                     (jupyter-server
-                      :url (jupyter-tramp-url-from-file-name session)))))
+  (let* ((rsession (org-babel-jupyter-session-name session))
+         (url (jupyter-tramp-url-from-file-name rsession))
+         (server (jupyter-server :url url)))
     (unless (jupyter-server-has-kernelspec-p server kernel)
-      (error "No kernelspec matching \"%s\" exists at %s"
-             kernel (jupyter-tramp-url-from-file-name session)))
+      (error "No kernelspec matching \"%s\" exists at %s" kernel url))
     ;; Language aliases may not exist for the kernels that are accessible on
     ;; the server so ensure they do.
     (org-babel-jupyter-aliases-from-kernelspecs
      nil (jupyter-server-kernelspecs server))
-    (let ((session-name (file-local-name session)))
-      (if-let ((id (jupyter-server-kernel-id-from-name server session-name)))
+    (let ((sname (file-local-name rsession)))
+      (if-let ((id (jupyter-server-kernel-id-from-name server sname)))
           ;; Connecting to an existing kernel
           (cl-destructuring-bind (&key name id &allow-other-keys)
               (or (ignore-errors (jupyter-api-get-kernel server id))
-                  (error "Kernel ID, %s, no longer references a kernel @ %s"
+                  (error "Kernel ID, %s, no longer references a kernel at %s"
                          id (oref server url)))
             (unless (string-match-p kernel name)
               (error "\":kernel %s\" doesn't match \"%s\"" kernel name))
@@ -343,7 +337,7 @@ client."
             ;; variable be updated on a kernel rename?
             ;;
             ;; TODO: Would we always want to do this?
-            (jupyter-server-name-client-kernel client session-name)))))))
+            (jupyter-server-name-client-kernel client sname)))))))
 
 (defun org-babel-jupyter-initiate-session-by-key (session params)
   "Return the Jupyter REPL buffer for SESSION.
