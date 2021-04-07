@@ -927,8 +927,8 @@ lines, truncate it to something less than
 
 (cl-defmethod jupyter-handle-status ((client jupyter-repl-client) req msg)
   (when (equal "idle"
-               (jupyter-with-message-content msg (execution-state)
-                 execution-state))
+               (jupyter-with-message-content msg (execution_state)
+                 execution_state))
     (jupyter-with-repl-buffer client
       (save-excursion
         (when (ignore-errors
