@@ -134,35 +134,20 @@ All I/O operations are done in the context of IO."
      (jupyter-mlet* ((result (progn ,@body)))
        result)))
 
-;; do (for the IO monad) takes IO actions (IO values), which are
-;; closures of zero argument wrapped in the `jupyter-delay' type, and
-;; evaluates them in sequence one after the other.  In the IO monad,
-;; composition is equivalent to one IO action being performed after
-;; the other.
-;;
-;; Based on explanations at
-;; https://wiki.haskell.org/Introduction_to_Haskell_IO/Actions
 (defmacro jupyter-do (&rest io-actions)
   "Return an I/O action that performs all actions in IO-ACTIONS.
 The actions are evaluated in the order given.  The result of the
 returned action is the result of the last action in IO-ACTIONS."
   (declare (indent 0) (debug (body)))
   (if (zerop (length io-actions)) 'jupyter-io-nil
-    (letrec ((before
-              (lambda (io-actions)
-                (if (= (length io-actions) 1) (car io-actions)
-                  `(jupyter-then ,(funcall before (cdr io-actions))
-                     ,(car io-actions))))))
-      (funcall before (reverse io-actions)))))
-
-(defun jupyter-then (io-a io-b)
-  "Return an I/O action that performs IO-A then IO-B.
-The result of the returned action is the result of IO-B."
-  (declare (indent 1))
-  (jupyter-return-delayed-thunk
-    (jupyter-mlet* ((_ io-a)
-                    (result io-b))
-      result)))
+    (let ((result (make-symbol "result")))
+      `(jupyter-return-delayed-thunk
+         (jupyter-mlet*
+             ,(cl-loop
+               for action being the elements of io-actions using (index i)
+               for sym = (if (= i (1- (length io-actions))) result '_)
+               collect `(,sym ,action))
+           ,result)))))
 
 ;;; Publisher/subscriber
 
