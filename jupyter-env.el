@@ -38,16 +38,24 @@ directory is where kernel connection files are written to.
 This variable should not be used.  To obtain the runtime directory
 call the function `jupyter-runtime-directory'.")
 
+(defvar jupyter-command-directory nil
+  "The directory of the Jupyter command.
+If nil then use Jupyter command from the path environment variable.
+
+Used to run the `jupyter-command'.")
+
 (defun jupyter-command (&rest args)
   "Run a Jupyter shell command synchronously, return its output.
-The shell command run is
+The shell command run is (in `jupyter-command-directory')
 
     jupyter ARGS...
 
 If the command fails or the jupyter shell command doesn't exist,
 return nil."
   (with-temp-buffer
-    (when (zerop (apply #'process-file "jupyter" nil t nil args))
+    (when (zerop (apply #'process-file
+			(concat jupyter-command-directory "jupyter")
+			nil t nil args))
       (string-trim-right (buffer-string)))))
 
 (defun jupyter-runtime-directory ()
