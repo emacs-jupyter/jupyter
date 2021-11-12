@@ -2929,6 +2929,51 @@ publish_display_data({'text/plain': \"foo\", 'text/latex': \"$\\alpha$\"});"
        (forward-line)
        (should (looking-at-p ": hello"))))))
 
+(ert-deftest org-babel-jupyter-pandoc-output-order ()
+  :tags '(org pandoc)
+  ;; See #351
+  (ert-info ("Ensure output order doesn't depend on Pandoc processing time")
+    (ert-info ("Async")
+      (jupyter-org-test-src-block
+       "\
+from IPython.display import HTML, Markdown, Latex
+
+print(1)
+display(HTML('<b>bold</b>'),
+        Latex('\\\\bf{lbold}'),
+        Markdown('**mbold**'))
+print(2)"
+       "\
+:RESULTS:
+: 1
+*bold*
+*lbold*
+*mbold*
+: 2
+:END:
+"
+       :async "yes"
+       :pandoc "t"))
+    (ert-info ("Sync")
+      (jupyter-org-test-src-block
+       "\
+from IPython.display import HTML, Markdown, Latex
+
+print(1)
+display(HTML('<b>bold</b>'),
+        Latex('\\\\bf{lbold}'),
+        Markdown('**mbold**'))
+print(2)"
+       "\
+:RESULTS:
+: 1
+*bold*
+*lbold*
+*mbold*
+: 2
+:END:
+"
+       :pandoc "t"))))
 
 ;; Local Variables:
 ;; byte-compile-warnings: (unresolved obsolete lexical)
