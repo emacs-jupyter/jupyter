@@ -695,7 +695,10 @@ If PARAMS has non-nil value for key ':pandoc' and TYPE is in
 Otherwise, wrap it in an export block."
   (if (and (alist-get :pandoc params)
            (member type jupyter-org-pandoc-convertable))
-      (jupyter-org-raw-string (jupyter-pandoc-convert type "org" value))
+      (list 'pandoc
+            (list :text "Converting..."
+                  :type type
+                  :value value))
     (jupyter-org-export-block type value)))
 
 (defun jupyter-org-export-block (type value)
@@ -1470,6 +1473,43 @@ Assumes `point' is on the #+RESULTS keyword line."
               (set-marker end nil)))
           (jupyter-org--mark-stream-result-newline result))))))
 
+(defun jupyter-org--start-pandoc-conversion (el cb)
+  (jupyter-pandoc-convert
+   (org-element-property :type el) "org"
+   (org-element-property :value el)
+   cb))
+
+(defun jupyter-org-pandoc-placeholder-element (req el)
+  "Launch a Pandoc conversion process of EL, return a placeholder string.
+REQ is the `jupyter-org-request' which generated EL as a result.
+
+The placeholder string is meant to be inserted into the Org
+buffer and replaced with the result of conversion when ready.
+
+EL is an Org element with the properties
+
+    :text  The placeholder text to use.
+    :type  The type of syntax from which to convert.
+    :value The code with the corresponding syntax."
+  (letrec ((buf (current-buffer))
+           (src-pos (copy-marker (jupyter-org-request-marker req)))
+           (cb (lambda ()
+                 (let ((to-string (buffer-string)))
+                   (with-current-buffer buf
+                     (save-excursion
+                       (goto-char src-pos)
+                       (set-marker src-pos nil)
+                       (when (text-property-search-forward 'jupyter-pandoc proc)
+                         (delete-region (point)
+                                        (1+ (next-single-property-change
+                                             (point) 'jupyter-pandoc)))
+                         (insert to-string)))))))
+           (proc (jupyter-org--start-pandoc-conversion el cb)))
+    (jupyter-org-raw-string
+     (propertize
+      (org-element-property :text el)
+      'jupyter-pandoc proc))))
+
 (cl-defgeneric jupyter-org--insert-result (req context result)
   "For REQ and given CONTEXT, insert RESULT.
 REQ is a `jupyter-org-request' that contains the context of the
@@ -1480,7 +1520,10 @@ source block associated with REQ.
 
 RESULT is the new result, as an org element, to be inserted.")
 
-(cl-defmethod jupyter-org--insert-result (_req context result)
+(cl-defmethod jupyter-org--insert-result (req context result)
+  (when (eq (org-element-type result) 'pandoc)
+    (setq result (jupyter-org-pandoc-placeholder-element req result)))
+
   (insert (org-element-interpret-data
            (jupyter-org--wrap-result-maybe
             context (if (jupyter-org--stream-result-p result)
@@ -1514,7 +1557,10 @@ RESULT is the new result, as an org element, to be inserted.")
   (cond
    ((jupyter-org-request-silent-p req)
     (unless (equal (jupyter-org-request-silent-p req) "none")
-      (message "%s" (org-element-interpret-data result))))
+      (if (eq (org-element-type result) 'pandoc)
+          (message "[%s] %s" (org-element-property :type result)
+                   (org-element-property :value result))
+        (message "%s" (org-element-interpret-data result)))))
    ((jupyter-org-request-async-p req)
     (jupyter-org--clear-request-id req)
     (jupyter-org--do-insert-result req result))
@@ -1574,12 +1620,31 @@ example-block elements."
        results
        :initial-value nil)))))
 
+(defun jupyter-org--process-pandoc-results (results)
+  (let* ((results (copy-sequence results))
+         (head results)
+         (procs '()))
+    (while head
+      (when (eq (org-element-type (car head)) 'pandoc)
+        (push
+         (jupyter-org--start-pandoc-conversion
+          (car head)
+          (let ((h head))
+            (lambda ()
+              (setcar h (jupyter-org-raw-string (buffer-string))))))
+         procs))
+      (setq head (cdr head)))
+    (while (cl-find-if #'process-live-p procs)
+      (accept-process-output nil 0.1))
+    results))
+
 (defun jupyter-org-sync-results (req)
   "Return the result string in org syntax for the results of REQ.
 Meant to be used as the return value of
 `org-babel-execute:jupyter'."
   (when-let* ((results (jupyter-org--coalesce-stream-results
-                        (nreverse (jupyter-org-request-results req))))
+                        (jupyter-org--process-pandoc-results
+                         (nreverse (jupyter-org-request-results req)))))
               (params (jupyter-org-request-block-params req))
               (result-params (alist-get :result-params params)))
     (org-element-interpret-data
