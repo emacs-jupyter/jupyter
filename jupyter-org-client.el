@@ -376,7 +376,7 @@ most recent completion request.")
     (let* ((el (org-element-at-point))
            (lang (org-element-property :language el)))
       (when (org-babel-jupyter-language-p lang)
-        (let* ((info (org-babel-get-src-block-info el))
+        (let* ((info (org-babel-get-src-block-info nil el))
                (params (nth 2 info))
                (beg (save-excursion
                       (goto-char (org-element-property :post-affiliated el))
