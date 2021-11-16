@@ -95,7 +95,8 @@ table for the source block at `point'.")
 PARAMS is the arguments alist as returned by
 `org-babel-get-src-block-info'.  The returned string can then be
 used to identify unique Jupyter Org babel sessions."
-  (let ((session (alist-get :session params))
+  ;; Take into account a Lisp expression as a session name.
+  (let ((session (org-babel-read (alist-get :session params)))
         (kernel (alist-get :kernel params)))
     (unless (and session kernel
                  (not (equal session "none")))
@@ -371,6 +372,9 @@ the host."
 (defun org-babel-jupyter-initiate-session (&optional session params)
   "Initialize a Jupyter SESSION according to PARAMS."
   (if (equal session "none") (error "Need a session to run")
+    (when session
+      ;; Take into account a Lisp expression as a session name.
+      (setq session (org-babel-read session)))
     (org-babel-jupyter-initiate-session-by-key session params)))
 
 ;;;;  `org-babel-execute:jupyter'
