@@ -1175,7 +1175,8 @@ See `jupyter-eval-short-result-max-lines' and
                                         (_ "output"))
              req
            (jupyter-insert-ansi-coded-text text)
-           (jupyter-display-current-buffer-guess-where :stream))))))
+           (when-let* ((window (jupyter-display-current-buffer-guess-where :stream)))
+             (set-window-point window (point-max))))))))
     req))
 
 (cl-defgeneric jupyter-eval-string (str &optional beg end)
