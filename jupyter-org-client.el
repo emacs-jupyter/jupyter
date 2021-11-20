@@ -1101,7 +1101,7 @@ new \"scalar\" result with the result of calling
 (defsubst jupyter-org--first-result-context-p (context)
   (cl-case (org-element-type context)
     (drawer (not (equal "RESULTS"
-                        (org-element-property :drawer-name context))))
+                        (upcase (org-element-property :drawer-name context)))))
     (t (not (jupyter-org--wrappable-element-p context)))))
 
 (defun jupyter-org--clear-request-id (req)
