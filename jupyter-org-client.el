@@ -265,7 +265,6 @@ to."
       ;; is re-added.
       (unless (memq 'jupyter-org-add-error-keymap org-font-lock-hook)
         (add-hook 'org-font-lock-hook 'jupyter-org-add-error-keymap nil t))
-      (setq traceback (ansi-color-apply traceback))
       (jupyter-org--add-result
        req (jupyter-org-comment
             (with-temp-buffer
