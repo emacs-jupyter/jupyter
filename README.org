@@ -99,6 +99,30 @@ make widgets
 After, launch Emacs, connect to a kernel (e.g. through a REPL), and
 run some code that creates a widget.
 
+* How do I run the tests?
+
+You must have [[https://github.com/cask/cask][Cask]] installed to be able to run the tests.  Once Cask
+is installed, in the top level directory of this project run the
+following from the command line
+
+#+begin_src shell
+# Install all development dependencies via Cask
+make dev
+#+end_src
+
+Then, to run the tests
+
+#+begin_src shell
+# Run the whole set of tests
+make test
+# Run tests tagged with org
+make test TAGS=org
+# Run tests tagged with org and babel
+make test TAGS=org,babel
+# Run tests whose name match a pattern
+make test PATTERN=font-lock
+#+end_src
+
 * Related packages
 
 ** =ob-ipython=
