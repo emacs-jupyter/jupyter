@@ -74,7 +74,7 @@ For a manual installation you can add the repository directory to your
 - company-mode (optional) :: http://company-mode.github.io/
 - emacs-websocket :: https://github.com/ahyatt/emacs-websocket
 - simple-httpd :: https://github.com/skeeto/emacs-web-server
-- zmq :: http://github.com/dzop/emacs-zmq
+- zmq :: http://github.com/nnicandro/emacs-zmq
 
 #+BEGIN_SRC elisp
 (add-to-list 'load-path "~/path/to/jupyter")
