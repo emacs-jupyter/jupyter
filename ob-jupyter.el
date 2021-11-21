@@ -468,10 +468,9 @@ the PARAMS alist."
     (when (member "replace" result-params)
       (org-babel-jupyter-cleanup-file-links))
     (let* ((org-babel-jupyter-current-src-block-params params)
-           (jupyter-current-client
-            (thread-first (alist-get :session params)
-              (org-babel-jupyter-initiate-session params)
-              (thread-last (buffer-local-value 'jupyter-current-client))))
+           (session (alist-get :session params))
+           (buf (org-babel-jupyter-initiate-session session params))
+           (jupyter-current-client (buffer-local-value 'jupyter-current-client buf))
            (lang (jupyter-kernel-language jupyter-current-client))
            (vars (org-babel-variable-assignments:jupyter params lang))
            (code (org-babel-expand-body:jupyter body params vars lang)))
