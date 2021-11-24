@@ -265,11 +265,14 @@ Returns \(cons 'ok org-table-representing-dataframe\), nil otherwise."
                 (col-names
                  (mapcar
                   'caddr
-                  (--drop-while
-                   (pcase it
-                     (`(th ,_attrib . ,col-name)
-                      (null col-name)))
-                   th-nodes)))
+                  ;; inline `seq-drop-while' or`--drop-while'
+                  (if-let ((pos
+                            (cl-position-if
+                             (pcase-lambda (`(th ,_attrib . ,col-name))
+                               col-name)
+                             th-nodes)))
+                      (cl-subseq th-nodes pos)
+                    th-nodes)))
                 (second-header-row
                  (pcase (-first-item headers-and-rows)
                    (`(thead ,_attr . ,rest)
