@@ -549,7 +549,10 @@ results instead of an equality match."
             (let ((result (buffer-substring-no-properties
                            (jupyter-org-element-begin-after-affiliated element)
                            (org-element-property :end element))))
-              (if regexp (should (string-match-p test-result result))
+              (if regexp (should (string-match-p
+                                  test-result
+                                  ;; Ignore ANSI escapes for regexp matching.
+                                  (ansi-color-apply result)))
                 (message "\
 
 Testing src-block:
