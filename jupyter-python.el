@@ -99,7 +99,7 @@ import os
 __JUPY_saved_dir = os.getcwd()
 os.chdir(\"%s\")
 try:
-    get_ipython().run_cell(\"\"\"%s\"\"\")
+    get_ipython().run_cell(r\"\"\"%s\"\"\")
 finally:
     os.chdir(__JUPY_saved_dir)"
                   (plist-get changelist :dir) code)))

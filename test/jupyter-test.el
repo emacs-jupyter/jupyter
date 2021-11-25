@@ -2857,7 +2857,12 @@ os.path.abspath(os.getcwd())"
          (concat ": "
                  (funcall convert-path
                           (expand-file-name
-                           (directory-file-name default-directory))) "\n"))))))
+                           (directory-file-name default-directory))) "\n")))
+      (ert-info ("Transformed code and backslashes")
+        ;; See #302
+        (jupyter-org-test-src-block
+         "print(r\"\\r\")"
+         ": \\r\n")))))
 
 (ert-deftest jupyter-org--find-mime-types ()
   :tags '(org mime)
