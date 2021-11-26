@@ -473,7 +473,15 @@ the PARAMS alist."
            (jupyter-current-client (buffer-local-value 'jupyter-current-client buf))
            (lang (jupyter-kernel-language jupyter-current-client))
            (vars (org-babel-variable-assignments:jupyter params lang))
-           (code (org-babel-expand-body:jupyter body params vars lang)))
+           (code (progn
+                   (when-let* ((dir (alist-get :dir params)))
+                     ;; `default-directory' is already set according
+                     ;; to :dir when executing a source block.  Set
+                     ;; :dir to the absolute path so that
+                     ;; `org-babel-expand-body:jupyter' does not try
+                     ;; to re-expand the path. See #302.
+                     (setf (alist-get :dir params) default-directory))
+                   (org-babel-expand-body:jupyter body params vars lang))))
       (pcase-let ((`(,req ,maybe-result)
                    (org-babel-jupyter--execute code async-p)))
         ;; KLUDGE: Remove the file result-parameter so that
