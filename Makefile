@@ -34,15 +34,10 @@ zmq: cask
 	$(CASK) emacs -Q -batch --eval "(progn (fset 'read-string (lambda (&rest _) \"y\")) (require 'zmq))"
 endif
 
-.PHONY: init
-init: cask
-	$(CASK) install
-	$(CASK) update
-
 .PHONY: dev
 dev: cask
-	$(CASK) --dev install
-	$(CASK) --dev update
+	$(CASK) install
+	$(CASK) update
 
 .PHONY: test
 test: zmq
