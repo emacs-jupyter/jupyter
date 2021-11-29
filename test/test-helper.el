@@ -469,28 +469,45 @@ should have PROP with VAL."
 (defvar jupyter-org-test-buffer nil
   "`org-mode' buffer for testing Jupyter source blocks.")
 
+(defun jupyter-org-test-block (lang code &rest args)
+  (let ((arg-str (mapconcat
+                  (lambda (x)
+                    (cl-destructuring-bind (name . val) x
+                      (concat (symbol-name name) " " (format "%s" val))))
+                  args " ")))
+    (concat
+     "#+BEGIN_SRC jupyter-" lang " " arg-str " :session " jupyter-org-test-session "\n"
+     code "\n"
+     "#+END_SRC")))
+
 (defun jupyter-org-test-setup ()
   (unless jupyter-org-test-session
-    (require 'org)
-    (setq org-babel-load-languages
-          '((python . t)
-            (jupyter . t)))
-    (setq org-confirm-babel-evaluate nil)
     (setq jupyter-org-test-session (make-temp-name "ob-jupyter-test"))
+    (setq org-confirm-babel-evaluate nil)
+    (setq inferior-julia-program-name "julia")
+    (require 'org)
+    (require 'ob-python)
+    (require 'ob-julia nil t)
+    (require 'ob-jupyter))
+  (unless jupyter-org-test-buffer
     (setq jupyter-org-test-buffer (get-buffer-create "ob-jupyter-test"))
-    (org-babel-do-load-languages
-     'org-babel-load-languages
-     org-babel-load-languages)
     (with-current-buffer jupyter-org-test-buffer
-      (org-mode)
-      (insert
-       "#+BEGIN_SRC jupyter-python " ":session " jupyter-org-test-session "\n"
-       "#+END_SRC")
-      (setq jupyter-current-client
-            (with-current-buffer (org-babel-initiate-session)
-              jupyter-current-client))))
+      (org-mode)))
   (with-current-buffer jupyter-org-test-buffer
     (erase-buffer)))
+
+(defun jupyter-org-test-client-from-info (info)
+  (let ((params (nth 2 info)))
+    (with-current-buffer
+        (org-babel-jupyter-initiate-session
+         (alist-get :session params) params)
+      jupyter-current-client)))
+
+(defun jupyter-org-test-session-client (lang)
+  (jupyter-org-test-setup)
+  (with-current-buffer jupyter-org-test-buffer
+    (insert (jupyter-org-test-block lang ""))
+    (jupyter-org-test-client-from-info (org-babel-get-src-block-info))))
 
 (defmacro jupyter-org-test (&rest body)
   (declare (debug (body)))
@@ -536,11 +553,12 @@ results instead of an equality match."
     (insert src-block)
     (let* ((info (org-babel-get-src-block-info)))
       (save-window-excursion
-        (org-babel-execute-src-block nil info))
-      (org-with-point-at (org-babel-where-is-src-block-result nil info)
+        (org-babel-execute-src-block nil info)
         (when (equal (alist-get :async args) "yes")
-          (jupyter-wait-until-idle
-           (jupyter-last-sent-request jupyter-current-client)))
+          (jupyter-idle-sync
+           (jupyter-last-sent-request
+            (jupyter-org-test-client-from-info info)))))
+      (org-with-point-at (org-babel-where-is-src-block-result nil info)
         (let ((element (org-element-context)))
           ;; Handle empty results with just a RESULTS keyword
           ;;
