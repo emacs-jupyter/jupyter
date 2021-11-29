@@ -1088,10 +1088,10 @@ new \"scalar\" result with the result of calling
             ;;
             ;;     [1] Foo bar
             (when-let* ((beg (car (memq (aref result 0) '(?\[ ?\{ ?\())))
-                        (end (and beg (pcase beg
-                                        (?\[ ?\])
-                                        (?\{ ?\})
-                                        (?\( ?\))))))
+                        (end (pcase beg
+                               (?\[ ?\])
+                               (?\{ ?\})
+                               (?\( ?\)))))
               (eq end (aref result (1- (length result))))))
        (org-babel-script-escape result))
       (t result)))))
