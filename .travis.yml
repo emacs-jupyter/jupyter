@@ -39,6 +39,8 @@ install:
   # /usr/local/share/jupyter. This installs one with an absolute path using our
   # python3
   - sudo python3.6 -m ipykernel.kernelspec
+  # Install additional packages needed by the tests
+  - sudo apt-get install pandoc
 before_script:
   # Ensure Jupyter runtime dir can be written to
   - mkdir -p $(jupyter --runtime-dir)

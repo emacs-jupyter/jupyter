@@ -33,6 +33,8 @@ install:
   - if not exist C:\Miniconda3-x64\envs\jupyter conda create --name jupyter python=%JUPYTER_PYTHON_VERSION%
   - conda activate jupyter
   - conda install jupyter
+  # Install additional packages needed by tests
+  - conda install -c conda-forge pandoc
   # Ensure Jupyter runtime dir can be written to
   - ps: mkdir -p (jupyter --runtime-dir)
   - jupyter --version
