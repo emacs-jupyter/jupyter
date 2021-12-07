@@ -2918,6 +2918,32 @@ publish_display_data({'text/plain': \"foo\", 'text/latex': \"$\\alpha$\"});"
        (forward-line)
        (should (looking-at-p ": hello"))))))
 
+(ert-deftest org-babel-jupyter-julia-dataframe-to-table ()
+  :tags '(org)
+  (jupyter-org-test-src-block
+   "\
+import Pkg
+open(\"julia_pkg_install_output.txt\", \"w\") do io
+    redirect_stderr(io) do
+        Pkg.add(\"DataFrames\")
+    end
+end
+using DataFrames
+a=DataFrame(A=[\"$c\" for c ∈ 1:5], B=[c for c ∈ 1:5])
+a"
+
+   ":RESULTS:
+:
+| A | B |
+|---+---|
+| 1 | 1 |
+| 2 | 2 |
+| 3 | 3 |
+| 4 | 4 |
+| 5 | 5 |
+:END:
+"
+   :kernel "jupyter-julia"))
 
 ;; Local Variables:
 ;; byte-compile-warnings: (unresolved obsolete lexical)
