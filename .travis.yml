@@ -19,6 +19,7 @@ install:
   - curl -fsSL https://raw.githubusercontent.com/cask/cask/master/go | python
     # julia
   - sudo apt-get install -y julia
+  - julia -e 'import Pkg; Pkg.add("IJulia"); using IJulia'
   # We go the route of installing Python3.6 like this because the
   # python3 apt package on Xenial maxes out at 3.5 and for some reason
   # installing setuptools using the python3-pip apt package installs a
