@@ -991,10 +991,10 @@ Return a list of the checkpoints ordered most recently created first."
   (declare (indent 1))
   (sort
    (jupyter-api-get-checkpoints client file)
-   (lambda (a b)
-     (let ((ta (jupyter-decode-time (plist-get a :last_modified)))
-           (tb (jupyter-decode-time (plist-get b :last_modified))))
-       (time-less-p tb ta)))))
+   (cl-labels ((decode-time
+                (a) (jupyter-decode-time (plist-get a :last_modified))))
+     (lambda (a b)
+       (time-less-p (decode-time b) (decode-time a))))))
 
 (defun jupyter-api-get-latest-checkpoint (client file)
   "Return the latest checkpoint for FILE on the server accessed by CLIENT.

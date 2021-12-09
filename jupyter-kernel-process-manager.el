@@ -71,7 +71,7 @@ error.  The error is raised before :timeout-form is evaluated."
 
 ;;; `jupyter-kernel-process'
 
-(defclass jupyter-kernel-process (jupyter-meta-kernel)
+(defclass jupyter-kernel-process (jupyter-kernel)
   ((process
     :type process
     :documentation "The kernel process."))
@@ -151,14 +151,15 @@ argument of the process."
     :wait-form (and (process-live-p (oref kernel process))
                     (goto-char (point-min))
                     (re-search-forward "Connection file: \\(.+\\)\n" nil t))
-    (let* ((conn-file (match-string 1))
-           (remote (file-remote-p default-directory))
-           (conn-info (if remote (jupyter-tunnel-connection
-                                  (concat remote conn-file))
-                        (jupyter-read-plist conn-file))))
-      (oset kernel session (jupyter-session
-                            :conn-info conn-info
-                            :key (plist-get conn-info :key))))))
+    (oset kernel session
+          (let ((conn-info (jupyter-read-connection
+                            (concat
+                             (save-match-data
+                               (file-remote-p default-directory))
+                             (match-string 1)))))
+            (jupyter-session
+             :conn-info conn-info
+             :key (plist-get conn-info :key))))))
 
 (defclass jupyter-spec-kernel (jupyter-kernel-process)
   ()
@@ -188,21 +189,22 @@ argument of the process."
                      else if (equal arg "{resource_dir}")
                      collect (file-local-name resource-dir)
                      else collect arg))
-      ;; Windows systems may not have good time resolution when retrieving
-      ;; the last access time of a file so we don't bother with checking that
-      ;; the kernel has read the connection file and leave it to the
-      ;; downstream initialization to ensure that we can communicate with a
-      ;; kernel.
-      (unless (memq system-type '(ms-dos windows-nt cygwin))
-        (jupyter--after-kernel-process-ready kernel
-            "Starting %s kernel process..."
-          :wait-form (let ((attribs (file-attributes conn-file)))
-                       ;; `file-attributes' can potentially return nil, in this case
-                       ;; just assume it has read the connection file so that we can
-                       ;; know for sure it is not connected if it fails to respond to
-                       ;; any messages we send it.
-                       (or (null attribs)
-                           (not (equal atime (nth 4 attribs))))))))))
+      (jupyter--after-kernel-process-ready kernel
+          "Starting %s kernel process..."
+        :wait-form
+        ;; Windows systems may not have good time resolution when retrieving
+        ;; the last access time of a file so we don't bother with checking that
+        ;; the kernel has read the connection file and leave it to the
+        ;; downstream initialization to ensure that we can communicate with a
+        ;; kernel.
+        (or (memq system-type '(ms-dos windows-nt cygwin))
+            (let ((attribs (file-attributes conn-file)))
+              ;; `file-attributes' can potentially return nil, in this case
+              ;; just assume it has read the connection file so that we can
+              ;; know for sure it is not connected if it fails to respond to
+              ;; any messages we send it.
+              (or (null attribs)
+                  (not (equal atime (nth 4 attribs))))))))))
 
 ;;; `jupyter-kernel-process-manager'
 
@@ -235,15 +237,17 @@ connect to MANAGER's kernel."
         (jupyter-comm-initialize client (oref kernel session))))))
 
 (cl-defmethod jupyter-start-kernel :after ((manager jupyter-kernel-process-manager) &rest _args)
-  (with-slots (kernel) manager
+  "Some final setup after starting MANAGER's kernel.
+Update the process sentinel of the kernel process to call
+`jupyter-kernel-died' on the managed kernel when the process
+exits.
+
+Also start manager's control channel."
+  (with-slots (kernel control-channel) manager
     (add-function
      :after (process-sentinel (oref kernel process))
-     (jupyter--kernel-died-process-sentinel manager))))
-
-(cl-defmethod jupyter-start-channels ((manager jupyter-kernel-process-manager))
-  "Start a control channel on MANAGER."
-  (with-slots (kernel control-channel) manager
-    (if control-channel (jupyter-start-channel control-channel)
+     (jupyter--kernel-died-process-sentinel manager))
+    (unless control-channel
       (cl-destructuring-bind (&key transport ip control_port &allow-other-keys)
           (jupyter-session-conn-info (oref kernel session))
         (require 'jupyter-zmq-channel)
@@ -252,14 +256,8 @@ connect to MANAGER's kernel."
                'jupyter-zmq-channel
                :type :control
                :session (oref kernel session)
-               :endpoint (format "%s://%s:%d" transport ip control_port)))
-        (jupyter-start-channels manager)))))
-
-(cl-defmethod jupyter-stop-channels ((manager jupyter-kernel-process-manager))
-  "Stop the control channel on MANAGER."
-  (when-let (channel (oref manager control-channel))
-    (jupyter-stop-channel channel)
-    (oset manager control-channel nil)))
+               :endpoint (format "%s://%s:%d" transport ip control_port)))))
+    (jupyter-start-channel control-channel)))
 
 (cl-defmethod jupyter-shutdown-kernel ((manager jupyter-kernel-process-manager) &optional restart timeout)
   "Shutdown MANAGER's kernel with an optional RESTART.
@@ -269,8 +267,6 @@ kernel.  If the kernel has not shutdown within TIMEOUT, forcibly
 kill the kernel subprocess.  After shutdown the MANAGER's control
 channel is stopped unless RESTART is non-nil."
   (when (jupyter-kernel-alive-p manager)
-    ;; FIXME: For some reason the control-channel is nil sometimes
-    (jupyter-start-channels manager)
     (with-slots (control-channel kernel) manager
       (jupyter-send control-channel :shutdown-request
                     (jupyter-message-shutdown-request :restart restart))
@@ -290,7 +286,9 @@ channel is stopped unless RESTART is non-nil."
         (not (jupyter-kernel-alive-p manager)))
       (if restart
           (jupyter-start-kernel manager)
-        (jupyter-stop-channels manager)))))
+        (when-let (channel (oref manager control-channel))
+          (jupyter-stop-channel channel)
+          (oset manager control-channel nil))))))
 
 (cl-defmethod jupyter-interrupt-kernel ((manager jupyter-kernel-process-manager) &optional timeout)
   "Interrupt MANAGER's kernel.
@@ -300,8 +298,6 @@ TIMEOUT for a reply.  Otherwise if the kernel does not specify an
 interrupt mode, send an interrupt signal to the kernel
 subprocess."
   (when (jupyter-kernel-alive-p manager)
-    ;; FIXME: For some reason the control-channel is nil sometimes
-    (jupyter-start-channels manager)
     (with-slots (kernel) manager
       (cl-destructuring-bind (_name _resource-dir . spec) (oref kernel spec)
         (pcase (plist-get spec :interrupt_mode)

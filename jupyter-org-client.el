@@ -168,15 +168,13 @@ See also the docstring of `org-image-actual-width' for more details."
 
 ;;;; Stream
 
-(cl-defmethod jupyter-handle-stream ((_client jupyter-org-client)
-                                     (req jupyter-org-request)
-                                     _name
-                                     text)
-  (if (jupyter-org-request-inline-block-p req)
-      (jupyter-with-display-buffer "org-results" req
-        (insert (ansi-color-apply text))
-        (pop-to-buffer (current-buffer)))
-    (jupyter-org--add-result req text)))
+(cl-defmethod jupyter-handle-stream ((_client jupyter-org-client) (req jupyter-org-request) msg)
+  (jupyter-with-message-content msg (text)
+    (if (jupyter-org-request-inline-block-p req)
+        (jupyter-with-display-buffer "org-results" req
+          (insert (ansi-color-apply text))
+          (pop-to-buffer (current-buffer)))
+      (jupyter-org--add-result req text))))
 
 ;;;; Errors
 
@@ -242,91 +240,79 @@ to."
 
 (defvar org-font-lock-hook)
 
-(cl-defmethod jupyter-handle-error ((_client jupyter-org-client)
-                                    (req jupyter-org-request)
-                                    _ename
-                                    _evalue
-                                    traceback)
-  (setq traceback (org-element-normalize-string
-                   (mapconcat #'identity traceback "\n")))
-  (cond
-   ((or (jupyter-org-request-inline-block-p req)
-        (jupyter-org-request-silent-p req))
-    ;; Remove old inline results when an error happens since, if this was not
-    ;; done, it would look like the code which caused the error produced the
-    ;; old result.
-    (when (jupyter-org-request-inline-block-p req)
-      (org-with-point-at (jupyter-org-request-marker req)
-        (org-babel-remove-inline-result)))
-    (jupyter-with-display-buffer "traceback" 'reset
-      (jupyter-insert-ansi-coded-text traceback)
-      (goto-char (point-min))
-      (when (jupyter-org-request-silent-p req)
-        (insert (jupyter-org--goto-error-string req) "\n\n"))
-      (pop-to-buffer (current-buffer))))
-   (t
-    ;; The keymap property in the string returned by
-    ;; `jupyter-org--goto-error-string' gets removed by font-lock so ensure it
-    ;; is re-added.
-    (unless (memq 'jupyter-org-add-error-keymap org-font-lock-hook)
-      (add-hook 'org-font-lock-hook 'jupyter-org-add-error-keymap nil t))
-    (setq traceback (ansi-color-apply traceback))
-    (jupyter-org--add-result
-     req (jupyter-org-comment
-          (with-temp-buffer
-            (insert traceback)
-            (jupyter-org--goto-error-string req))))
-    (jupyter-org--add-result req traceback))))
+(cl-defmethod jupyter-handle-error ((_client jupyter-org-client) (req jupyter-org-request) msg)
+  (jupyter-with-message-content msg (traceback)
+    (setq traceback (org-element-normalize-string
+                     (mapconcat #'identity traceback "\n")))
+    (cond
+     ((or (jupyter-org-request-inline-block-p req)
+          (jupyter-org-request-silent-p req))
+      ;; Remove old inline results when an error happens since, if this was not
+      ;; done, it would look like the code which caused the error produced the
+      ;; old result.
+      (when (jupyter-org-request-inline-block-p req)
+        (org-with-point-at (jupyter-org-request-marker req)
+          (org-babel-remove-inline-result)))
+      (jupyter-with-display-buffer "traceback" 'reset
+        (jupyter-insert-ansi-coded-text traceback)
+        (goto-char (point-min))
+        (when (jupyter-org-request-silent-p req)
+          (insert (jupyter-org--goto-error-string req) "\n\n"))
+        (pop-to-buffer (current-buffer))))
+     (t
+      ;; The keymap property in the string returned by
+      ;; `jupyter-org--goto-error-string' gets removed by font-lock so ensure it
+      ;; is re-added.
+      (unless (memq 'jupyter-org-add-error-keymap org-font-lock-hook)
+        (add-hook 'org-font-lock-hook 'jupyter-org-add-error-keymap nil t))
+      (jupyter-org--add-result
+       req (jupyter-org-comment
+            (with-temp-buffer
+              (insert traceback)
+              (jupyter-org--goto-error-string req))))
+      (jupyter-org--add-result req traceback)))))
 
 ;;;; Execute result
 
-(cl-defmethod jupyter-handle-execute-result ((client jupyter-org-client)
-                                             (req jupyter-org-request)
-                                             _execution-count
-                                             data
-                                             metadata)
+(cl-defmethod jupyter-handle-execute-result ((client jupyter-org-client) (req jupyter-org-request) msg)
   (unless (eq (jupyter-org-request-result-type req) 'output)
-    (cond
-     ((jupyter-org-request-inline-block-p req)
-      ;; For inline results, only text/plain results are allowed at the moment.
-      ;;
-      ;; TODO: Handle all of the different macro types for inline results, see
-      ;; `org-babel-insert-result'.
-      (setq data `(:text/plain ,(plist-get data :text/plain)))
-      (let ((result (let ((r (jupyter-org-result req data metadata)))
-                      (if (stringp r) r
-                        (or (org-element-property :value r) "")))))
-        (if (jupyter-org-request-async-p req)
-            (org-with-point-at (jupyter-org-request-marker req)
-              (org-babel-insert-result
-               result (jupyter-org-request-block-params req)
-               nil nil (jupyter-kernel-language client)))
-          ;; The results are returned in `org-babel-execute:jupyter' in the
-          ;; synchronous case
-          (jupyter-org--add-result req result))))
-     (t
-      (jupyter-org--add-result req (jupyter-org-result req data metadata))))))
+    (jupyter-with-message-content msg (data metadata)
+      (cond
+       ((jupyter-org-request-inline-block-p req)
+        ;; For inline results, only text/plain results are allowed at the moment.
+        ;;
+        ;; TODO: Handle all of the different macro types for inline results, see
+        ;; `org-babel-insert-result'.
+        (setq data `(:text/plain ,(plist-get data :text/plain)))
+        (let ((result (let ((r (jupyter-org-result req data metadata)))
+                        (if (stringp r) r
+                          (or (org-element-property :value r) "")))))
+          (if (jupyter-org-request-async-p req)
+              (org-with-point-at (jupyter-org-request-marker req)
+                (org-babel-insert-result
+                 result (jupyter-org-request-block-params req)
+                 nil nil (jupyter-kernel-language client)))
+            ;; The results are returned in `org-babel-execute:jupyter' in the
+            ;; synchronous case
+            (jupyter-org--add-result req result))))
+       (t
+        (jupyter-org--add-result req (jupyter-org-result req data metadata)))))))
 
 ;;;; Display data
 
-(cl-defmethod jupyter-handle-display-data ((_client jupyter-org-client)
-                                           (req jupyter-org-request)
-                                           data
-                                           metadata
-                                           ;; TODO: Add request objects as text
-                                           ;; properties of source code blocks
-                                           ;; to implement display IDs.  Or how
-                                           ;; can #+NAME be used as a display
-                                           ;; ID?
-                                           _transient)
+(cl-defmethod jupyter-handle-display-data ((_client jupyter-org-client) (req jupyter-org-request) msg)
+  ;; TODO: Add request objects as text properties of source code blocks to
+  ;; implement display IDs.  Or how can #+NAME be used as a display ID?
+  ;;
   ;; Only the data of the execute-result message is inserted into the buffer
   ;; for inline code blocks.
-  (if (jupyter-org-request-inline-block-p req)
-      (jupyter-with-display-buffer "org-results" req
-        (jupyter-insert data metadata)
-        (pop-to-buffer (current-buffer))
-        (set-window-point (get-buffer-window (current-buffer)) (point-min)))
-    (jupyter-org--add-result req (jupyter-org-result req data metadata))))
+  (jupyter-with-message-content msg (data metadata)
+    (if (jupyter-org-request-inline-block-p req)
+        (jupyter-with-display-buffer "org-results" req
+          (jupyter-insert data metadata)
+          (pop-to-buffer (current-buffer))
+          (set-window-point (get-buffer-window (current-buffer)) (point-min)))
+      (jupyter-org--add-result req (jupyter-org-result req data metadata)))))
 
 ;;;; Execute reply
 
@@ -347,21 +333,17 @@ to."
       (forward-line)
       (insert (org-element-normalize-string (plist-get pl :text))))))
 
-(cl-defmethod jupyter-handle-execute-reply ((_client jupyter-org-client)
-                                            (req jupyter-org-request)
-                                            status
-                                            _execution-count
-                                            _user-expressions
-                                            payload)
-  (when payload
-    (org-with-point-at (jupyter-org-request-marker req)
-      (jupyter-handle-payload payload)))
-  (if (equal status "ok")
-      (message "Code block evaluation complete.")
-    (message "An error occurred when evaluating code block."))
-  (when (jupyter-org-request-async-p req)
-    (jupyter-org--clear-request-id req)
-    (run-hooks 'org-babel-after-execute-hook)))
+(cl-defmethod jupyter-handle-execute-reply ((_client jupyter-org-client) (req jupyter-org-request) msg)
+  (jupyter-with-message-content msg (status payload)
+    (when payload
+      (org-with-point-at (jupyter-org-request-marker req)
+        (jupyter-handle-payload payload)))
+    (if (equal status "ok")
+        (message "Code block evaluation complete.")
+      (message "An error occurred when evaluating code block."))
+    (when (jupyter-org-request-async-p req)
+      (jupyter-org--clear-request-id req)
+      (run-hooks 'org-babel-after-execute-hook))))
 
 ;;; Completion in code blocks
 
@@ -393,7 +375,7 @@ most recent completion request.")
     (let* ((el (org-element-at-point))
            (lang (org-element-property :language el)))
       (when (org-babel-jupyter-language-p lang)
-        (let* ((info (org-babel-get-src-block-info el))
+        (let* ((info (org-babel-get-src-block-info nil el))
                (params (nth 2 info))
                (beg (save-excursion
                       (goto-char (org-element-property :post-affiliated el))
@@ -712,7 +694,10 @@ If PARAMS has non-nil value for key ':pandoc' and TYPE is in
 Otherwise, wrap it in an export block."
   (if (and (alist-get :pandoc params)
            (member type jupyter-org-pandoc-convertable))
-      (jupyter-org-raw-string (jupyter-pandoc-convert type "org" value))
+      (list 'pandoc
+            (list :text "Converting..."
+                  :type type
+                  :value value))
     (jupyter-org-export-block type value)))
 
 (defun jupyter-org-export-block (type value)
@@ -998,6 +983,9 @@ those mime types instead."
   (let* ((params (jupyter-org-request-block-params req))
          (display-mime-types (jupyter-org--find-mime-types
                               (alist-get :display params))))
+    ;; Push :file back into PARAMS if it was present in
+    ;; `org-babel-execute:jupyter'.  That function removes it because
+    ;; we don't want `org-babel-insert-result' to handle it.
     (when (jupyter-org-request-file req)
       (push (cons :file (jupyter-org-request-file req)) params))
     (cond
@@ -1100,10 +1088,10 @@ new \"scalar\" result with the result of calling
             ;;
             ;;     [1] Foo bar
             (when-let* ((beg (car (memq (aref result 0) '(?\[ ?\{ ?\())))
-                        (end (and beg (pcase beg
-                                        (?\[ ?\])
-                                        (?\{ ?\})
-                                        (?\( ?\))))))
+                        (end (pcase beg
+                               (?\[ ?\])
+                               (?\{ ?\})
+                               (?\( ?\)))))
               (eq end (aref result (1- (length result))))))
        (org-babel-script-escape result))
       (t result)))))
@@ -1116,7 +1104,7 @@ new \"scalar\" result with the result of calling
 (defsubst jupyter-org--first-result-context-p (context)
   (cl-case (org-element-type context)
     (drawer (not (equal "RESULTS"
-                        (org-element-property :drawer-name context))))
+                        (upcase (org-element-property :drawer-name context)))))
     (t (not (jupyter-org--wrappable-element-p context)))))
 
 (defun jupyter-org--clear-request-id (req)
@@ -1484,6 +1472,43 @@ Assumes `point' is on the #+RESULTS keyword line."
               (set-marker end nil)))
           (jupyter-org--mark-stream-result-newline result))))))
 
+(defun jupyter-org--start-pandoc-conversion (el cb)
+  (jupyter-pandoc-convert
+   (org-element-property :type el) "org"
+   (org-element-property :value el)
+   cb))
+
+(defun jupyter-org-pandoc-placeholder-element (req el)
+  "Launch a Pandoc conversion process of EL, return a placeholder string.
+REQ is the `jupyter-org-request' which generated EL as a result.
+
+The placeholder string is meant to be inserted into the Org
+buffer and replaced with the result of conversion when ready.
+
+EL is an Org element with the properties
+
+    :text  The placeholder text to use.
+    :type  The type of syntax from which to convert.
+    :value The code with the corresponding syntax."
+  (letrec ((buf (current-buffer))
+           (src-pos (copy-marker (jupyter-org-request-marker req)))
+           (cb (lambda ()
+                 (let ((to-string (buffer-string)))
+                   (with-current-buffer buf
+                     (save-excursion
+                       (goto-char src-pos)
+                       (set-marker src-pos nil)
+                       (when (text-property-search-forward 'jupyter-pandoc proc)
+                         (delete-region (point)
+                                        (1+ (next-single-property-change
+                                             (point) 'jupyter-pandoc)))
+                         (insert to-string)))))))
+           (proc (jupyter-org--start-pandoc-conversion el cb)))
+    (jupyter-org-raw-string
+     (propertize
+      (org-element-property :text el)
+      'jupyter-pandoc proc))))
+
 (cl-defgeneric jupyter-org--insert-result (req context result)
   "For REQ and given CONTEXT, insert RESULT.
 REQ is a `jupyter-org-request' that contains the context of the
@@ -1494,7 +1519,10 @@ source block associated with REQ.
 
 RESULT is the new result, as an org element, to be inserted.")
 
-(cl-defmethod jupyter-org--insert-result (_req context result)
+(cl-defmethod jupyter-org--insert-result (req context result)
+  (when (eq (org-element-type result) 'pandoc)
+    (setq result (jupyter-org-pandoc-placeholder-element req result)))
+
   (insert (org-element-interpret-data
            (jupyter-org--wrap-result-maybe
             context (if (jupyter-org--stream-result-p result)
@@ -1528,7 +1556,10 @@ RESULT is the new result, as an org element, to be inserted.")
   (cond
    ((jupyter-org-request-silent-p req)
     (unless (equal (jupyter-org-request-silent-p req) "none")
-      (message "%s" (org-element-interpret-data result))))
+      (if (eq (org-element-type result) 'pandoc)
+          (message "[%s] %s" (org-element-property :type result)
+                   (org-element-property :value result))
+        (message "%s" (org-element-interpret-data result)))))
    ((jupyter-org-request-async-p req)
     (jupyter-org--clear-request-id req)
     (jupyter-org--do-insert-result req result))
@@ -1588,12 +1619,31 @@ example-block elements."
        results
        :initial-value nil)))))
 
+(defun jupyter-org--process-pandoc-results (results)
+  (let* ((results (copy-sequence results))
+         (head results)
+         (procs '()))
+    (while head
+      (when (eq (org-element-type (car head)) 'pandoc)
+        (push
+         (jupyter-org--start-pandoc-conversion
+          (car head)
+          (let ((h head))
+            (lambda ()
+              (setcar h (jupyter-org-raw-string (buffer-string))))))
+         procs))
+      (setq head (cdr head)))
+    (while (cl-find-if #'process-live-p procs)
+      (accept-process-output nil 0.1))
+    results))
+
 (defun jupyter-org-sync-results (req)
   "Return the result string in org syntax for the results of REQ.
 Meant to be used as the return value of
 `org-babel-execute:jupyter'."
   (when-let* ((results (jupyter-org--coalesce-stream-results
-                        (nreverse (jupyter-org-request-results req))))
+                        (jupyter-org--process-pandoc-results
+                         (nreverse (jupyter-org-request-results req)))))
               (params (jupyter-org-request-block-params req))
               (result-params (alist-get :result-params params)))
     (org-element-interpret-data

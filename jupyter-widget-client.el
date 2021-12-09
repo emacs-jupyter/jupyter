@@ -209,30 +209,20 @@ required by the JupyterLab widget manager."
              (jupyter-session-id (oref client session))
              jupyter-widgets-port))))
 
-(cl-defmethod jupyter-handle-comm-open ((client jupyter-widget-client)
-                                        req
-                                        _id
-                                        target-name
-                                        _target-module
-                                        _data)
-  (when (member target-name jupyter-widgets-supported-targets)
-    (jupyter-widgets-start-websocket-server)
-    (jupyter-widgets--initialize-client client)
-    (jupyter-widgets-send-message client (jupyter-request-last-message req)))
+(cl-defmethod jupyter-handle-comm-open ((client jupyter-widget-client) _req msg)
+  (jupyter-with-message-content msg (target-name)
+    (when (member target-name jupyter-widgets-supported-targets)
+      (jupyter-widgets-start-websocket-server)
+      (jupyter-widgets--initialize-client client)
+      (jupyter-widgets-send-message client msg)))
   (cl-call-next-method))
 
-(cl-defmethod jupyter-handle-comm-close ((client jupyter-widget-client)
-                                         req
-                                         _id
-                                         _data)
-  (jupyter-widgets-send-message client (jupyter-request-last-message req))
+(cl-defmethod jupyter-handle-comm-close ((client jupyter-widget-client) _req msg)
+  (jupyter-widgets-send-message client msg)
   (cl-call-next-method))
 
-(cl-defmethod jupyter-handle-comm-msg ((client jupyter-widget-client)
-                                       req
-                                       _id
-                                       _data)
-  (jupyter-widgets-send-message client (jupyter-request-last-message req))
+(cl-defmethod jupyter-handle-comm-msg ((client jupyter-widget-client) _req msg)
+  (jupyter-widgets-send-message client msg)
   (cl-call-next-method))
 
 ;;; `httpd' interface

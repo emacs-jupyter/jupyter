@@ -30,21 +30,19 @@
 ;; environment.  You add an event that can be handled in the ioloop environment
 ;; by calling `jupyter-ioloop-add-event' before calling `jupyter-ioloop-start'.
 ;;
-;; In the event handler of the ioloop, you may optionally return another event
-;; back to the parent process.  In this case, when the parent process receives
-;; the event it is dispatched to an appropriate `jupyter-ioloop-handler'.
+;; When one of the events added through `jupyter-ioloop-add-event'
+;; returns something other than nil, it is sent back to the parent
+;; process and the handler function passed to `jupyter-ioloop-start'
+;; is called.
 ;;
 ;; An example that will echo back what was sent to the ioloop as a message in
 ;; the parent process:
-;;
-;; (cl-defmethod jupyter-ioloop-handler ((ioloop jupyter-ioloop) (tag (eql :tag1)) (event (head echo)))
-;;   (message "%s" (cadr event)))
 ;;
 ;; (let ((ioloop (jupyter-ioloop))
 ;;   (jupyter-ioloop-add-event ioloop echo (data)
 ;;     "Return DATA back to the parent process."
 ;;     (list 'echo data))
-;;   (jupyter-ioloop-start ioloop :tag1)
+;;   (jupyter-ioloop-start ioloop (lambda (event) (message "%s" (cadr event))))
 ;;   (jupyter-send ioloop 'echo "Message")
 ;;   (jupyter-ioloop-stop ioloop))
 
@@ -128,10 +126,10 @@ listen for stdin/socket events using `jupyter-ioloop-poller'.
 You add events to be handled by the subprocess using
 `jupyter-ioloop-add-event', the return value of any event added
 is what is sent to the parent Emacs process and what will
-eventually be used as the EVENT argument of
-`jupyter-ioloop-handler', which see.  To suppress the subprocess
-from sending anything back to the parent, ensure nil is returned
-by the form created by `jupyter-ioloop-add-event'.
+eventually be the sole argument to the handler function passed to
+`jupyter-ioloop-start'.  To suppress the subprocess from sending
+anything back to the parent, ensure nil is returned by the form
+created by `jupyter-ioloop-add-event'.
 
 See `jupyter-channel-ioloop' for an example of its usage.")
 
@@ -142,15 +140,6 @@ See `jupyter-channel-ioloop' for an example of its usage.")
       (with-slots (process) ioloop
         (when (process-live-p process)
           (delete-process process))))))
-
-(cl-defgeneric jupyter-ioloop-handler ((_ioloop jupyter-ioloop) obj event)
-  "Define a new IOLOOP handler, dispatching on OBJ, for EVENT.
-OBJ will be the value of the object passed to
-`jupyter-ioloop-start' and EVENT will be an event as received by
-a filter function described in `zmq-start-process'."
-  ;; Don't error on built in events
-  (unless (memq (car-safe event) '(start quit))
-    (error "Unhandled event (%s %s)" (type-of obj) event)))
 
 (defun jupyter-ioloop-wait-until (ioloop event cb &optional timeout progress-msg)
   "Wait until EVENT occurs on IOLOOP.
@@ -342,13 +331,6 @@ nothing."
     (zmq-poller-remove jupyter-ioloop-poller socket)
     (cl-decf jupyter-ioloop-nsockets)))
 
-(defun jupyter-ioloop--delete-process (process)
-  (when-let* ((stdin (process-get process :stdin))
-              (socket-p (zmq-socket-p stdin)))
-    (zmq-close stdin)
-    (process-put process :stdin nil))
-  (delete-process process))
-
 (defun jupyter-ioloop--body (ioloop on-stdin)
   `(let (events)
      (condition-case nil
@@ -414,26 +396,25 @@ polling the STDIN file handle."
   (with-slots (process) ioloop
     (and (process-live-p process) (process-get process :start))))
 
-(defun jupyter-ioloop--make-filter (ioloop ref)
+(defun jupyter-ioloop--make-filter (ioloop handler)
   (lambda (event)
-    (with-slots (process) ioloop
+    (let ((process (oref ioloop process)))
+      (process-put process :last-event event)
       (cond
        ((eq (car-safe event) 'start)
         (process-put process :start t))
        ((eq (car-safe event) 'quit)
-        (process-put process :quit t)))
-      (process-put process :last-event event))
-    (let ((obj (jupyter-weak-ref-resolve ref)))
-      (if obj (jupyter-ioloop-handler ioloop obj event)
-        (jupyter-ioloop--delete-process (oref ioloop process))))))
+        (process-put process :quit t))
+       (t
+        (funcall handler event))))))
 
 (cl-defgeneric jupyter-ioloop-start ((ioloop jupyter-ioloop)
-                                     object
+                                     handler
                                      &key buffer)
   "Start an IOLOOP.
-OBJECT is an object which is used to dispatch on when the current
-Emacs process receives an event to handle from IOLOOP, see
-`jupyter-ioloop-handler'.
+HANDLER is a function of one argument and will be passed an event
+received by the subprocess that IOLOOP represents, an event is
+just a list.
 
 If IOLOOP was previously running, it is stopped first.
 
@@ -465,8 +446,7 @@ the IOLOOP subprocess buffer, see `zmq-start-process'."
                     ;; scope, the ioloop process should be killed off.  This
                     ;; wouldn't happen if we hold a strong reference to
                     ;; OBJECT.
-                    :filter (jupyter-ioloop--make-filter
-                             ioloop (jupyter-weak-ref object))
+                    :filter (jupyter-ioloop--make-filter ioloop handler)
                     :buffer buffer)))
       (oset ioloop process process)
       (when stdin

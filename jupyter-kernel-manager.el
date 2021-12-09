@@ -49,10 +49,7 @@
 
 (cl-defmethod initialize-instance ((kernel jupyter-kernel-lifetime) &optional _slots)
   (cl-call-next-method)
-  (jupyter-add-finalizer kernel
-    (lambda ()
-      (when (jupyter-kernel-alive-p kernel)
-        (jupyter-kill-kernel kernel)))))
+  (jupyter-add-finalizer kernel (lambda () (jupyter-kill-kernel kernel))))
 
 (cl-defgeneric jupyter-kernel-alive-p ((kernel jupyter-kernel-lifetime))
   "Return non-nil if KERNEL is alive.")
@@ -79,9 +76,9 @@
 (cl-defmethod jupyter-kernel-died ((_kernel jupyter-kernel-lifetime))
   (ignore))
 
-;;; `jupyter-meta-kernel'
+;;; `jupyter-kernel'
 
-(defclass jupyter-meta-kernel (jupyter-kernel-lifetime)
+(defclass jupyter-kernel (jupyter-kernel-lifetime)
   ((spec
     :type cons
     :initarg :spec
@@ -105,10 +102,10 @@ implementation of `jupyter-kill-kernel'.
 A convenience method, `jupyter-kernel-name', is provided to
 access the name of the kernelspec.")
 
-(cl-defmethod jupyter-kill-kernel ((_kernel jupyter-meta-kernel))
+(cl-defmethod jupyter-kill-kernel ((_kernel jupyter-kernel))
   (ignore))
 
-(cl-defmethod jupyter-kernel-name ((kernel jupyter-meta-kernel))
+(cl-defmethod jupyter-kernel-name ((kernel jupyter-kernel))
   "Return the name of KERNEL."
   (car (oref kernel spec)))
 
@@ -120,7 +117,7 @@ access the name of the kernelspec.")
                                   jupyter-instance-tracker)
   ((tracking-symbol :initform 'jupyter--kernel-managers)
    (kernel
-    :type jupyter-meta-kernel
+    :type jupyter-kernel
     :initarg :kernel
     :documentation "The kernel that is being managed."))
   :abstract t)
@@ -146,10 +143,7 @@ SLOTS are the slots used to initialize the client with.")
 
 (cl-defmethod jupyter-start-kernel ((manager jupyter-kernel-manager) &rest args)
   "Start MANAGER's kernel."
-  (unless (jupyter-kernel-alive-p manager)
-    (with-slots (kernel) manager
-      (apply #'jupyter-start-kernel kernel args)
-      (jupyter-start-channels manager))))
+  (apply #'jupyter-start-kernel (oref manager kernel) args))
 
 (cl-defgeneric jupyter-shutdown-kernel ((manager jupyter-kernel-manager) &rest args)
   "Shutdown MANAGER's kernel or restart instead if RESTART is non-nil.

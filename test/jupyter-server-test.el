@@ -546,4 +546,15 @@
                    '(("http://localhost:8882"
                       ("id1" . "foo")))))))
 
+;;; Org
+
+(ert-deftest org-babel-jupyter-server-session ()
+  :tags '(org server)
+  (let ((session (org-babel-jupyter-parse-session "/jpy::foo/bar.json")))
+    (should (org-babel-jupyter-server-session-p session))
+    (should (equal (org-babel-jupyter-session-name session) "/jpy::foo/bar.json")))
+  (let ((session (org-babel-jupyter-parse-session "/jpy::foo/bar")))
+    (should (org-babel-jupyter-server-session-p session))
+    (should (equal (org-babel-jupyter-session-name session) "/jpy::foo/bar"))))
+
 ;;; jupyter-server-test.el ends here

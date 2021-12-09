@@ -95,7 +95,8 @@ table for the source block at `point'.")
 PARAMS is the arguments alist as returned by
 `org-babel-get-src-block-info'.  The returned string can then be
 used to identify unique Jupyter Org babel sessions."
-  (let ((session (alist-get :session params))
+  ;; Take into account a Lisp expression as a session name.
+  (let ((session (org-babel-read (alist-get :session params)))
         (kernel (alist-get :kernel params)))
     (unless (and session kernel
                  (not (equal session "none")))
@@ -231,55 +232,15 @@ return nil."
                (:constructor org-babel-jupyter-remote-session))
   connect-repl-p)
 
-(cl-defstruct (org-babel-jupyter-server-session
-               (:include org-babel-jupyter-remote-session)
-               (:constructor org-babel-jupyter-server-session)))
+(cl-defgeneric org-babel-jupyter-parse-session ((session string))
+  "Return a parsed representation of SESSION."
+  (org-babel-jupyter-session :name session))
 
-(defun org-babel-jupyter-parse-session (session)
-  "Return a session object according to a SESSION string.
-If SESSION ends in \".json\", and is not a Jupyter remote file
-name, return a `org-babel-jupyter-remote-session' that indicates
-an Org Babel Jupyter client initiates its channels based on a
-kernel connection file.
-
-If SESSION is a Jupyter TRAMP file name return a
-`org-babel-jupyter-server-session', otherwise if SESSION is a
-remote file return an `org-babel-jupyter-remote-session'.  In the
-latter case, a kernel will be launched on the remote and a
-connection file read via TRAMP and SSH tunnels created to connect
-to the kernel.
-
-Otherwise an `org-babel-jupyter-session' is returned which
-indicates that the session is local."
-  (cond
-   ((and (string-suffix-p ".json" session)
-         (not (jupyter-tramp-file-name-p session)))
-    (org-babel-jupyter-remote-session
-     :name session
-     :connect-repl-p t))
-   ((file-remote-p session)
-    (if (jupyter-tramp-file-name-p session)
-        (org-babel-jupyter-server-session :name session)
-      (org-babel-jupyter-remote-session :name session)))
-   (t
-    (org-babel-jupyter-session :name session))))
-
-(cl-defgeneric org-babel-jupyter-initiate-client (session kernel)
+(cl-defgeneric org-babel-jupyter-initiate-client ((_session org-babel-jupyter-session) kernel)
   "Launch SESSION's KERNEL, return a `jupyter-org-client' connected to it.
 SESSION is the :session header argument of a source block and
-KERNEL is the name of the kernel to launch.")
-
-(cl-defmethod org-babel-jupyter-initiate-client ((_session org-babel-jupyter-session) kernel)
-  "Call `jupyter-run-repl', passing KERNEL as argument."
+KERNEL is the name of the kernel to launch."
   (jupyter-run-repl kernel nil nil 'jupyter-org-client))
-
-(cl-defmethod org-babel-jupyter-initiate-client :before ((session org-babel-jupyter-remote-session) _kernel)
-  "Raise an error if SESSION's name is a remote file name without a local name.
-The local name is used as a unique identifier of a remote
-session."
-  (unless (not (zerop (length (file-local-name
-                               (org-babel-jupyter-session-name session)))))
-    (error "No remote session name")))
 
 (cl-defmethod org-babel-jupyter-initiate-client :around (session _kernel)
   "Rename the returned client's REPL buffer to include SESSION's name.
@@ -300,6 +261,29 @@ client."
                      "*")
              'unique)))))))
 
+(cl-defmethod org-babel-jupyter-parse-session :extra "remote" ((session string))
+  "If SESSION is a remote file name, return a `org-babel-jupyter-remote-session'.
+A `org-babel-jupyter-remote-session' session is also returned if
+SESSION ends in \".json\", regardless of SESSION being a remote
+file name, with `org-babel-jupyter-remote-session-connect-repl-p'
+set to nil.  The CONNECT-REPL-P slot indicates that a connection
+file is read to connect to the session, as oppossed to launcing a
+kernel."
+  (let ((json-p (string-suffix-p ".json" session)))
+    (if (or json-p (file-remote-p session))
+        (org-babel-jupyter-remote-session
+         :name session
+         :connect-repl-p json-p)
+      (cl-call-next-method))))
+
+(cl-defmethod org-babel-jupyter-initiate-client :before ((session org-babel-jupyter-remote-session) _kernel)
+  "Raise an error if SESSION's name is a remote file name without a local name.
+The local name is used as a unique identifier of a remote
+session."
+  (unless (not (zerop (length (file-local-name
+                               (org-babel-jupyter-session-name session)))))
+    (error "No remote session name")))
+
 (cl-defmethod org-babel-jupyter-initiate-client ((session org-babel-jupyter-remote-session) kernel)
   "Initiate a client connected to a remote kernel process."
   (pcase-let (((cl-struct org-babel-jupyter-remote-session name connect-repl-p) session))
@@ -309,25 +293,36 @@ client."
         (org-babel-jupyter-aliases-from-kernelspecs)
         (jupyter-run-repl kernel nil nil 'jupyter-org-client)))))
 
+(require 'jupyter-server)
+(require 'jupyter-tramp)
+
+(cl-defstruct (org-babel-jupyter-server-session
+               (:include org-babel-jupyter-remote-session)
+               (:constructor org-babel-jupyter-server-session)))
+
+(cl-defmethod org-babel-jupyter-parse-session :extra "server" ((session string))
+  "If SESSION is a Jupyter TRAMP file name return a
+`org-babel-jupyter-server-session'."
+  (if (jupyter-tramp-file-name-p session)
+      (org-babel-jupyter-server-session :name session)
+    (cl-call-next-method)))
+
 (cl-defmethod org-babel-jupyter-initiate-client ((session org-babel-jupyter-server-session) kernel)
-  (require 'jupyter-server)
-  (let* ((session (org-babel-jupyter-server-session-name session))
-         (server (or (jupyter-tramp-server-from-file-name session)
-                     (jupyter-server
-                      :url (jupyter-tramp-url-from-file-name session)))))
+  (let* ((rsession (org-babel-jupyter-session-name session))
+         (url (jupyter-tramp-url-from-file-name rsession))
+         (server (jupyter-server :url url)))
     (unless (jupyter-server-has-kernelspec-p server kernel)
-      (error "No kernelspec matching \"%s\" exists at %s"
-             kernel (jupyter-tramp-url-from-file-name session)))
+      (error "No kernelspec matching \"%s\" exists at %s" kernel url))
     ;; Language aliases may not exist for the kernels that are accessible on
     ;; the server so ensure they do.
     (org-babel-jupyter-aliases-from-kernelspecs
      nil (jupyter-server-kernelspecs server))
-    (let ((session-name (file-local-name session)))
-      (if-let ((id (jupyter-server-kernel-id-from-name server session-name)))
+    (let ((sname (file-local-name rsession)))
+      (if-let ((id (jupyter-server-kernel-id-from-name server sname)))
           ;; Connecting to an existing kernel
           (cl-destructuring-bind (&key name id &allow-other-keys)
               (or (ignore-errors (jupyter-api-get-kernel server id))
-                  (error "Kernel ID, %s, no longer references a kernel @ %s"
+                  (error "Kernel ID, %s, no longer references a kernel at %s"
                          id (oref server url)))
             (unless (string-match-p kernel name)
               (error "\":kernel %s\" doesn't match \"%s\"" kernel name))
@@ -343,7 +338,7 @@ client."
             ;; variable be updated on a kernel rename?
             ;;
             ;; TODO: Would we always want to do this?
-            (jupyter-server-name-client-kernel client session-name)))))))
+            (jupyter-server-name-client-kernel client sname)))))))
 
 (defun org-babel-jupyter-initiate-session-by-key (session params)
   "Return the Jupyter REPL buffer for SESSION.
@@ -362,13 +357,12 @@ kernel starts on the remote host /ssh:ec2: with a session name of
 jl.  The remote host must have jupyter installed since the
 \"jupyter kernel\" command will be used to start the kernel on
 the host."
-  (let* ((kernel (alist-get :kernel params))
-         (key (org-babel-jupyter-session-key params))
+  (let* ((key (org-babel-jupyter-session-key params))
          (client (gethash key org-babel-jupyter-session-clients)))
     (unless client
       (setq client (org-babel-jupyter-initiate-client
                     (org-babel-jupyter-parse-session session)
-                    kernel))
+                    (alist-get :kernel params)))
       (puthash key client org-babel-jupyter-session-clients)
       (jupyter-with-repl-buffer client
         (let ((forget-client (lambda () (remhash key org-babel-jupyter-session-clients))))
@@ -378,6 +372,9 @@ the host."
 (defun org-babel-jupyter-initiate-session (&optional session params)
   "Initialize a Jupyter SESSION according to PARAMS."
   (if (equal session "none") (error "Need a session to run")
+    (when session
+      ;; Take into account a Lisp expression as a session name.
+      (setq session (org-babel-read session)))
     (org-babel-jupyter-initiate-session-by-key session params)))
 
 ;;;;  `org-babel-execute:jupyter'
@@ -399,25 +396,24 @@ the host."
   "Delete the files of image links for the current source block result.
 Do this only if the file exists in
 `org-babel-jupyter-resource-directory'."
-  (when-let* ((result-pos (org-babel-where-is-src-block-result))
-              (link-re (format "^[ \t]*%s[ \t]*$" org-bracket-link-regexp)))
+  (when-let*
+      ((pos (org-babel-where-is-src-block-result))
+       (link-re (format "^[ \t]*%s[ \t]*$" org-bracket-link-regexp))
+       (resource-dir (expand-file-name org-babel-jupyter-resource-directory)))
     (save-excursion
-      (goto-char result-pos)
+      (goto-char pos)
       (forward-line)
       (let ((bound (org-babel-result-end)))
         ;; This assumes that `jupyter-org-client' only emits bracketed links as
         ;; images
         (while (re-search-forward link-re bound t)
-          (when-let* ((link-path
-                       (org-element-property :path (org-element-context)))
-                      (link-dir
-                       (when (file-name-directory link-path)
-                         (expand-file-name (file-name-directory link-path))))
-                      (resource-dir
-                       (expand-file-name org-babel-jupyter-resource-directory)))
-            (when (and (equal link-dir resource-dir)
-                       (file-exists-p link-path))
-              (delete-file link-path))))))))
+          (when-let*
+              ((path (org-element-property :path (org-element-context)))
+               (dir (when (file-name-directory path)
+                      (expand-file-name (file-name-directory path)))))
+            (when (and (equal dir resource-dir)
+                       (file-exists-p path))
+              (delete-file path))))))))
 
 ;; TODO: What is a better way to handle discrepancies between how `org-mode'
 ;; views header arguments and how `emacs-jupyter' views them? Should the
@@ -431,6 +427,31 @@ These parameters are handled internally."
     (setcar fresult "")
     (delq fparam params)))
 
+(defun org-babel-jupyter--execute (code async-p)
+  (let ((req (jupyter-send-execute-request jupyter-current-client :code code)))
+    `(,req
+      ,(cond
+        (async-p
+         (when (bound-and-true-p org-export-current-backend)
+           (jupyter-add-idle-sync-hook
+            'org-babel-after-execute-hook req 'append))
+         (if (jupyter-org-request-inline-block-p req)
+             org-babel-jupyter-async-inline-results-pending-indicator
+           ;; This returns the message ID of REQ as an indicator
+           ;; for the pending results.
+           (jupyter-org-pending-async-results req)))
+        (t
+         (jupyter-idle-sync req)
+         (if (jupyter-org-request-inline-block-p req)
+             ;; When evaluating a source block synchronously, only the
+             ;; :execute-result will be in `jupyter-org-request-results' since
+             ;; stream results and any displayed data will be placed in a separate
+             ;; buffer.
+             (car (jupyter-org-request-results req))
+           ;; This returns an Org formatted string of the collected
+           ;; results.
+           (jupyter-org-sync-results req)))))))
+
 (defvar org-babel-jupyter-current-src-block-params nil
   "The block parameters of the most recently executed Jupyter source block.")
 
@@ -441,60 +462,52 @@ These parameters are handled internally."
   "Execute BODY according to PARAMS.
 BODY is the code to execute for the current Jupyter `:session' in
 the PARAMS alist."
-  (let* ((org-babel-jupyter-current-src-block-params params)
-         (jupyter-current-client
-          (thread-first (alist-get :session params)
-            (org-babel-jupyter-initiate-session params)
-            (thread-last (buffer-local-value 'jupyter-current-client))))
-         (kernel-lang (jupyter-kernel-language jupyter-current-client))
-         (vars (org-babel-variable-assignments:jupyter params kernel-lang))
-         (code (org-babel-expand-body:jupyter body params vars kernel-lang))
-         (result-params (assq :result-params params))
-         (async-p (or (equal (alist-get :async params) "yes")
-                      (plist-member params :async)))
-         (req (jupyter-send-execute-request jupyter-current-client :code code)))
-    (when (member "replace" (assq :result-params params))
+  (let ((result-params (assq :result-params params))
+        (async-p (or (equal (alist-get :async params) "yes")
+                     (plist-member params :async))))
+    (when (member "replace" result-params)
       (org-babel-jupyter-cleanup-file-links))
-    ;; KLUDGE: Remove the file result-parameter so that
-    ;; `org-babel-insert-result' doesn't attempt to handle it while async
-    ;; results are pending.  Do the same in the synchronous case, but not if
-    ;; link or graphics are also result-parameters, only in Org >= 9.2, since
-    ;; those in combination with file mean to interpret the result as a file
-    ;; link, a useful meaning that doesn't interfere with Jupyter style result
-    ;; insertion.
-    (when (and (member "file" result-params)
-               (or async-p
-                   (not (or (member "link" result-params)
-                            (member "graphics" result-params)))))
-      (org-babel-jupyter--remove-file-param params))
-    (cond
-     (async-p
-      (cl-labels
-          ((sync-on-export
-            ()
-            ;; Remove the hook before waiting so it doesn't get called again.
-            (remove-hook 'org-babel-after-execute-hook #'sync-on-export t)
-            (while (null (jupyter-wait-until-idle req jupyter-long-timeout)))))
-        ;; Ensure we convert async blocks to synchronous ones when exporting
-        (when (bound-and-true-p org-export-current-backend)
-          (add-hook 'org-babel-after-execute-hook #'sync-on-export t t))
-        (if (jupyter-org-request-inline-block-p req)
-            org-babel-jupyter-async-inline-results-pending-indicator
-          (jupyter-org-pending-async-results req))))
-     (t
-      (while (null (jupyter-wait-until-idle req jupyter-long-timeout)))
-      (if (jupyter-org-request-inline-block-p req)
-          ;; When evaluating a source block synchronously, only the
-          ;; :execute-result will be in `jupyter-org-request-results' since
-          ;; stream results and any displayed data will be placed in a separate
-          ;; buffer.
-          (car (jupyter-org-request-results req))
-        (prog1 (jupyter-org-sync-results req)
-          ;; KLUDGE: The "raw" result parameter is added to the parameters of
-          ;; non-inline synchronous results because `jupyter-org-sync-results'
-          ;; already returns an Org formatted string and
+    (let* ((org-babel-jupyter-current-src-block-params params)
+           (session (alist-get :session params))
+           (buf (org-babel-jupyter-initiate-session session params))
+           (jupyter-current-client (buffer-local-value 'jupyter-current-client buf))
+           (lang (jupyter-kernel-language jupyter-current-client))
+           (vars (org-babel-variable-assignments:jupyter params lang))
+           (code (progn
+                   (when-let* ((dir (alist-get :dir params)))
+                     ;; `default-directory' is already set according
+                     ;; to :dir when executing a source block.  Set
+                     ;; :dir to the absolute path so that
+                     ;; `org-babel-expand-body:jupyter' does not try
+                     ;; to re-expand the path. See #302.
+                     (setf (alist-get :dir params) default-directory))
+                   (org-babel-expand-body:jupyter body params vars lang))))
+      (pcase-let ((`(,req ,maybe-result)
+                   (org-babel-jupyter--execute code async-p)))
+        ;; KLUDGE: Remove the file result-parameter so that
+        ;; `org-babel-insert-result' doesn't attempt to handle it while
+        ;; async results are pending.  Do the same in the synchronous
+        ;; case, but not if link or graphics are also result-parameters,
+        ;; only in Org >= 9.2, since those in combination with file mean
+        ;; to interpret the result as a file link, a useful meaning that
+        ;; doesn't interfere with Jupyter style result insertion.
+        ;;
+        ;; Do this after sending the request since
+        ;; `jupyter-generate-request' still needs access to the :file
+        ;; parameter.
+        (when (and (member "file" result-params)
+                   (or async-p
+                       (not (or (member "link" result-params)
+                                (member "graphics" result-params)))))
+          (org-babel-jupyter--remove-file-param params))
+        (prog1 maybe-result
+          ;; KLUDGE: Add the "raw" result parameter for non-inline
+          ;; synchronous results because an Org formatted string is
+          ;; already returned in that case and
           ;; `org-babel-insert-result' should not process it.
-          (nconc (alist-get :result-params params) (list "raw"))))))))
+          (unless (or async-p
+                      (jupyter-org-request-inline-block-p req))
+            (nconc (alist-get :result-params params) (list "raw"))))))))
 
 ;;; Overriding source block languages, language aliases
 

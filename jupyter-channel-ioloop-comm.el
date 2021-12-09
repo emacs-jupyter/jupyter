@@ -89,7 +89,20 @@
 (cl-defmethod jupyter-comm-start ((comm jupyter-channel-ioloop-comm))
   (with-slots (ioloop session) comm
     (unless (jupyter-ioloop-alive-p ioloop)
-      (jupyter-ioloop-start ioloop session comm))
+      (jupyter-channel-ioloop-set-session ioloop (oref comm session))
+      (jupyter-ioloop-start
+       ioloop (lambda (event)
+                (pcase (car event)
+                  ;; These channel events are from `jupyter-channel-ioloop'
+                  ('start-channel
+                   (setf (jupyter-proxy-channel-alive-p
+                          (plist-get (oref comm channels) (cadr event)))
+                         t))
+                  ('stop-channel
+                   (setf (jupyter-proxy-channel-alive-p
+                          (plist-get (oref comm channels) (cadr event)))
+                         nil))
+                  (_ (jupyter-event-handler comm event))))))
     (cl-loop
      for channel in '(:hb :shell :iopub :stdin)
      do (jupyter-start-channel comm channel))))
@@ -99,22 +112,6 @@
    for channel in '(:hb :shell :iopub :stdin)
    do (jupyter-stop-channel comm channel))
   (cl-call-next-method))
-
-;;;; `jupyter-channel-ioloop' events
-
-(cl-defmethod jupyter-ioloop-handler ((_ioloop jupyter-channel-ioloop)
-                                      (comm jupyter-channel-ioloop-comm)
-                                      (event (head stop-channel)))
-  (setf (jupyter-proxy-channel-alive-p
-         (plist-get (oref comm channels) (cadr event)))
-        nil))
-
-(cl-defmethod jupyter-ioloop-handler ((_ioloop jupyter-channel-ioloop)
-                                      (comm jupyter-channel-ioloop-comm)
-                                      (event (head start-channel)))
-  (setf (jupyter-proxy-channel-alive-p
-         (plist-get (oref comm channels) (cadr event)))
-        t))
 
 ;;;; Channel querying methods
 

@@ -112,9 +112,7 @@ called if needed.")
 
 (cl-defgeneric jupyter-comm-id ((comm jupyter-comm-layer))
   "Return an identification string for COMM.
-Can be used to identify this communication channel.  For example,
-used in `jupyter-repl-scratch-buffer' to name the scratch
-buffer.")
+Can be used to identify this communication channel.")
 
 (cl-defgeneric jupyter-event-handler (_obj _event)
   "Handle EVENT using OBJ."
