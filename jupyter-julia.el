@@ -247,12 +247,15 @@ TABLE-AS-HTML-STR is the jupyter html representation of a DataFrame, like
 
 Returns \(cons 'ok org-table-representing-dataframe\), nil otherwise."
   (when (not (null table-as-html-str))
+
     (when-let* ((e (with-temp-buffer
                      (insert table-as-html-str)
                      (libxml-parse-html-region (point-min) (point-max)))))
       (pcase-let* ((`(html ,_html-attribs
                            (body ,_body-attribs
-                                 ,table))
+                                 (div ((class . "data-frame"))
+                                      (p ,_table-info-attribs ,_table-info)
+                                      ,table)))
                     e)
                    (`(table ((class . data-frame))
                             (thead ,_header-attribs
