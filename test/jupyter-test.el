@@ -3003,16 +3003,12 @@ using DataFrames
 a=DataFrame(A=[\"$c\" for c ∈ 1:5], B=[c for c ∈ 1:5])
 a"
 
-   ":RESULTS:
-:
-| A | B |
+   "| A | B |
 |---+---|
-| 1 | 1 |
 | 2 | 2 |
 | 3 | 3 |
 | 4 | 4 |
 | 5 | 5 |
-:END:
 "
    :kernel "jupyter-julia"))
 ;; Local Variables:
