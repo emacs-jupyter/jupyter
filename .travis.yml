@@ -24,6 +24,7 @@ install:
   - which julia
   - julia --version
   - julia -e 'import Pkg; Pkg.add("IJulia"); using IJulia'
+  - julia -e 'import Pkg; Pkg.add("DataFrames")'
   # We go the route of installing Python3.6 like this because the
   # python3 apt package on Xenial maxes out at 3.5 and for some reason
   # installing setuptools using the python3-pip apt package installs a

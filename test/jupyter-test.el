@@ -2992,13 +2992,7 @@ print(2)"
 (ert-deftest org-babel-jupyter-julia-dataframe-to-table ()
   :tags '(org)
   (jupyter-org-test-src-block
-   "\
-import Pkg
-open(\"julia_pkg_install_output.txt\", \"w\") do io
-    redirect_stderr(io) do
-        Pkg.add(\"DataFrames\")
-    end
-end
+   "
 using DataFrames
 a=DataFrame(A=[\"$c\" for c ∈ 1:5], B=[c for c ∈ 1:5])
 a"
