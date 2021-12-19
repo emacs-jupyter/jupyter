@@ -48,6 +48,16 @@
 (declare-function markdown-link-at-pos "ext:markdown-mode" (pos))
 (declare-function markdown-follow-link-at-point "ext:markdown-mode")
 
+;;; User variables
+
+(defcustom jupyter-image-max-width 0
+  "Maximum width of images in REPL.
+Wider images are resized.  Special value 0 means no limit."
+  :type 'integer
+  :group 'jupyter-repl)
+
+;;; Implementation
+
 (defvar-local jupyter-display-ids nil
   "A hash table of display IDs.
 Display IDs are implemented by setting the text property,
@@ -480,6 +490,8 @@ width and height of the image."
       metadata
     (let ((img (create-image
                 data type 'data :width width :height height
+                :max-width (when (> jupyter-image-max-width 0)
+                             jupyter-image-max-width)
                 :mask (when needs_background
                         '(heuristic t)))))
       (insert-image img))))
