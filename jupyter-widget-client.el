@@ -210,8 +210,8 @@ required by the JupyterLab widget manager."
              jupyter-widgets-port))))
 
 (cl-defmethod jupyter-handle-comm-open ((client jupyter-widget-client) _req msg)
-  (jupyter-with-message-content msg (target-name)
-    (when (member target-name jupyter-widgets-supported-targets)
+  (jupyter-with-message-content msg (target_name)
+    (when (member target_name jupyter-widgets-supported-targets)
       (jupyter-widgets-start-websocket-server)
       (jupyter-widgets--initialize-client client)
       (jupyter-widgets-send-message client msg)))
