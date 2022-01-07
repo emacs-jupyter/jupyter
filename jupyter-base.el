@@ -117,7 +117,11 @@ from the kernel.")
   "MIME types that can be used in terminal Emacs.")
 
 (defvar jupyter--debug nil
-  "When non-nil, some parts of Jupyter will emit debug statements.")
+  "When non-nil, some parts of Jupyter will emit debug statements.
+If the symbol 'message, messages received by a kernel will only
+be handled by clients when the function
+`jupyter--debug-run-message-queue' is called manually.  This
+allows for stepping through the code with Edebug.")
 
 
 (defvar jupyter-default-timeout 2.5
