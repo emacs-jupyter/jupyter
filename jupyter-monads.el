@@ -93,13 +93,7 @@
   "Bind the I/O values in VARLIST, evaluate BODY.
 Return the result of evaluating BODY."
   (declare (indent 1) (debug ((&rest (symbolp form)) body)))
-  ;; FIXME: The below doesn't work
-  ;;
-  ;; (jupyter-mlet* ((io io))
-  ;;   (jupyter-run-with-io io
-  ;;      ...))
-  (letrec ((vars (delq '_ (mapcar #'car varlist)))
-           (value (make-symbol "value"))
+  (letrec ((value (make-symbol "value"))
            (binder
             (lambda (vars)
               (if (zerop (length vars))
@@ -108,13 +102,9 @@ Return the result of evaluating BODY."
                 (pcase-let ((`(,name ,io-value) (car vars)))
                   `(jupyter-bind-delayed ,io-value
                      (lambda (,value)
-                       ,(if (eq name '_)
-                            ;; FIXME: Avoid this.
-                            `(ignore ,value)
-                          `(setq ,name ,value))
-                       ,(funcall binder (cdr vars)))))))))
-    `(let (,@vars)
-       ,(funcall binder varlist))))
+                       (let ((,name ,value))
+                         ,(funcall binder (cdr vars))))))))))
+    (funcall binder varlist)))
 
 (defmacro jupyter-with-io (io &rest body)
   "Return an I/O action evaluating BODY in IO's context.
@@ -122,9 +112,9 @@ The result of the returned action is the result of the I/O action
 BODY evaluates to."
   (declare (indent 1) (debug (form body)))
   `(jupyter-return-delayed-thunk
-     (let ((jupyter-current-io ,io))
-       (jupyter-mlet* ((result (progn ,@body)))
-         result))))
+    (let ((jupyter-current-io ,io))
+      (jupyter-mlet* ((result (progn ,@body)))
+        result))))
 
 (defmacro jupyter-run-with-io (io &rest body)
   "Return the result of evaluating the I/O value BODY evaluates to.
