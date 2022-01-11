@@ -423,6 +423,11 @@ interpreted as `in'."
        ;; buffer modified anymore.  This is also an indicator for when undo's
        ;; can be made in the buffer.
        (set-buffer-modified-p nil)
+       ;; FIX: Figure out why Emacs hangs if we parse right now.
+       (when tree-sitter-mode
+         (run-with-idle-timer 0 nil
+                              (lambda ()
+                                (tree-sitter-resume))))
        (setq buffer-undo-list '((t . 0))))
       ((eq type 'out)
        ;; Output is normally inserted by first going to the end of the output
@@ -730,6 +735,14 @@ POS defaults to `point'."
 REQ is the `jupyter-request' to associate with the current cell.
 Place `point' at `point-max'."
   (goto-char (point-max))
+  (when (and (bound-and-true-p tree-sitter-mode)
+             (functionp 'tree-sitter-pause))
+    (tree-sitter-pause))
+  (when (and (bound-and-true-p tree-sitter-hl-mode)
+             (functionp 'tree-sitter-hl-dry-up-region))
+    (tree-sitter-hl-dry-up-region
+     (jupyter-repl-cell-code-beginning-position)
+     (jupyter-repl-cell-code-end-position)))
   (let ((beg (jupyter-repl-cell-beginning-position))
         (count (jupyter-repl-cell-count)))
     (jupyter-repl-newline)
@@ -1731,6 +1744,16 @@ Return the buffer switched to."
     (add-hook 'kill-buffer-hook #'jupyter-repl--deactivate-interaction-buffers nil t)
     (add-hook 'after-change-functions 'jupyter-repl-do-after-change nil t)
     (add-hook 'pre-redisplay-functions 'jupyter-repl-preserve-window-margins nil t)
+    (setq-local tree-sitter-get-parse-region-function
+                (lambda ()
+                  ;; TODO: Return an empty region when we don't have an input
+                  ;; cell ready.
+                  (save-excursion
+                    (save-restriction
+                      (widen)
+                      (goto-char (point-max))
+                      (cons (jupyter-repl-cell-code-beginning-position)
+                            (jupyter-repl-cell-code-end-position))))))
     ;; Initialize the REPL
     (jupyter-repl-initialize-fontification)
     (jupyter-repl-isearch-setup)
