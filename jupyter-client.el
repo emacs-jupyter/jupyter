@@ -1659,20 +1659,25 @@ name are changed to \"-\" and all uppercase characters lowered."
   (or (oref client kernel-info)
       (progn
         (message "Requesting kernel info...")
-        (let ((jupyter-current-client client))
-          (jupyter-mlet* ((msg (jupyter-reply
-                                (jupyter-kernel-info-request
-                                 :handlers nil)
-                                (* 3 jupyter-long-timeout))))
-            (message "Requesting kernel info...done")
-            (oset client kernel-info (jupyter-message-content msg))
-            ;; Canonicalize language name to a language symbol for
-            ;; method dispatching
-            (let* ((info (plist-get (oref client kernel-info) :language_info))
-                   (lang (plist-get info :name))
-                   (name (jupyter-canonicalize-language-string lang)))
-              (plist-put info :name (intern name)))))
-        (oref client kernel-info))))
+        (let ((old-client jupyter-current-client)
+              (old-io jupyter-current-io))
+          (setq jupyter-current-client client)
+          (setq jupyter-current-io (or (car (oref jupyter-current-client io))
+                                       (error "Client not connected to a kernel")))
+          (unwind-protect
+              (jupyter-mlet* ((msg (jupyter-reply
+                                    (jupyter-kernel-info-request
+                                     :handlers nil)
+                                    (* 3 jupyter-long-timeout))))
+                (message "Requesting kernel info...done")
+                (oset client kernel-info (jupyter-message-content msg))
+                (let* ((info (plist-get (oref client kernel-info) :language_info))
+                       (lang (plist-get info :name))
+                       (name (jupyter-canonicalize-language-string lang)))
+                  (plist-put info :name (intern name))))
+            (setq jupyter-current-client old-client)
+            (setq jupyter-current-io old-io))
+          (oref client kernel-info)))))
 
 (defun jupyter-kernel-language-mode-properties (client)
   "Get the `major-mode' info of CLIENT's kernel language.
