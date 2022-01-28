@@ -386,17 +386,34 @@ the client."
     (jupyter-with-client jupyter-current-client
       (let ((client jupyter-current-client))
         (jupyter-mlet* ((req io-req))
-          (when (string= (jupyter-request-type req)
-                         "execute_request")
-            (jupyter-server-mode-set-client client))
-          (jupyter-run-with-io
-              (jupyter-request-message-publisher req)
-            (jupyter-subscribe
-              (jupyter-subscriber
-                (lambda (msg)
-                  (let ((channel (plist-get msg :channel)))
-                    (jupyter-handle-message client channel msg))))))
+          (if (eq jupyter--debug 'message)
+             (push (list client req) jupyter--debug-request-queue)
+            (when (string= (jupyter-request-type req)
+                           "execute_request")
+              (jupyter-server-mode-set-client client))
+            (jupyter-run-with-io
+                (jupyter-request-message-publisher req)
+              (jupyter-subscribe
+                (jupyter-subscriber
+                  (lambda (msg)
+                    (let ((channel (plist-get msg :channel)))
+                      (jupyter-handle-message client channel msg)))))))
           req)))))
+
+;; When replaying messages, the request message publisher is already
+;; unsubscribed from any upstream publishers.
+(defun jupyter--debug-replay-requests ()
+  (setq jupyter--debug-request-queue (nreverse jupyter--debug-request-queue))
+  (while jupyter--debug-request-queue
+    (pcase-let ((`(,client ,req) (pop jupyter--debug-request-queue)))
+      (cl-loop
+       for msg in (jupyter-request-messages req)
+       do (condition-case nil
+              (jupyter-handle-message
+               client (plist-get msg :channel)
+               (cl-list* :parent-request req msg))
+            (error (setq jupyter--debug-request-queue
+                         (nreverse jupyter--debug-request-queue))))))))
 
 ;;; Request
 

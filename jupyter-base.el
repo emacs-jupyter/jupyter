@@ -125,9 +125,10 @@ from a backing notebook server."
   "When non-nil, some parts of Jupyter will emit debug statements.
 If the symbol 'message, messages received by a kernel will only
 be handled by clients when the function
-`jupyter--debug-run-message-queue' is called manually.  This
+`jupyter--debug-replay-requests' is called manually.  This
 allows for stepping through the code with Edebug.")
 
+(defvar jupyter--debug-request-queue nil)
 
 (defvar jupyter-default-timeout 2.5
   "The default timeout in seconds for `jupyter-wait-until'.")
