@@ -343,9 +343,19 @@ See also https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-spe
   (let ((process (jupyter-process kernel)))
     (unless (process-live-p process)
       (pcase-let (((cl-struct jupyter-kernel-process spec session) kernel))
-        (setq process (jupyter--start-kernel-process
-                       (jupyter-kernel-name kernel) spec
-                       (jupyter-write-connection-file session))))
+        (let ((conn-file (jupyter-write-connection-file session)))
+          (setq process (jupyter--start-kernel-process
+                         (jupyter-kernel-name kernel) spec
+                         conn-file))
+          ;; Make local tunnels to the remote ports when connecting to
+          ;; remote kernels. Update the session object to reflect
+          ;; these changes.
+          (when (file-remote-p conn-file)
+            (setf (jupyter-kernel-session kernel)
+                  (let ((conn-info (jupyter-tunnel-connection conn-file)))
+                    (jupyter-session
+                     :conn-info conn-info
+                     :key (plist-get conn-info :key)))))))
       (setf (process-get process :kernel) kernel)
       (setf (process-sentinel process)
             (lambda (process _)
