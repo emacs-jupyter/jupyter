@@ -47,7 +47,7 @@ The shell command run is
 If the command fails or the jupyter shell command doesn't exist,
 return nil."
   (with-temp-buffer
-    (when (zerop (apply #'process-file "jupyter" nil t nil args))
+    (when (zerop (apply #'process-file "jupyter" nil '(t nil) nil args))
       (string-trim-right (buffer-string)))))
 
 (defun jupyter-runtime-directory ()
