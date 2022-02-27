@@ -2097,7 +2097,7 @@ completing all of the above.")
 ;;;###autoload
 (defun jupyter-run-repl (kernel-name &optional repl-name associate-buffer client-class display)
   "Run a Jupyter REPL connected to a kernel with name, KERNEL-NAME.
-KERNEL-NAME will be passed to `jupyter-find-kernelspecs' and the
+KERNEL-NAME will be passed to `jupyter-guess-kernelspec' and the
 first kernel found will be used to start the new kernel.
 
 With a prefix argument give a new REPL-NAME for the REPL.
@@ -2128,10 +2128,6 @@ command on the host."
                      t nil t))
   (or client-class (setq client-class 'jupyter-repl-client))
   (jupyter-error-if-not-client-class-p client-class 'jupyter-repl-client)
-  (unless (called-interactively-p 'interactive)
-    (or (when-let* ((name (caar (jupyter-find-kernelspecs kernel-name))))
-          (setq kernel-name name))
-        (error "No kernel found for prefix (%s)" kernel-name)))
   ;; For `jupyter-start-new-kernel', we don't require this at top-level since
   ;; there are many ways to interact with a kernel, e.g. through a notebook
   ;; server, and we don't want to load any unnecessary files.

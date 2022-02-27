@@ -365,7 +365,35 @@ For `url-retrieve', the callback will be called with a nil status."
              (progn ,@body)
            (jupyter-api-shutdown-kernel ,server ,id))))))
 
+(defmacro jupyter-test-with-some-kernelspecs (names &rest body)
+  "Execute BODY in the context where extra kernelspecs with NAMES are available.
+
+Those kernelspecs will be created in a temporary dir, which will
+be presented to Jupyter process via JUPYTER_PATH environemnt
+variable."
+  (declare (indent 1) (debug (listp body)))
+  `(unwind-protect
+       (let ((jupyter-extra-dir (make-temp-file "jupyter-extra-dir" 'directory)))
+	 (jupyter-test-create-some-kernelspecs ,names jupyter-extra-dir)
+	 (setenv "JUPYTER_PATH" jupyter-extra-dir)
+	 ,@body)
+     (setenv "JUPYTER_PATH")))
+
 ;;; Functions
+
+(defun jupyter-test-create-some-kernelspecs (kernel-names data-dir)
+  "In DATA-DIR, create kernelspecs according to KERNEL-NAMES list.
+
+The only difference between them will be their names."
+  (let ((argv (vector "python" "-m" "ipykernel_launcher" "-f" "{connection_file}"))
+	(save-silently t))
+    (dolist (name kernel-names)
+      (let ((kernel-dir (format "%s/kernels/%s" data-dir name)))
+	(make-directory kernel-dir t)
+	(append-to-file (json-serialize
+			 `(:argv ,argv :display_name ,name :language "python"))
+			nil
+			(format "%s/kernel.json" kernel-dir))))))
 
 (defun jupyter-test-ipython-kernel-version (spec)
   "Return the IPython kernel version string corresponding to SPEC.

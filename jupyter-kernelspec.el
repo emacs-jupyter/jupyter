@@ -45,10 +45,10 @@
   "Get the available kernelspecs.
 Return an alist mapping kernel names to (DIRECTORY . PLIST) pairs
 where DIRECTORY is the resource directory of the kernel and PLIST
-is its kernelspec plist.  The alist is formed by parsing the
-output of the shell command
+is its kernelspec plist.  The alist is formed by parsing and
+sorting the output of the shell command
 
-    jupyter kernelspec list
+    jupyter kernelspec list --json
 
 By default the available kernelspecs are cached.  To force an
 update of the cached kernelspecs, give a non-nil value to
@@ -64,14 +64,16 @@ each DIRECTORY will be a remote file name."
                        (or (jupyter-command "kernelspec" "list" "--json")
                            (error "Can't obtain kernelspecs from jupyter shell command")))
                       :kernelspecs)))
-          (puthash
-           host (cl-loop
-                 for (name spec) on specs by #'cddr
-                 for dir = (concat (unless (equal host "local") host)
-                                   (plist-get spec :resource_dir))
-                 collect (cons (substring (symbol-name name) 1)
-                               (cons dir (plist-get spec :spec))))
-           jupyter--kernelspecs)))))
+          (puthash host
+		   (sort (cl-loop
+			  for (name spec) on specs by #'cddr
+			  for dir = (concat (unless (equal host "local") host)
+					    (plist-get spec :resource_dir))
+			  collect (cons (substring (symbol-name name) 1)
+					(cons dir (plist-get spec :spec))))
+			 (lambda (x y)
+			   (string< (car x) (car y))))
+		   jupyter--kernelspecs)))))
 
 (defun jupyter-get-kernelspec (name &optional refresh)
   "Get the kernelspec for a kernel named NAME.
@@ -103,12 +105,12 @@ Optional argument REFRESH has the same meaning as in
    (or specs (jupyter-available-kernelspecs refresh))))
 
 (defun jupyter-guess-kernelspec (name &optional specs refresh)
-  "Return the first kernelspec matching NAME.
+  "Return the first kernelspec starting with NAME.
 Raise an error if no kernelspec could be found.
 
 SPECS and REFRESH have the same meaning as in
 `jupyter-find-kernelspecs'."
-  (or (car (jupyter-find-kernelspecs name specs refresh))
+  (or (car (jupyter-find-kernelspecs (format "^%s" name) specs refresh))
       (error "No valid kernelspec for kernel name (%s)" name)))
 
 (defun jupyter-completing-read-kernelspec (&optional specs refresh)
