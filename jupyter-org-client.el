@@ -1530,7 +1530,8 @@ RESULT is the new result, as an org element, to be inserted.")
                           jupyter-org-strip-last-newline
                           jupyter-org-scalar)
                       result))))
-  (when (/= (point) (line-beginning-position))
+  (when (or (/= (point) (line-beginning-position))
+            (eq (org-element-type context) 'example-block))
     ;; Org objects such as file links do not have a newline added when
     ;; converting to their string representation by
     ;; `org-element-interpret-data' so insert one in these cases.
