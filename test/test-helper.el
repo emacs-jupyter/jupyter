@@ -555,29 +555,48 @@ then the source code block will begin like
 
 Note if ARGS contains a key, regexp, then if regexp is non-nil,
 EXPECTED-RESULT is a regular expression to match against the
-results instead of an equality match."
-  (let (regexp)
+results instead of an equality match. Same for «kernel» key."
+  (let (regexp kernel)
     (setq args
           (cl-loop for (arg val) on args by #'cddr
                    if (eq arg :regexp) do (setq regexp val)
+                   else if (eq arg :kernel) do (setq kernel val)
                    else collect (cons arg val)))
     `(jupyter-org-test
-      (jupyter-org-test-src-block-1 ,block ,expected-result ,regexp ',args))))
+      (jupyter-org-test-src-block-1 ,block
+                                    ,expected-result
+                                    ,kernel
+                                    ,regexp
+                                    ',args))))
 
-(defun jupyter-org-test-make-block (code args)
+(defun jupyter-org-test-make-block (code kernel args)
+  "Get string representing an Org source block with provided info.
+KERNEL kernel used in the code block (defaults to \"jupyter-python\" if nil)
+ARGS header args for the code block
+CODE the python/julia code."
   (let ((arg-str (mapconcat
                   (lambda (x)
                     (cl-destructuring-bind (name . val) x
                       (concat (symbol-name name) " " (format "%s" val))))
                   args " ")))
-    (concat
-     "#+BEGIN_SRC jupyter-python " arg-str " :session "
-     jupyter-org-test-session "\n"
-     code "\n"
-     "#+END_SRC")))
+    (mapconcat ;; #begin_src \n code \n #end_src
+     #'identity
+     (list
+      (mapconcat
+       #'identity
+       (list ;; #begin_src jupyter-julia :session
+        "#+BEGIN_SRC"
+        (or kernel
+            "jupyter-python")
+        arg-str ":session"
+        jupyter-org-test-session)
+       " ")
+      code
+      "#+END_SRC")
+     "\n")))
 
-(defun jupyter-org-test-src-block-1 (code test-result &optional regexp args)
-  (let ((src-block (jupyter-org-test-make-block code args)))
+(defun jupyter-org-test-src-block-1 (code test-result &optional kernel regexp args)
+  (let ((src-block (jupyter-org-test-make-block code kernel args)))
     (insert src-block)
     (let* ((info (org-babel-get-src-block-info)))
       (save-window-excursion

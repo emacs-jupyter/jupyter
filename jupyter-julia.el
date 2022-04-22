@@ -28,6 +28,7 @@
 
 (eval-when-compile (require 'subr-x))
 (require 'jupyter-repl)
+(require 'jupyter-org-client)
 
 (declare-function julia-latexsub-or-indent "ext:julia-mode" (arg))
 
@@ -237,6 +238,67 @@ end")))
           (format "Main.__JUPY_saved_dir[] = pwd(); cd(\"%s\"); %s"
                   (plist-get changelist :dir) code)))
   code)
+
+(defun jupyter-julia--try-parse-dataframe (table-as-html-str)
+  "Try to parse DataFrame to transform to org table.
+
+TABLE-AS-HTML-STR is the jupyter html representation of a DataFrame, like
+<html>… <table class=data-frame>…
+
+Returns \(cons 'ok org-table-representing-dataframe\), nil otherwise."
+  (when (not (null table-as-html-str))
+
+    (when-let* ((e (with-temp-buffer
+                     (insert table-as-html-str)
+                     (libxml-parse-html-region (point-min) (point-max)))))
+      (pcase-let* ((`(html ,_html-attribs
+                           (body ,_body-attribs
+                                 (div ((class . "data-frame"))
+                                      (p ,_table-info-attribs ,_table-info)
+                                      ,table)))
+                    e)
+                   (`(table ((class . data-frame))
+                            (thead ,_header-attribs
+                                   (tr ,_header-name-attribs ,_header-name-separator . ,header-names)
+                                   (tr ,_header-type-attribs ,_header-type-separator . ,_header-types))
+                            (tbody ,_rows-attrib ,_rows-description
+                                   . ,rows))
+                    table)
+                   (col-names
+                    (mapcar 'caddr
+                            header-names))
+                   (extracted-data
+                    (mapcar
+                     (pcase-lambda (`(tr ,_row-attrib (th ,_index-attrib ,_index) . ,cells))
+                       (mapcar
+                        (pcase-lambda (`(td ,_cell-attrib ,cell-value))
+                          cell-value)
+                        cells))
+                     rows)))
+        (cons 'ok
+              (jupyter-org-scalar
+               (append
+                (list col-names
+                      'hline)
+                extracted-data)))))))
+
+(cl-defmethod jupyter-org-result ((_mime (eql :text/html))
+                                  &context (jupyter-lang julia)
+                                  &optional _params &rest _ignore)
+  "Try to parse DataFrame to transform to org table.
+
+Based off `jupyter-org-result' @ jupyter-python.el"
+  (pcase-let* ((result (cl-call-next-method))
+               (`(export-block (:type ,_export-type
+                                      :value ,table-as-html-str))
+                result)
+               (`(ok . ,org-table)
+                (jupyter-julia--try-parse-dataframe table-as-html-str)))
+    (cond
+     (org-table
+      org-table)
+     ;; else, return as-is
+     (t result))))
 
 (provide 'jupyter-julia)
 

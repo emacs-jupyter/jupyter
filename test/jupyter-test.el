@@ -3007,6 +3007,22 @@ print(2)"
 "
        :pandoc "t"))))
 
+(ert-deftest org-babel-jupyter-julia-dataframe-to-table ()
+  :tags '(org)
+  (jupyter-org-test-src-block
+   "
+using DataFrames
+a=DataFrame(A=[\"$c\" for c ∈ 1:5], B=[c for c ∈ 1:5])
+a"
+
+   "| A | B |
+|---+---|
+| 2 | 2 |
+| 3 | 3 |
+| 4 | 4 |
+| 5 | 5 |
+"
+   :kernel "jupyter-julia"))
 ;; Local Variables:
 ;; byte-compile-warnings: (unresolved obsolete lexical)
 ;; eval: (and (functionp 'aggressive-indent-mode) (aggressive-indent-mode -1))
