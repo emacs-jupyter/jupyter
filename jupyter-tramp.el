@@ -112,7 +112,7 @@ host, localname, ..., are all bound to values parsed from FILE."
 ;; jupyter-tramp-write-region
 ;;;###autoload
 (defconst jupyter-tramp-file-name-handler-alist
-  '(;; `access-file' performed by default handler.
+  '((access-file . tramp-handle-access-file)
     (add-name-to-file . tramp-handle-add-name-to-file)
     ;; `byte-compiler-base-file-name' performed by default handler.
     ;; `copy-directory' performed by default handler.
