@@ -556,6 +556,7 @@ results instead of an equality match."
           ;; Add a delay to try and ensure the last request of the
           ;; client has been completed.
           (sleep-for 0.2))
+        (goto-char (or (org-babel-where-is-src-block-result) (point)))
         (let ((element (org-element-context)))
           ;; Handle empty results with just a RESULTS keyword
           ;;

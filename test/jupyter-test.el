@@ -1899,7 +1899,8 @@ next(x"))))))
   :tags '(org)
   (require 'ob-jupyter)
   (ert-info ("Sessions with a kernel connection file")
-    (let ((session (org-babel-jupyter-parse-session "/foo/bar.json")))
+   (let* ((jupyter-use-zmq t)
+          (session (org-babel-jupyter-parse-session "/foo/bar.json")))
       (should (org-babel-jupyter-remote-session-p session))
       (should (org-babel-jupyter-remote-session-connect-repl-p session))
       (should (equal (org-babel-jupyter-session-name session) "/foo/bar.json")))
@@ -1908,7 +1909,8 @@ next(x"))))))
       (should (org-babel-jupyter-remote-session-connect-repl-p session))
       (should (equal (org-babel-jupyter-session-name session) "/ssh:ec2:foo/bar.json"))))
   (ert-info ("Remote sessions")
-    (let ((session (org-babel-jupyter-parse-session "/ssh:ec2:foo/bar")))
+    (let* ((jupyter-use-zmq t)
+           (session (org-babel-jupyter-parse-session "/ssh:ec2:foo/bar")))
       (should (org-babel-jupyter-remote-session-p session))
       (should-not (org-babel-jupyter-remote-session-connect-repl-p session))
       (should (equal (org-babel-jupyter-session-name session) "/ssh:ec2:foo/bar"))))
@@ -2583,7 +2585,8 @@ publish_display_data({'text/plain': 'AB\x1b[43mCD\x1b[0mEF'});"
              (jupyter-test-text-has-property 'invisible t invisible-pos)
              (should (listp (get-text-property face-pos 'face)))
              (should (get-text-property face-pos 'font-lock-face))
-             (should (eq (caar (get-text-property face-pos 'face)) 'background-color)))))
+             (should (memq (caar (get-text-property face-pos 'face))
+                           '(:background background-color))))))
       (insert ": AB[43mCD[0mEF")
       (funcall test-fun 10 '(5 6 7 8 9 12 13 14 15))
       ;; Test the cached faces path
@@ -2824,7 +2827,9 @@ x
           (pwd
            (substring
             (jupyter-org-test
-             (jupyter-eval "import os; os.getcwd()"))
+             (let ((jupyter-current-client
+                    (jupyter-org-test-session-client "python")))
+               (jupyter-eval "import os; os.getcwd()")))
             1 -1)))
       (ert-info ("Python")
         (eval `(jupyter-org-test-src-block
