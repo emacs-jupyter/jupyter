@@ -542,16 +542,7 @@ Note only SSH tunnels are currently supported."
 (defun jupyter-read-connection (conn-file)
   "Return the connection information in CONN-FILE.
 Return a property list representation of the JSON in CONN-FILE, a
-Jupyter connection file.
-
-If CONN-FILE is a remote file, possibly create an SSH tunnel
-between the localhost and the kernel on the remote host where
-CONN-FILE lives.  The returned connection info. will reflect
-these changes.
-
-See `jupyter-tunnel-connection' for more details on creating
-tunnels.  For more information on connection files, see
-https://jupyter-client.readthedocs.io/en/stable/kernels.html#connection-files"
+Jupyter connection file."
   (let ((conn-info (jupyter-read-plist conn-file)))
     ;; Also validate the signature scheme here.
     (cl-destructuring-bind (&key key signature_scheme &allow-other-keys)
