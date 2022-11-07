@@ -1541,7 +1541,8 @@ RESULT is the new result, as an org element, to be inserted.")
     (insert "\n")))
 
 (cl-defmethod jupyter-org--insert-result :after (_req _context result)
-  "Toggle display of LaTeX fragment results depending on `jupyter-org-toggle-latex'."
+  "Toggle display of LaTeX fragment results.
+See `jupyter-org-toggle-latex'."
   (when (and jupyter-org-toggle-latex
              (memq (org-element-type result)
                    '(latex-fragment latex-environment)))
