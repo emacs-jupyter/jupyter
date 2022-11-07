@@ -476,8 +476,8 @@ HANDLERS has the inverted meaning of `jupyter-inhibit-handlers'."
 
 (cl-defun jupyter-comm-info-request (&key (target-name "")
                                           (handlers t))
-  (jupyter-with-client-handlers
-      (cl-check-type target-name string)
+  (jupyter-with-client-handlers handlers
+    (cl-check-type target-name string)
     (jupyter-request "comm_info_request"
       :target_name target-name)))
 
