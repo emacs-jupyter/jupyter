@@ -1496,7 +1496,8 @@ the kernel `jupyter-current-client' is connected to."
      (t
       (message "%s kernel..." (if restart "Restarting"
                                 "Shutting down"))
-      (when (and (not (jupyter-shutdown-kernel client)) restart)
+      (when (and (not (jupyter-shutdown-kernel client))
+                 (not shutdown))
         ;; Handle the case of a restart that does not send a shutdown-reply
         ;;
         ;; TODO: Clean up the logic of when to insert a new prompt.  We insert
