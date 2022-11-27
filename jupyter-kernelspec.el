@@ -103,8 +103,10 @@ REFRESH."
           (or (and (not refresh) (jupyter-kernelspecs-cache-get host))
               (let ((specs
                      (plist-get
-                      (let ((json (or (jupyter-command "kernelspec" "list"
-                                                       "--json" "--log-level" "ERROR")
+                      (let ((json (or (let* ((jupyter-output (jupyter-command "kernelspec" "list"
+                                                                              "--json" "--log-level" "ERROR"))
+                                             (json-start (string-match-p (rx line-start "{") jupyter-output)))
+                                        (and json-start (substring jupyter-output json-start)))
                                       (error "\
 Can't obtain kernelspecs from jupyter shell command"))))
                         (condition-case nil
