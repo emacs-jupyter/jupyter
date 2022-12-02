@@ -1912,6 +1912,24 @@ next(x"))))))
                     font-lock-extend-region-functions)))
         (font-lock-ensure)))))
 
+(ert-deftest jupyter-available-kernelspecs-sorting ()
+  :tags '(repl)
+  (jupyter-test-with-some-kernelspecs '("foo_qux" "qux" "bar_qux")
+    (let ((result (mapcar #'car (jupyter-available-kernelspecs t))))
+      (should (equal result (sort (copy-sequence result) #'string<))))))
+
+(ert-deftest jupyter-run-repl-issue-371 ()
+  :tags '(repl)
+  (jupyter-test-with-some-kernelspecs '("foo_qux" "qux" "bar_qux")
+    (let ((client))
+      (unwind-protect
+	  (progn
+	    (setq client (jupyter-run-repl "qux"))
+	    (should (equal (plist-get (jupyter-session-conn-info (oref client session))
+				      :kernel_name)
+			   "qux")))
+	(jupyter-test-kill-buffer (oref client buffer))))))
+
 ;;; `org-mode'
 
 (defvar org-babel-jupyter-resource-directory nil)
