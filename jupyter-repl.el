@@ -1651,8 +1651,15 @@ Return the buffer switched to."
   (setq-local yank-handled-properties
               (append '((field . jupyter-repl-yank-handle-field-property))
                       yank-handled-properties))
-  (unless (booleanp yank-excluded-properties) ; `yank-excluded-properties' can be set to t
-    (setq-local yank-excluded-properties (remq 'field yank-excluded-properties)))
+  (setq-local yank-excluded-properties
+              (remq 'field
+                    (or
+                     (and (listp yank-excluded-properties)
+                          yank-excluded-properties)
+                     ;; if the user sets `yank-excluded-properties' to t we cannot recover
+                     ;; the default list of properties, so it is reproduced here for consistency
+                     '(category field follow-link fontified font-lock-face help-echo
+                       intangible invisible keymap local-map mouse-face read-only yank-handler))))
   ;; Initialize a buffer using the major-mode correponding to the kernel's
   ;; language.  This will be used for indentation and to capture font lock
   ;; properties.
