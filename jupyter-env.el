@@ -38,6 +38,8 @@ directory is where kernel connection files are written to.
 This variable should not be used.  To obtain the runtime directory
 call the function `jupyter-runtime-directory'.")
 
+(cl-deftype json-plist () '(satisfies json-plist-p))
+
 (defun jupyter-command (&rest args)
   "Run a Jupyter shell command synchronously, return its output.
 The shell command run is
