@@ -496,6 +496,20 @@ call the handler methods of those types."
    ;; seconds
    "sleep 60"))
 
+(defun jupyter-read-connection (conn-file)
+  "Return the connection information in CONN-FILE.
+Return a property list representation of the JSON in CONN-FILE, a
+Jupyter connection file."
+  (let ((conn-info (jupyter-read-plist conn-file)))
+    ;; Also validate the signature scheme here.
+    (cl-destructuring-bind (&key key signature_scheme &allow-other-keys)
+        conn-info
+      (when (and (> (length key) 0)
+                 (not (functionp
+                       (intern (concat "jupyter-" signature_scheme)))))
+        (error "Unsupported signature scheme: %s" signature_scheme)))
+    conn-info))
+
 (defun jupyter-tunnel-connection (conn-file &optional server)
   "Forward local ports to the remote ports in CONN-FILE.
 CONN-FILE is the path to a Jupyter connection file, SERVER is the
@@ -509,7 +523,7 @@ contained in the file name.
 
 Note only SSH tunnels are currently supported."
   (catch 'no-tunnels
-    (let ((conn-info (jupyter-read-plist conn-file)))
+    (let ((conn-info (jupyter-read-connection conn-file)))
       (when (and (file-remote-p conn-file)
                  (functionp 'tramp-dissect-file-name))
         (pcase-let (((cl-struct tramp-file-name method user host)
@@ -539,19 +553,6 @@ Note only SSH tunnels are currently supported."
                      (jupyter-make-ssh-tunnel lport maybe-rport server remoteip)))
          else collect maybe-rport)))))
 
-(defun jupyter-read-connection (conn-file)
-  "Return the connection information in CONN-FILE.
-Return a property list representation of the JSON in CONN-FILE, a
-Jupyter connection file."
-  (let ((conn-info (jupyter-read-plist conn-file)))
-    ;; Also validate the signature scheme here.
-    (cl-destructuring-bind (&key key signature_scheme &allow-other-keys)
-        conn-info
-      (when (and (> (length key) 0)
-                 (not (functionp
-                       (intern (concat "jupyter-" signature_scheme)))))
-        (error "Unsupported signature scheme: %s" signature_scheme)))
-    conn-info))
 
 ;;; Helper functions
 
