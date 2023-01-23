@@ -390,7 +390,7 @@ See also https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-spe
                ((cl-struct jupyter-kernelspec plist) spec)
                (imode (plist-get plist :interrupt_mode)))
     (if (or (null imode) (string= imode "signal"))
-        (when process
+        (when (process-live-p process)
           (interrupt-process process t))
       (cl-call-next-method))))
 
