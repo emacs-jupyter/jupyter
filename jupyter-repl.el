@@ -1177,8 +1177,8 @@ execute the current cell."
                                      "")))
               (jupyter-handle-is-complete-reply
                jupyter-current-client
-               nil '(:content
-                     (:status (if complete-p "complete" "incomplete")
+               nil `(:content
+                     (:status ,(if complete-p "complete" "incomplete")
                               :indent "")))))
            (t
             (condition-case nil
