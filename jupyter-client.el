@@ -786,7 +786,10 @@ and END or in pop-up buffers/frames.  See
                   (message "%s: %s" ename evalue)))))))
         ("execute_result"
          ,(if jupyter--eval-insert-execute-result
-              (let ((pos (point-marker)))
+              (let ((pos (point-marker))
+                    (region (unless (and (= beg (line-beginning-position))
+                                         (= end (line-end-position)))
+                              (cons beg end))))
                 (jupyter-message-lambda ((res text/plain))
                   (when res
                     (setq res (ansi-color-apply res))
