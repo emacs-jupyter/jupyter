@@ -553,6 +553,18 @@ Note only SSH tunnels are currently supported."
                      (jupyter-make-ssh-tunnel lport maybe-rport server remoteip)))
          else collect maybe-rport)))))
 
+(defun jupyter-connection-file-to-session (conn-file)
+  "Return a `jupyter-session' based on CONN-FILE.
+CONN-FILE is a Jupyter connection file.  If CONN-FILE is a remote
+file, open local SSH tunnels to the remote ports listed in
+CONN-FILE.  The returned session object will have the remote
+ports remapped to the local ports."
+  (let ((conn-info (if (file-remote-p conn-file)
+                       (jupyter-tunnel-connection conn-file)
+                     (jupyter-read-connection conn-file))))
+    (jupyter-session
+     :conn-info conn-info
+     :key (plist-get conn-info :key))))
 
 ;;; Helper functions
 

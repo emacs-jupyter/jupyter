@@ -98,12 +98,10 @@ Call the next method if ARGS does not contain a :spec or
         (cl-check-type (plist-get args :spec) jupyter-kernelspec)
         (apply #'jupyter-kernel-process args))
        (conn-info
-        (when (stringp conn-info)
-          (setq conn-info (jupyter-read-connection conn-info)))
         (apply #'jupyter-kernel-process
-               :session (jupyter-session
-                         :conn-info conn-info
-                         :key (plist-get conn-info :key))
+               :session (if (stringp conn-info)
+                            (jupyter-connection-file-to-session conn-info)
+                          conn-info)
                (cl-loop
                 for (k v) on args by #'cddr
                 unless (eq k :conn-info) collect k and collect v)))
