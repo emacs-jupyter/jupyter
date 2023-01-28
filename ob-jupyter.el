@@ -429,6 +429,9 @@ These parameters are handled internally."
     (setcar fresult "")
     (delq fparam params)))
 
+(defconst org-babel-jupyter-async-inline-results-pending-indicator "???"
+  "A string to disambiguate pending inline results from empty results.")
+
 (defun org-babel-jupyter--execute (code async-p)
   (jupyter-run-with-client jupyter-current-client
     (jupyter-mlet* ((req (jupyter-execute-request :code code)))
@@ -458,9 +461,6 @@ These parameters are handled internally."
 
 (defvar org-babel-jupyter-current-src-block-params nil
   "The block parameters of the most recently executed Jupyter source block.")
-
-(defconst org-babel-jupyter-async-inline-results-pending-indicator "???"
-  "A string to disambiguate pending inline results from empty results.")
 
 (defun org-babel-execute:jupyter (body params)
   "Execute BODY according to PARAMS.
