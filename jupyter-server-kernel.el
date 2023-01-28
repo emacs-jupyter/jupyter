@@ -31,6 +31,7 @@
 (require 'jupyter-kernel)
 (require 'jupyter-rest-api)
 (require 'jupyter-monads)
+(require 'websocket)
 
 (defgroup jupyter-server-kernel nil
   "Kernel behind a Jupyter server"
