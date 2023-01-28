@@ -287,6 +287,8 @@ kernel."
              :name session
              :connect-repl-p json-p)
           (cl-call-next-method)))
+    (when (file-remote-p session)
+      (error "ZMQ is required for remote sessions (%s)" session))
     (cl-call-next-method)))
 
 (cl-defmethod org-babel-jupyter-initiate-client :before ((session org-babel-jupyter-remote-session) _kernel)
