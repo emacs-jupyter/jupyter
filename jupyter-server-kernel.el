@@ -288,7 +288,7 @@ this case FN will be evaluated on KERNEL."
 
 ;; The KERNEL argument is optional here so that `jupyter-launch'
 ;; does not require more than one argument just to handle this case.
-(cl-defmethod jupyter-launch ((server jupyter-server) &optional (kernel string))
+(cl-defmethod jupyter-launch ((server jupyter-server) &optional kernel)
   (cl-check-type kernel string)
   (let* ((spec (jupyter-guess-kernelspec
                 kernel (jupyter-kernelspecs server)))
