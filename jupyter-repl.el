@@ -55,6 +55,7 @@
   :group 'jupyter)
 
 (eval-when-compile (require 'subr-x))
+(eval-and-compile (require 'jupyter-client))
 (require 'jupyter-base)
 (require 'jupyter-mime)
 (require 'jupyter-kernelspec)
