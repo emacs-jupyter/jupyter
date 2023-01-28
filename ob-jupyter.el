@@ -57,6 +57,17 @@
 (declare-function jupyter-tramp-server-from-file-name "jupyter-tramp")
 (declare-function jupyter-tramp-file-name-p "jupyter-tramp")
 
+(defcustom org-babel-jupyter-language-aliases '(("python3" "python"))
+  "An alist mapping kernel language names to another name.
+If a kernel has a language name matching the CAR of an element of
+this list, the associated name will be used for the names of the
+source blocks instead.
+
+So if this variable has an entry like '(\"python3\" \"python\")
+then instead of jupyter-python3 source blocks, you can use
+jupyter-python source blocks for the associated kernel."
+  :type '(alist :key-type string :value-type string))
+
 (defvaralias 'org-babel-jupyter-resource-directory
   'jupyter-org-resource-directory)
 
@@ -707,8 +718,10 @@ language to exist on someone's system."
                    (with-demoted-errors "Error retrieving kernelspecs: %S"
                      (jupyter-kernelspecs default-directory refresh)))
    for kernel = (jupyter-kernelspec-name spec)
-   for lang = (jupyter-canonicalize-language-string
-               (plist-get (jupyter-kernelspec-plist spec) :language))
+   for lang = (let ((lang (jupyter-canonicalize-language-string
+                           (plist-get (jupyter-kernelspec-plist spec) :language))))
+                (or (cadr (assoc lang org-babel-jupyter-language-aliases))
+                    lang))
    unless (member lang languages) collect lang into languages and
    do (org-babel-jupyter-make-language-alias kernel lang)
    ;; KLUDGE: The :kernel header argument is always set, even when we aren't
