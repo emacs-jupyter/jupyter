@@ -382,73 +382,82 @@
   :tags '(client messages)
   (jupyter-test-with-python-client client
     (ert-info ("Kernel info")
-      (jupyter-mlet* ((res (jupyter-reply
-                             (jupyter-kernel-info-request))))
-        (should res)
-        (should (json-plist-p res))
-        (should (string= (jupyter-message-type res) "kernel_info_reply"))))
+      (jupyter-run-with-client client
+        (jupyter-mlet* ((res (jupyter-reply
+                              (jupyter-kernel-info-request))))
+          (should res)
+          (should (json-plist-p res))
+          (should (string= (jupyter-message-type res) "kernel_info_reply")))))
     (ert-info ("Comm info")
-      (jupyter-mlet* ((res (jupyter-reply
-                            (jupyter-comm-info-request))))
-        (should-not (null res))
-        (should (json-plist-p res))
-        (should (string= (jupyter-message-type res) "comm_info_reply"))))
+      (jupyter-run-with-client client
+        (jupyter-mlet* ((res (jupyter-reply
+                              (jupyter-comm-info-request))))
+          (should-not (null res))
+          (should (json-plist-p res))
+          (should (string= (jupyter-message-type res) "comm_info_reply")))))
     (ert-info ("Execute")
-      (jupyter-mlet* ((res (jupyter-reply
-                   (jupyter-execute-request :code "y = 1 + 2"))))
-        (should-not (null res))
-        (should (json-plist-p res))
-        (should (string= (jupyter-message-type res) "execute_reply"))))
+      (jupyter-run-with-client client
+        (jupyter-mlet* ((res (jupyter-reply
+                              (jupyter-execute-request :code "y = 1 + 2"))))
+          (should-not (null res))
+          (should (json-plist-p res))
+          (should (string= (jupyter-message-type res) "execute_reply")))))
     (ert-info ("Input")
       (cl-letf (((symbol-function 'read-from-minibuffer)
                  (lambda (_prompt &rest _args) "foo")))
-        (jupyter-mlet* ((msgs (jupyter-messages
-                               (jupyter-execute-request :code "input('')")
-                               jupyter-long-timeout)))
-          (let ((res (jupyter-find-message "execute_result" msgs)))
-            (should-not (null res))
-            (should (json-plist-p res))
-            (should (string= (jupyter-message-type res) "execute_result"))
-            (should (equal (jupyter-message-data res :text/plain) "'foo'"))))))
+        (jupyter-run-with-client client
+          (jupyter-mlet* ((msgs (jupyter-messages
+                                 (jupyter-execute-request :code "input('')")
+                                 jupyter-long-timeout)))
+            (let ((res (jupyter-find-message "execute_result" msgs)))
+              (should-not (null res))
+              (should (json-plist-p res))
+              (should (string= (jupyter-message-type res) "execute_result"))
+              (should (equal (jupyter-message-data res :text/plain) "'foo'")))))))
     (ert-info ("Inspect")
-      (jupyter-mlet* ((res (jupyter-reply
-                             (jupyter-inspect-request
-                              :code "list((1, 2, 3))"
-                              :pos 2
-                              :detail 0))))
-        (should-not (null res))
-        (should (json-plist-p res))
-        (should (string= (jupyter-message-type res) "inspect_reply"))))
+      (jupyter-run-with-client client
+        (jupyter-mlet* ((res (jupyter-reply
+                              (jupyter-inspect-request
+                               :code "list((1, 2, 3))"
+                               :pos 2
+                               :detail 0))))
+          (should-not (null res))
+          (should (json-plist-p res))
+          (should (string= (jupyter-message-type res) "inspect_reply")))))
     (ert-info ("Complete")
-      (jupyter-mlet* ((res (jupyter-reply
-                             (jupyter-complete-request
-                              :code "foo = lis"
-                              :pos 8))))
-        (should-not (null res))
-        (should (json-plist-p res))
-        (should (string= (jupyter-message-type res) "complete_reply"))))
+      (jupyter-run-with-client client
+        (jupyter-mlet* ((res (jupyter-reply
+                              (jupyter-complete-request
+                               :code "foo = lis"
+                               :pos 8))))
+          (should-not (null res))
+          (should (json-plist-p res))
+          (should (string= (jupyter-message-type res) "complete_reply")))))
     (ert-info ("History")
-      (jupyter-mlet* ((res (jupyter-reply
-                             (jupyter-history-request
-                              :hist-access-type "tail" :n 2))))
-        (should-not (null res))
-        (should (json-plist-p res))
-        (should (string= (jupyter-message-type res) "history_reply"))))
+      (jupyter-run-with-client client
+        (jupyter-mlet* ((res (jupyter-reply
+                              (jupyter-history-request
+                               :hist-access-type "tail" :n 2))))
+          (should-not (null res))
+          (should (json-plist-p res))
+          (should (string= (jupyter-message-type res) "history_reply")))))
     (ert-info ("Is Complete")
-      (jupyter-mlet* ((res (jupyter-reply
-                            (jupyter-is-complete-request
-                             :code "for i in range(5):"))))
-        (should-not (null res))
-        (should (json-plist-p res))
-        (should (string= (jupyter-message-type res) "is_complete_reply"))))
+      (jupyter-run-with-client client
+        (jupyter-mlet* ((res (jupyter-reply
+                              (jupyter-is-complete-request
+                               :code "for i in range(5):"))))
+          (should-not (null res))
+          (should (json-plist-p res))
+          (should (string= (jupyter-message-type res) "is_complete_reply")))))
     (ert-info ("Shutdown")
-      (jupyter-mlet* ((res (jupyter-reply
-                            (jupyter-shutdown-request))))
-        (should-not (null res))
-        (should (json-plist-p res))
-        (should (string= (jupyter-message-type res) "shutdown_reply"))
-        ;; TODO: Ensure we give the kernel process time to die off
-        ))))
+      (jupyter-run-with-client client
+        (jupyter-mlet* ((res (jupyter-reply
+                              (jupyter-shutdown-request))))
+          (should-not (null res))
+          (should (json-plist-p res))
+          (should (string= (jupyter-message-type res) "shutdown_reply"))
+          ;; TODO: Ensure we give the kernel process time to die off
+          )))))
 
 (ert-deftest jupyter-message-lambda ()
   :tags '(messages)
@@ -847,15 +856,16 @@
 (ert-deftest jupyter-inhibited-handlers ()
   :tags '(client handlers)
   (jupyter-test-with-python-client client
-    (jupyter-mlet* ((req (jupyter-kernel-info-request
-                          :handlers '(not "stream"))))
-      (should (equal (jupyter-request-inhibited-handlers req)
-                     '("stream")))
-      (should-not (jupyter--request-allows-handler-p
-                   req (jupyter-test-message
-                        req "stream" (list :name "stdout" :text "foo"))))
-      (should-error (jupyter-kernel-info-request
-                     :handlers '(not "foo"))))))
+    (jupyter-run-with-client client
+      (jupyter-mlet* ((req (jupyter-kernel-info-request
+                            :handlers '(not "stream"))))
+        (should (equal (jupyter-request-inhibited-handlers req)
+                       '("stream")))
+        (should-not (jupyter--request-allows-handler-p
+                     req (jupyter-test-message
+                          req "stream" (list :name "stdout" :text "foo"))))
+        (should-error (jupyter-kernel-info-request
+                       :handlers '(not "foo")))))))
 
 (ert-deftest jupyter-eval ()
   :tags '(client)
@@ -907,18 +917,20 @@
 (ert-deftest jupyter-idle-sync ()
   :tags '(client hook)
   (jupyter-test-with-python-client client
-    (jupyter-mlet* ((req (jupyter-execute-request :code "1 + 1")))
-      (should-not (jupyter-request-idle-p req))
-      (jupyter-idle-sync req)
-      (should (jupyter-request-idle-p req)))
-    (jupyter-mlet* ((req (jupyter-execute-request :code "1 + 1")))
-      (should (null jupyter-test-idle-sync-hook))
-      (jupyter-add-idle-sync-hook 'jupyter-test-idle-sync-hook req)
-      (should-not (null jupyter-test-idle-sync-hook))
-      (should-not (jupyter-request-idle-p req))
-      (run-hooks 'jupyter-test-idle-sync-hook)
-      (should (jupyter-request-idle-p req))
-      (should (null jupyter-test-idle-sync-hook)))))
+    (jupyter-run-with-client client
+      (jupyter-mlet* ((req (jupyter-execute-request :code "1 + 1")))
+        (should-not (jupyter-request-idle-p req))
+        (jupyter-idle-sync req)
+        (should (jupyter-request-idle-p req))))
+    (jupyter-run-with-client client
+      (jupyter-mlet* ((req (jupyter-execute-request :code "1 + 1")))
+        (should (null jupyter-test-idle-sync-hook))
+        (jupyter-add-idle-sync-hook 'jupyter-test-idle-sync-hook req)
+        (should-not (null jupyter-test-idle-sync-hook))
+        (should-not (jupyter-request-idle-p req))
+        (run-hooks 'jupyter-test-idle-sync-hook)
+        (should (jupyter-request-idle-p req))
+        (should (null jupyter-test-idle-sync-hook))))))
 
 ;;; IOloop
 
@@ -1085,7 +1097,7 @@
   :tags '(zmq ioloop queue)
   (let ((client (jupyter-client (jupyter-kernel :spec "python"))))
     (unwind-protect
-        (jupyter-with-client client
+        (jupyter-run-with-client client
           (jupyter-mlet* ((_ (jupyter-do
                                (jupyter-execute-request :code "1 + 1")
                                (jupyter-execute-request :code "1 + 1")

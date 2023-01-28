@@ -430,29 +430,31 @@ These parameters are handled internally."
     (delq fparam params)))
 
 (defun org-babel-jupyter--execute (code async-p)
-  (jupyter-mlet* ((req (jupyter-execute-request :code code)))
-    `(,req
-      ,(cond
-        (async-p
-         (when (bound-and-true-p org-export-current-backend)
-           (jupyter-add-idle-sync-hook
-            'org-babel-after-execute-hook req 'append))
-         (if (jupyter-org-request-inline-block-p req)
-             org-babel-jupyter-async-inline-results-pending-indicator
-           ;; This returns the message ID of REQ as an indicator
-           ;; for the pending results.
-           (jupyter-org-pending-async-results req)))
-        (t
-         (jupyter-idle-sync req)
-         (if (jupyter-org-request-inline-block-p req)
-             ;; When evaluating a source block synchronously, only the
-             ;; :execute-result will be in `jupyter-org-request-results' since
-             ;; stream results and any displayed data will be placed in a separate
-             ;; buffer.
-             (car (jupyter-org-request-results req))
-           ;; This returns an Org formatted string of the collected
-           ;; results.
-           (jupyter-org-sync-results req)))))))
+  (jupyter-run-with-client jupyter-current-client
+    (jupyter-mlet* ((req (jupyter-execute-request :code code)))
+      (jupyter-return-delayed
+        `(,req
+          ,(cond
+            (async-p
+             (when (bound-and-true-p org-export-current-backend)
+               (jupyter-add-idle-sync-hook
+                'org-babel-after-execute-hook req 'append))
+             (if (jupyter-org-request-inline-block-p req)
+                 org-babel-jupyter-async-inline-results-pending-indicator
+               ;; This returns the message ID of REQ as an indicator
+               ;; for the pending results.
+               (jupyter-org-pending-async-results req)))
+            (t
+             (jupyter-idle-sync req)
+             (if (jupyter-org-request-inline-block-p req)
+                 ;; When evaluating a source block synchronously, only the
+                 ;; :execute-result will be in `jupyter-org-request-results' since
+                 ;; stream results and any displayed data will be placed in a separate
+                 ;; buffer.
+                 (car (jupyter-org-request-results req))
+               ;; This returns an Org formatted string of the collected
+               ;; results.
+               (jupyter-org-sync-results req)))))))))
 
 (defvar org-babel-jupyter-current-src-block-params nil
   "The block parameters of the most recently executed Jupyter source block.")
