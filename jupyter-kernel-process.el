@@ -53,7 +53,8 @@ exist are deleted.")
 ;;; Kernel definition
 
 (cl-defstruct (jupyter-kernel-process
-               (:include jupyter-kernel)))
+               (:include jupyter-kernel))
+  connect-p)
 
 (cl-defmethod jupyter-process ((kernel jupyter-kernel-process))
   "Return the process of KERNEL.
@@ -111,8 +112,10 @@ Call the next method if ARGS does not contain a :spec or
 ;;; Client connection
 
 (cl-defmethod jupyter-zmq-io ((kernel jupyter-kernel-process))
-  (jupyter-launch kernel)
-  (let* ((session (jupyter-kernel-session kernel))
+  (unless (jupyter-kernel-process-connect-p kernel)
+    (jupyter-launch kernel))
+  (let* ((session (or (jupyter-kernel-session kernel)
+                      (error "A session is needed to connect to a kernel's I/O")))
          (channels '(:shell :iopub :stdin))
          (ch-group (let ((endpoints (jupyter-session-endpoints session)))
                      (cl-loop
