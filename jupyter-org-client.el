@@ -862,6 +862,18 @@ EXT is used as the extension."
 
 (defvar org-image-actual-width)
 
+(defun jupyter-org--add-image-ext-maybe (file &optional ext)
+  "Return a file name for FILE with EXT.
+If FILE is an image file with a specified extension, return FILE.
+If FILE is an image file without a specified extension and EXT is
+non-nil, return FILE with EXT as the extension.  Otherwise, return
+FILE."
+  (cond
+   ((null file) file)
+   ((image-type-from-file-name file) file)
+   ((not (null ext)) (concat file "." ext))
+   (t file)))
+
 (defun jupyter-org--image-result (mime content params &optional b64-encoded)
   "Return an org-element suitable for inserting an image.
 MIME is the image mimetype, CONTENT is a property list
@@ -886,14 +898,15 @@ org-element will have an ATTR_ORG affiliated keyword containing
 the width or height of the image.  When there is no :width or
 :height, an ATTR_ORG keyword containing the true size of the
 image may still be added, see `jupyter-org-adjust-image-size'."
-  (let* ((overwrite (not (null (alist-get :file params))))
-         (file (or (alist-get :file params)
+  (let* ((file-ext (cl-case mime
+                     (:image/png "png")
+                     (:image/jpeg "jpg")
+                     (:image/svg+xml "svg")))
+         (overwrite (not (null (alist-get :file params))))
+         (file (or (jupyter-org--add-image-ext-maybe (alist-get :file params) file-ext)
                    (jupyter-org-image-file-name
                     (plist-get content :data)
-                    (cl-case mime
-                      (:image/png "png")
-                      (:image/jpeg "jpg")
-                      (:image/svg+xml "svg"))))))
+                    file-ext))))
     (when (or overwrite (not (file-exists-p file)))
       (let ((buffer-file-coding-system
              (if b64-encoded 'binary
