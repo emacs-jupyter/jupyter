@@ -96,11 +96,10 @@ Return the result of evaluating BODY."
               (if (zerop (length vars))
                   (if (zerop (length body)) 'jupyter-io-nil
                     `(progn ,@body))
-                (pcase-let ((`(,name ,io-value) (car vars)))
-                  `(jupyter-bind-delayed ,io-value
-                     (lambda (,value)
-                       (let ((,name ,value))
-                         ,(funcall binder (cdr vars))))))))))
+                (pcase-let ((`(,name ,mvalue) (car vars)))
+                  `(jupyter-bind-delayed ,mvalue
+                     (lambda (,name)
+                       ,(funcall binder (cdr vars)))))))))
     (funcall binder varlist)))
 
 (defmacro jupyter-do (&rest actions)
