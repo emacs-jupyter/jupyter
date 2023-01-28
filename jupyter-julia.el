@@ -122,18 +122,20 @@ Make the character after `point' invisible."
 If the Pkg prompt can't be retrieved from the kernel, return
 nil."
   (let ((prompt-code "import Pkg; Pkg.REPLMode.promptf()"))
-    (jupyter-mlet* ((msg
-                     (jupyter-reply
-                      (jupyter-execute-request
-                       :code ""
-                       :silent t
-                       :user-expressions (list :prompt prompt-code)))))
-      (cl-destructuring-bind (&key prompt &allow-other-keys)
-          (jupyter-message-get msg :user_expressions)
-        (cl-destructuring-bind (&key status data &allow-other-keys)
-            prompt
-          (when (equal status "ok")
-            (plist-get data :text/plain)))))))
+    (jupyter-run-with-client jupyter-current-client
+      (jupyter-mlet* ((msg
+                       (jupyter-reply
+                        (jupyter-execute-request
+                         :code ""
+                         :silent t
+                         :user-expressions (list :prompt prompt-code)))))
+        (cl-destructuring-bind (&key prompt &allow-other-keys)
+            (jupyter-message-get msg :user_expressions)
+          (cl-destructuring-bind (&key status data &allow-other-keys)
+              prompt
+            (jupyter-return-delayed
+              (when (equal status "ok")
+                (plist-get data :text/plain)))))))))
 
 (cl-defmethod jupyter-repl-after-change ((_type (eql insert)) beg _end
                                          &context (jupyter-lang julia))
@@ -186,14 +188,15 @@ nil."
 ;;; `jupyter-repl-after-init'
 
 (defun jupyter-julia--setup-hooks (client)
-  (let ((jupyter-current-client client))
-    (jupyter-mlet* ((_ (jupyter-execute-request
-                        :handlers nil
-                        :store-history nil
-                        :silent t
-                        ;; This is mainly for supporting the :dir header argument in
-                        ;; `org-mode' source blocks.
-                        :code "\
+  (jupyter-run-with-client client
+     (jupyter-send
+      (jupyter-execute-request
+       :handlers nil
+       :store-history nil
+       :silent t
+       ;; This is mainly for supporting the :dir header argument in
+       ;; `org-mode' source blocks.
+       :code "\
 if !isdefined(Main, :__JUPY_saved_dir)
     Core.eval(Main, :(__JUPY_saved_dir = Ref(\"\")))
     let popdir = () -> begin
@@ -205,7 +208,7 @@ if !isdefined(Main, :__JUPY_saved_dir)
         IJulia.push_posterror_hook(popdir)
         IJulia.push_postexecute_hook(popdir)
     end
-end"))))))
+end"))))
 
 (cl-defmethod jupyter-repl-after-init (&context (jupyter-lang julia))
   (add-function

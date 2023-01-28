@@ -644,9 +644,8 @@ user.  Otherwise `read-from-minibuffer' is used."
                          (with-timeout-unsuspend timeout-spec)))
                    (quit ""))))
       (unwind-protect
-          (jupyter-with-client client
-            (jupyter-mlet* ((_ (jupyter-input-reply
-                                :value value)))))
+          (jupyter-run-with-client client
+            (jupyter-send (jupyter-input-reply :value value)))
         (when (eq password t)
           (clear-string value)))
       value)))
@@ -719,18 +718,19 @@ the history of the request is not stored.  Return the MIME
 representation of the result.  If MIME is nil, return the
 text/plain representation."
   (interactive (list (jupyter-read-expression) nil))
-  (jupyter-mlet*
-      ((res (jupyter-result
-             (jupyter-message-subscribed
-              (jupyter-execute-request
-               :code code
-               :store-history nil
-               :handlers nil)
-              `(("execute_reply"
-                 ,(jupyter-message-lambda (status evalue)
-                    (unless (equal status "ok")
-                      (error "%s" (ansi-color-apply evalue))))))))))
-    (jupyter-message-data res (or mime :text/plain))))
+  (jupyter-run-with-client jupyter-current-client
+    (jupyter-mlet*
+        ((res (jupyter-result
+               (jupyter-message-subscribed
+                (jupyter-execute-request
+                 :code code
+                 :store-history nil
+                 :handlers nil)
+                `(("execute_reply"
+                   ,(jupyter-message-lambda (status evalue)
+                      (unless (equal status "ok")
+                        (error "%s" (ansi-color-apply evalue))))))))))
+      (jupyter-return-delayed (jupyter-message-data res (or mime :text/plain))))))
 
 (defvar jupyter--eval-insert-execute-result nil)
 
@@ -896,13 +896,14 @@ current buffer that STR was extracted from.")
   "Evaluate STR using the `jupyter-current-client'."
   (cl-check-type jupyter-current-client jupyter-kernel-client
                  "Not a valid client")
-  (jupyter-mlet* ((req (jupyter-message-subscribed
-                        (jupyter-execute-request
-                         :code str
-                         :store-history nil
-                         :handlers '("input_request"))
-                        (jupyter-eval-callbacks beg end))))
-    req))
+  (jupyter-run-with-client jupyter-current-client
+    (jupyter-send
+     (jupyter-message-subscribed
+      (jupyter-execute-request
+       :code str
+       :store-history nil
+       :handlers '("input_request"))
+      (jupyter-eval-callbacks beg end)))))
 
 (defun jupyter-eval-string-command (str)
   "Evaluate STR using the `jupyter-current-client'.
@@ -1162,49 +1163,51 @@ DETAIL is the detail level to use for the request and defaults to
     (error "Need a valid `jupyter-current-client'"))
   (condition-case nil
       (let ((client jupyter-current-client))
-        (jupyter-mlet* ((msg (jupyter-reply
-                              (jupyter-inspect-request
-                               :code code
-                               :pos pos
-                               :detail detail))))
-          (jupyter-with-message-content msg
-              (status found)
-            (if (and (equal status "ok") (eq found t))
-                (let ((inhibit-read-only t))
-                  (if (buffer-live-p buffer)
-                      (with-current-buffer buffer
-                        ;; Insert MSG here so that `jupyter-insert'
-                        ;; has access to the message type.  This is
-                        ;; needed since the python kernel and others
-                        ;; may use this information.
-                        (jupyter-insert msg)
-                        (current-buffer))
-                    (with-help-window (help-buffer)
-                      (with-current-buffer standard-output
-                        (setq other-window-scroll-buffer (current-buffer))
-                        (setq jupyter-current-client client)
-                        (help-setup-xref
-                         (list
-                          ;; Don't capture a strong reference to the
-                          ;; client object since we don't know when
-                          ;; this reference will be cleaned up.
-                          (let ((ref (jupyter-weak-ref client)))
-                            (lambda ()
-                              (let ((jupyter-current-client
-                                     (jupyter-weak-ref-resolve ref)))
-                                (if jupyter-current-client
-                                    (jupyter-inspect code pos nil detail)
-                                  ;; TODO: Skip over this xref, need
-                                  ;; to figure out if going forward or
-                                  ;; backward first.
-                                  (error "Client has been removed"))))))
-                         nil)
-                        (jupyter-insert msg)))))
-              (message "Nothing found for %s"
-                       (with-temp-buffer
-                         (insert code)
-                         (goto-char pos)
-                         (symbol-at-point)))))))
+        (jupyter-run-with-client client
+          (jupyter-mlet* ((msg (jupyter-reply
+                                (jupyter-inspect-request
+                                 :code code
+                                 :pos pos
+                                 :detail detail))))
+            (jupyter-with-message-content msg
+                (status found)
+              (if (and (equal status "ok") (eq found t))
+                  (let ((inhibit-read-only t))
+                    (if (buffer-live-p buffer)
+                        (with-current-buffer buffer
+                          ;; Insert MSG here so that `jupyter-insert'
+                          ;; has access to the message type.  This is
+                          ;; needed since the python kernel and others
+                          ;; may use this information.
+                          (jupyter-insert msg)
+                          (current-buffer))
+                      (with-help-window (help-buffer)
+                        (with-current-buffer standard-output
+                          (setq other-window-scroll-buffer (current-buffer))
+                          (setq jupyter-current-client client)
+                          (help-setup-xref
+                           (list
+                            ;; Don't capture a strong reference to the
+                            ;; client object since we don't know when
+                            ;; this reference will be cleaned up.
+                            (let ((ref (jupyter-weak-ref client)))
+                              (lambda ()
+                                (let ((jupyter-current-client
+                                       (jupyter-weak-ref-resolve ref)))
+                                  (if jupyter-current-client
+                                      (jupyter-inspect code pos nil detail)
+                                    ;; TODO: Skip over this xref, need
+                                    ;; to figure out if going forward or
+                                    ;; backward first.
+                                    (error "Client has been removed"))))))
+                           nil)
+                          (jupyter-insert msg)))))
+                (message "Nothing found for %s"
+                         (with-temp-buffer
+                           (insert code)
+                           (goto-char pos)
+                           (symbol-at-point)))))
+            (jupyter-return-delayed msg))))
     (jupyter-timeout-before-idle
      (message "Inspect timed out"))))
 
@@ -1509,13 +1512,14 @@ candidates can be used for PREFIX."
 Run FUN when the completions are available."
   (cl-destructuring-bind (code pos)
       (jupyter-code-context 'completion)
-    (jupyter-mlet* ((req (jupyter-message-subscribed
-                          (jupyter-complete-request
-                           :code code
-                           :pos pos
-                           :handlers nil)
-                          `(("complete_reply" ,fun)))))
-      req)))
+    (jupyter-run-with-client jupyter-current-client
+      (jupyter-send
+       (jupyter-message-subscribed
+        (jupyter-complete-request
+         :code code
+         :pos pos
+         :handlers nil)
+        `(("complete_reply" ,fun)))))))
 
 (defvar company-minimum-prefix-length)
 (defvar company-timer)
@@ -1662,25 +1666,18 @@ name are changed to \"-\" and all uppercase characters lowered."
   (or (oref client kernel-info)
       (progn
         (message "Requesting kernel info...")
-        (let ((old-client jupyter-current-client)
-              (old-io jupyter-current-io))
-          (setq jupyter-current-client client)
-          (setq jupyter-current-io (or (car (oref jupyter-current-client io))
-                                       (error "Client not connected to a kernel")))
-          (unwind-protect
-              (jupyter-mlet* ((msg (jupyter-reply
-                                    (jupyter-kernel-info-request
-                                     :handlers nil)
-                                    (* 3 jupyter-long-timeout))))
-                (message "Requesting kernel info...done")
-                (oset client kernel-info (jupyter-message-content msg))
-                (let* ((info (plist-get (oref client kernel-info) :language_info))
-                       (lang (plist-get info :name))
-                       (name (jupyter-canonicalize-language-string lang)))
-                  (plist-put info :name (intern name))))
-            (setq jupyter-current-client old-client)
-            (setq jupyter-current-io old-io))
-          (oref client kernel-info)))))
+        (jupyter-run-with-client client
+          (jupyter-mlet* ((msg (jupyter-reply
+                                (jupyter-kernel-info-request
+                                 :handlers nil)
+                                (* 3 jupyter-long-timeout))))
+            (message "Requesting kernel info...done")
+            (oset client kernel-info (jupyter-message-content msg))
+            (let* ((info (plist-get (oref client kernel-info) :language_info))
+                   (lang (plist-get info :name))
+                   (name (jupyter-canonicalize-language-string lang)))
+              (plist-put info :name (intern name)))
+            (jupyter-return-delayed (oref client kernel-info)))))))
 
 (defun jupyter-kernel-language-mode-properties (client)
   "Get the `major-mode' info of CLIENT's kernel language.

@@ -110,19 +110,20 @@ callbacks."
                          ("stdin" :stdin)
                          (_ (error "Invalid channel"))))
               (content (jupyter-message-content msg)))
-         (jupyter-mlet*
-             ((_ (jupyter-message-subscribed
-                  (let ((jupyter-inhibit-handlers
-                         (if (member msg-type '("comm_info_request"))
-                             '("comm_msg" "status" "comm_info_reply")
-                           '("comm_msg"))))
-                    (apply #'jupyter-request msg-type content))
-                  (let ((fn (apply-partially #'jupyter-widgets-send-message client)))
-                    `(("comm_open" ,fn)
-                      ("comm_close" ,fn)
-                      ("comm_info_reply" ,fn)
-                      ("comm_msg" ,fn)
-                      ("status" ,fn))))))))))))
+         (jupyter-run-with-client client
+           (jupyter-send
+            (jupyter-message-subscribed
+             (let ((jupyter-inhibit-handlers
+                    (if (member msg-type '("comm_info_request"))
+                        '("comm_msg" "status" "comm_info_reply")
+                      '("comm_msg"))))
+               (apply #'jupyter-request msg-type content))
+             (let ((fn (apply-partially #'jupyter-widgets-send-message client)))
+               `(("comm_open" ,fn)
+                 ("comm_close" ,fn)
+                 ("comm_info_reply" ,fn)
+                 ("comm_msg" ,fn)
+                 ("status" ,fn)))))))))))
 
 (defun jupyter-widgets-on-close (ws)
   "Uninitialize the client whose widget-sock is WS."

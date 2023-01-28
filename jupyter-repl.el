@@ -807,7 +807,7 @@ Return the `jupyter-request' representing the executed code."
       (goto-char (jupyter-repl-cell-code-beginning-position))
       (run-hooks 'jupyter-repl-cell-pre-send-hook))
     (let ((code (string-trim (jupyter-repl-cell-code))))
-      (jupyter-with-client client
+      (jupyter-run-with-client client
         (jupyter-mlet* ((req (jupyter-execute-request
                               :code code
                               ;; Handle empty code cells as just an update
@@ -822,7 +822,7 @@ Return the `jupyter-request' representing the executed code."
           (save-excursion
             (jupyter-repl-backward-cell)
             (run-hooks 'jupyter-repl-cell-post-send-hook))
-          req)))))
+          (jupyter-send (jupyter-return-delayed req)))))))
 
 (cl-defmethod jupyter-handle-payload ((_source (eql set_next_input)) pl
                                       &context (major-mode jupyter-repl-mode))
@@ -1182,11 +1182,12 @@ execute the current cell."
                               :indent "")))))
            (t
             (condition-case nil
-                (jupyter-mlet* ((_ (jupyter-idle
-                                    (jupyter-is-complete-request
-                                     :code (jupyter-repl-cell-code)
-                                     :handlers '("is_complete_reply"))
-                                    jupyter-repl-maximum-is-complete-timeout))))
+                (jupyter-run-with-client jupyter-current-client
+                  (jupyter-idle
+                   (jupyter-is-complete-request
+                    :code (jupyter-repl-cell-code)
+                    :handlers '("is_complete_reply"))
+                   jupyter-repl-maximum-is-complete-timeout))
               (jupyter-timeout-before-idle
                (message "\
 Kernel did not respond to is-complete-request, using built-in is-complete.
@@ -1428,28 +1429,27 @@ value."
         (prog1 (jupyter-repl-execute-cell)
           (jupyter-repl-replace-cell-code code)))))
    (t
-    (jupyter-mlet*
-        ((req
-          (let ((io-req
-                 (jupyter-execute-request
-                  :code str
-                  :store-history jupyter-repl-echo-eval-p
-                  :handlers '("input_request"))))
-            (if (and jupyter-repl-echo-eval-p
-                     (get-buffer-window
-                      (oref jupyter-current-client buffer)
-                      'visible))
-                io-req
-              ;; Add callbacks to display evaluation output in pop-up
-              ;; buffers either when we aren't copying the input to a
-              ;; REPL cell or, if we are, when the REPL buffer isn't
-              ;; visible.
-              ;;
-              ;; Make sure we do this in the original buffer where
-              ;; STR originated from when BEG and END are non-nil.
-              (jupyter-message-subscribed
-               io-req (jupyter-eval-callbacks beg end))))))
-      req))))
+    (jupyter-run-with-client jupyter-current-client
+      (jupyter-send
+       (let ((req
+              (jupyter-execute-request
+               :code str
+               :store-history jupyter-repl-echo-eval-p
+               :handlers '("input_request"))))
+         (if (and jupyter-repl-echo-eval-p
+                  (get-buffer-window
+                   (oref jupyter-current-client buffer)
+                   'visible))
+             req
+           ;; Add callbacks to display evaluation output in pop-up
+           ;; buffers either when we aren't copying the input to a
+           ;; REPL cell or, if we are, when the REPL buffer isn't
+           ;; visible.
+           ;;
+           ;; Make sure we do this in the original buffer where
+           ;; STR originated from when BEG and END are non-nil.
+           (jupyter-message-subscribed
+            req (jupyter-eval-callbacks beg end)))))))))
 
 ;;; Kernel management
 
@@ -1681,11 +1681,13 @@ Return the buffer switched to."
     ;; history since next/previous navigation is implemented by rotations on the
     ;; ring.
     (ring-insert jupyter-repl-history 'jupyter-repl-history)
-    (jupyter-mlet* ((_ (jupyter-history-request
-                        :n jupyter-repl-history-maximum-length
-                        :raw nil
-                        :unique t
-                        :handlers '(not "status")))))
+    (jupyter-run-with-client jupyter-current-client
+      (jupyter-send
+       (jupyter-history-request
+        :n jupyter-repl-history-maximum-length
+        :raw nil
+        :unique t
+        :handlers '(not "status"))))
     (erase-buffer)
     ;; Add local hooks
     (add-hook 'kill-buffer-query-functions #'jupyter-repl-kill-buffer-query-function nil t)
@@ -1801,18 +1803,19 @@ it."
   "Synchronize the `jupyter-current-client's kernel state.
 Also update the cell count of the current REPL input prompt using
 the updated state."
-  (jupyter-mlet* ((msg (jupyter-reply
-                        (jupyter-execute-request
-                         :code ""
-                         :silent t
-                         :handlers nil)
-                        ;; Waiting longer here to account for initial
-                        ;; startup of the Jupyter kernel.  Sometimes
-                        ;; the idle message won't be received if
-                        ;; another long running execute request is
-                        ;; sent right after.
-                        jupyter-long-timeout)))
-    (let ((client jupyter-current-client))
+  (jupyter-run-with-client jupyter-current-client
+    (jupyter-mlet* ((msg (jupyter-reply
+                          (jupyter-execute-request
+                           :code ""
+                           :silent t
+                           :handlers nil)
+                          ;; Waiting longer here to account for initial
+                          ;; startup of the Jupyter kernel.  Sometimes
+                          ;; the idle message won't be received if
+                          ;; another long running execute request is
+                          ;; sent right after.
+                          jupyter-long-timeout))
+                    (client (jupyter-get-state)))
       (unless (equal (jupyter-execution-state client) "busy")
         ;; Set the cell count and update the prompt
         (jupyter-with-repl-buffer client

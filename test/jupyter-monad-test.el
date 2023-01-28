@@ -35,29 +35,43 @@
   (let ((f (lambda (n) (jupyter-return-delayed (/ n 0.5))))
         (g (lambda (n) (jupyter-return-delayed (* n 3))))
         (m (jupyter-return-delayed 9)))
-    (should (equal (jupyter-bind-delayed (jupyter-return-delayed 1) f)
-                   (funcall f 1)))
-    (should (equal (jupyter-bind-delayed m #'jupyter-return-delayed) m))
-    (should (equal (jupyter-bind-delayed
-                       ;; Instead of applying a function, f, to a
-                       ;; value, a, to get b, you bind a delayed value
-                       ;; M a to f to get M b.  Binding unboxes M a
-                       ;; into a and then applies f on a.
-                       (jupyter-bind-delayed m f) g)
-                   (jupyter-bind-delayed m
-                     (lambda (x) (jupyter-bind-delayed (funcall f x) g)))))))
+    (should (equal
+             (jupyter-run-with-state '()
+               (jupyter-bind-delayed (jupyter-return-delayed 1) f))
+             (jupyter-run-with-state '()
+               (funcall f 1))))
+    (should (equal (jupyter-run-with-state '()
+                     (jupyter-bind-delayed m #'jupyter-return-delayed))
+                   (jupyter-run-with-state '()
+                     m)))
+    (should (equal
+             (jupyter-run-with-state '()
+               (jupyter-bind-delayed
+                   ;; Instead of applying a function, f, to a
+                   ;; value, a, to get b, you bind a delayed value
+                   ;; M a to f to get M b.  Binding unboxes M a
+                   ;; into a and then applies f on a.
+                   (jupyter-bind-delayed m f) g))
+             (jupyter-run-with-state '()
+               (jupyter-bind-delayed m
+                 (lambda (x) (jupyter-bind-delayed (funcall f x) g))))))))
 
 (ert-deftest jupyter-mlet* ()
   :tags '(monad)
   (should (equal (jupyter-mlet* ((a (jupyter-return-delayed 1))))
-                 jupyter-io-nil))
+                 (jupyter-bind-delayed (jupyter-return-delayed 1)
+                   (lambda (a) jupyter-io-nil))))
   (should (equal (jupyter-mlet* ((a (jupyter-return-delayed 1)))
                    a)
-                 1))
+                 (jupyter-bind-delayed (jupyter-return-delayed 1)
+                   (lambda (a) (progn a)))))
   (should (equal (jupyter-mlet* ((a (jupyter-return-delayed 2))
                                  (b (jupyter-return-delayed (* a 3))))
                    b)
-                 6)))
+                 (jupyter-bind-delayed (jupyter-return-delayed 2)
+                   (lambda (a)
+                     (jupyter-bind-delayed (jupyter-return-delayed (* a 3))
+                       (lambda (b) (progn b))))))))
 
 (ert-deftest jupyter-publisher/subscriber ()
   :tags '(monad)
