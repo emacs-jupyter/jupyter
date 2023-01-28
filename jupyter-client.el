@@ -732,9 +732,7 @@ text/plain representation."
                         (error "%s" (ansi-color-apply evalue))))))))))
       (jupyter-return-delayed (jupyter-message-data res (or mime :text/plain))))))
 
-(defvar jupyter--eval-insert-execute-result nil)
-
-(defun jupyter-eval-result-callbacks (beg end)
+(defun jupyter-eval-result-callbacks (insert beg end)
   "Return a plist containing callbacks used to display evaluation results.
 The plist contains default callbacks for the :execute-reply,
 :execute-result, and :display-data messages that may be used for
@@ -785,7 +783,7 @@ and END or in pop-up buffers/frames.  See
                     (message evalue)
                   (message "%s: %s" ename evalue)))))))
         ("execute_result"
-         ,(if jupyter--eval-insert-execute-result
+         ,(if insert
               (let ((pos (point-marker))
                     (region (unless (and (= beg (line-beginning-position))
                                          (= end (line-end-position)))
@@ -848,7 +846,7 @@ and END or in pop-up buffers/frames.  See
               ;; TODO: Also inline images?
               (funcall display-overlay "✔"))))))))
 
-(defun jupyter-eval-callbacks (&optional beg end)
+(defun jupyter-eval-callbacks (&optional insert beg end)
   "Return evaluation callbacks.
 
 The callbacks are designed to handle the various message types
@@ -865,7 +863,7 @@ buffer corresponding to the evaluated code.
 See `jupyter-eval-short-result-max-lines' and
 `jupyter-eval-use-overlays'."
   (nconc
-   (jupyter-eval-result-callbacks beg end)
+   (jupyter-eval-result-callbacks insert beg end)
    `(("error"
       ,(jupyter-message-lambda (traceback)
          ;; FIXME: Assumes the error in the
@@ -892,7 +890,7 @@ Return the `jupyter-request' object for the evaluation.
 If BEG and END are non-nil they correspond to the region of the
 current buffer that STR was extracted from.")
 
-(cl-defmethod jupyter-eval-string (str &optional beg end)
+(cl-defmethod jupyter-eval-string (str &optional insert beg end)
   "Evaluate STR using the `jupyter-current-client'."
   (cl-check-type jupyter-current-client jupyter-kernel-client
                  "Not a valid client")
@@ -903,7 +901,7 @@ current buffer that STR was extracted from.")
        :code str
        :store-history nil
        :handlers '("input_request"))
-      (jupyter-eval-callbacks beg end)))))
+      (jupyter-eval-callbacks insert beg end)))))
 
 (defun jupyter-eval-string-command (str)
   "Evaluate STR using the `jupyter-current-client'.
@@ -917,9 +915,11 @@ are displayed in the current buffer instead."
   (interactive (list (jupyter-read-expression)))
   (jupyter-eval-string str))
 
-(defun jupyter-eval-region (beg end)
+(defun jupyter-eval-region (insert beg end)
   "Evaluate a region with the `jupyter-current-client'.
-BEG and END are the beginning and end of the region to evaluate.
+If INSERT is non-nil, insert the result of evaluation in the
+buffer.  BEG and END are the beginning and end of the region to
+evaluate.
 
 If the result of evaluation is more than
 `jupyter-eval-short-result-max-lines' long, a buffer displaying
@@ -928,8 +928,10 @@ with `jupyter-eval-short-result-display-function'.
 
 If `jupyter-eval-use-overlays' is non-nil, evaluation results
 are displayed in the current buffer instead."
-  (interactive "r")
-  (jupyter-eval-string (buffer-substring-no-properties beg end) beg end))
+  (interactive "Pr")
+  (jupyter-eval-string
+   (buffer-substring-no-properties beg end)
+   insert beg end))
 
 (defun jupyter-eval-line-or-region (insert)
   "Evaluate the current line or region with the `jupyter-current-client'.
@@ -939,10 +941,8 @@ If the current region is active send it using
 With a prefix argument, evaluate and INSERT the text/plain
 representation of the results in the current buffer."
   (interactive "P")
-  (let* ((region (when (use-region-p)
-                   (car (region-bounds))))
-         (jupyter--eval-insert-execute-result insert))
-    (jupyter-eval-region
+  (let* ((region (when (use-region-p) (car (region-bounds)))))
+    (jupyter-eval-region insert
      (or (car region) (line-beginning-position))
      (or (cdr region) (line-end-position)))))
 
@@ -968,7 +968,7 @@ representation of the results in the current buffer."
   (interactive)
   (when-let* ((bounds (bounds-of-thing-at-point 'defun)))
     (cl-destructuring-bind (beg . end) bounds
-      (jupyter-eval-region beg end))))
+      (jupyter-eval-region nil beg end))))
 
 ;;;;;; Evaluation overlays
 
