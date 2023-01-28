@@ -235,7 +235,7 @@ this case FN will be evaluated on KERNEL."
                   ('stop (websocket-close ws)))))))
          (status-pub (jupyter-publisher))
          (on-message
-          (lambda (ws frame)
+          (lambda (_ws frame)
             (pcase (websocket-frame-opcode frame)
               ((or 'text 'binary)
                (let ((msg (jupyter-read-plist-from-string
