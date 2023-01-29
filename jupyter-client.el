@@ -485,18 +485,25 @@ longer connected to a kernel."
 
 (defun jupyter-wait-until (req msg-type cb &optional timeout progress-msg)
   "Wait until conditions for a request are satisfied.
-REQ, MSG-TYPE, and CB have the same meaning as in
-`jupyter-add-callback'.  If CB returns non-nil within TIMEOUT
-seconds, return the message that caused CB to return non-nil.  If
-CB never returns a non-nil value within TIMEOUT, return nil.  Note
-that if no TIMEOUT is given, `jupyter-default-timeout' is used.
+REQ is a `jupyter-request', MSG-TYPE is the message type for
+which to wait on and CB is a callback function.  If CB returns
+non-nil within TIMEOUT seconds, return the message that caused CB
+to return non-nil.  If CB never returns a non-nil value within
+TIMEOUT, return nil.  Note that if no TIMEOUT is given,
+`jupyter-default-timeout' is used.
 
 If PROGRESS-MSG is non-nil, it should be a message string to
 display for reporting progress to the user while waiting."
   (declare (indent 2))
   (let (msg)
-    (jupyter-add-callback req
-      msg-type (lambda (m) (setq msg (when (funcall cb m) m))))
+    (jupyter-run-with-io (jupyter-request-message-publisher req)
+      (jupyter-subscribe
+        (jupyter-subscriber
+          (lambda (req-msg)
+            (when (equal (jupyter-message-type req-msg) msg-type)
+              (setq msg (when (funcall cb req-msg) req-msg))
+              (when msg
+                (jupyter-unsubscribe)))))))
     (let* ((timeout-spec (when jupyter--already-waiting-p
                            (with-timeout-suspend)))
            (jupyter--already-waiting-p t))
@@ -509,10 +516,10 @@ display for reporting progress to the user while waiting."
 
 (defun jupyter-wait-until-idle (req &optional timeout progress-msg)
   "Wait until a status: idle message is received for a request.
-REQ has the same meaning as in `jupyter-add-callback'.  If an idle
-message for REQ is received within TIMEOUT seconds, return the
-message.  Otherwise return nil if the message was not received
-within TIMEOUT.  Note that if no TIMEOUT is given, it defaults to
+REQ is a `jupyter-request'.  If an idle message for REQ is
+received within TIMEOUT seconds, return the message.  Otherwise
+return nil if the message was not received within TIMEOUT.  Note
+that if no TIMEOUT is given, it defaults to
 `jupyter-default-timeout'.
 
 If PROGRESS-MSG is non-nil, it is a message string to display for
