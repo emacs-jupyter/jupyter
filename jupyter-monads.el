@@ -300,7 +300,7 @@ Ex. Subscribe to a publisher and unsubscribe after receiving two
 
 (define-error 'jupyter-timeout-before-idle "Timeout before idle")
 
-(cl-defmethod jupyter-send ((dreq function))
+(defun jupyter-sent (dreq)
   (jupyter-mlet* ((client (jupyter-get-state))
                   (req dreq))
     (jupyter-run-with-io (oref client io)
@@ -318,7 +318,7 @@ Ex. Subscribe to a publisher and unsubscribe after receiving two
   "Wait until DREQ has become idle, return DREQ.
 Signal a `jupyter-timeout-before-idle' error if TIMEOUT seconds
 elapses and the request has not become idle yet."
-  (jupyter-mlet* ((req (jupyter-send dreq)))
+  (jupyter-mlet* ((req (jupyter-sent dreq)))
     (or (jupyter-wait-until-idle req timeout)
         (signal 'jupyter-timeout-before-idle (list req)))
     (jupyter-return-delayed req)))

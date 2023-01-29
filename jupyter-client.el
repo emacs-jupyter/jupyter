@@ -652,7 +652,7 @@ user.  Otherwise `read-from-minibuffer' is used."
                    (quit ""))))
       (unwind-protect
           (jupyter-run-with-client client
-            (jupyter-send (jupyter-input-reply :value value)))
+            (jupyter-sent (jupyter-input-reply :value value)))
         (when (eq password t)
           (clear-string value)))
       value)))
@@ -902,7 +902,7 @@ current buffer that STR was extracted from.")
   (cl-check-type jupyter-current-client jupyter-kernel-client
                  "Not a valid client")
   (jupyter-run-with-client jupyter-current-client
-    (jupyter-send
+    (jupyter-sent
      (jupyter-message-subscribed
       (jupyter-execute-request
        :code str
@@ -1520,7 +1520,7 @@ Run FUN when the completions are available."
   (cl-destructuring-bind (code pos)
       (jupyter-code-context 'completion)
     (jupyter-run-with-client jupyter-current-client
-      (jupyter-send
+      (jupyter-sent
        (jupyter-message-subscribed
         (jupyter-complete-request
          :code code

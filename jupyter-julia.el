@@ -189,7 +189,7 @@ nil."
 
 (defun jupyter-julia--setup-hooks (client)
   (jupyter-run-with-client client
-     (jupyter-send
+     (jupyter-sent
       (jupyter-execute-request
        :handlers nil
        :store-history nil

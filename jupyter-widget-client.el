@@ -111,7 +111,7 @@ callbacks."
                          (_ (error "Invalid channel"))))
               (content (jupyter-message-content msg)))
          (jupyter-run-with-client client
-           (jupyter-send
+           (jupyter-sent
             (jupyter-message-subscribed
              (let ((jupyter-inhibit-handlers
                     (if (member msg-type '("comm_info_request"))

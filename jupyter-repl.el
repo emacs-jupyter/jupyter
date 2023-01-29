@@ -827,7 +827,7 @@ Return the `jupyter-request' representing the executed code."
           (save-excursion
             (jupyter-repl-backward-cell)
             (run-hooks 'jupyter-repl-cell-post-send-hook))
-          (jupyter-send (jupyter-return-delayed req)))))))
+          (jupyter-sent (jupyter-return-delayed req)))))))
 
 (cl-defmethod jupyter-handle-payload ((_source (eql set_next_input)) pl
                                       &context (major-mode jupyter-repl-mode))
@@ -1435,7 +1435,7 @@ value."
           (jupyter-repl-replace-cell-code code)))))
    (t
     (jupyter-run-with-client jupyter-current-client
-      (jupyter-send
+      (jupyter-sent
        (let ((req
               (jupyter-execute-request
                :code str
@@ -1687,7 +1687,7 @@ Return the buffer switched to."
     ;; ring.
     (ring-insert jupyter-repl-history 'jupyter-repl-history)
     (jupyter-run-with-client jupyter-current-client
-      (jupyter-send
+      (jupyter-sent
        (jupyter-history-request
         :n jupyter-repl-history-maximum-length
         :raw nil

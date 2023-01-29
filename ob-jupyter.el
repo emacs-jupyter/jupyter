@@ -447,7 +447,7 @@ These parameters are handled internally."
 
 (defun org-babel-jupyter--execute (code async-p)
   (jupyter-run-with-client jupyter-current-client
-    (jupyter-mlet* ((req (jupyter-execute-request :code code)))
+    (jupyter-mlet* ((req (jupyter-sent (jupyter-execute-request :code code))))
       (jupyter-return-delayed
         `(,req
           ,(cond
