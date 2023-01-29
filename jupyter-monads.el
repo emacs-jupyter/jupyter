@@ -303,7 +303,7 @@ Ex. Subscribe to a publisher and unsubscribe after receiving two
 (defun jupyter-sent (dreq)
   (jupyter-mlet* ((client (jupyter-get-state))
                   (req dreq))
-    (jupyter-run-with-io (oref client io)
+    (jupyter-run-with-io (jupyter-kernel-io client)
       (jupyter-do
         (jupyter-subscribe (jupyter-request-message-publisher req))
         (jupyter-publish

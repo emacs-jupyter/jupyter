@@ -443,12 +443,24 @@ kernel whose kernelspec if SPEC."
     (jupyter-hb-unpause client)
     client))
 
+(defun jupyter-kernel-io (client)
+  "Return the I/O function of the kernel CLIENT is connected to."
+  ;; TODO: Mention the messages that can be sent to the
+  ;; `jupyter-publisher'. See `jupyter-websocket-io'.
+  (or (car-safe (oref client io))
+      (error "Invalid value of a client's IO slot.")))
+
+(defun jupyter-kernel-action-subscriber (client)
+  "Return a `jupyter-subscriber' used to modify CLIENT's kernel's state."
+  (or (car (cdr-safe (oref client io)))
+      (error "Invalid value of a client's IO slot.")))
+
 (defun jupyter-kernel-action (client fn)
   "Evaluate FN on the kernel CLIENT is connected to.
 FN takes a single argument which will be the kernel object."
   (declare (indent 1))
-  (pcase-let ((`(,_ ,kaction-sub) (oref client io))
-              (res nil))
+  (let ((kaction-sub (jupyter-kernel-action-subscriber client))
+        (res nil))
     (jupyter-run-with-io kaction-sub
       (jupyter-publish
         (list 'action
@@ -462,20 +474,20 @@ FN takes a single argument which will be the kernel object."
   "Shutdown the kernel CLIENT is connected to.
 After CLIENT shuts down the kernel it is connected to, it is no
 longer connected to a kernel."
-  (pcase-let ((`(,_ ,kaction-sub) (oref client io)))
+  (let ((kaction-sub (jupyter-kernel-action-subscriber client)))
     (jupyter-run-with-io kaction-sub
       (jupyter-publish 'shutdown))
     (jupyter-disconnect client)))
 
 (cl-defmethod jupyter-restart-kernel ((client jupyter-kernel-client))
   "Restart the kernel CLIENT is connected to."
-  (pcase-let ((`(,_ ,kaction-sub) (oref client io)))
+  (let ((kaction-sub (jupyter-kernel-action-subscriber client)))
     (jupyter-run-with-io kaction-sub
       (jupyter-publish 'restart))))
 
 (cl-defmethod jupyter-interrupt-kernel ((client jupyter-kernel-client))
   "Interrupt the kernel CLIENT is connected to."
-  (pcase-let ((`(,_ ,kaction-sub) (oref client io)))
+  (let ((kaction-sub (jupyter-kernel-action-subscriber client)))
     (jupyter-run-with-io kaction-sub
       (jupyter-publish 'interrupt))))
 
