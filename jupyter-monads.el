@@ -88,20 +88,18 @@
       (funcall (funcall mfn value) state))))
 
 (defmacro jupyter-mlet* (varlist &rest body)
-  "Bind the I/O values in VARLIST, evaluate BODY.
-Return the result of evaluating BODY."
+  "Bind the monadic values in VARLIST, evaluate BODY.
+Return the result of evaluating BODY.  The result of evaluating
+BODY should be another monadic value."
   (declare (indent 1) (debug ((&rest (symbolp form)) body)))
-  (letrec ((value (make-symbol "value"))
-           (binder
-            (lambda (vars)
-              (if (zerop (length vars))
-                  (if (zerop (length body)) 'jupyter-io-nil
-                    `(progn ,@body))
-                (pcase-let ((`(,name ,mvalue) (car vars)))
-                  `(jupyter-bind-delayed ,mvalue
-                     (lambda (,name)
-                       ,(funcall binder (cdr vars)))))))))
-    (funcall binder varlist)))
+  (if (null varlist)
+      (if (zerop (length body)) 'jupyter-io-nil
+        `(progn ,@body))
+    (pcase-let ((`(,name ,mvalue) (car varlist)))
+      `(jupyter-bind-delayed ,mvalue
+         (lambda (,name)
+           (jupyter-mlet* ,(cdr varlist)
+             ,@body))))))
 
 (defmacro jupyter-do (&rest actions)
   "Return an I/O action that performs all actions in IO-ACTIONS.
