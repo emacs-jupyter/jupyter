@@ -1827,7 +1827,8 @@ the updated state."
           (save-excursion
             (goto-char (point-max))
             (jupyter-repl-update-cell-count
-             (oref client execution-count))))))))
+             (oref client execution-count)))))
+      (jupyter-return-delayed nil))))
 
 ;;; `jupyter-repl-interaction-mode'
 
