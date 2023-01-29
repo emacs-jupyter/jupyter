@@ -241,10 +241,7 @@ passed as the argument has a language of LANG."
 In addition, set `jupyter-current-io' to the value of CLIENT's IO
 slot."
   (declare (indent 1))
-  `(let* ((jupyter-current-client ,client)
-          (jupyter-current-io
-           (or (car (oref jupyter-current-client io))
-               (error "Client not connected to a kernel"))))
+  `(let ((jupyter-current-client ,client))
      ,@body))
 
 (defmacro define-jupyter-client-handler (type &optional args doc &rest body)

@@ -50,8 +50,6 @@
   "Monadic Jupyter I/O"
   :group 'jupyter)
 
-(cl-defstruct jupyter-delayed value)
-
 (defun jupyter-return-delayed (value)
   "Return an I/O value wrapping VALUE."
   (declare (indent 0))
@@ -66,11 +64,6 @@
   (lambda (_state) (cons nil value)))
 
 (defvar jupyter-io-cache (make-hash-table :weakness 'key))
-
-(defvar jupyter-current-io
-  (lambda (content)
-    (error "Unhandled I/O: %s" content))
-  "The current I/O context.")
 
 (cl-defgeneric jupyter-io (thing)
   "Return the I/O object of THING.")
