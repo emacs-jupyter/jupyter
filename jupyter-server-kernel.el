@@ -218,22 +218,7 @@ this case FN will be evaluated on KERNEL."
   (jupyter-launch kernel)
   (let* ((ws nil)
          (shutdown nil)
-         (kernel-io
-          (jupyter-publisher
-            (lambda (event)
-              (if shutdown (error "Kernel shutdown!")
-                (pcase event
-                  (`(message . ,rest) (jupyter-content rest))
-                  (`(send ,channel ,msg-type ,content ,msg-id)
-                   (websocket-send-text
-                    ws (let* ((cd (websocket-client-data ws))
-                              (session (plist-get cd :session)))
-                         (jupyter-encode-raw-message session msg-type
-                           :channel channel
-                           :msg-id msg-id
-                           :content content))))
-                  ('start (websocket-ensure-connected ws))
-                  ('stop (websocket-close ws)))))))
+         (kernel-io nil)
          (status-pub (jupyter-publisher))
          (on-message
           (lambda (_ws frame)
@@ -256,7 +241,24 @@ this case FN will be evaluated on KERNEL."
              :custom-header-alist (jupyter-api-auth-headers server)
              ;; TODO: on-error publishes to status-pub
              :on-message on-message))))
-      (setq ws (funcall make-websocket))
+      (setq ws (funcall make-websocket)
+            kernel-io (jupyter-publisher
+                        (lambda (event)
+                          (if shutdown (error "Kernel shutdown!")
+                            (pcase event
+                              (`(message . ,rest) (jupyter-content rest))
+                              (`(send ,channel ,msg-type ,content ,msg-id)
+                               (websocket-send-text
+                                ws (let* ((cd (websocket-client-data ws))
+                                          (session (plist-get cd :session)))
+                                     (jupyter-encode-raw-message session msg-type
+                                       :channel channel
+                                       :msg-id msg-id
+                                       :content content))))
+                              ('start
+                               (unless (websocket-openp ws)
+                                 (setq ws (funcall make-websocket))))
+                              ('stop (websocket-close ws)))))))
       (let ((pub (or (gethash server jupyter--reauth-subscribers)
                      (setf (gethash server jupyter--reauth-subscribers)
                            (jupyter-publisher)))))
