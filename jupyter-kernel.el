@@ -121,7 +121,7 @@ KERNEL."
   (jupyter-shutdown kernel)
   (jupyter-launch kernel))
 
-(cl-defgeneric jupyter-interrupt ((kernel jupyter-kernel))
+(cl-defgeneric jupyter-interrupt ((_kernel jupyter-kernel))
   "Interrupt KERNEL."
   (ignore))
 

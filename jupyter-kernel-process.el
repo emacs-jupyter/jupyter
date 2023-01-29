@@ -377,7 +377,7 @@ See also https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-spe
     (cl-call-next-method)))
 
 ;; TODO
-(cl-defmethod jupyter-restart ((kernel jupyter-kernel-process))
+(cl-defmethod jupyter-restart ((_kernel jupyter-kernel-process))
   (cl-call-next-method))
 
 ;; TODO Fallback to interrupt_request on kernel's control channel

@@ -376,25 +376,25 @@ If it does not contain a valid value, raise an error."
 
 ;;; Starting communication with a kernel
 
-(cl-defmethod jupyter-alive-p ((client jupyter-kernel-client) &optional channel)
+(cl-defmethod jupyter-alive-p ((client jupyter-kernel-client) &optional _channel)
   (when-let* ((kernel (jupyter-kernel client)))
     (and (jupyter-alive-p kernel)
          (jupyter-alive-p (jupyter-io kernel)))))
 
-(cl-defmethod jupyter-hb-pause ((client jupyter-kernel-client))
+(cl-defmethod jupyter-hb-pause ((_client jupyter-kernel-client))
   ;; (when-let* ((kernel (jupyter-kernel client))
   ;;             (hb (jupyter-send (jupyter-io kernel) 'hb)))
   ;;   (jupyter-hb-pause hb))
 
   )
 
-(cl-defmethod jupyter-hb-unpause ((client jupyter-kernel-client))
+(cl-defmethod jupyter-hb-unpause ((_client jupyter-kernel-client))
   ;; (when-let* ((kernel (jupyter-kernel client))
   ;;             (hb (jupyter-send (jupyter-io kernel) 'hb)))
   ;;   (jupyter-hb-unpause hb))
   )
 
-(cl-defmethod jupyter-hb-beating-p ((client jupyter-kernel-client))
+(cl-defmethod jupyter-hb-beating-p ((_client jupyter-kernel-client))
   "Is CLIENT still connected to its kernel?"
   t
   ;; (when-let* ((kernel (jupyter-kernel client)))

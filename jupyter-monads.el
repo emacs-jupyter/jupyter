@@ -43,6 +43,7 @@
 (require 'thunk)
 
 (declare-function jupyter-handle-message "jupyter-client")
+(declare-function jupyter-kernel-io "jupyter-client")
 (declare-function jupyter-generate-request "jupyter-client")
 
 (defgroup jupyter-monads nil
@@ -62,7 +63,7 @@
   (lambda (state) (cons state state)))
 
 (defun jupyter-put-state (value)
-  (lambda (state) (cons nil value)))
+  (lambda (_state) (cons nil value)))
 
 (defvar jupyter-io-cache (make-hash-table :weakness 'key))
 

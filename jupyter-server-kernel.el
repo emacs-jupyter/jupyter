@@ -33,6 +33,10 @@
 (require 'jupyter-monads)
 (require 'websocket)
 
+(declare-function jupyter-tramp-server-from-file-name "jupyter-tramp")
+(declare-function jupyter-tramp-file-name-p "jupyter-tramp")
+(declare-function jupyter-server-kernel-id-from-name "jupyter-server")
+
 (defgroup jupyter-server-kernel nil
   "Kernel behind a Jupyter server"
   :group 'jupyter)
@@ -58,7 +62,7 @@ Used in, e.g. a `jupyter-server-kernel-list-mode' buffer.")
     :documentation "Kernelspecs for the kernels available behind
 this gateway.  Access them through `jupyter-kernelspecs'.")))
 
-(cl-defmethod make-instance ((class (subclass jupyter-server)) &rest slots)
+(cl-defmethod make-instance ((_class (subclass jupyter-server)) &rest slots)
   (cl-assert (plist-get slots :url))
   (or (cl-loop
        with url = (plist-get slots :url)

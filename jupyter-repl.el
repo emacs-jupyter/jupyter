@@ -62,6 +62,10 @@
 (require 'jupyter-widget-client)
 (require 'ring)
 
+(declare-function jupyter-notebook-process "jupyter-server")
+(declare-function jupyter-launch-notebook "jupyter-server")
+(declare-function jupyter-server "jupyter-server")
+
 ;;; User variables
 
 (defface jupyter-repl-input-prompt
@@ -1508,9 +1512,9 @@ the kernel `jupyter-current-client' is connected to."
         ;; `jupyter-start-new-kernel' that handles the status: starting message
         ;; so its easier to hook into that message.
         (message "Client's kernel may not have been shutdown")
-        (jupyter-repl--insert-banner-and-prompt client)))))
-  (when restart
-    (jupyter-hb-unpause client)))
+        (jupyter-repl--insert-banner-and-prompt client))))
+    (when restart
+      (jupyter-hb-unpause client))))
 
 ;;; Isearch
 ;; Adapted from isearch in `comint', see `comint-history-isearch-search' for
@@ -1805,7 +1809,7 @@ it."
 Also update the cell count of the current REPL input prompt using
 the updated state."
   (jupyter-run-with-client jupyter-current-client
-    (jupyter-mlet* ((msg (jupyter-reply
+    (jupyter-mlet* ((_msg (jupyter-reply
                           (jupyter-execute-request
                            :code ""
                            :silent t
