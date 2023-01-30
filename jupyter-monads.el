@@ -50,12 +50,22 @@
   "Monadic Jupyter"
   :group 'jupyter)
 
+(defconst jupyter--return-nil (lambda (state) (cons nil state)))
+
 (defun jupyter-return (value)
   "Return a monadic value wrapping VALUE."
-  (declare (indent 0))
+  (declare (indent 0)
+           (compiler-macro
+            (lambda (exp)
+              (cond
+               ((null value)
+                'jupyter--return-nil)
+               ((if (atom value)
+                    (not (symbolp value))
+                  (eq (car value) 'quote))
+                `(lambda (state) (cons ,value state)))
+               (t exp)))))
   (lambda (state) (cons value state)))
-
-(defconst jupyter-io-nil (jupyter-return nil))
 
 (defun jupyter-get-state ()
   "Return a monadic valid whose unwrapped value is the current state."
