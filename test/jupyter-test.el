@@ -2958,6 +2958,7 @@ publish_display_data({'text/plain': \"foo\", 'text/latex': \"$\\alpha$\"});"
 
 (ert-deftest org-babel-jupyter-pandoc-output-order ()
   :tags '(org pandoc)
+  (skip-unless (executable-find "pandoc"))
   ;; See #351
   (ert-info ("Ensure output order doesn't depend on Pandoc processing time")
     (ert-info ("Async")
