@@ -1,48 +1,47 @@
 on: push
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        emacs-version: [26.3, 27.2, 28.2, snapshot]
+    defaults:
+      run:
+        shell: bash -el {0}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.emacs-version == 'snapshot' }}
     steps:
       - uses: actions/checkout@v3
-      - uses: cachix/install-nix-action@v18
-        with:
-          nix_path: nixpkgs=channel:nixos-unstable
-          extra_nix_config: |
-            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
       - uses: purcell/setup-emacs@master
         with:
-          version: 27.2
-      - run: |
-          cat << 'EOF' > script.sh
-          #!/usr/bin/env bash
+          version: ${{ matrix.emacs-version }}
+        if: ${{ matrix.os != 'windows-latest' }}
+      - uses: jcs090218/setup-emacs-windows@master
+        with:
+          version: ${{ matrix.emacs-version }}
+        if: ${{ matrix.os == 'windows-latest' }}
+      - uses: conda-incubator/setup-miniconda@v2
+        with:
+          python-version: 3.9
+      - name: Install requirements
+        run: |
+          git clone https://github.com/cask/cask emacs-cask
+          export PATH=$PWD/emacs-cask/bin:$PATH
+          # Make cask available to all future actions
+          echo "$PWD/emacs-cask/bin" >> $GITHUB_PATH
+
+          conda install -c conda-forge pandoc
+          conda install -c anaconda jupyter
+          make dev
+      - name: Check Jupyter version
+        run: |
           mkdir -p $(jupyter --runtime-dir)
           jupyter --paths
           jupyter --version
           jupyter kernelspec list
-
-          make dev
+      - name: Byte compilation
+        run: |
           make compile
+      - name: Run tests
+        run: |
           make test
-          EOF
-
-          cat << EOF > shell.nix
-          { pkgs ? import <nixpkgs> {} }:
-          let
-            pypkgs = p: with p; [
-              jupyter-core
-              jupyter-client
-              ipykernel
-              notebook
-            ];
-          in pkgs.mkShell {
-            packages = [
-              pkgs.pandoc
-              (pkgs.python3.withPackages pypkgs)
-            ];
-          }
-          EOF
-
-          git clone https://github.com/cask/cask ~/.cask
-          export PATH=$HOME/.cask/bin:$PATH
-          chmod +x script.sh
-          nix-shell --run ./script.sh
