@@ -1,16 +1,23 @@
 EMACS ?= emacs
-SHELL = bash
+SHELL ?= bash
 CASK ?= $(shell command -v cask)
 
 FILES = $(wildcard *.el)
 ELCFILES = $(FILES:.el=.elc)
+TESTFILES = $(foreach file,$(wildcard test/*.el),-l $(file))
+TESTSELECTORS =
 
 ifneq ($(TAGS),)
-override TAGS := -t $(TAGS)
+comma := ,
+TESTSELECTORS := $(foreach tag,$(subst $(comma), ,$(TAGS)),(tag $(tag)))
 endif
 
 ifneq ($(PATTERN),)
-override PATTERN := -p $(PATTERN)
+TESTSELECTORS := $(TESTSELECTORS) \"$(PATTERN)\"
+endif
+
+ifneq ($(TESTSELECTORS),)
+TESTSELECTORS := (quote (or $(TESTSELECTORS)))
 endif
 
 .PHONY: all
@@ -39,9 +46,12 @@ dev: cask
 	$(CASK) install
 	$(CASK) update
 
+test: export EMACSLOADPATH = $(shell $(CASK) load-path)
+
 .PHONY: test
 test: zmq
-	$(CASK) exec ert-runner --script $(TAGS) $(PATTERN)
+	$(EMACS) -nw -Q -batch -l ert $(TESTFILES) \
+	    --eval "(ert-run-tests-batch-and-exit $(TESTSELECTORS))"
 
 .PHONY: clean
 clean:
