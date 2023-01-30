@@ -1548,7 +1548,7 @@ last element being the newest element added to the history."
       (should (= (point-max) (jupyter-repl-cell-code-end-position)))
       (jupyter-test-repl-ret-sync)
       (jupyter-repl-backward-cell)
-      (should (= (1+ (line-end-position)) (jupyter-repl-cell-code-end-position))))
+      (should (= (line-end-position) (jupyter-repl-cell-code-end-position))))
     (jupyter-ert-info ("Beginning of a cell")
       (should (= (point) (jupyter-repl-cell-code-beginning-position)))
       (should (get-text-property (- (point) 2) 'jupyter-cell))
