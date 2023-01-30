@@ -526,33 +526,45 @@ then the source code block will begin like
 Note if ARGS contains a key, regexp, then if regexp is non-nil,
 EXPECTED-RESULT is a regular expression to match against the
 results instead of an equality match."
-  (let (regexp)
-    (setq args
-          (cl-loop for (arg val) on args by #'cddr
-                   if (eq arg :regexp) do (setq regexp val)
-                   else collect (cons arg val)))
-    `(jupyter-org-test
-      (jupyter-org-test-src-block-1 ,block ,expected-result ,regexp ',args))))
+  `(jupyter-org-test
+    (jupyter-org-test-src-block-1
+     ,block ,expected-result ,@args)))
 
 (defun jupyter-org-test-make-block (code args)
-  (let ((arg-str (mapconcat
-                  (lambda (x)
-                    (cl-destructuring-bind (name . val) x
-                      (concat (symbol-name name) " " (format "%s" val))))
-                  args " ")))
+  (let ((arg-str
+         (let ((s (concat ":session " jupyter-org-test-session)))
+           (while args
+             (setq s (concat (symbol-name (car args)) " "
+                             (format "%s" (cadr args)) " "
+                             s))
+             (setq args (cddr args)))
+           s)))
     (concat
-     "#+BEGIN_SRC jupyter-python " arg-str " :session "
-     jupyter-org-test-session "\n"
+     "#+BEGIN_SRC jupyter-python " arg-str "\n"
      code "\n"
      "#+END_SRC")))
 
-(defun jupyter-org-test-src-block-1 (code test-result &optional regexp args)
-  (let ((src-block (jupyter-org-test-make-block code args)))
+(defun jupyter-test-plist-without-prop (plist prop)
+  (let ((head plist))
+    (while (eq (car head) prop)
+      (setq head (cddr head)
+            plist head))
+    (setq plist (cdr plist))
+    (while (cdr plist)
+      (when (eq (cadr plist) prop)
+        (setcdr plist (cdddr plist)))
+      (setq plist (cddr plist)))
+    head))
+
+(defun jupyter-org-test-src-block-1 (code test-result &rest args)
+  (let ((regexp (plist-get args :regexp))
+        (src-block (jupyter-org-test-make-block
+                    code (jupyter-test-plist-without-prop args :regexp))))
     (insert src-block)
     (let* ((info (org-babel-get-src-block-info)))
       (save-window-excursion
         (org-babel-execute-src-block nil info)
-        (when (equal (alist-get :async args) "yes")
+        (when (equal (plist-get args :async) "yes")
           ;; Add a delay to try and ensure the last request of the
           ;; client has been completed.
           (sleep-for 0.2))

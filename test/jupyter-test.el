@@ -2852,11 +2852,11 @@ x
                (jupyter-eval "import os; os.getcwd()")))
             1 -1)))
       (ert-info ("Python")
-        (eval `(jupyter-org-test-src-block
-                "\
+        (jupyter-org-test-src-block
+          "\
 os.path.abspath(os.getcwd())"
-                ,(concat ": " (funcall convert-path dir) "\n")
-                :dir ,dir))
+          (concat ": " (funcall convert-path dir) "\n")
+          :dir dir)
         (ert-info ("Directory restored")
           (jupyter-org-test-src-block
            "\
@@ -2878,9 +2878,7 @@ os.path.abspath(os.getcwd())"
             (jupyter-org-test
              (let ((default-directory (file-name-directory dir)))
                (jupyter-org-test-src-block-1
-                "print(\"hi\")"
-                ": hi\n" nil
-                `((:dir . ,(file-name-base dir))))))))))))
+                "print(\"hi\")" ": hi\n" :dir (file-name-base dir))))))))))
 
 (ert-deftest jupyter-org--find-mime-types ()
   :tags '(org mime)
