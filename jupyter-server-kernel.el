@@ -222,7 +222,25 @@ this case FN will be evaluated on KERNEL."
   (jupyter-launch kernel)
   (let* ((ws nil)
          (shutdown nil)
-         (kernel-io nil)
+         (make-websocket nil)
+         (kernel-io
+          (jupyter-publisher
+            (lambda (event)
+              (if shutdown (error "Kernel shutdown!")
+                (pcase event
+                  (`(message . ,rest) (jupyter-content rest))
+                  (`(send ,channel ,msg-type ,content ,msg-id)
+                   (websocket-send-text
+                    ws (let* ((cd (websocket-client-data ws))
+                              (session (plist-get cd :session)))
+                         (jupyter-encode-raw-message session msg-type
+                           :channel channel
+                           :msg-id msg-id
+                           :content content))))
+                  ('start
+                   (unless (websocket-openp ws)
+                     (setq ws (funcall make-websocket))))
+                  ('stop (websocket-close ws)))))))
          (status-pub (jupyter-publisher))
          (on-message
           (lambda (_ws frame)
@@ -236,42 +254,23 @@ this case FN will be evaluated on KERNEL."
                (jupyter-run-with-io status-pub
                  (jupyter-publish
                    (list 'error (websocket-frame-opcode frame)))))))))
-    (pcase-let*
-        (((cl-struct jupyter-server-kernel server id) kernel)
-         (make-websocket
-          (lambda ()
-            (jupyter-api-kernel-websocket
-             server id
-             :custom-header-alist (jupyter-api-auth-headers server)
-             ;; TODO: on-error publishes to status-pub
-             :on-message on-message))))
-      (setq ws (funcall make-websocket)
-            kernel-io (jupyter-publisher
-                        (lambda (event)
-                          (if shutdown (error "Kernel shutdown!")
-                            (pcase event
-                              (`(message . ,rest) (jupyter-content rest))
-                              (`(send ,channel ,msg-type ,content ,msg-id)
-                               (websocket-send-text
-                                ws (let* ((cd (websocket-client-data ws))
-                                          (session (plist-get cd :session)))
-                                     (jupyter-encode-raw-message session msg-type
-                                       :channel channel
-                                       :msg-id msg-id
-                                       :content content))))
-                              ('start
-                               (unless (websocket-openp ws)
-                                 (setq ws (funcall make-websocket))))
-                              ('stop (websocket-close ws)))))))
-      (let ((pub (or (gethash server jupyter--reauth-subscribers)
-                     (setf (gethash server jupyter--reauth-subscribers)
-                           (jupyter-publisher)))))
-        (jupyter-run-with-io pub
-          (jupyter-subscribe
-            (jupyter-subscriber
-              (lambda (_reauth)
-                (websocket-close ws)
-                (setq ws (funcall make-websocket)))))))
+    (pcase-let* (((cl-struct jupyter-server-kernel server id) kernel)
+                 (pub (or (gethash server jupyter--reauth-subscribers)
+                          (setf (gethash server jupyter--reauth-subscribers)
+                                (jupyter-publisher)))))
+      (setq make-websocket (lambda ()
+                             (jupyter-api-kernel-websocket
+                              server id
+                              :custom-header-alist (jupyter-api-auth-headers server)
+                              ;; TODO: on-error publishes to status-pub
+                              :on-message on-message))
+            ws (funcall make-websocket))
+      (jupyter-run-with-io pub
+        (jupyter-subscribe
+          (jupyter-subscriber
+            (lambda (_reauth)
+              (websocket-close ws)
+              (setq ws (funcall make-websocket))))))
       (list kernel-io
             (jupyter-subscriber
               (lambda (action)
