@@ -63,7 +63,7 @@
 (defun jupyter-put-state (value)
   (lambda (_state) (cons nil value)))
 
-(defun jupyter-bind-delayed (mvalue mfn)
+(defun jupyter-bind (mvalue mfn)
   "Bind MVALUE to MFN."
   (declare (indent 1))
   (lambda (state)
@@ -79,7 +79,7 @@ BODY should be another monadic value."
       (if (zerop (length body)) 'jupyter-io-nil
         `(progn ,@body))
     (pcase-let ((`(,name ,mvalue) (car varlist)))
-      `(jupyter-bind-delayed ,mvalue
+      `(jupyter-bind ,mvalue
          (lambda (,name)
            (jupyter-mlet* ,(cdr varlist)
              ,@body))))))

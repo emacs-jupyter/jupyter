@@ -37,40 +37,40 @@
         (m (jupyter-return 9)))
     (should (equal
              (jupyter-run-with-state '()
-               (jupyter-bind-delayed (jupyter-return 1) f))
+               (jupyter-bind (jupyter-return 1) f))
              (jupyter-run-with-state '()
                (funcall f 1))))
     (should (equal (jupyter-run-with-state '()
-                     (jupyter-bind-delayed m #'jupyter-return))
+                     (jupyter-bind m #'jupyter-return))
                    (jupyter-run-with-state '()
                      m)))
     (should (equal
              (jupyter-run-with-state '()
-               (jupyter-bind-delayed
+               (jupyter-bind
                    ;; Instead of applying a function, f, to a
                    ;; value, a, to get b, you bind a delayed value
                    ;; M a to f to get M b.  Binding unboxes M a
                    ;; into a and then applies f on a.
-                   (jupyter-bind-delayed m f) g))
+                   (jupyter-bind m f) g))
              (jupyter-run-with-state '()
-               (jupyter-bind-delayed m
-                 (lambda (x) (jupyter-bind-delayed (funcall f x) g))))))))
+               (jupyter-bind m
+                 (lambda (x) (jupyter-bind (funcall f x) g))))))))
 
 (ert-deftest jupyter-mlet* ()
   :tags '(monad)
   (should (equal (jupyter-mlet* ((a (jupyter-return 1))))
-                 (jupyter-bind-delayed (jupyter-return 1)
+                 (jupyter-bind (jupyter-return 1)
                    (lambda (a) jupyter-io-nil))))
   (should (equal (jupyter-mlet* ((a (jupyter-return 1)))
                    a)
-                 (jupyter-bind-delayed (jupyter-return 1)
+                 (jupyter-bind (jupyter-return 1)
                    (lambda (a) (progn a)))))
   (should (equal (jupyter-mlet* ((a (jupyter-return 2))
                                  (b (jupyter-return (* a 3))))
                    b)
-                 (jupyter-bind-delayed (jupyter-return 2)
+                 (jupyter-bind (jupyter-return 2)
                    (lambda (a)
-                     (jupyter-bind-delayed (jupyter-return (* a 3))
+                     (jupyter-bind (jupyter-return (* a 3))
                        (lambda (b) (progn b))))))))
 
 (ert-deftest jupyter-publisher/subscriber ()
