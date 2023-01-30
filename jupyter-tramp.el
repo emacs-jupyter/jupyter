@@ -331,7 +331,9 @@ fails."
       (jupyter-api-http-error
        (cl-destructuring-bind (_ code msg) err
          (if (and (eq code 404)
-                  (string-match-p "No such file or directory" msg))
+                  (string-match-p
+                   "\\(?:No such \\)?file or directory\\(?:does not exist\\)?"
+                   msg))
              (list :path path :name nil
                    ;; If a file doesn't exist we need to check if the
                    ;; containing directory is writable to determine if
