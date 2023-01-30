@@ -2031,7 +2031,7 @@ Latex(r'$\\alpha$')"
   :tags '(org)
   (let* ((default-directory (file-name-directory
                              (locate-library "jupyter")))
-         (org-babel-jupyter-resource-directory "./")
+         (jupyter-org-resource-directory "./")
          (file (expand-file-name "jupyter.png"))
          (py-version (jupyter-kernel-action
                         (jupyter-org-test-session-client "python")
