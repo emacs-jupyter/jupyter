@@ -243,7 +243,7 @@ request data."
   (when data
     (setq data (json-encode-plist data))
     (when (multibyte-string-p data)
-      (setq data (encode-coding-string data 'utf-8))))
+      (setq data (encode-coding-string data 'utf-8 'nocopy))))
   (let ((jupyter-api-request-method method)
         (jupyter-api-request-data (or data jupyter-api-request-data))
         (jupyter-api-request-headers

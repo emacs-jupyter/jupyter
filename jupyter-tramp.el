@@ -680,6 +680,7 @@ the server.  For any other file, call ORIG, which is the function
           (unwind-protect
               (with-temp-buffer
                 (insert-file-contents-literally tmpfile)
+                (decode-coding-region (point-min) (point-max) 'utf-8-auto)
                 (jupyter-api-write-file-content
                     jupyter-current-server
                   filename (buffer-string) binary))
