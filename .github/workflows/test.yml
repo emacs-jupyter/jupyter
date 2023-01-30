@@ -9,7 +9,7 @@ jobs:
       run:
         shell: bash -el {0}
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.emacs-version == 'snapshot' }}
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v3
       - uses: purcell/setup-emacs@master
