@@ -1,4 +1,4 @@
-;;; jupyter-monads.el --- Monadic Jupyter I/O -*- lexical-binding: t -*-
+;;; jupyter-monads.el --- Monadic Jupyter -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2020 Nathaniel Nicandro
 
@@ -47,20 +47,23 @@
 (declare-function jupyter-generate-request "jupyter-client")
 
 (defgroup jupyter-monads nil
-  "Monadic Jupyter I/O"
+  "Monadic Jupyter"
   :group 'jupyter)
 
 (defun jupyter-return (value)
-  "Return an I/O value wrapping VALUE."
+  "Return a monadic value wrapping VALUE."
   (declare (indent 0))
   (lambda (state) (cons value state)))
 
 (defconst jupyter-io-nil (jupyter-return nil))
 
 (defun jupyter-get-state ()
+  "Return a monadic valid whose unwrapped value is the current state."
   (lambda (state) (cons state state)))
 
 (defun jupyter-put-state (value)
+  "Return a monadic value that sets the current state to VALUE.
+The unwrapped value is nil."
   (lambda (_state) (cons nil value)))
 
 (defun jupyter-bind (mvalue mfn)
@@ -85,9 +88,9 @@ BODY should be another monadic value."
              ,@body))))))
 
 (defmacro jupyter-do (&rest actions)
-  "Return an I/O action that performs all actions in IO-ACTIONS.
+  "Return a monadic value that performs all actions in ACTIONS.
 The actions are evaluated in the order given.  The result of the
-returned action is the result of the last action in IO-ACTIONS."
+returned action is the result of the last action in ACTIONS."
   (declare (indent 0) (debug (body)))
   (if (zerop (length actions)) 'jupyter-io-nil
     (let ((result (make-symbol "result")))
