@@ -24,6 +24,8 @@
 
 ;;; Code:
 
+(require 'jupyter-monads)
+
 ;; Kernel messages are property list representations of JSON encoded
 ;; strings.
 
