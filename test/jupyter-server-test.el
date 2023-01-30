@@ -310,40 +310,6 @@
             (should (equal (jupyter-eval "1 + 1") "2"))
           (jupyter-test-kill-buffer (current-buffer)))))))
 
-(ert-deftest org-babel-jupyter-server-session ()
-  :tags '(server org)
-  (require 'ob-jupyter)
-  (jupyter-test-with-notebook server
-    (let* ((remote (file-remote-p (jupyter-tramp-file-name-from-url (oref server url))))
-           (initiate-session
-            (lambda (session &optional args)
-              (erase-buffer)
-              (insert (format "\
-#+BEGIN_SRC jupyter-python :session %s %s
-1 + 1
-#+END_SRC" session (or args "")))
-              (goto-char (point-min))
-              (let ((params (nth 2 (org-babel-get-src-block-info))))
-                (org-babel-jupyter-initiate-session
-                 (alist-get :session params) params)))))
-      (with-temp-buffer
-        (org-mode)
-        (ert-info ("No session name")
-          (should-error (funcall initiate-session remote)))
-        (ert-info ("Non-existent kernel")
-          (should-error (funcall initiate-session (concat remote "py") ":kernel foo")))
-        (ert-info ("Connect to an existing kernel")
-          (let* ((id (plist-get (jupyter-api-start-kernel server) :id))
-                 (session (funcall initiate-session (concat remote id))))
-            (unwind-protect
-                (should (not (null session)))
-              (jupyter-test-kill-buffer session))))
-        (ert-info ("Start a new kernel")
-          (let ((session (funcall initiate-session (concat remote "py"))))
-            (unwind-protect
-                (should (not (null session)))
-              (jupyter-test-kill-buffer session))))))))
-
 ;;; Naming kernels
 
 (ert-deftest jupyter-server-cull-kernel-names ()
@@ -436,11 +402,43 @@
 
 (ert-deftest org-babel-jupyter-server-session ()
   :tags '(org server)
-  (let ((session (org-babel-jupyter-parse-session "/jpy::foo/bar.json")))
-    (should (org-babel-jupyter-server-session-p session))
-    (should (equal (org-babel-jupyter-session-name session) "/jpy::foo/bar.json")))
-  (let ((session (org-babel-jupyter-parse-session "/jpy::foo/bar")))
-    (should (org-babel-jupyter-server-session-p session))
-    (should (equal (org-babel-jupyter-session-name session) "/jpy::foo/bar"))))
+  (require 'ob-jupyter)
+  (jupyter-test-with-notebook server
+    (let* ((remote (file-remote-p (jupyter-tramp-file-name-from-url (oref server url))))
+           (initiate-session
+            (lambda (session &optional args)
+              (erase-buffer)
+              (insert (format "\
+#+BEGIN_SRC jupyter-python :session %s %s
+1 + 1
+#+END_SRC" session (or args "")))
+              (goto-char (point-min))
+              (let ((params (nth 2 (org-babel-get-src-block-info))))
+                (org-babel-jupyter-initiate-session
+                 (alist-get :session params) params)))))
+      (with-temp-buffer
+        (org-mode)
+        (ert-info ("No session name")
+          (should-error (funcall initiate-session remote)))
+        (ert-info ("Non-existent kernel")
+          (should-error (funcall initiate-session (concat remote "py") ":kernel foo")))
+        (ert-info ("Connect to an existing kernel")
+          (let* ((id (plist-get (jupyter-api-start-kernel server) :id))
+                 (session (funcall initiate-session (concat remote id))))
+            (unwind-protect
+                (should (not (null session)))
+              (jupyter-test-kill-buffer session))))
+        (ert-info ("Start a new kernel")
+          (let ((session (funcall initiate-session (concat remote "py"))))
+            (unwind-protect
+                (should (not (null session)))
+              (jupyter-test-kill-buffer session)))))))
+  (ert-info ("Test parsing session paths")
+    (let ((session (org-babel-jupyter-parse-session "/jpy::foo/bar.json")))
+      (should (org-babel-jupyter-server-session-p session))
+      (should (equal (org-babel-jupyter-session-name session) "/jpy::foo/bar.json")))
+    (let ((session (org-babel-jupyter-parse-session "/jpy::foo/bar")))
+      (should (org-babel-jupyter-server-session-p session))
+      (should (equal (org-babel-jupyter-session-name session) "/jpy::foo/bar")))))
 
 ;;; jupyter-server-test.el ends here
