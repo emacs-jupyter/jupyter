@@ -1523,9 +1523,10 @@ EL is an Org element with the properties
                        (set-marker src-pos nil)
                        (when (jupyter-org--search-for-text-property 'jupyter-pandoc proc)
                          (delete-region (point)
-                                        (1+ (or (next-single-property-change
-                                                 (point) 'jupyter-pandoc)
-                                                (point-max))))
+                                        (let ((pos (next-single-property-change
+                                                    (point) 'jupyter-pandoc)))
+                                          (if pos (1+ pos)
+                                            (point-max))))
                          (insert to-string)))))))
            (proc (jupyter-org--start-pandoc-conversion el cb)))
     (jupyter-org-raw-string
