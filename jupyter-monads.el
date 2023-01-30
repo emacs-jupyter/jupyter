@@ -63,16 +63,6 @@
 (defun jupyter-put-state (value)
   (lambda (_state) (cons nil value)))
 
-(defvar jupyter-io-cache (make-hash-table :weakness 'key))
-
-(cl-defgeneric jupyter-io (thing)
-  "Return the I/O object of THING.")
-
-(cl-defmethod jupyter-io :around (thing)
-  "Cache the I/O object of THING in `jupyter-io-cache'."
-  (or (gethash thing jupyter-io-cache)
-      (puthash thing (cl-call-next-method) jupyter-io-cache)))
-
 (defun jupyter-bind-delayed (mvalue mfn)
   "Bind MVALUE to MFN."
   (declare (indent 1))

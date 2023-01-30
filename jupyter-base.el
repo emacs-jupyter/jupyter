@@ -566,6 +566,18 @@ ports remapped to the local ports."
      :conn-info conn-info
      :key (plist-get conn-info :key))))
 
+;;; Kernel I/O
+
+(defvar jupyter-io-cache (make-hash-table :weakness 'key))
+
+(cl-defgeneric jupyter-io (thing)
+  "Return the I/O object of THING.")
+
+(cl-defmethod jupyter-io :around (thing)
+  "Cache the I/O object of THING in `jupyter-io-cache'."
+  (or (gethash thing jupyter-io-cache)
+      (puthash thing (cl-call-next-method) jupyter-io-cache)))
+
 ;;; Helper functions
 
 (defun jupyter-canonicalize-language-string (str)
