@@ -388,7 +388,7 @@
           (should res)
           (should (json-plist-p res))
           (should (string= (jupyter-message-type res) "kernel_info_reply"))
-          (jupyter-return-delayed nil))))
+          (jupyter-return nil))))
     (ert-info ("Comm info")
       (jupyter-run-with-client client
         (jupyter-mlet* ((res (jupyter-reply
@@ -396,7 +396,7 @@
           (should-not (null res))
           (should (json-plist-p res))
           (should (string= (jupyter-message-type res) "comm_info_reply"))
-          (jupyter-return-delayed nil))))
+          (jupyter-return nil))))
     (ert-info ("Execute")
       (jupyter-run-with-client client
         (jupyter-mlet* ((res (jupyter-reply
@@ -404,7 +404,7 @@
           (should-not (null res))
           (should (json-plist-p res))
           (should (string= (jupyter-message-type res) "execute_reply"))
-          (jupyter-return-delayed nil))))
+          (jupyter-return nil))))
     (ert-info ("Input")
       (cl-letf (((symbol-function 'read-from-minibuffer)
                  (lambda (_prompt &rest _args) "foo")))
@@ -417,7 +417,7 @@
               (should (json-plist-p res))
               (should (string= (jupyter-message-type res) "execute_result"))
               (should (equal (jupyter-message-data res :text/plain) "'foo'"))
-              (jupyter-return-delayed nil))))))
+              (jupyter-return nil))))))
     (ert-info ("Inspect")
       (jupyter-run-with-client client
         (jupyter-mlet* ((res (jupyter-reply
@@ -428,7 +428,7 @@
           (should-not (null res))
           (should (json-plist-p res))
           (should (string= (jupyter-message-type res) "inspect_reply"))
-          (jupyter-return-delayed nil))))
+          (jupyter-return nil))))
     (ert-info ("Complete")
       (jupyter-run-with-client client
         (jupyter-mlet* ((res (jupyter-reply
@@ -438,7 +438,7 @@
           (should-not (null res))
           (should (json-plist-p res))
           (should (string= (jupyter-message-type res) "complete_reply"))
-          (jupyter-return-delayed nil))))
+          (jupyter-return nil))))
     (ert-info ("History")
       (jupyter-run-with-client client
         (jupyter-mlet* ((res (jupyter-reply
@@ -447,7 +447,7 @@
           (should-not (null res))
           (should (json-plist-p res))
           (should (string= (jupyter-message-type res) "history_reply"))
-          (jupyter-return-delayed nil))))
+          (jupyter-return nil))))
     (ert-info ("Is Complete")
       (jupyter-run-with-client client
         (jupyter-mlet* ((res (jupyter-reply
@@ -456,7 +456,7 @@
           (should-not (null res))
           (should (json-plist-p res))
           (should (string= (jupyter-message-type res) "is_complete_reply"))
-          (jupyter-return-delayed nil))))
+          (jupyter-return nil))))
     (ert-info ("Shutdown")
       (jupyter-run-with-client client
         (jupyter-mlet* ((res (jupyter-reply
@@ -465,7 +465,7 @@
           (should (json-plist-p res))
           (should (string= (jupyter-message-type res) "shutdown_reply"))
           ;; TODO: Ensure we give the kernel process time to die off
-          (jupyter-return-delayed nil))))))
+          (jupyter-return nil))))))
 
 (ert-deftest jupyter-message-lambda ()
   :tags '(messages)
@@ -874,7 +874,7 @@
                           req "stream" (list :name "stdout" :text "foo"))))
         (should-error (jupyter-kernel-info-request
                        :handlers '(not "foo")))
-        (jupyter-return-delayed nil)))))
+        (jupyter-return nil)))))
 
 (ert-deftest jupyter-eval ()
   :tags '(client)
@@ -931,7 +931,7 @@
         (should-not (jupyter-request-idle-p req))
         (jupyter-idle-sync req)
         (should (jupyter-request-idle-p req))
-        (jupyter-return-delayed nil)))
+        (jupyter-return nil)))
     (jupyter-run-with-client client
       (jupyter-mlet* ((req (jupyter-sent (jupyter-execute-request :code "1 + 1"))))
         (should (null jupyter-test-idle-sync-hook))
@@ -941,7 +941,7 @@
         (run-hooks 'jupyter-test-idle-sync-hook)
         (should (jupyter-request-idle-p req))
         (should (null jupyter-test-idle-sync-hook))
-        (jupyter-return-delayed nil)))))
+        (jupyter-return nil)))))
 
 ;;; IOloop
 
@@ -1116,7 +1116,7 @@
                           (res (jupyter-result
                                 (jupyter-execute-request :code "1 + 1"))))
             (should (equal (jupyter-message-data res :text/plain) "2"))
-            (jupyter-return-delayed nil)))
+            (jupyter-return nil)))
       (jupyter-shutdown-kernel client))))
 
 ;;; Completion

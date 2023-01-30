@@ -133,7 +133,7 @@ nil."
             (jupyter-message-get msg :user_expressions)
           (cl-destructuring-bind (&key status data &allow-other-keys)
               prompt
-            (jupyter-return-delayed
+            (jupyter-return
               (when (equal status "ok")
                 (plist-get data :text/plain)))))))))
 

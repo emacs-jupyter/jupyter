@@ -827,7 +827,7 @@ Return the `jupyter-request' representing the executed code."
           (save-excursion
             (jupyter-repl-backward-cell)
             (run-hooks 'jupyter-repl-cell-post-send-hook))
-          (jupyter-sent (jupyter-return-delayed req)))))))
+          (jupyter-sent (jupyter-return req)))))))
 
 (cl-defmethod jupyter-handle-payload ((_source (eql set_next_input)) pl
                                       &context (major-mode jupyter-repl-mode))
@@ -1828,7 +1828,7 @@ the updated state."
             (goto-char (point-max))
             (jupyter-repl-update-cell-count
              (oref client execution-count)))))
-      (jupyter-return-delayed nil))))
+      (jupyter-return nil))))
 
 ;;; `jupyter-repl-interaction-mode'
 

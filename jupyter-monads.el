@@ -50,12 +50,12 @@
   "Monadic Jupyter I/O"
   :group 'jupyter)
 
-(defun jupyter-return-delayed (value)
+(defun jupyter-return (value)
   "Return an I/O value wrapping VALUE."
   (declare (indent 0))
   (lambda (state) (cons value state)))
 
-(defconst jupyter-io-nil (jupyter-return-delayed nil))
+(defconst jupyter-io-nil (jupyter-return nil))
 
 (defun jupyter-get-state ()
   (lambda (state) (cons state state)))
@@ -106,7 +106,7 @@ returned action is the result of the last action in IO-ACTIONS."
              for action being the elements of actions using (index i)
              for sym = (if (= i (1- (length actions))) result '_)
              collect `(,sym ,action))
-         (jupyter-return-delayed ,result)))))
+         (jupyter-return ,result)))))
 
 (defun jupyter-run-with-state (state mvalue)
   "Pass STATE as the state to MVALUE, return the resulting value."
@@ -305,7 +305,7 @@ Ex. Subscribe to a publisher and unsubscribe after receiving two
                 (jupyter-request-type req)
                 (jupyter-request-content req)
                 (jupyter-request-id req)))))
-    (jupyter-return-delayed req)))
+    (jupyter-return req)))
 
 (defun jupyter-idle (dreq &optional timeout)
   "Wait until DREQ has become idle, return DREQ.
@@ -314,13 +314,13 @@ elapses and the request has not become idle yet."
   (jupyter-mlet* ((req (jupyter-sent dreq)))
     (or (jupyter-wait-until-idle req timeout)
         (signal 'jupyter-timeout-before-idle (list req)))
-    (jupyter-return-delayed req)))
+    (jupyter-return req)))
 
 (defun jupyter-messages (dreq &optional timeout)
   "Return all the messages of REQ.
 TIMEOUT has the same meaning as in `jupyter-idle'."
   (jupyter-mlet* ((req (jupyter-idle dreq timeout)))
-    (jupyter-return-delayed (jupyter-request-messages req))))
+    (jupyter-return (jupyter-request-messages req))))
 
 (defun jupyter-find-message (msg-type msgs)
   "Return a message whose type is MSG-TYPE in MSGS."
@@ -334,7 +334,7 @@ TIMEOUT has the same meaning as in `jupyter-idle'."
   "Return the reply message of REQ.
 TIMEOUT has the same meaning as in `jupyter-idle'."
   (jupyter-mlet* ((msgs (jupyter-messages dreq timeout)))
-    (jupyter-return-delayed
+    (jupyter-return
       (cl-find-if
        (lambda (msg)
          (let ((type (jupyter-message-type msg)))
@@ -345,7 +345,7 @@ TIMEOUT has the same meaning as in `jupyter-idle'."
   "Return the result message of REQ.
 TIMEOUT has the same meaning as in `jupyter-idle'."
   (jupyter-mlet* ((msgs (jupyter-messages dreq timeout)))
-    (jupyter-return-delayed
+    (jupyter-return
       (cl-find-if
        (lambda (msg)
          (let ((type (jupyter-message-type msg)))
@@ -372,7 +372,7 @@ the callbacks."
                 ((msg-type (jupyter-message-type msg))
                  (fn (car (alist-get msg-type cbs nil nil #'string=))))
               (funcall fn msg))))))
-    (jupyter-return-delayed req)))
+    (jupyter-return req)))
 
 ;; When replaying messages, the request message publisher is already
 ;; unsubscribed from any upstream publishers.

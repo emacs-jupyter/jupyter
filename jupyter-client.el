@@ -746,7 +746,7 @@ text/plain representation."
                    ,(jupyter-message-lambda (status evalue)
                       (unless (equal status "ok")
                         (error "%s" (ansi-color-apply evalue))))))))))
-      (jupyter-return-delayed (jupyter-message-data res (or mime :text/plain))))))
+      (jupyter-return (jupyter-message-data res (or mime :text/plain))))))
 
 (defun jupyter-eval-result-callbacks (insert beg end)
   "Return a plist containing callbacks used to display evaluation results.
@@ -1223,7 +1223,7 @@ DETAIL is the detail level to use for the request and defaults to
                            (insert code)
                            (goto-char pos)
                            (symbol-at-point)))))
-            (jupyter-return-delayed msg))))
+            (jupyter-return msg))))
     (jupyter-timeout-before-idle
      (message "Inspect timed out"))))
 
@@ -1693,7 +1693,7 @@ name are changed to \"-\" and all uppercase characters lowered."
                    (lang (plist-get info :name))
                    (name (jupyter-canonicalize-language-string lang)))
               (plist-put info :name (intern name)))
-            (jupyter-return-delayed (oref client kernel-info)))))))
+            (jupyter-return (oref client kernel-info)))))))
 
 (defun jupyter-kernel-language-mode-properties (client)
   "Get the `major-mode' info of CLIENT's kernel language.
