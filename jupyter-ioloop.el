@@ -391,7 +391,7 @@ polling the STDIN file handle."
      (zmq-poller-add jupyter-ioloop-poller jupyter-ioloop-stdin zmq-POLLIN)
      ,(jupyter-ioloop--body
        ioloop (jupyter-ioloop--event-dispatcher
-               ioloop (if port '(read (zmq-recv-decoded jupyter-ioloop-stdin))
+               ioloop (if port '(read (zmq-recv jupyter-ioloop-stdin))
                         '(zmq-subprocess-read))))))
 
 (defun jupyter-ioloop-alive-p (ioloop)
@@ -497,7 +497,7 @@ serializable."
             (while (not sent)
               (condition-case nil
                   (progn
-                    (zmq-send-encoded stdin msg nil zmq-DONTWAIT)
+                    (zmq-send stdin (encode-coding-string msg 'utf-8) zmq-DONTWAIT)
                     (setq sent t))
                 (zmq-EAGAIN (accept-process-output nil 0)))))
         (zmq-subprocess-send process args)))))
