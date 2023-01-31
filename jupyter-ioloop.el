@@ -443,13 +443,6 @@ the IOLOOP subprocess buffer, see `zmq-start-process'."
       (setq port (zmq-bind-to-random-port stdin "tcp://127.0.0.1")))
     (let ((process (zmq-start-process
                     (jupyter-ioloop--function ioloop (when stdin port))
-                    ;; We go through this Emacs-fu, brought to you by Chris
-                    ;; Wellons, https://nullprogram.com/blog/2014/01/27/,
-                    ;; because we want OBJECT to be the final say in when
-                    ;; everything gets garbage collected.  If OBJECT loses
-                    ;; scope, the ioloop process should be killed off.  This
-                    ;; wouldn't happen if we hold a strong reference to
-                    ;; OBJECT.
                     :filter (jupyter-ioloop--make-filter ioloop handler)
                     :buffer buffer)))
       (oset ioloop process process)
