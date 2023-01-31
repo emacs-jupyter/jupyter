@@ -221,13 +221,20 @@ Operations not mentioned here will be handled by the default Emacs primitives.")
   "Return METHOD if it corresponds to a Jupyter filename method or nil."
   (and (string-match-p "\\`jpys?\\'" method) method))
 
+;; Port of `tramp-ensure-dissected-file-name' in Emacs 29
+;;;###autoload
+(defun jupyter-tramp-ensure-dissected-file-name (vec-or-filename)
+  (cond
+   ((tramp-file-name-p vec-or-filename) vec-or-filename)
+   ((tramp-tramp-file-p vec-or-filename)
+    (tramp-dissect-file-name vec-or-filename))))
+
 ;; NOTE: Needs to be a `defsubst' to avoid recursive loading.
 ;;;###autoload
-(defsubst jupyter-tramp-file-name-p (filename)
+(defsubst jupyter-tramp-file-name-p (vec-or-filename)
   "If FILENAME is a Jupyter filename, return its method otherwise nil."
-  (when (tramp-tramp-file-p filename)
-    (jupyter-tramp-file-name-method-p
-     (tramp-file-name-method (tramp-dissect-file-name filename)))))
+  (when-let* ((vec (jupyter-tramp-ensure-dissected-file-name vec-or-filename)))
+    (jupyter-tramp-file-name-method-p (tramp-file-name-method vec))))
 
 ;;;###autoload
 (defun jupyter-tramp-file-name-handler (operation &rest args)
