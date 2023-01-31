@@ -29,18 +29,6 @@ ifeq ($(CASK),)
 	$(error "Install cask (https://github.com/cask/cask)")
 endif
 
-# Build the zmq module.
-.PHONY: zmq
-ifneq ($(APPVEYOR),)
-# There are issues with string quoting in Appveyor which causes the normal
-# evaluated command to give a parsing error so we just make this a no-op in
-# Appveyor. The pre-built binaries are used when building in Appveyor anyways.
-zmq:
-else
-zmq: cask
-	$(CASK) emacs -Q -batch --eval "(progn (fset 'read-string (lambda (&rest _) \"y\")) (require 'zmq))"
-endif
-
 .PHONY: dev
 dev: cask
 	$(CASK) install
@@ -49,7 +37,7 @@ dev: cask
 test: export EMACSLOADPATH = $(shell $(CASK) load-path)
 
 .PHONY: test
-test: zmq
+test:
 	$(EMACS) -nw -Q -batch -l ert $(TESTFILES) \
 	    --eval "(ert-run-tests-batch-and-exit $(TESTSELECTORS))"
 
@@ -67,5 +55,5 @@ widgets:
 	make -C js
 
 .PHONY: compile
-compile: zmq
+compile:
 	$(CASK) build
