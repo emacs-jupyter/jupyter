@@ -749,7 +749,7 @@ the server.  For any other file, call ORIG, which is the function
   (jupyter-tramp-with-api-connection filename
     (unless (file-exists-p filename)
       (tramp-error
-       v tramp-file-missing
+       v 'file-missing
        "Cannot make local copy of non-existing file `%s'" filename))
     ;; Ensure we grab a fresh model since the cached version may be out of
     ;; sync with the server.
