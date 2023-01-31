@@ -173,8 +173,8 @@ host, localname, ..., are all bound to values parsed from FILE."
     (insert-file-contents . tramp-handle-insert-file-contents)
     (load . tramp-handle-load)
     (make-auto-save-file-name . tramp-handle-make-auto-save-file-name)
-    ;; `make-directory' performed by default handler.
-    (make-directory-internal . jupyter-tramp-make-directory-internal)
+    (make-directory . jupyter-tramp-make-directory)
+    (make-directory-internal . ignore)
     (make-nearby-temp-file . tramp-handle-make-nearby-temp-file)
     (make-symbolic-link . tramp-handle-make-symbolic-link)
     ;; `process-file' performed by default handler.
@@ -609,10 +609,22 @@ See `jupyter-tramp-get-file-model' for details on what a file model is."
         ;; `file-attributes' reads the values from there.
         (jupyter-tramp-flush-file-and-directory-properties newname)))))
 
-(defun jupyter-tramp-make-directory-internal (dir)
+;; Ported from `trapm-skeleton-make-directory' in Emacs 29
+(defun jupyter-tramp-make-directory (dir &optional parents)
   (jupyter-tramp-with-api-connection dir
-    (jupyter-api-make-directory jupyter-current-server dir)
-    (jupyter-tramp-flush-file-and-directory-properties dir)))
+    (let* ((dir (directory-file-name (expand-file-name dir)))
+           (par (file-name-directory dir)))
+      (when (and (null parents) (file-exists-p dir))
+        (tramp-error v 'file-already-exists dir))
+      ;; Make missing directory parts.
+      (when parents
+        (unless (file-directory-p par)
+          (make-directory par parents)))
+      ;; Just do it.
+      (if (file-exists-p dir) t
+        (jupyter-tramp-flush-file-and-directory-properties dir)
+        (jupyter-api-make-directory jupyter-current-server dir)
+        nil))))
 
 ;;; File name completion
 
