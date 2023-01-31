@@ -1,5 +1,4 @@
 EMACS ?= emacs
-SHELL ?= bash
 CASK ?= $(shell command -v cask)
 
 FILES = $(wildcard *.el)
