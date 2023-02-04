@@ -493,7 +493,7 @@ serializable."
             (while (not sent)
               (condition-case nil
                   (progn
-                    (zmq-send stdin msg nil zmq-DONTWAIT)
+                    (zmq-send stdin msg zmq-DONTWAIT)
                     (setq sent t))
                 (zmq-EAGAIN (accept-process-output nil 0)))))
         (zmq-subprocess-send process args)))))
