@@ -61,7 +61,7 @@ each DIRECTORY will be a remote file name."
     (or (and (not refresh) (gethash host jupyter--kernelspecs))
         (let ((specs (plist-get
                       (jupyter-read-plist-from-string
-                       (or (jupyter-command "kernelspec" "list" "--json")
+                       (or (jupyter-command "kernelspec" "list" "--json" "--log-level" "ERROR")
                            (error "Can't obtain kernelspecs from jupyter shell command")))
                       :kernelspecs)))
           (puthash host

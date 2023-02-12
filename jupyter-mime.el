@@ -549,6 +549,9 @@ width and height of the image."
 
 (cl-defmethod jupyter-insert ((_mime (eql :text/plain)) data
                               &optional _metadata)
+  ;; Reset the context so that it doesn't leak into DATA if DATA has
+  ;; no ANSI sequences.
+  (setq ansi-color-context nil)
   (jupyter-insert-ansi-coded-text data)
   (insert "\n"))
 

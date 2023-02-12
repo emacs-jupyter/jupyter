@@ -586,12 +586,25 @@ back."
   (when jupyter--debug
     (jupyter--show-event event)))
 
+(defvar jupyter--debug-message-queue nil)
+
 (cl-defmethod jupyter-event-handler ((client jupyter-kernel-client)
                                      (event (head message)))
   (when jupyter--debug
     (jupyter--show-event event))
-  (cl-destructuring-bind (_ channel _idents . msg) event
-    (jupyter-handle-message client channel msg)))
+  (if (eq jupyter--debug 'message)
+      (push
+       (cl-destructuring-bind (_ channel _idents . msg) event
+         (lambda ()
+           (jupyter-handle-message client channel msg)))
+       jupyter--debug-message-queue)
+    (cl-destructuring-bind (_ channel _idents . msg) event
+      (jupyter-handle-message client channel msg))))
+
+(defun jupyter--debug-run-message-queue ()
+  (let ((queue (reverse jupyter--debug-message-queue)))
+    (setq jupyter--debug-message-queue nil)
+    (cl-loop for thunk in queue do (funcall thunk))))
 
 ;;; Starting communication with a kernel
 
