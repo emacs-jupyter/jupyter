@@ -1424,7 +1424,7 @@ value."
         (jupyter-repl-history-add ex)))))
 
 (cl-defmethod jupyter-eval-string (str &context (jupyter-current-client jupyter-repl-client)
-                                       &optional beg end)
+                                       &optional insert beg end)
   (cond
    (jupyter-repl-echo-eval-p
     (jupyter-with-repl-buffer jupyter-current-client
@@ -1454,7 +1454,7 @@ value."
            ;; Make sure we do this in the original buffer where
            ;; STR originated from when BEG and END are non-nil.
            (jupyter-message-subscribed
-            req (jupyter-eval-callbacks beg end)))))))))
+            req (jupyter-eval-callbacks insert beg end)))))))))
 
 ;;; Kernel management
 
