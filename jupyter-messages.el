@@ -345,7 +345,7 @@ and `:msg_type'."
       ;; TODO: digest_history
       ;; https://github.com/jupyter/jupyter_client/blob/7a0278af7c1652ac32356d6f00ae29d24d78e61c/jupyter_client/session.py#L915
       (unless (string= (jupyter-sign-message session (cdr parts) signer) signature)
-        (error "Invalid signature: %s" signature))))
+        (error "Invalid signature (%s) for parts %S" signature (cdr parts)))))
   (cl-destructuring-bind
       (header parent-header metadata content &rest buffers)
       (cdr parts)
