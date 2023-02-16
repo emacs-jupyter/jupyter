@@ -154,23 +154,22 @@ the result of calling `jupyter--encode' on the third element and
 return the result."
   (let ((original (if (fboundp 'json--print)
                       #'json--print
-                    #'json-encode))))
-  (cl-letf (((symbol-function original))
-            (apply-partially #'jupyter--json-encode-preproc original))
-    (encode-coding-string
-     (cond
-      ((stringp part) part)
-      (t (json-encode part)))
-     'utf-8 t)))
+                    #'json-encode)))
+    (cl-letf (((symbol-function original))
+              (apply-partially #'jupyter--json-encode original))
+      (encode-coding-string
+       (cond
+        ((stringp part) part)
+        (t (json-encode part)))
+       'utf-8 t))))
 
-(defun jupyter--json-encode-preproc (original object)
+(defun jupyter--json-encode (original object)
   (let (msg-type)
     (cond
      ((eq (car-safe object) 'message-part)
       (cl-destructuring-bind (_ encoded-rep decoded-rep) object
         (or encoded-rep (setf (nth 1 object)
-                              (jupyter--json-encode-preproc
-                               original decoded-rep)))))
+                              (jupyter--json-encode original decoded-rep)))))
      ((and (keywordp object)
            (setf msg-type (plist-get jupyter-message-types object)))
       (json-encode msg-type))
