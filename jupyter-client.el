@@ -473,8 +473,7 @@ After CLIENT shuts down the kernel it is connected to, it is no
 longer connected to a kernel."
   (let ((kaction-sub (jupyter-kernel-action-subscriber client)))
     (jupyter-run-with-io kaction-sub
-      (jupyter-publish 'shutdown))
-    (jupyter-disconnect client)))
+      (jupyter-publish 'shutdown))))
 
 (cl-defmethod jupyter-restart-kernel ((client jupyter-kernel-client))
   "Restart the kernel CLIENT is connected to."
