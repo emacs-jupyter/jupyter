@@ -294,8 +294,8 @@ method is called."
 
 (cl-defmethod jupyter-kernel-alive-p ((client jupyter-kernel-client))
   "Return non-nil if the kernel CLIENT is connected to is alive."
-  ;; FIXME: What should this be
-  (slot-boundp client 'io))
+  (and (jupyter-connected-p client)
+       (jupyter-kernel-action client #'jupyter-alive-p)))
 
 (defun jupyter-find-client-for-session (session-id)
   "Return the kernel client whose session has SESSION-ID."
