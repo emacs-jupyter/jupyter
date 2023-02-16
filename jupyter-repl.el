@@ -1458,63 +1458,52 @@ value."
 
 ;;; Kernel management
 
-(defun jupyter-repl-interrupt-kernel ()
-  "Interrupt the kernel if possible."
+(defun jupyter-repl--get-client ()
+  (or jupyter-current-client
+      ;; Also allow this command to be called from an Org mode buffer by
+      ;; selecting a client based on the REPL buffer.
+      (buffer-local-value
+       'jupyter-current-client
+       (or (jupyter-repl-completing-read-repl-buffer)
+           (error "No REPLs available")))))
+
+(defun jupyter-repl-interrupt-kernel (&optional client)
+  "Interrupt the kernel CLIENT is connected to, if possible.
+CLIENT defaults to `jupyter-current-client'."
   (interactive)
-  (jupyter-interrupt-kernel jupyter-current-client))
-
-(defun jupyter-repl-restart-kernel (&optional shutdown client)
-  "Restart the kernel `jupyter-current-client' is connected to.
-With a prefix argument, SHUTDOWN the kernel completely instead.
-If CLIENT is non-nil, it should by a REPL client to use instead
-of `jupyter-current-client'.
-
-If CLIENT is nil, `jupyter-current-client' will be restarted
-instead.  If `jupyter-current-client' is nil or is not a REPL
-client, prompt for a REPL client to restart.  Otherwise restart
-the kernel `jupyter-current-client' is connected to."
-  (interactive
-   (list current-prefix-arg nil))
-  (unless client
-    (setq client
-          (or jupyter-current-client
-              ;; Also allow this command to be called from an Org mode buffer by
-              ;; selecting a client based on the REPL buffer.
-              (buffer-local-value
-               'jupyter-current-client
-               (or (jupyter-repl-completing-read-repl-buffer)
-                   (error "No REPLs available"))))))
+  (or client (setq client (jupyter-repl--get-client)))
   (cl-check-type client jupyter-repl-client)
-  (unless shutdown
-    ;; This may have been set to t due to a non-responsive kernel so make sure
-    ;; that we try again when restarting.
-    (jupyter-with-repl-buffer client
-      (setq jupyter-repl-use-builtin-is-complete nil)))
+  (jupyter-interrupt-kernel client))
+
+(defun jupyter-repl-shutdown-kernel (&optional client)
+  "Shutdown the kernel CLIENT is connected to.
+CLIENT defaults to `jupyter-current-client'."
+  (interactive)
+  (or client (setq client (jupyter-repl--get-client)))
+  (cl-check-type client jupyter-repl-client)
+  ;; FIXME: The heartbeat channel is no longer used.
   (jupyter-hb-pause client)
-  ;; FIXME: Get rid of this
-  (let ((restart (not shutdown)))
-    (cond
-     ((and restart
-           (not (jupyter-kernel-alive-p client)))
-      (message "Starting dead kernel...")
-      (jupyter-repl--insert-banner-and-prompt client))
-     (t
-      (message "%s kernel..." (if restart "Restarting"
-                                "Shutting down"))
-      (when (and (not (jupyter-shutdown-kernel client))
-                 (not shutdown))
-        ;; Handle the case of a restart that does not send a shutdown-reply
-        ;;
-        ;; TODO: Clean up the logic of when to insert a new prompt.  We insert
-        ;; a new prompt before we know if the kernel is ready, but this should
-        ;; be done after we know if the kernel is ready or not, e.g. on the
-        ;; next status: starting message.  Generalize the stuff in
-        ;; `jupyter-start-new-kernel' that handles the status: starting message
-        ;; so its easier to hook into that message.
-        (message "Client's kernel may not have been shutdown")
-        (jupyter-repl--insert-banner-and-prompt client))))
-    (when restart
-      (jupyter-hb-unpause client))))
+  (jupyter-with-repl-buffer client
+    (setq jupyter-repl-use-builtin-is-complete nil))
+  (message "Shutting down kernel...")
+  (when (jupyter-kernel-alive-p client)
+    (jupyter-shutdown-kernel client)))
+
+(defun jupyter-repl-restart-kernel (&optional client)
+  "Restart the kernel CLIENT is connected to.
+CLIENT defaults to `jupyter-current-client'."
+  (interactive)
+  (or client (setq client (jupyter-repl--get-client)))
+  (cl-check-type client jupyter-repl-client)
+  (jupyter-hb-pause client)
+  (jupyter-with-repl-buffer client
+    (setq jupyter-repl-use-builtin-is-complete nil))
+  (if (jupyter-kernel-alive-p client)
+      (jupyter-restart-kernel client)
+    (message "Starting dead kernel...")
+    (jupyter-kernel-action client #'jupyter-launch))
+  (jupyter-repl--insert-banner-and-prompt client)
+  (jupyter-hb-unpause client))
 
 ;;; Isearch
 ;; Adapted from isearch in `comint', see `comint-history-isearch-search' for
