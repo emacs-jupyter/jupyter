@@ -46,9 +46,23 @@ The shell command run is
 
 If the command fails or the jupyter shell command doesn't exist,
 return nil."
-  (with-temp-buffer
-    (when (zerop (apply #'process-file "jupyter" nil t nil args))
-      (string-trim-right (buffer-string)))))
+  (let ((stderr-file (make-temp-file "jupyter")))
+    (unwind-protect
+        (with-temp-buffer
+          (let* ((status (apply #'process-file "jupyter" nil (list t stderr-file) nil args))
+                 (buffer (find-file-noselect stderr-file)))
+            (unwind-protect
+                (with-current-buffer buffer
+                  (unless (eq (point-min) (point-max))
+                    (message "jupyter-command: Content written to stderr stream")
+                    (while (not (eq (point) (point-max)))
+                      (message "    %s" (buffer-substring (line-beginning-position)
+                                                          (line-end-position)))
+                      (forward-line))))
+              (kill-buffer buffer))
+            (when (zerop status)
+              (string-trim-right (buffer-string)))))
+      (delete-file stderr-file))))
 
 (defun jupyter-runtime-directory ()
   "Return the runtime directory used by Jupyter.
