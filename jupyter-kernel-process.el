@@ -114,25 +114,27 @@ Call the next method if ARGS does not contain a :spec or
 (cl-defmethod jupyter-zmq-io ((kernel jupyter-kernel-process))
   (unless (jupyter-kernel-process-connect-p kernel)
     (jupyter-launch kernel))
-  (let* ((session (or (jupyter-kernel-session kernel)
-                      (error "A session is needed to connect to a kernel's I/O")))
-         (channels '(:shell :iopub :stdin))
-         (ch-group (let ((endpoints (jupyter-session-endpoints session)))
-                     (cl-loop
-                      for ch in channels
-                      collect ch
-                      collect (list :endpoint (plist-get endpoints ch)
-                                    :alive-p nil))))
-         (hb nil)
-         (discarded nil)
-         (kernel-io nil)
-         (ioloop nil))
+  (let ((channels '(:shell :iopub :stdin))
+        session ch-group hb kernel-io ioloop shutdown)
     (cl-macrolet ((continue-after
                    (cond on-timeout)
                    `(jupyter-with-timeout
                         (nil jupyter-default-timeout ,on-timeout)
                       ,cond)))
-      (cl-labels ((ch-put
+      (cl-labels ((set-session
+                   ()
+                   (or (setq session (jupyter-kernel-session kernel))
+                       (error "A session is needed to connect to a kernel's I/O")))
+                  (set-ch-group
+                   ()
+                   (let ((endpoints (jupyter-session-endpoints (set-session))))
+                     (setq ch-group
+                           (cl-loop
+                            for ch in channels
+                            collect ch
+                            collect (list :endpoint (plist-get endpoints ch)
+                                          :alive-p nil)))))
+                  (ch-put
                    (ch prop value)
                    (plist-put (plist-get ch-group ch) prop value))
                   (ch-get
@@ -175,8 +177,6 @@ Call the next method if ARGS does not contain a :spec or
                           ;; TODO: Get rid of this
                           ('sent nil)
                           (_
-                           ;; FIXME: Turn into a function not a macro,
-                           ;; there is no need.
                            (jupyter-run-with-io kernel-io
                              (jupyter-publish event))))))
                      (condition-case err
@@ -186,13 +186,17 @@ Call the next method if ARGS does not contain a :spec or
                        (error
                         (jupyter-ioloop-stop ioloop)
                         (signal (car err) (cdr err)))))
-
                    ioloop)
                   (stop
                    ()
-                   (and ioloop
-                        (jupyter-ioloop-alive-p ioloop)
-                        (jupyter-ioloop-stop ioloop))))
+                   (when hb
+                     (jupyter-hb-pause hb)
+                     (setq hb nil))
+                   (when ioloop
+                     (when (jupyter-ioloop-alive-p ioloop)
+                       (jupyter-ioloop-stop ioloop))
+                     (setq ioloop nil))))
+        (set-ch-group)
         (setq kernel-io
               ;; TODO: (jupyter-publisher :name "Session I/O" :fn ...)
               ;;
@@ -201,7 +205,7 @@ Call the next method if ARGS does not contain a :spec or
               ;; `jupyter-publisher' struct type.
               (jupyter-publisher
                 (lambda (content)
-                  (if discarded
+                  (if shutdown
                       (error "Kernel I/O no longer available: %s"
                              (cl-prin1-to-string session))
                     (pcase (car content)
@@ -224,8 +228,7 @@ Call the next method if ARGS does not contain a :spec or
                       ('hb
                        (unless hb
                          (setq hb
-                               (let ((endpoints
-                                      (jupyter-session-endpoints session)))
+                               (let ((endpoints (set-session)))
                                  (make-instance
                                   'jupyter-hb-channel
                                   :session session
@@ -241,11 +244,14 @@ Call the next method if ARGS does not contain a :spec or
                      (jupyter-interrupt kernel))
                     ('shutdown
                      (jupyter-shutdown kernel)
-                     (and hb (jupyter-hb-pause hb))
                      (stop)
-                     (setq hb nil ioloop nil discarded t))
+                     (setq shutdown t))
                     ('restart
-                     (jupyter-restart kernel))
+                     (setq shutdown nil)
+                     (jupyter-restart kernel)
+                     (stop)
+                     (set-ch-group)
+                     (start))
                     (`(action ,fn)
                      (funcall fn kernel))))))))))
 
@@ -376,7 +382,6 @@ See also https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-spe
       (delete-process process))
     (cl-call-next-method)))
 
-;; TODO
 (cl-defmethod jupyter-restart ((_kernel jupyter-kernel-process))
   (cl-call-next-method))
 
