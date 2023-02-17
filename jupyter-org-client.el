@@ -568,14 +568,14 @@ property."
               begin next)
         (while (/= begin1 end1)
           (setq next (next-single-property-change
-                      begin1 'font-lock-face nil end1))
-          (when (get-text-property begin1 'font-lock-face)
+                      begin1 'jupyter-face nil end1))
+          (when (get-text-property begin1 'jupyter-face)
             (font-lock-prepend-text-property
-             begin1 next 'face (get-text-property begin1 'font-lock-face)))
+             begin1 next 'face (get-text-property begin1 'jupyter-face)))
           (setq begin1 next)))
        (t
         (put-text-property begin next 'jupyter-ansi t)
-        (jupyter-ansi-color-apply-on-region begin next)
+        (jupyter-ansi-color-apply-on-region begin next 'jupyter-face)
         (setq begin next))))))
 
 ;; Adapted from `org-fontify-meta-lines-and-blocks-1'

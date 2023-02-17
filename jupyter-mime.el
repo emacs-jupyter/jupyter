@@ -197,14 +197,15 @@ function."
 
 ;;; Special handling of ANSI sequences
 
-(defun jupyter-ansi-color-apply-on-region (begin end)
+(defun jupyter-ansi-color-apply-on-region (begin end &optional face-prop)
   "`ansi-color-apply-on-region' with Jupyter specific modifications.
 In particular, does not delete escape sequences between BEGIN and
 END from the buffer.  Instead, an invisible text property with a
 value of t is added to render the escape sequences invisible.
 Also, the `ansi-color-apply-face-function' is hard-coded to a
 custom function that prepends to the face property of the text
-and also sets the font-lock-face to the prepended face.
+and also sets the FACE-PROP to the prepended face, if FACE-PROP
+is nil it defaults to `font-lock-face'.
 
 For convenience, a jupyter-invisible property is also added with
 a value of t.  This is mainly for modes like `org-mode' which
@@ -220,7 +221,7 @@ invisible property by adding it to `char-property-alias-alist'."
            (when face
              (setq face (list face))
              (font-lock-prepend-text-property beg end 'face face)
-             (put-text-property beg end 'font-lock-face face)))))
+             (put-text-property beg end (or face-prop 'font-lock-face) face)))))
     (save-excursion
       (goto-char start-marker)
       ;; Find the next escape sequence.
