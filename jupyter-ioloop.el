@@ -339,7 +339,11 @@ nothing."
            ;; Initialize any callbacks that were added before the ioloop was
            ;; started
            (setq jupyter-ioloop-pre-hook
-                 (mapcar (lambda (f) (unless (byte-code-function-p f) (byte-compile f)))
+                 (mapcar (lambda (f)
+                           (when (symbolp f)
+                             (setq f (symbol-function f)))
+                           (unless (byte-code-function-p f)
+                             (byte-compile f)))
                     (append jupyter-ioloop-pre-hook
                             (quote ,(mapcar #'macroexpand-all
                                        (oref ioloop callbacks))))))

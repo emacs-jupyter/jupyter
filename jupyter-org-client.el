@@ -1597,28 +1597,20 @@ the return value for asynchronous Jupyter source blocks in
   "Return RESULTS with all contiguous stream results concatenated.
 All stream results are then turned into fixed-width or
 example-block elements."
-  (let ((head-to-scalar
-         (lambda (a)
-           ;; Convert the head element of A to a scalar if its a
-           ;; stream result, return A.
-           (when (jupyter-org--stream-result-p (car a))
-             (setcar a (jupyter-org-scalar
-                        (jupyter-org-strip-last-newline
-                         (car a)))))
-           a)))
-    (nreverse
-     (funcall
-      head-to-scalar
-      (cl-reduce
-       (lambda (a b)
-         (if (and (jupyter-org--stream-result-p b)
-                  (jupyter-org--stream-result-p (car a)))
-             (setcar a (concat (car a) b))
-           (funcall head-to-scalar a)
-           (push b a))
-         a)
-       results
-       :initial-value nil)))))
+  (cl-labels ((scalar (s) (jupyter-org-scalar
+                           (jupyter-org-strip-last-newline s))))
+    (let (lst str)
+      (while (consp results)
+        (let ((value (pop results)))
+          (if (jupyter-org--stream-result-p value)
+              (cl-callf concat str value)
+            (when str
+              (push (scalar str) lst)
+              (setq str nil))
+            (push value lst))))
+      (when str
+        (push (scalar str) lst))
+      (nreverse lst))))
 
 (defun jupyter-org--process-pandoc-results (results)
   (let* ((results (copy-sequence results))
