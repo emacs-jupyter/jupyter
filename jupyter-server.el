@@ -309,8 +309,8 @@ is used as determined by `jupyter-current-server'."
 (defun jupyter-server-repl-interactive-spec ()
   (let ((server (jupyter-current-server current-prefix-arg)))
     (list server
-          (car (jupyter-completing-read-kernelspec
-                (jupyter-kernelspecs server)))
+          (jupyter-completing-read-kernelspec
+                (jupyter-kernelspecs server))
           ;; FIXME: Ambiguity with `jupyter-current-server' and
           ;; `current-prefix-arg'
           (when (and current-prefix-arg
