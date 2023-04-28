@@ -980,26 +980,27 @@ If the source block parameters have a value for the :display
 header argument, like \"image/png html plain\", then loop over
 those mime types instead."
   (cl-assert plist json-plist)
-  (let* ((params (jupyter-org-request-block-params req))
-         (display-mime-types (jupyter-org--find-mime-types
-                              (alist-get :display params))))
-    ;; Push :file back into PARAMS if it was present in
-    ;; `org-babel-execute:jupyter'.  That function removes it because
-    ;; we don't want `org-babel-insert-result' to handle it.
-    (when (jupyter-org-request-file req)
-      (push (cons :file (jupyter-org-request-file req)) params))
-    (cond
-     ((jupyter-map-mime-bundle (or display-mime-types jupyter-org-mime-types)
-          (jupyter-normalize-data plist metadata)
-        (lambda (mime content)
-          (jupyter-org-result mime content params))))
-     (t
-      (let ((warning
-             (format
-              "%s did not return requested mimetype(s): %s"
-              (jupyter-message-type (jupyter-request-last-message req))
-              (or display-mime-types jupyter-org-mime-types))))
-        (display-warning 'jupyter warning))))))
+  (org-with-point-at (jupyter-org-request-marker req)
+    (let* ((params (jupyter-org-request-block-params req))
+           (display-mime-types (jupyter-org--find-mime-types
+                                (alist-get :display params))))
+      ;; Push :file back into PARAMS if it was present in
+      ;; `org-babel-execute:jupyter'.  That function removes it because
+      ;; we don't want `org-babel-insert-result' to handle it.
+      (when (jupyter-org-request-file req)
+        (push (cons :file (jupyter-org-request-file req)) params))
+      (cond
+       ((jupyter-map-mime-bundle (or display-mime-types jupyter-org-mime-types)
+            (jupyter-normalize-data plist metadata)
+          (lambda (mime content)
+            (jupyter-org-result mime content params))))
+       (t
+        (let ((warning
+               (format
+                "%s did not return requested mimetype(s): %s"
+                (jupyter-message-type (jupyter-request-last-message req))
+                (or display-mime-types jupyter-org-mime-types))))
+          (display-warning 'jupyter warning)))))))
 
 (cl-defmethod jupyter-org-result ((_mime (eql :application/vnd.jupyter.widget-view+json)) _content _params)
   ;; TODO: Clickable text to open up a browser
