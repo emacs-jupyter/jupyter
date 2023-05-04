@@ -62,7 +62,7 @@
   :tags '(monad)
   (should (equal (jupyter-mlet* ((a (jupyter-return 1))))
                  (jupyter-bind (jupyter-return 1)
-                   (lambda (a) jupyter-io-nil))))
+                   (lambda (a) jupyter--return-nil))))
   (should (equal (jupyter-mlet* ((a (jupyter-return 1)))
                    a)
                  (jupyter-bind (jupyter-return 1)
