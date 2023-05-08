@@ -212,52 +212,16 @@ a value of t.  This is mainly for modes like `org-mode' which
 strip invisible properties during fontification.  In such cases,
 the jupyter-invisible property can act as an alias to the
 invisible property by adding it to `char-property-alias-alist'."
-  (let ((codes (car ansi-color-context-region))
-        (start-marker (or (cadr ansi-color-context-region)
-                          (copy-marker begin)))
-        (end-marker (copy-marker end))
-        (ansi-color-apply-face-function
-         (lambda (beg end face)
-           (when face
-             (setq face (list face))
-             (font-lock-prepend-text-property beg end 'face face)
-             (put-text-property beg end (or face-prop 'font-lock-face) face)))))
-    (save-excursion
-      (goto-char start-marker)
-      ;; Find the next escape sequence.
-      (while (re-search-forward ansi-color-control-seq-regexp end-marker t)
-        ;; Remove escape sequence.
-        (let ((esc-seq (prog1 (buffer-substring-no-properties
-                               (match-beginning 0) (point))
-                         ;; FIXME: Not removing escape sequences adds in a lot
-                         ;; of invisible characters that slows down Emacs on
-                         ;; large ANSI coded regions and seems mostly related
-                         ;; to redisplay since hiding the region behind an
-                         ;; invisible overlay removes the slowdown.
-                         (add-text-properties
-                          (match-beginning 0) (point)
-                          '(invisible t jupyter-invisible t)))))
-          ;; Colorize the old block from start to end using old face.
-          (funcall ansi-color-apply-face-function
-                   (prog1 (marker-position start-marker)
-                     ;; Store new start position.
-                     (set-marker start-marker (point)))
-                   (match-beginning 0) (ansi-color--find-face codes))
-          ;; If this is a color sequence,
-          (when (eq (aref esc-seq (1- (length esc-seq))) ?m)
-            ;; update the list of ansi codes.
-            (setq codes (ansi-color-apply-sequence esc-seq codes)))))
-      ;; search for the possible start of a new escape sequence
-      (if (re-search-forward "\033" end-marker t)
-          (progn
-            ;; if the rest of the region should have a face, put it there
-            (funcall ansi-color-apply-face-function
-                     start-marker end-marker (ansi-color--find-face codes))
-            (setq ansi-color-context-region (if codes (list codes))))
-        ;; if the rest of the region should have a face, put it there
-        (funcall ansi-color-apply-face-function
-                 start-marker end-marker (ansi-color--find-face codes))
-        (setq ansi-color-context-region (if codes (list codes)))))))
+  (cl-letf (((symbol-function #'delete-region)
+             (lambda (beg end)
+               (add-text-properties beg end '(invisible t jupyter-invisible t))))
+            (ansi-color-apply-face-function
+             (lambda (beg end face)
+               (when face
+                 (setq face (list face))
+                 (font-lock-prepend-text-property beg end 'face face)
+                 (put-text-property beg end (or face-prop 'font-lock-face) face)))))
+    (ansi-color-apply-on-region begin end)))
 
 ;;; `jupyter-insert' method
 
