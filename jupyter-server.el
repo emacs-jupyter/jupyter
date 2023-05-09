@@ -306,18 +306,6 @@ is used as determined by `jupyter-current-server'."
    (jupyter-client kernel client-class)
    repl-name associate-buffer display))
 
-(defun jupyter-server-repl-interactive-spec ()
-  (let ((server (jupyter-current-server current-prefix-arg)))
-    (list server
-          (jupyter-completing-read-kernelspec
-                (jupyter-kernelspecs server))
-          ;; FIXME: Ambiguity with `jupyter-current-server' and
-          ;; `current-prefix-arg'
-          (when (and current-prefix-arg
-                     (y-or-n-p "Name REPL? "))
-            (read-string "REPL Name: "))
-          t nil t)))
-
 ;;;###autoload
 (defun jupyter-run-server-repl
     (server kernel-name &optional repl-name associate-buffer client-class display)
@@ -329,7 +317,17 @@ is used as determined by `jupyter-current-server'.
 
 REPL-NAME, ASSOCIATE-BUFFER, CLIENT-CLASS, and DISPLAY all have
 the same meaning as in `jupyter-run-repl'."
-  (interactive (jupyter-server-repl-interactive-spec))
+  (interactive
+   (let ((server (jupyter-current-server current-prefix-arg)))
+     (list server
+           (jupyter-completing-read-kernelspec
+            (jupyter-kernelspecs server))
+           ;; FIXME: Ambiguity with `jupyter-current-server' and
+           ;; `current-prefix-arg'
+           (when (and current-prefix-arg
+                      (y-or-n-p "Name REPL? "))
+             (read-string "REPL Name: "))
+           t nil t)))
   (jupyter-server-repl
    (jupyter-kernel :server server :spec kernel-name)
    repl-name associate-buffer client-class display))
@@ -345,9 +343,27 @@ is used as determined by `jupyter-current-server'.
 
 REPL-NAME, ASSOCIATE-BUFFER, CLIENT-CLASS, and DISPLAY all have
 the same meaning as in `jupyter-connect-repl'."
-  (interactive (jupyter-server-repl-interactive-spec))
+  (interactive
+   (let ((server (jupyter-current-server current-prefix-arg)))
+     (list server
+           (completing-read
+            "Kernel ID: "
+            (mapcar (lambda (kernel)
+                 (cl-destructuring-bind (&key id &allow-other-keys)
+                     kernel
+                   (or (jupyter-server-kernel-name server id) id)))
+               (jupyter-api-get-kernel server)))
+           ;; FIXME: Ambiguity with `jupyter-current-server' and
+           ;; `current-prefix-arg'
+           (when (and current-prefix-arg
+                      (y-or-n-p "Name REPL? "))
+             (read-string "REPL Name: "))
+           t nil t)))
   (jupyter-server-repl
-   (jupyter-kernel :server server :id kernel-id)
+   (jupyter-kernel
+    :server server
+    :id (or (jupyter-server-kernel-id-from-name server kernel-id)
+            kernel-id))
    repl-name associate-buffer client-class display))
 
 ;;; `jupyter-server-kernel-list'
