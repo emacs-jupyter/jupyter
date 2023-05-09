@@ -575,8 +575,7 @@ waiting."
                   ("shell" 'jupyter-shell-message-hook)
                   ("stdin" 'jupyter-stdin-message-hook)
                   (_ (error "Unhandled channel: %s" channel)))))
-      (when jupyter--debug
-        (message "RUN-HOOK: %s" hook))
+      (jupyter-debug "RUN-HOOK: %s" hook)
       (with-demoted-errors "Error in Jupyter message hook: %S"
         (not (run-hook-with-args-until-success
               hook client msg))))))
@@ -630,6 +629,10 @@ CHANNEL is the Jupyter channel that MSG was received on by
 CLIENT.  MSG is a message property list and is the Jupyter
 message being handled."
   (when msg
+    (let ((print-length 10))
+      (jupyter-debug "Got MSG: %s %S"
+                     (jupyter-message-type msg)
+                     (jupyter-message-content msg)))
     (let ((jupyter-current-client client)
           (req (plist-get msg :parent-request)))
       (jupyter--update-execution-state client msg req)
@@ -1450,6 +1453,7 @@ METADATA is any extra data associated with MATCHES that was
 supplied by the kernel."
   (let* ((matches (append matches nil))
          (tail matches)
+         ;; TODO Handle the :start, :end, and :signature fields
          (types (append (plist-get metadata :_jupyter_types_experimental) nil))
          (buf))
     (save-current-buffer
