@@ -29,11 +29,10 @@
 (eval-when-compile (require 'subr-x))
 (require 'jupyter-repl)
 
-(declare-function julia-latexsub-or-indent "ext:julia-mode" (arg))
-
-(cl-defmethod jupyter-indent-line (&context (major-mode julia-mode))
-  "Call `julia-latexsub-or-indent'."
-  (call-interactively #'julia-latexsub-or-indent))
+(declare-function julia-mode-latexsub-completion-at-point-before
+                  "ext:julia-mode" ())
+(declare-function julia-mode-latexsub-completion-at-point-around
+                  "ext:julia-mode" ())
 
 (cl-defmethod jupyter-load-file-code (file &context (jupyter-lang julia))
   (format "include(\"%s\");" file))
@@ -67,18 +66,6 @@
                    ;; Except for when it is part of range expressions like 1:len
                    (not (memq (char-syntax (char-before (1- beg))) '(?w ?_))))
               (setcar prefix (concat ":" (car prefix))))))))))))
-
-(cl-defmethod jupyter-completion-post-completion (candidate
-                                                  &context (jupyter-lang julia))
-  "Insert the unicode representation of a LaTeX completion."
-  (if (eq (aref candidate 0) ?\\)
-      (when (get-text-property 0 'annot candidate)
-        (search-backward candidate)
-        (delete-region (point) (match-end 0))
-        ;; Alternatively use `julia-latexsub-or-indent', but I have found
-        ;; problems with that.
-        (insert (string-trim (get-text-property 0 'annot candidate))))
-    (cl-call-next-method)))
 
 ;;; `markdown-mode'
 
@@ -188,6 +175,7 @@ nil."
 ;;; `jupyter-repl-after-init'
 
 (defun jupyter-julia--setup-hooks (client)
+  (require 'julia-mode)
   (let ((jupyter-inhibit-handlers t))
     (jupyter-send-execute-request client
       :store-history nil
@@ -208,7 +196,18 @@ if !isdefined(Main, :__JUPY_saved_dir)
         IJulia.push_posterror_hook(popdir)
         IJulia.push_postexecute_hook(popdir)
     end
-end")))
+end"))
+  (add-hook 'completion-at-point-functions
+            #'julia-mode-latexsub-completion-at-point-before nil t)
+  (add-hook 'completion-at-point-functions
+            #'julia-mode-latexsub-completion-at-point-around nil t)
+  (define-abbrev-table 'jupyter-julia-abbrev-table ()
+    "Abbrev table for IJulia kernel with jupyter."
+    :parents (list julia-latexsub-abbrev-table))
+  (setq local-abbrev-table jupyter-julia-abbrev-table)
+  (when julia-force-tab-complete
+    (setq-local tab-always-indent 'complete)
+    (abbrev-mode 1)))
 
 (cl-defmethod jupyter-repl-after-init (&context (jupyter-lang julia))
   (add-function
