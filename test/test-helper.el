@@ -494,7 +494,8 @@ should have PROP with VAL."
     (require 'org)
     (require 'ob-python)
     (require 'ob-julia nil t)
-    (require 'ob-jupyter))
+    (require 'ob-jupyter)
+    (org-babel-jupyter-aliases-from-kernelspecs))
   (unless jupyter-org-test-buffer
     (setq jupyter-org-test-buffer (get-buffer-create "ob-jupyter-test"))
     (with-current-buffer jupyter-org-test-buffer

@@ -42,6 +42,7 @@
 (declare-function org-element-at-point "org-element")
 (declare-function org-element-property "org-element" (property element))
 (declare-function org-element-context "org-element" (&optional element))
+(declare-function org-babel-execute-src-block "ob-core" (&optional arg info params executor-type))
 (declare-function org-babel-variable-assignments:python "ob-python" (params))
 (declare-function org-babel-expand-body:generic "ob-core" (body params &optional var-lines))
 (declare-function org-export-derived-backend-p "ox" (backend &rest backends))
@@ -777,7 +778,17 @@ mapped to their appropriate minted language in
 
 ;;; Hook into `org'
 
-(org-babel-jupyter-aliases-from-kernelspecs)
+;; Defer generation of the aliases until the first call to
+;; `org-babel-execute-src-block' to avoid generating them at top-level
+;; when loading ob-jupyter.  Some users, e.g. those who use conda
+;; environments, may not have a jupyter command available at load
+;; time.
+(defun org-babel-jupyter--aliases-advice (&rest _)
+  (let ((default-directory user-emacs-directory))
+    (org-babel-jupyter-aliases-from-kernelspecs))
+  (advice-remove #'org-babel-execute-src-block #'org-babel-jupyter--aliases-advice))
+(advice-add #'org-babel-execute-src-block :before #'org-babel-jupyter--aliases-advice)
+
 (add-hook 'org-export-before-processing-hook #'org-babel-jupyter-setup-export)
 (add-hook 'org-export-before-parsing-hook #'org-babel-jupyter-strip-ansi-escapes)
 
