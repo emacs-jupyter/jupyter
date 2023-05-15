@@ -343,12 +343,20 @@ Those kernelspecs will be created in a temporary dir, which will
 be presented to Jupyter process via JUPYTER_PATH environemnt
 variable."
   (declare (indent 1) (debug (listp body)))
-  `(unwind-protect
-       (let ((jupyter-extra-dir (make-temp-file "jupyter-extra-dir" 'directory)))
-	 (jupyter-test-create-some-kernelspecs ,names jupyter-extra-dir)
-	 (setenv "JUPYTER_PATH" jupyter-extra-dir)
-	 ,@body)
-     (setenv "JUPYTER_PATH")))
+  `(let ((jupyter-extra-dir (make-temp-file "jupyter-extra-dir" 'directory))
+         (old-path (getenv "JUPYTER_PATH")))
+     (unwind-protect
+         (progn
+           (setenv "JUPYTER_PATH" jupyter-extra-dir)
+           (jupyter-test-create-some-kernelspecs ,names jupyter-extra-dir)
+           ;; Refresh the list of kernelspecs to make the new ones
+           ;; visible to BODY.
+           (jupyter-available-kernelspecs t)
+           ,@body)
+       (setenv "JUPYTER_PATH" old-path)
+       (delete-directory jupyter-extra-dir t)
+       ;; Refresh again to remove them.
+       (jupyter-available-kernelspecs t))))
 
 ;;; Functions
 

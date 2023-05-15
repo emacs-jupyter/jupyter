@@ -1896,7 +1896,7 @@ next(x"))))))
 (ert-deftest jupyter-available-kernelspecs-sorting ()
   :tags '(repl)
   (jupyter-test-with-some-kernelspecs '("foo_qux" "qux" "bar_qux")
-    (let ((result (mapcar #'car (jupyter-available-kernelspecs t))))
+    (let ((result (mapcar #'jupyter-kernelspec-name (jupyter-available-kernelspecs t))))
       (should (equal result (sort (copy-sequence result) #'string<))))))
 
 (ert-deftest jupyter-run-repl-issue-371 ()
