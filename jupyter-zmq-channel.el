@@ -50,6 +50,8 @@
         :control zmq-DEALER)
   "The socket types for the various channels used by `jupyter'.")
 
+(cl-deftype zmq-socket () '(satisfies zmq-socket-p))
+
 (defclass jupyter-zmq-channel (jupyter-channel)
   ((socket
     :type (or null zmq-socket)
