@@ -81,16 +81,21 @@ REFRESH."
                            (error "Can't obtain kernelspecs from jupyter shell command")))
                       :kernelspecs)))
                 (puthash
-                 host (cl-loop
-                       for (kname spec) on specs by #'cddr
-                       for name = (substring (symbol-name kname) 1)
-                       for dir = (plist-get spec :resource_dir)
-                       collect (make-jupyter-kernelspec
-                                :name name
-                                :resource-directory (concat
-                                                     (unless (string= host "local") host)
-                                                     dir)
-                                :plist (plist-get spec :spec)))
+                 host
+                 (sort
+                  (cl-loop
+                   for (kname spec) on specs by #'cddr
+                   for name = (substring (symbol-name kname) 1)
+                   for dir = (plist-get spec :resource_dir)
+                   collect (make-jupyter-kernelspec
+                            :name name
+                            :resource-directory (concat
+                                                 (unless (string= host "local") host)
+                                                 dir)
+                            :plist (plist-get spec :spec)))
+                  (lambda (x y)
+                    (string< (jupyter-kernelspec-name x)
+                             (jupyter-kernelspec-name y))))
                  jupyter--kernelspecs)))))
     kernelspecs))
 
