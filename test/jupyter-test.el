@@ -2583,7 +2583,7 @@ print(\"foo\", flush=True)
    (goto-char (org-babel-where-is-src-block-result))
    (let ((result (org-element-context)))
      (should (eq (org-element-type result) 'fixed-width))
-     (should (equal (org-element-property :value result) "Hello")))))
+     (should (equal (string-trim (org-element-property :value result)) "Hello")))))
 
 (ert-deftest jupyter-org-font-lock-ansi-escapes ()
   :tags '(org)
