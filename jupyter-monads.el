@@ -441,7 +441,9 @@ the callbacks."
           (jupyter-content
            (cl-list* :parent-request req msg))))))))
 
-(cl-defun jupyter-request (type &rest content)
+(defvar jupyter-inhibit-handlers)
+
+(defun jupyter-request (type &rest content)
   "Return an IO action that sends a `jupyter-request'.
 TYPE is the message type of the message that CONTENT, a property
 list, represents."

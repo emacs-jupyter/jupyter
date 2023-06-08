@@ -364,6 +364,8 @@ and `:msg_type'."
        :content (list 'message-part content nil)
        :buffers buffers))))
 
+(defvar jupyter-inhibit-handlers)
+
 (defmacro jupyter-with-client-handlers (handlers &rest body)
   "Evaluate BODY with `jupyter-inhibit-handlers' bound according to HANDLERS.
 HANDLERS has the inverted meaning of `jupyter-inhibit-handlers'."
