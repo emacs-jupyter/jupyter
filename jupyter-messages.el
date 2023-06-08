@@ -42,6 +42,7 @@
 (eval-when-compile (require 'subr-x))
 (require 'jupyter-base)
 (require 'hmac-def)
+(require 'parse-time)
 (require 'json)
 
 (defgroup jupyter-messages nil
