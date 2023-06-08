@@ -159,8 +159,9 @@ return the result."
   (let ((original (if (fboundp 'json--print)
                       #'json--print
                     #'json-encode)))
-    (cl-letf (((symbol-function original))
-              (apply-partially #'jupyter--json-encode original))
+    (cl-letf (((symbol-function original)
+               (apply-partially #'jupyter--json-encode
+                                (symbol-function original))))
       (encode-coding-string
        (cond
         ((stringp part) part)
