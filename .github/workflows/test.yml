@@ -25,14 +25,12 @@ jobs:
           python-version: 3.9
       - name: Install requirements
         run: |
-          git clone https://github.com/cask/cask emacs-cask
-          export PATH=$PWD/emacs-cask/bin:$PATH
-          # Make cask available to all future actions
-          echo "$PWD/emacs-cask/bin" >> $GITHUB_PATH
-
           conda install -c conda-forge pandoc
           conda install -c anaconda jupyter
-          make dev
+          curl -fsSL https://raw.github.com/doublep/eldev/master/webinstall/eldev | sh
+
+          # Make eldev available to all future actions
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
       - name: Check Jupyter version
         run: |
           mkdir -p $(jupyter --runtime-dir)

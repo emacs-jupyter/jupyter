@@ -5,3 +5,5 @@ node_modules/
 *lock*
 built/
 .cask/
+.eldev/
+Eldev-local
