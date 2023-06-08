@@ -1902,14 +1902,13 @@ next(x"))))))
 (ert-deftest jupyter-run-repl-issue-371 ()
   :tags '(repl)
   (jupyter-test-with-some-kernelspecs '("foo_qux" "qux" "bar_qux")
-    (let ((client))
+    (let ((client (jupyter-run-repl "qux")))
       (unwind-protect
-	  (progn
-	    (setq client (jupyter-run-repl "qux"))
-	    (should (equal (plist-get (jupyter-session-conn-info (oref client session))
-				      :kernel_name)
-			   "qux")))
-	(jupyter-test-kill-buffer (oref client buffer))))))
+          (should (equal (jupyter-kernelspec-name
+                          (jupyter-kernel-action client
+                            #'jupyter-kernel-spec))
+                         "qux"))
+        (jupyter-test-kill-buffer (oref client buffer))))))
 
 ;;; `org-mode'
 
