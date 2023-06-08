@@ -368,8 +368,8 @@ The only difference between them will be their names."
 	(save-silently t))
     (dolist (name kernel-names)
       (let ((kernel-dir (format "%s/kernels/%s" data-dir name)))
-	(make-directory kernel-dir t)
-	(append-to-file (json-serialize
+	    (make-directory kernel-dir t)
+	(append-to-file (json-encode
 			 `(:argv ,argv :display_name ,name :language "python"))
 			nil
 			(format "%s/kernel.json" kernel-dir))))))
