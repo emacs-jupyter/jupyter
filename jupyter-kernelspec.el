@@ -76,9 +76,20 @@ REFRESH."
           (or (and (not refresh) (gethash host jupyter--kernelspecs))
               (let ((specs
                      (plist-get
-                      (jupyter-read-plist-from-string
-                       (or (jupyter-command "kernelspec" "list" "--json" "--log-level" "ERROR")
-                           (error "Can't obtain kernelspecs from jupyter shell command")))
+                      (let ((json (or (jupyter-command "kernelspec" "list"
+                                                       "--json" "--log-level" "ERROR")
+                                      (error "\
+Can't obtain kernelspecs from jupyter shell command"))))
+                        (condition-case nil
+                            (jupyter-read-plist-from-string json)
+                          (error
+                           (error "\
+Jupyter kernelspecs couldn't be parsed from
+
+    jupyter kernelspec list --json
+
+To investiagate further, run that command in a shell and examine
+why it isn't returning valid JSON."))))
                       :kernelspecs)))
                 (puthash
                  host
