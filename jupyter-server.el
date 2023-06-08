@@ -147,12 +147,42 @@ CLIENT must be communicating with a `jupyter-server-kernel', see
 
 (defvar jupyter-notebook-procs nil)
 
-(defun jupyter-launch-notebook (&optional authentication)
-  "Launch a Jupyter notebook with optional AUTHENTICATION.
-The notebook is launched in the ~ directory."
-  (let ((port (car (jupyter-available-local-ports 1))))
+(defvar jupyter-default-notebook-port 8888)
+
+(defun jupyter-port-available-p (port)
+  "Return non-nil if PORT is available."
+  (let ((proc
+         (condition-case nil
+             (make-network-process
+              :name "jupyter-port-available-p"
+              :server t
+              :host "127.0.0.1"
+              :service port)
+           (file-error nil))))
+    (when proc
+      (prog1 t
+        (delete-process proc)))))
+
+(defun jupyter-launch-notebook (&optional port authentication)
+  "Launch a Jupyter notebook on PORT with AUTHENTICATION.
+If PORT is nil, launch the notebook on the
+`jupyter-default-notebook-port' if available.  Launch the
+notebook on a random port otherwise.  Return the actual port
+used.
+
+If AUTHENTICATION is t, use the default, token, authentication of
+a Jupyter notebook.  If AUTHENTICATION is a string, it is
+interpreted as the password to the notebook.  Any other value of
+AUTHENTICATION means the notebook is not authenticated."
+  (let ((port (if port
+                  (if (jupyter-port-available-p port)
+                      port
+                    (error "Port %s not available" port))
+                (if (jupyter-port-available-p jupyter-default-notebook-port)
+                    jupyter-default-notebook-port
+                  (car (jupyter-available-local-ports 1))))))
     (prog1 port
-      (let ((buffer (generate-new-buffer "*jupyter-notebook-proc*"))
+      (let ((buffer (generate-new-buffer "*jupyter-notebook*"))
             (args (append
                    (list "notebook" "--no-browser" "--debug"
                          (format "--NotebookApp.port=%s" port))
@@ -171,13 +201,16 @@ The notebook is launched in the ~ directory."
         (setq jupyter-notebook-procs
               (cl-loop for (port . proc) in jupyter-notebook-procs
                        if (process-live-p proc) collect (cons port proc)))
-        (message "Launching notebook process...")
         (push
          (cons port
-               (apply #'start-process
+               (apply #'start-file-process
                       "jupyter-notebook" buffer "jupyter" args))
          jupyter-notebook-procs)
-        (sleep-for 5)))))
+        (with-current-buffer buffer
+          (jupyter-with-timeout ((format "Launching notebook process on port %s..." port) 5)
+            (save-excursion
+              (goto-char (point-min))
+              (re-search-forward "Jupyter Notebook.+running at:$" nil t))))))))
 
 (defun jupyter-notebook-process (server)
   "Return a process object for the notebook associated with SERVER.
