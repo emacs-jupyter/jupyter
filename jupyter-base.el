@@ -39,6 +39,8 @@
 (declare-function jupyter-message-content "jupyter-messages" (msg))
 (declare-function jupyter-new-uuid "jupyter-messages")
 
+(cl-deftype json-plist () '(satisfies json-plist-p))
+
 ;;; Custom variables
 
 (defcustom jupyter-pop-up-frame nil
