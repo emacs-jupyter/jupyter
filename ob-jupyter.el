@@ -324,10 +324,22 @@ session."
 
 (cl-defmethod org-babel-jupyter-initiate-client ((session org-babel-jupyter-server-session) kernel)
   (let* ((rsession (org-babel-jupyter-session-name session))
-         (url (jupyter-tramp-url-from-file-name rsession))
-         (server (jupyter-server :url url)))
+         (server (with-parsed-tramp-file-name rsession nil
+                   (when (member host '("127.0.0.1" "localhost"))
+                     (setq port (tramp-file-name-port-or-default v))
+                     (when (jupyter-port-available-p port)
+                       (if (y-or-n-p (format "Notebook not started on port %s. Launch one? "
+                                             port))
+                           ;; TODO: Specify authentication?  But then
+                           ;; how would you get the token for the
+                           ;; login that happens in
+                           ;; `jupyter-tramp-server-from-file-name'.
+                           (jupyter-launch-notebook port)
+                         (user-error "Launch a notebook on port %s first." port))))
+                   (jupyter-tramp-server-from-file-name rsession))))
     (unless (jupyter-server-has-kernelspec-p server kernel)
-      (error "No kernelspec matching \"%s\" exists at %s" kernel url))
+      (error "No kernelspec matching \"%s\" exists at %s"
+             kernel (oref server url)))
     ;; Language aliases may not exist for the kernels that are accessible on
     ;; the server so ensure they do.
     (org-babel-jupyter-aliases-from-kernelspecs
