@@ -298,7 +298,10 @@ By default this adds the events quit, callback, and timer."
        ;; Can only send lists at the moment
        (when (and res (listp res)) (zmq-prin1 res)))))
 
-(cl-defgeneric jupyter-ioloop-add-callback ((ioloop jupyter-ioloop) cb)
+(cl-defgeneric jupyter-ioloop-add-callback ()
+  (declare (indent 1)))
+
+(cl-defmethod jupyter-ioloop-add-callback ((ioloop jupyter-ioloop) cb)
   "In IOLOOP, add CB to be run in the IOLOOP environment.
 CB is run at the start of every polling loop.  Callbacks are
 called in the order they are added.
@@ -308,7 +311,6 @@ sending closures to the IOLOOP.  An example:
 
     (jupyter-ioloop-add-callback ioloop
       `(lambda () (zmq-prin1 'foo \"bar\")))"
-  (declare (indent 1))
   (cl-assert (functionp cb))
   (cl-callf append (oref ioloop callbacks) (list cb))
   (when (process-live-p (oref ioloop process))
@@ -412,7 +414,7 @@ polling the STDIN file handle."
        (t
         (funcall handler event))))))
 
-(cl-defgeneric jupyter-ioloop-start ((ioloop jupyter-ioloop)
+(cl-defmethod jupyter-ioloop-start ((ioloop jupyter-ioloop)
                                      handler
                                      &key buffer)
   "Start an IOLOOP.
@@ -450,7 +452,7 @@ the IOLOOP subprocess buffer, see `zmq-start-process'."
         (process-put process :stdin stdin))
       (jupyter-ioloop-wait-until ioloop 'start #'identity))))
 
-(cl-defgeneric jupyter-ioloop-stop ((ioloop jupyter-ioloop))
+(cl-defmethod jupyter-ioloop-stop ((ioloop jupyter-ioloop))
   "Stop IOLOOP.
 Send a quit event to IOLOOP, wait until it actually quits before
 returning."

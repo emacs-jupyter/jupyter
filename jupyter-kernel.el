@@ -83,7 +83,7 @@ purposes of handling different forms of ARGS."
   (jupyter-kernelspec-name
    (jupyter-kernel-spec kernel)))
 
-(cl-defgeneric jupyter-launch ((kernel jupyter-kernel))
+(cl-defmethod jupyter-launch ((kernel jupyter-kernel))
   "Launch KERNEL."
   (cl-assert (jupyter-alive-p kernel)))
 
@@ -95,7 +95,7 @@ purposes of handling different forms of ARGS."
   "Notify that the kernel launched."
   (message "Launching %s kernel...done" (jupyter-kernel-name kernel)))
 
-(cl-defgeneric jupyter-shutdown ((kernel jupyter-kernel))
+(cl-defmethod jupyter-shutdown ((kernel jupyter-kernel))
   "Shutdown KERNEL.
 Once a kernel has been shutdown it has no more connected clients
 and the process it represents no longer exists.
@@ -113,7 +113,7 @@ nil."
   "Notify that the kernel launched."
   (message "%s kernel shutdown...done" (jupyter-kernel-name kernel)))
 
-(cl-defgeneric jupyter-restart ((kernel jupyter-kernel))
+(cl-defmethod jupyter-restart ((kernel jupyter-kernel))
   "Restart KERNEL.
 
 The default implementation shuts down and then re-launches
@@ -121,7 +121,7 @@ KERNEL."
   (jupyter-shutdown kernel)
   (jupyter-launch kernel))
 
-(cl-defgeneric jupyter-interrupt ((_kernel jupyter-kernel))
+(cl-defmethod jupyter-interrupt ((_kernel jupyter-kernel))
   "Interrupt KERNEL."
   (ignore))
 

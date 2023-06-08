@@ -499,7 +499,7 @@ error with the data being the error received by `url-retrieve'."
             jupyter-api-request-headers)
         (jupyter-api-get-kernelspec client)))))
 
-(cl-defgeneric jupyter-api-authenticate ((client jupyter-rest-client) &rest args)
+(cl-defgeneric jupyter-api-authenticate (client &rest args)
   (declare (indent 1)))
 
 (cl-defmethod jupyter-api-authenticate ((client jupyter-rest-client) (authenticator function))
@@ -651,7 +651,7 @@ will be '(:k1 ...)."
                               "&"))))
     (cons endpoint plist)))
 
-(cl-defgeneric jupyter-api-request ((client jupyter-rest-client) method &rest plist)
+(cl-defgeneric jupyter-api-request (client method &rest plist)
   (declare (indent 2)))
 
 (cl-defmethod jupyter-api-request ((client jupyter-rest-client) method &rest plist)
@@ -720,7 +720,7 @@ the server."
 
 ;;;; Endpoints
 
-(cl-defgeneric jupyter-api/kernels ((client jupyter-rest-client) method &rest plist)
+(cl-defgeneric jupyter-api/kernels (client method &rest plist)
   (declare (indent 2)))
 
 (cl-defmethod jupyter-api/kernels ((client jupyter-rest-client) method &rest plist)
@@ -729,7 +729,7 @@ METHOD is the HTTP method to use.  PLIST has the same meaning as
 in `jupyter-api-request'."
   (apply #'jupyter-api-request client method "api" "kernels" plist))
 
-(cl-defgeneric jupyter-api/kernelspecs ((client jupyter-rest-client) method &rest plist)
+(cl-defgeneric jupyter-api/kernelspecs (client method &rest plist)
   (declare (indent 2)))
 
 (cl-defmethod jupyter-api/kernelspecs ((client jupyter-rest-client) method &rest plist)
@@ -738,7 +738,7 @@ METHOD is the HTTP method to use.  PLIST has the same meaning as
 in `jupyter-api-request'."
   (apply #'jupyter-api-request client method "api" "kernelspecs" plist))
 
-(cl-defgeneric jupyter-api/contents ((client jupyter-rest-client) method &rest plist)
+(cl-defgeneric jupyter-api/contents (client method &rest plist)
   (declare (indent 2)))
 
 (cl-defmethod jupyter-api/contents ((client jupyter-rest-client) method &rest plist)
@@ -747,7 +747,7 @@ METHOD is the HTTP method to use.  PLIST has the same meaning as
 in `jupyter-api-request'."
   (apply #'jupyter-api-request client method "api" "contents" plist))
 
-(cl-defgeneric jupyter-api/config ((client jupyter-rest-client) method &rest plist)
+(cl-defgeneric jupyter-api/config (client method &rest plist)
   (declare (indent 2)))
 
 (cl-defmethod jupyter-api/config ((client jupyter-rest-client) method &rest plist)

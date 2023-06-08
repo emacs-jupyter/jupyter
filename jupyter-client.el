@@ -1117,7 +1117,7 @@ STR is displayed after the region."
 
 (define-jupyter-client-handler execute-reply)
 
-(cl-defgeneric jupyter-handle-payload ((source symbol) _payload)
+(cl-defmethod jupyter-handle-payload ((source symbol) _payload)
   "Execute the action in a Jupyter PAYLOAD.
 SOURCE is the type of payload and PAYLOAD will be a property list
 containing the necessary information to perform the actions of

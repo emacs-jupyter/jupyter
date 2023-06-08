@@ -207,12 +207,14 @@ use `jupyter-hb-unpause'."))
     (oset channel paused nil)
     (jupyter-hb--send-ping channel)))
 
+(cl-defgeneric jupyter-hb-on-kernel-dead (channel fun)
+  (declare (indent 1)))
+
 (cl-defmethod jupyter-hb-on-kernel-dead ((channel jupyter-hb-channel) fun)
   "When the kernel connected to CHANNEL dies, call FUN.
 A kernel is considered dead when CHANNEL does not receive a
 response after \(* `jupyter-hb-max-failures' `time-to-dead'\)
 seconds has elapsed without the kernel sending a ping back."
-  (declare (indent 1))
   (oset channel dead-cb fun))
 
 (defun jupyter-hb--send-ping (channel &optional failed-count)

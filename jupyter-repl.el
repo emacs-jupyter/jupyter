@@ -1996,8 +1996,7 @@ have the same `major-mode' as the client's kernel language and
 
 ;;; Starting a REPL
 
-(cl-defgeneric jupyter-bootstrap-repl ((client jupyter-repl-client)
-                                       &optional repl-name associate-buffer display)
+(cl-defgeneric jupyter-bootstrap-repl (client &optional repl-name associate-buffer display)
   "Initialize a new REPL buffer based on CLIENT, return CLIENT.
 CLIENT should be a REPL client already connected to its kernel.
 

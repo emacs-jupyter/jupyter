@@ -243,11 +243,11 @@ return nil."
                (:constructor org-babel-jupyter-remote-session))
   connect-repl-p)
 
-(cl-defgeneric org-babel-jupyter-parse-session ((session string))
+(cl-defmethod org-babel-jupyter-parse-session ((session string))
   "Return a parsed representation of SESSION."
   (org-babel-jupyter-session :name session))
 
-(cl-defgeneric org-babel-jupyter-initiate-client ((_session org-babel-jupyter-session) kernel)
+(cl-defmethod org-babel-jupyter-initiate-client ((_session org-babel-jupyter-session) kernel)
   "Launch SESSION's KERNEL, return a `jupyter-org-client' connected to it.
 SESSION is the :session header argument of a source block and
 KERNEL is the name of the kernel to launch."

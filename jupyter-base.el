@@ -393,7 +393,7 @@ Adds the method `jupyter-add-finalizer' which maintains a list of
 finalizer functions to be called when the object is garbage
 collected.")
 
-(cl-defgeneric jupyter-add-finalizer ((obj jupyter-finalized-object) finalizer)
+(cl-defmethod jupyter-add-finalizer ((obj jupyter-finalized-object) finalizer)
   "Cleanup resources automatically.
 FINALIZER if a function to be added to a list of finalizers that
 will be called when OBJ is garbage collected."
