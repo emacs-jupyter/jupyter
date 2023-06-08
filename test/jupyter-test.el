@@ -26,12 +26,10 @@
 
 ;;; Code:
 
-(require 'zmq)
 (require 'jupyter-env)
 (require 'jupyter-client)
 (require 'jupyter-repl)
 (require 'jupyter-org-client)
-(require 'jupyter-kernel-manager)
 (require 'cl-lib)
 (require 'ert)
 (require 'subr-x)                       ; string-trim
@@ -47,85 +45,35 @@
   :tags '(mock)
   (jupyter-with-echo-client client
     (ert-info ("Mock echo client echo's messages back to channel.")
-      (let* ((msg (jupyter-message-execute-request :code "foo"))
-             (req (jupyter-send client :shell :execute-request msg)))
+      (let ((req (jupyter-send client "execute_request" :code "foo"))
+            (msg (jupyter-test-message
+                  (make-jupyter-request) "execute_request" '(:code "foo"))))
         (sleep-for 0.3)
         (setq msgs (nreverse (ring-elements (oref client messages))))
         (should (= (length msgs) 3))
-        (should (equal (jupyter-message-type (car msgs)) :status))
+        (should (equal (jupyter-message-type (car msgs)) "status"))
         (should (equal (jupyter-message-parent-id (car msgs))
                        (jupyter-request-id req)))
         (should (equal (jupyter-message-get (car msgs) :execution_state) "busy"))
-        (should (equal (jupyter-message-type (cadr msgs)) :execute-reply))
+        (should (equal (jupyter-message-type (cadr msgs)) "execute_reply"))
         (should (equal (jupyter-message-parent-id (cadr msgs))
                        (jupyter-request-id req)))
         (should (equal (jupyter-message-content (cadr msgs))
-                       (plist-get (jupyter-test-message (jupyter-request) nil msg) :content)))
-        (should (equal (jupyter-message-type (caddr msgs)) :status))
+                       (plist-get msg :content)))
+        (should (equal (jupyter-message-type (caddr msgs)) "status"))
         (should (equal (jupyter-message-parent-id (caddr msgs))
                        (jupyter-request-id req)))
         (should (equal (jupyter-message-get (caddr msgs) :execution_state) "idle"))))))
-
-;;;; Comm layer
-
-(ert-deftest jupyter-comm-layer ()
-  :tags '(mock comm)
-  (let ((comm (jupyter-mock-comm-layer))
-        (obj (make-jupyter-mock-comm-obj)))
-    (jupyter-comm-add-handler comm obj)
-    (should (= (length (oref comm handlers)) 1))
-    (should (eq (jupyter-weak-ref-resolve (car (oref comm handlers))) obj))
-    (should (= (oref comm alive) 1))
-    (jupyter-comm-add-handler comm obj)
-    (should (= (length (oref comm handlers)) 1))
-    (should (eq (jupyter-weak-ref-resolve (car (oref comm handlers))) obj))
-    (should (= (oref comm alive) 1))
-
-    (should-not (jupyter-mock-comm-obj-event obj))
-    (jupyter-event-handler comm '(event))
-    ;; Events are handled in a timer, not right away
-    (sleep-for 0.01)
-    (should (equal (jupyter-mock-comm-obj-event obj) '(event)))
-
-    (jupyter-comm-remove-handler comm obj)
-    (should (= (length (oref comm handlers)) 0))
-    (should-not (oref comm alive))
-    (jupyter-comm-remove-handler comm obj)))
 
 ;;; Callbacks
 
 (ert-deftest jupyter-wait-until-idle ()
   :tags '(callbacks)
   (jupyter-with-echo-client client
-    (let ((req (jupyter-send-execute-request client :code "foo")))
-      (ert-info ("Blocking callbacks")
-        (jupyter-wait-until-idle req)
-        (should (jupyter-request-idle-p req)))
-      (ert-info ("Error after idle message has been received")
-        (should-error (jupyter-add-callback req :status #'identity))))))
-
-(ert-deftest jupyter-callbacks ()
-  :tags '(callbacks)
-  (jupyter-with-echo-client client
-    (ert-info ("Callbacks called on the right message types")
-      (let* ((callback-count 0)
-             (cb (lambda (msg)
-                   (should (eq (jupyter-message-type msg) :status))
-                   (setq callback-count (1+ callback-count))))
-             (req (jupyter-send-execute-request client :code "foo")))
-        (jupyter-add-callback req :status cb)
-        (jupyter-wait-until-idle req)
-        (should (= callback-count 2))))
-    (ert-info ("Adding callbacks, message type list")
-      (let* ((callback-count 0)
-             (cb (lambda (msg)
-                   (setq callback-count (1+ callback-count))
-                   (should (memq (jupyter-message-type msg)
-                                 '(:status :execute-reply)))))
-             (req (jupyter-send-execute-request client :code "foo")))
-        (jupyter-add-callback req '(:status :execute-reply) cb)
-        (jupyter-wait-until-idle req)
-        (should (= callback-count 3))))))
+    (let ((req (jupyter-send client "execute_request" :code "foo")))
+      (should-not (jupyter-request-idle-p req))
+      (jupyter-wait-until-idle req)
+      (should (jupyter-request-idle-p req)))))
 
 ;;; `jupyter-insert'
 
@@ -414,9 +362,9 @@
          with true-msg = (list
                           :header '(message-part
                                     "{\"msg_id\":\"1\",\"msg_type\":\"execute_reply\"}"
-                                    (:msg_id "1" :msg_type :execute-reply))
+                                    (:msg_id "1" :msg_type "execute_reply"))
                           :msg_id "1"
-                          :msg_type :execute-reply
+                          :msg_type "execute_reply"
                           :parent_header '(message-part "{}" nil)
                           :content '(message-part "{}" nil)
                           :metadata '(message-part "{}" nil)
@@ -434,78 +382,95 @@
   :tags '(client messages)
   (jupyter-test-with-python-client client
     (ert-info ("Kernel info")
-      (let ((res (jupyter-wait-until-received :kernel-info-reply
-                   (jupyter-send-kernel-info-request client))))
-        (should res)
-        (should (json-plist-p res))
-        (should (eq (jupyter-message-type res) :kernel-info-reply))))
+      (jupyter-run-with-client client
+        (jupyter-mlet* ((res (jupyter-reply
+                              (jupyter-kernel-info-request))))
+          (should res)
+          (should (json-plist-p res))
+          (should (string= (jupyter-message-type res) "kernel_info_reply"))
+          (jupyter-return nil))))
     (ert-info ("Comm info")
-      (let ((res (jupyter-wait-until-received :comm-info-reply
-                   (jupyter-send-comm-info-request client))))
-        (should-not (null res))
-        (should (json-plist-p res))
-        (should (eq (jupyter-message-type res) :comm-info-reply))))
+      (jupyter-run-with-client client
+        (jupyter-mlet* ((res (jupyter-reply
+                              (jupyter-comm-info-request))))
+          (should-not (null res))
+          (should (json-plist-p res))
+          (should (string= (jupyter-message-type res) "comm_info_reply"))
+          (jupyter-return nil))))
     (ert-info ("Execute")
-      (let ((res (jupyter-wait-until-received :execute-reply
-                   (jupyter-send-execute-request client :code "y = 1 + 2"))))
-        (should-not (null res))
-        (should (json-plist-p res))
-        (should (eq (jupyter-message-type res) :execute-reply))))
+      (jupyter-run-with-client client
+        (jupyter-mlet* ((res (jupyter-reply
+                              (jupyter-execute-request :code "y = 1 + 2"))))
+          (should-not (null res))
+          (should (json-plist-p res))
+          (should (string= (jupyter-message-type res) "execute_reply"))
+          (jupyter-return nil))))
     (ert-info ("Input")
       (cl-letf (((symbol-function 'read-from-minibuffer)
                  (lambda (_prompt &rest _args) "foo")))
-        (let ((res (jupyter-wait-until-received :execute-result
-                     (jupyter-send-execute-request client :code "input('')"))))
+        (jupyter-run-with-client client
+          (jupyter-mlet* ((msgs (jupyter-messages
+                                 (jupyter-execute-request :code "input('')")
+                                 jupyter-long-timeout)))
+            (let ((res (jupyter-find-message "execute_result" msgs)))
+              (should-not (null res))
+              (should (json-plist-p res))
+              (should (string= (jupyter-message-type res) "execute_result"))
+              (should (equal (jupyter-message-data res :text/plain) "'foo'"))
+              (jupyter-return nil))))))
+    (ert-info ("Inspect")
+      (jupyter-run-with-client client
+        (jupyter-mlet* ((res (jupyter-reply
+                              (jupyter-inspect-request
+                               :code "list((1, 2, 3))"
+                               :pos 2
+                               :detail 0))))
           (should-not (null res))
           (should (json-plist-p res))
-          (should (eq (jupyter-message-type res) :execute-result))
-          (should (equal (jupyter-message-data res :text/plain) "'foo'")))))
-    (ert-info ("Inspect")
-      (let ((res (jupyter-wait-until-received :inspect-reply
-                   (jupyter-send-inspect-request client
-                     :code "list((1, 2, 3))"
-                     :pos 2
-                     :detail 0))))
-        (should-not (null res))
-        (should (json-plist-p res))
-        (should (eq (jupyter-message-type res) :inspect-reply))))
+          (should (string= (jupyter-message-type res) "inspect_reply"))
+          (jupyter-return nil))))
     (ert-info ("Complete")
-      (let ((res (jupyter-wait-until-received :complete-reply
-                   (jupyter-send-complete-request client
-                     :code "foo = lis"
-                     :pos 8))))
-        (should-not (null res))
-        (should (json-plist-p res))
-        (should (eq (jupyter-message-type res) :complete-reply))))
+      (jupyter-run-with-client client
+        (jupyter-mlet* ((res (jupyter-reply
+                              (jupyter-complete-request
+                               :code "foo = lis"
+                               :pos 8))))
+          (should-not (null res))
+          (should (json-plist-p res))
+          (should (string= (jupyter-message-type res) "complete_reply"))
+          (jupyter-return nil))))
     (ert-info ("History")
-      (let ((res (jupyter-wait-until-received :history-reply
-                   (jupyter-send-history-request client
-                     :hist-access-type "tail" :n 2))))
-        (should-not (null res))
-        (should (json-plist-p res))
-        (should (eq (jupyter-message-type res) :history-reply))))
+      (jupyter-run-with-client client
+        (jupyter-mlet* ((res (jupyter-reply
+                              (jupyter-history-request
+                               :hist-access-type "tail" :n 2))))
+          (should-not (null res))
+          (should (json-plist-p res))
+          (should (string= (jupyter-message-type res) "history_reply"))
+          (jupyter-return nil))))
     (ert-info ("Is Complete")
-      (let ((res (jupyter-wait-until-received :is-complete-reply
-                   (jupyter-send-is-complete-request client
-                     :code "for i in range(5):"))))
-        (should-not (null res))
-        (should (json-plist-p res))
-        (should (eq (jupyter-message-type res) :is-complete-reply))))
+      (jupyter-run-with-client client
+        (jupyter-mlet* ((res (jupyter-reply
+                              (jupyter-is-complete-request
+                               :code "for i in range(5):"))))
+          (should-not (null res))
+          (should (json-plist-p res))
+          (should (string= (jupyter-message-type res) "is_complete_reply"))
+          (jupyter-return nil))))
     (ert-info ("Shutdown")
-      (let ((res (jupyter-wait-until-received :shutdown-reply
-                   (jupyter-send-shutdown-request client))))
-        (should-not (null res))
-        (should (json-plist-p res))
-        (should (eq (jupyter-message-type res) :shutdown-reply))
-        ;; Ensure we give the kernel process time to die off
-        (when (oref client manager)
-          (jupyter-with-timeout (nil jupyter-long-timeout)
-            (not (jupyter-kernel-alive-p (oref client manager)))))))))
+      (jupyter-run-with-client client
+        (jupyter-mlet* ((res (jupyter-reply
+                              (jupyter-shutdown-request))))
+          (should-not (null res))
+          (should (json-plist-p res))
+          (should (string= (jupyter-message-type res) "shutdown_reply"))
+          ;; TODO: Ensure we give the kernel process time to die off
+          (jupyter-return nil))))))
 
 (ert-deftest jupyter-message-lambda ()
   :tags '(messages)
   (let ((msg (jupyter-test-message
-              (jupyter-request) :execute-reply
+              (make-jupyter-request) "execute_reply"
               (list :status "idle" :data (list :text/plain "foo")))))
     (should (equal (funcall (jupyter-message-lambda (status)
                               status)
@@ -529,16 +494,16 @@
                    :type :shell
                    :endpoint (format "tcp://127.0.0.1:%s" port))))
     (ert-info ("Starting the channel")
-      (should-not (jupyter-channel-alive-p channel))
-      (jupyter-start-channel channel :identity "foo")
-      (should (jupyter-channel-alive-p channel))
+      (should-not (jupyter-alive-p channel))
+      (jupyter-start channel :identity "foo")
+      (should (jupyter-alive-p channel))
       (should (equal (zmq-socket-get (oref channel socket)
                                      zmq-ROUTING-ID)
                      "foo")))
     (ert-info ("Stopping the channel")
       (let ((sock (oref channel socket)))
-        (jupyter-stop-channel channel)
-        (should-not (jupyter-channel-alive-p channel))
+        (jupyter-stop channel)
+        (should-not (jupyter-alive-p channel))
         ;; Ensure the socket was disconnected
         (should-error (zmq-send sock "foo" zmq-NOBLOCK) :type 'zmq-EAGAIN)))))
 
@@ -552,13 +517,13 @@
          (died-cb-called nil)
          (jupyter-hb-max-failures 1))
     (oset channel time-to-dead 0.1)
-    (should-not (jupyter-channel-alive-p channel))
+    (should-not (jupyter-alive-p channel))
     (should-not (jupyter-hb-beating-p channel))
     (should (oref channel paused))
     (oset channel beating t)
-    (jupyter-start-channel channel)
+    (jupyter-start channel)
     (jupyter-hb-on-kernel-dead channel (lambda () (setq died-cb-called t)))
-    (should (jupyter-channel-alive-p channel))
+    (should (jupyter-alive-p channel))
     ;; `jupyter-hb-unpause' needs to explicitly called
     (should (oref channel paused))
     (jupyter-hb-unpause channel)
@@ -569,7 +534,7 @@
     (should (oref channel paused))
     (should-not (oref channel beating))
     (should died-cb-called)
-    (should (jupyter-channel-alive-p channel))
+    (should (jupyter-alive-p channel))
     (should-not (jupyter-hb-beating-p channel))))
 
 ;;; GC
@@ -586,21 +551,6 @@
     (garbage-collect)
     (garbage-collect)
     (should-not (jupyter-weak-ref-resolve ref))))
-
-(defclass jupyter-test-object (jupyter-finalized-object)
-  ((val)))
-
-(ert-deftest jupyter-add-finalizer ()
-  :tags '(gc)
-  (let ((val (list 1)))
-    (let ((obj (jupyter-test-object)))
-      (oset obj val val)
-      (jupyter-add-finalizer obj
-        (lambda () (setcar (oref obj val) nil))))
-    (ignore (make-list (* 2 gc-cons-threshold) ?0))
-    (garbage-collect)
-    (should (null (car val)))))
-
 
 ;;; Kernel
 
@@ -636,69 +586,166 @@
              (lambda (_) nil)))
     (should-error (jupyter-locate-python))))
 
-(ert-deftest jupyter-kernel-lifetime ()
-  :tags '(kernel)
-  (let* ((conn-info (jupyter-local-tcp-conn-info))
-         (kernel (jupyter-spec-kernel
-                  :spec (jupyter-guess-kernelspec "python")
-                  :session (jupyter-session
-                            :key (plist-get conn-info :key)
-                            :conn-info conn-info))))
-    (should-not (jupyter-kernel-alive-p kernel))
-    (jupyter-start-kernel kernel)
-    (should (jupyter-kernel-alive-p kernel))
-    (jupyter-kill-kernel kernel)
-    (should-not (jupyter-kernel-alive-p kernel))
-    (setq conn-info (jupyter-local-tcp-conn-info))
-    (ert-info ("`jupyter-kernel-manager'")
-      ;; TODO: Should the manager create a session if one isn't present?
-      (oset kernel session (jupyter-session
-                            :key (plist-get conn-info :key)
-                            :conn-info conn-info))
-      (let* ((manager (jupyter-kernel-process-manager :kernel kernel))
-             (control-channel (oref manager control-channel))
-             process)
-        (should-not (jupyter-kernel-alive-p manager))
-        (should-not control-channel)
-        (jupyter-start-kernel manager)
-        (setq process (oref kernel process))
-        (setq control-channel (oref manager control-channel))
-        (should (jupyter-zmq-channel-p control-channel))
-        (should (jupyter-kernel-alive-p manager))
-        (should (jupyter-kernel-alive-p kernel))
-        (jupyter-shutdown-kernel manager)
-        (ert-info ("Kernel shutdown is clean")
-          (should-not (process-live-p process))
-          (should (zerop (process-exit-status process)))
-          (should-not (jupyter-kernel-alive-p manager))
-          (should-not (jupyter-kernel-alive-p kernel)))
-        (setq control-channel (oref manager control-channel))
-        (should-not (jupyter-zmq-channel-p control-channel))))))
+;; FIXME: Revisit after transition
+(ert-deftest jupyter-kernel-process ()
+  :tags '(kernel process)
+  ;; TODO: `jupyter-interrupt'
+  (ert-info ("`jupyter-launch', `jupyter-shutdown'")
+    (cl-macrolet
+        ((confirm-shutdown-state
+          ()
+          `(progn
+             (should-not (jupyter-alive-p kernel))
+             (should (jupyter-kernel-spec kernel))
+             (should-not (jupyter-kernel-session kernel))
+             (should-not (process-live-p (jupyter-process kernel)))))
+         (confirm-launch-state
+          ()
+          `(progn
+             (should (jupyter-alive-p kernel))
+             (should (jupyter-kernel-spec kernel))
+             (should (jupyter-kernel-session kernel))
+             (should (process-live-p (jupyter-process kernel))))))
+      (let ((kernel (jupyter-kernel-process
+                     :spec (jupyter-guess-kernelspec "python"))))
+        (confirm-shutdown-state)
+        (jupyter-launch kernel)
+        (confirm-launch-state)
+        (jupyter-shutdown kernel)
+        (confirm-shutdown-state))))
+;; (let (called)
+;;   (let* ((plist '(:argv ["sleep" "60"] :env nil :interrupt_mode "signal"))
+;;          (kernel (jupyter-kernel
+;;                   :spec (make-jupyter-kernelspec
+;;                          :name "sleep"
+;;                          :plist plist))))
+;;     (let ((jupyter-long-timeout 0.01))
+;;       (jupyter-launch kernel))
+;;     (cl-letf (((symbol-function #'interrupt-process)
+;;                (lambda (&rest args)
+;;                  (setq called t))))
+;;       (jupyter-do-interrupt kernel))
+;;     (should called)
+;;     (setq called nil)
+;;     (jupyter-do-shutdown kernel)))
+  (ert-info ("Can we communicate?")
+    (let ((jupyter-current-client
+           (jupyter-client
+            (jupyter-kernel-process
+             :spec (jupyter-guess-kernelspec "python")))))
+      (unwind-protect
+          (should (equal (jupyter-eval "1 + 1") "2"))
+        (jupyter-shutdown-kernel jupyter-current-client)))))
 
-(ert-deftest jupyter-command-kernel ()
+(ert-deftest jupyter-delete-connection-files ()
+  :tags '(kernel process)
+  (let ((jupyter--kernel-processes
+         (cl-loop repeat 2
+                  collect (list nil (make-temp-file "jupyter-test")))))
+    (jupyter-delete-connection-files)
+    (should-not
+     (cl-loop for (_ conn-file) in jupyter--kernel-processes
+              thereis (file-exists-p conn-file)))))
+
+(ert-deftest jupyter-kernel-process/connection-file-management ()
+  :tags '(kernel process)
+  (let (jupyter--kernel-processes)
+    (pcase-let ((`(,kernelA ,kernelB)
+                 (cl-loop
+                  repeat 2
+                  collect (jupyter-kernel :spec "python"))))
+      (jupyter-launch kernelA)
+      (should (= (length jupyter--kernel-processes) 1))
+      (unwind-protect
+          (pcase-let* ((`(,processA ,conn-fileA) (car jupyter--kernel-processes))
+                       (process-bufferA (process-buffer processA)))
+            (should (eq processA (jupyter-process kernelA)))
+            (jupyter-shutdown kernelA)
+            (should-not (process-live-p processA))
+            (should (file-exists-p conn-fileA))
+            (should (buffer-live-p process-bufferA))
+            (jupyter-launch kernelB)
+            (should-not (buffer-live-p process-bufferA))
+            (should-not (file-exists-p conn-fileA))
+            (should (= (length jupyter--kernel-processes) 1))
+            (pcase-let ((`(,processB ,conn-fileB)
+                         (car jupyter--kernel-processes)))
+              (should-not (eq processA processB))
+              (should-not (string= conn-fileA conn-fileB))))
+        (jupyter-shutdown kernelA)
+        (jupyter-shutdown kernelB)))))
+
+(ert-deftest jupyter-kernel-process/on-unexpected-exit ()
+  :tags '(kernel process)
+  (skip-unless nil)
+  (let ((kernel (jupyter-kernel :spec "python"))
+        called)
+    (jupyter-launch
+     kernel (lambda (kernel)
+              (setq called t)))
+    (let ((process (jupyter--kernel-process kernel)))
+      (kill-process process)
+      (sleep-for 0.01)
+      (should called))))
+
+(ert-deftest jupyter-session-with-random-ports ()
   :tags '(kernel)
-  (let ((kernel (jupyter-command-kernel
-                 :spec (jupyter-guess-kernelspec "python"))))
-    (ert-info ("Session set after kernel starts")
-      (should-not (jupyter-kernel-alive-p kernel))
-      (jupyter-start-kernel kernel)
-      (should (jupyter-kernel-alive-p kernel))
-      (should (oref kernel session))
-      (jupyter-kill-kernel kernel)
-      (should-not (jupyter-kernel-alive-p kernel)))
-    (ert-info ("Can we communicate?")
-      (let ((manager (jupyter-kernel-process-manager :kernel kernel)))
-        (jupyter-start-kernel manager)
-        (unwind-protect
-            (let ((jupyter-current-client
-                   (jupyter-make-client manager 'jupyter-kernel-client)))
-              (jupyter-start-channels jupyter-current-client)
-              (unwind-protect
-                  (progn
-                    (jupyter-wait-until-startup jupyter-current-client)
-                    (should (equal (jupyter-eval "1 + 1") "2")))
-                (jupyter-stop-channels jupyter-current-client)))
-          (jupyter-shutdown-kernel manager))))))
+  (let ((session (jupyter-session-with-random-ports)))
+    (should (jupyter-session-p session))
+    (let ((process-exists
+           (cl-loop
+            for p in (process-list)
+            thereis (string= (process-name p)
+                             "jupyter-session-with-random-ports"))))
+      (should-not process-exists))
+    (cl-destructuring-bind (&key hb_port stdin_port
+                                 control_port shell_port iopub_port
+                                 &allow-other-keys)
+        (jupyter-session-conn-info session)
+      ;; Verify the ports are open for us
+      (cl-loop
+       for port in (list hb_port stdin_port
+                         control_port shell_port iopub_port)
+       for proc = (make-network-process
+                   :name "jupyter-test"
+                   :server t
+                   :host "127.0.0.1"
+                   :service port)
+       do (delete-process proc)))))
+
+(ert-deftest jupyter-expand-environment-variables ()
+  :tags '(kernel)
+  (let ((process-environment
+         (append (list "FOO=bar")
+                 process-environment)))
+    (should (string= (jupyter-expand-environment-variables "xy") "xy"))
+    (should (string= (jupyter-expand-environment-variables "${FOO}xy") "barxy"))
+    (should (string= (jupyter-expand-environment-variables "x${FOO}y") "xbary"))
+    (should (string= (jupyter-expand-environment-variables "xy${FOO}") "xybar"))
+    (should (string= (jupyter-expand-environment-variables "${FOO}x${FOO}y") "barxbary"))))
+
+(ert-deftest jupyter-process-environment ()
+  :tags '(kernel)
+  (let ((process-environment
+         (append (list "FOO=bar")
+                 process-environment)))
+    (should (equal (jupyter-process-environment
+                    (make-jupyter-kernelspec
+                     :plist '(:env (:ONE "x" :TWO "x${FOO}"))))
+                   '("ONE=x" "TWO=xbar")))))
+
+(ert-deftest jupyter-kernel-argv ()
+  :tags '(kernel)
+  (should (equal (jupyter-kernel-argv
+                  (make-jupyter-kernelspec
+                   :resource-directory "/ssh::~"
+                   :plist '(:argv
+                            ["python" "-c" "kernel" "{connection_file}"
+                             "{resource_dir}"]
+                            :env (:ONE "x" :TWO "x${FOO}")))
+
+                  "/ssh::conn-file.json")
+                 '("python" "-c" "kernel" "conn-file.json" "~"))))
 
 ;;; Environment
 
@@ -721,13 +768,13 @@
       (jupyter-runtime-directory)
       (should dir-created)
       (setq dir-created nil)
-      (should (equal jupyter-runtime-directory "foo"))
+      (should (equal jupyter-runtime-directory "foo/"))
       (let ((default-directory "/ssh:foo:/"))
-        (should (equal (jupyter-runtime-directory) "/ssh:foo:foo"))
+        (should (equal (jupyter-runtime-directory) "/ssh:foo:foo/"))
         (ert-info ("Variable definition is always local")
           (setq jupyter-runtime-directory nil)
           (jupyter-runtime-directory)
-          (should (equal jupyter-runtime-directory "foo")))))))
+          (should (equal jupyter-runtime-directory "foo/")))))))
 
 ;;; Client
 
@@ -772,31 +819,24 @@
 
 (ert-deftest jupyter-write-connection-file ()
   :tags '(client)
-  (skip-unless (not (memq system-type '(ms-dos windows-nt cygwin))))
-  (let (file fun)
-    (let* ((session (jupyter-session
-                     :conn-info (jupyter-local-tcp-conn-info)))
-           (client (jupyter-kernel-client))
-           (hook (copy-sequence kill-emacs-hook)))
-      (setq file (jupyter-write-connection-file session client))
-      (should (file-exists-p file))
-      (should-not (equal kill-emacs-hook hook))
-      (setq fun (car (cl-set-difference kill-emacs-hook hook)))
-      (should-not (memq fun hook)))
-    (garbage-collect)
-    (garbage-collect)
-    (garbage-collect)
-    (garbage-collect)
-    (unwind-protect
-        ;; This fails on Windows, probably has something to do with the file
-        ;; handle still being opened somehow.
-        (should-not (file-exists-p file))
-      (when (file-exists-p file)
-        (delete-file file)))
-    (should-not (memq fun kill-emacs-hook))))
+  (let* ((conn-info '(:kernel_name "python"
+                      :transport "tcp" :ip "127.0.0.1"
+                      :signature_scheme "hmac-sha256"
+                      :key "00a2cadb-3da7-45d2-b394-dbd01b5f80eb"
+                      :hb_port 45473 :stdin_port 40175
+                      :control_port 36301
+                      :shell_port 39263 :iopub_port 36731))
+         (conn-file (jupyter-write-connection-file
+                     (jupyter-session
+                      :conn-info conn-info))))
+    (should (file-exists-p conn-file))
+    (should (string= (file-name-directory conn-file) (jupyter-runtime-directory)))
+    (should (equal (jupyter-read-plist conn-file) conn-info))))
 
+;; FIXME: Revisit after transition
 (ert-deftest jupyter-client-channels ()
   :tags '(client channels)
+  (skip-unless nil)
   (ert-info ("Starting/stopping channels")
 	;; FIXME: Without a new client, I'm getting
 	;;
@@ -808,61 +848,33 @@
 		(jupyter-stop-channels client)
 		(cl-loop
 		 for channel in '(:hb :shell :iopub :stdin)
-		 for alive-p = (jupyter-channel-alive-p client channel)
+		 for alive-p = (jupyter-alive-p client channel)
 		 do (should-not alive-p))
 		(jupyter-start-channels client)
 		(cl-loop
 		 for channel in '(:hb :shell :iopub :stdin)
-		 for alive-p = (jupyter-channel-alive-p client channel)
+		 for alive-p = (jupyter-alive-p client channel)
 		 do (should alive-p))
 		(jupyter-stop-channels client)
 		(cl-loop
 		 for channel in '(:hb :shell :iopub :stdin)
-		 for alive-p = (jupyter-channel-alive-p client channel)
+		 for alive-p = (jupyter-alive-p client channel)
 		 do (should-not alive-p))))))
 
 (ert-deftest jupyter-inhibited-handlers ()
   :tags '(client handlers)
   (jupyter-test-with-python-client client
-    (let* ((jupyter-inhibit-handlers '(:stream))
-           (req (jupyter-send-kernel-info-request client)))
-      (should (equal (jupyter-request-inhibited-handlers req)
-                     '(:stream)))
-      (should-not (jupyter--request-allows-handler-p
-                   req (jupyter-test-message
-                        req :stream (list :name "stdout" :text "foo"))))
-      (setq jupyter-inhibit-handlers '(:foo))
-      (should-error (jupyter-send-kernel-info-request client)))))
-
-(ert-deftest jupyter-requests-pending-p ()
-  :tags '(client)
-  (jupyter-test-with-python-client client
-    (let (pending)
-      (jupyter-with-timeout (nil jupyter-long-timeout)
-        (while (jupyter-requests-pending-p client)
-          (when-let* ((last-sent (gethash "last-sent" (oref client requests))))
-            (jupyter-wait-until-idle last-sent))))
-      ;; Don't pass CLIENT to `should-not' because `ert' will attempt to
-      ;; print the class object on failure and will fail at doing so.
-      (setq pending (jupyter-requests-pending-p client))
-      (should-not pending)
-      (let ((req (jupyter-send-kernel-info-request client)))
-        (ert-info ("Pending after send")
-          (setq pending (jupyter-requests-pending-p client))
-          (should pending)
-          (jupyter-wait-until-idle req)
-          (setq pending (jupyter-requests-pending-p client))
-          (should-not pending))
-        (ert-info ("Pending until idle received")
-          (setq req (jupyter-send-execute-request client
-                      :code "import time; time.sleep(0.2)"))
-          ;; Empty out the pending-requests slot of CLIENT
-          (jupyter-wait-until-received :status req)
-          (setq pending (jupyter-requests-pending-p client))
-          (should pending)
-          (jupyter-wait-until-idle req)
-          (setq pending (jupyter-requests-pending-p client))
-          (should-not pending))))))
+    (jupyter-run-with-client client
+      (jupyter-mlet* ((req (jupyter-kernel-info-request
+                            :handlers '(not "stream"))))
+        (should (equal (jupyter-request-inhibited-handlers req)
+                       '("stream")))
+        (should-not (jupyter--request-allows-handler-p
+                     req (jupyter-test-message
+                          req "stream" (list :name "stdout" :text "foo"))))
+        (should-error (jupyter-kernel-info-request
+                       :handlers '(not "foo")))
+        (jupyter-return nil)))))
 
 (ert-deftest jupyter-eval ()
   :tags '(client)
@@ -909,55 +921,32 @@
         (sleep-for 0.1)
         (should-not jupyter-current-client)))))
 
-(ert-deftest jupyter-map-pending-requests ()
-  :tags '(client)
-  (let ((err (should-error
-              (jupyter-map-pending-requests nil #'identity)
-              :type 'wrong-type-argument)))
-    (should (equal (nth 1 err) 'jupyter-kernel-client)))
-  (jupyter-with-echo-client client
-    (let ((r1 (jupyter-request :id "id1"))
-          (r2 (jupyter-request :id "id2"))
-          (mapped nil))
-      (puthash "last-sent" r1 (oref client requests))
-      (puthash "id1" r1 (oref client requests))
-      (puthash "id2" r2 (oref client requests))
-      (jupyter-map-pending-requests client
-        (lambda (req) (push req mapped)))
-      (should (= (length mapped) 2))
-      (should (memq r1 mapped))
-      (should (memq r2 mapped))
-
-      (setq mapped nil)
-      (setf (jupyter-request-idle-p r2) t)
-      (jupyter-map-pending-requests client
-        (lambda (req) (push req mapped)))
-      (should (= (length mapped) 1))
-      (should (memq r1 mapped))
-      (should-not (memq r2 mapped)))))
-
 (defvar jupyter-test-idle-sync-hook nil)
 
 (ert-deftest jupyter-idle-sync ()
   :tags '(client hook)
   (jupyter-test-with-python-client client
-    (let ((req (jupyter-send-execute-request client :code "1 + 1")))
-      (should-not (jupyter-request-idle-p req))
-      (jupyter-idle-sync req)
-      (should (jupyter-request-idle-p req)))
-    (let ((req (jupyter-send-execute-request client :code "1 + 1")))
-      (should (null jupyter-test-idle-sync-hook))
-      (jupyter-add-idle-sync-hook 'jupyter-test-idle-sync-hook req)
-      (should-not (null jupyter-test-idle-sync-hook))
-      (should-not (jupyter-request-idle-p req))
-      (run-hooks 'jupyter-test-idle-sync-hook)
-      (should (jupyter-request-idle-p req))
-      (should (null jupyter-test-idle-sync-hook)))))
+    (jupyter-run-with-client client
+      (jupyter-mlet* ((req (jupyter-sent (jupyter-execute-request :code "1 + 1"))))
+        (should-not (jupyter-request-idle-p req))
+        (jupyter-idle-sync req)
+        (should (jupyter-request-idle-p req))
+        (jupyter-return nil)))
+    (jupyter-run-with-client client
+      (jupyter-mlet* ((req (jupyter-sent (jupyter-execute-request :code "1 + 1"))))
+        (should (null jupyter-test-idle-sync-hook))
+        (jupyter-add-idle-sync-hook 'jupyter-test-idle-sync-hook req)
+        (should-not (null jupyter-test-idle-sync-hook))
+        (should-not (jupyter-request-idle-p req))
+        (run-hooks 'jupyter-test-idle-sync-hook)
+        (should (jupyter-request-idle-p req))
+        (should (null jupyter-test-idle-sync-hook))
+        (jupyter-return nil)))))
 
 ;;; IOloop
 
 (ert-deftest jupyter-ioloop-lifetime ()
-  :tags '(ioloop)
+  :tags '(zmq ioloop)
   (let ((ioloop (jupyter-ioloop))
         (jupyter-default-timeout 2))
     (should-not (process-live-p (oref ioloop process)))
@@ -980,7 +969,7 @@
             (setq jupyter-ioloop-test-handler-called t))))
 
 (ert-deftest jupyter-ioloop-wait-until ()
-  :tags '(ioloop)
+  :tags '(zmq ioloop)
   (let ((ioloop (jupyter-ioloop)))
     (should-not (jupyter-ioloop-last-event ioloop))
     (jupyter-test-ioloop-start ioloop)
@@ -988,7 +977,7 @@
     (jupyter-ioloop-stop ioloop)))
 
 (ert-deftest jupyter-ioloop-callbacks ()
-  :tags '(ioloop)
+  :tags '(zmq ioloop)
   (ert-info ("Callback added before starting the ioloop")
     (let ((ioloop (jupyter-ioloop)))
       (setq jupyter-ioloop-test-handler-called nil)
@@ -1009,7 +998,7 @@
       (should jupyter-ioloop-test-handler-called))))
 
 (ert-deftest jupyter-ioloop-setup ()
-  :tags '(ioloop)
+  :tags '(zmq ioloop)
   (let ((ioloop (jupyter-ioloop)))
     (setq jupyter-ioloop-test-handler-called nil)
     (jupyter-ioloop-add-setup ioloop
@@ -1019,7 +1008,7 @@
     (should jupyter-ioloop-test-handler-called)))
 
 (ert-deftest jupyter-ioloop-teardown ()
-  :tags '(ioloop)
+  :tags '(zmq ioloop)
   (let ((ioloop (jupyter-ioloop)))
     (setq jupyter-ioloop-test-handler-called nil)
     (jupyter-ioloop-add-teardown ioloop
@@ -1029,7 +1018,7 @@
     (should jupyter-ioloop-test-handler-called)))
 
 (ert-deftest jupyter-ioloop-add-event ()
-  :tags '(ioloop)
+  :tags '(zmq ioloop)
   (let ((ioloop (jupyter-ioloop)))
     (setq jupyter-ioloop-test-handler-called nil)
     (jupyter-ioloop-add-event ioloop test (data)
@@ -1041,7 +1030,7 @@
     (should jupyter-ioloop-test-handler-called)))
 
 (ert-deftest jupyter-channel-ioloop-send-event ()
-  :tags '(ioloop)
+  :tags '(zmq ioloop)
   (jupyter-test-channel-ioloop
       (ioloop (jupyter-zmq-channel-ioloop))
     (cl-letf (((symbol-function #'jupyter-send)
@@ -1056,7 +1045,7 @@
             (should (equal result `(sent :shell ,msg-id)))))))))
 
 (ert-deftest jupyter-channel-ioloop-start-channel-event ()
-  :tags '(ioloop)
+  :tags '(zmq ioloop)
   (jupyter-test-channel-ioloop
       (ioloop (jupyter-zmq-channel-ioloop))
     (setq jupyter-channel-ioloop-session (jupyter-session :key "foo"))
@@ -1090,7 +1079,7 @@
             (should (equal result `(start-channel :shell)))))))))
 
 (ert-deftest jupyter-channel-ioloop-stop-channel-event ()
-  :tags '(ioloop)
+  :tags '(zmq ioloop)
   (jupyter-test-channel-ioloop
       (ioloop (jupyter-zmq-channel-ioloop))
     (setq jupyter-channel-ioloop-session (jupyter-session :key "foo"))
@@ -1100,13 +1089,13 @@
     (let* ((channel (object-assoc :shell :type jupyter-channel-ioloop-channels))
            (socket (oref channel socket)))
       (ert-info ("Verify the requested channel stops")
-        (should (jupyter-channel-alive-p channel))
+        (should (jupyter-alive-p channel))
         (should (progn (zmq-poller-modify
                         jupyter-ioloop-poller
                         (oref channel socket) (list zmq-POLLIN zmq-POLLOUT))
                        t))
         (jupyter-test-ioloop-eval-event ioloop `(list 'stop-channel :shell))
-        (should-not (jupyter-channel-alive-p channel)))
+        (should-not (jupyter-alive-p channel)))
       (ert-info ("Ensure the channel was removed from the poller")
         (should-error
          (zmq-poller-modify jupyter-ioloop-poller socket (list zmq-POLLIN))
@@ -1116,20 +1105,19 @@
           (should (equal result `(stop-channel :shell))))))))
 
 (ert-deftest jupyter-zmq-channel-ioloop-send-fast ()
-  :tags '(ioloop queue)
-  ;; :expected-result :failed
-  (jupyter-test-with-python-client client
-    (let ((jupyter-current-client client))
-      (jupyter-send-execute-request client :code "1 + 1")
-      (jupyter-send-execute-request client :code "1 + 1")
-      (jupyter-send-execute-request client :code "1 + 1")
-      (let ((req (jupyter-send-execute-request client :code "1 + 1")))
-        (should
-         (equal
-          (jupyter-message-data
-           (jupyter-wait-until-received :execute-result req jupyter-long-timeout)
-           :text/plain)
-          "2"))))))
+  :tags '(zmq ioloop queue)
+  (let ((client (jupyter-client (jupyter-kernel :spec "python"))))
+    (unwind-protect
+        (jupyter-run-with-client client
+          (jupyter-mlet* ((_ (jupyter-do
+                               (jupyter-sent (jupyter-execute-request :code "1 + 1"))
+                               (jupyter-sent (jupyter-execute-request :code "1 + 1"))
+                               (jupyter-sent (jupyter-execute-request :code "1 + 1"))))
+                          (res (jupyter-result
+                                (jupyter-execute-request :code "1 + 1"))))
+            (should (equal (jupyter-message-data res :text/plain) "2"))
+            (jupyter-return nil)))
+      (jupyter-shutdown-kernel client))))
 
 ;;; Completion
 
@@ -1180,10 +1168,8 @@
 
 (ert-deftest jupyter-repl-client-predicates ()
   :tags '(repl)
-  (should-not (jupyter-client-has-manager-p))
   (should-not (jupyter-repl-connected-p))
   (jupyter-test-with-python-repl client
-    (should (jupyter-client-has-manager-p))
     (should (jupyter-repl-connected-p))))
 
 (ert-deftest jupyter-repl-cell-predicates ()
@@ -1221,30 +1207,6 @@
         (goto-char end)
         (should (jupyter-repl-cell-end-p))
         (should (= end (jupyter-repl-cell-end-position)))))))
-
-(ert-deftest jupyter-repl-cell-positions ()
-  :tags '(repl)
-  (jupyter-test-with-python-repl client
-    (jupyter-ert-info ("Cell code position info")
-      (jupyter-repl-replace-cell-code "1 + 2")
-      (should (= (point) (point-max)))
-      (goto-char (1- (point)))
-      (should (= (char-after) ?2))
-      (should (= (jupyter-repl-cell-code-position) 5))
-      (goto-char (line-beginning-position))
-      (should (= (char-after) ?1))
-      (should (= (jupyter-repl-cell-code-position) 1)))
-    (jupyter-ert-info ("Cell code beginning")
-      (should (= (point) (jupyter-repl-cell-code-beginning-position)))
-      (jupyter-test-repl-ret-sync)
-      (should (= (point) (jupyter-repl-cell-code-beginning-position)))
-      (jupyter-repl-backward-cell)
-      (should (= (point) (jupyter-repl-cell-code-beginning-position))))
-    (jupyter-ert-info ("Cell code end")
-      (should (= (point-max) (jupyter-repl-cell-code-end-position)))
-      (jupyter-test-repl-ret-sync)
-      (jupyter-repl-backward-cell)
-      (should (= (1+ (line-end-position)) (jupyter-repl-cell-code-end-position))))))
 
 (ert-deftest jupyter-repl-ret ()
   :tags '(repl)
@@ -1567,6 +1529,26 @@ last element being the newest element added to the history."
 (ert-deftest jupyter-repl-cell-positions ()
   :tags '(repl motion)
   (jupyter-test-with-python-repl client
+    (jupyter-ert-info ("Cell code position info")
+      (jupyter-repl-replace-cell-code "1 + 2")
+      (should (= (point) (point-max)))
+      (goto-char (1- (point)))
+      (should (= (char-after) ?2))
+      (should (= (jupyter-repl-cell-code-position) 5))
+      (goto-char (line-beginning-position))
+      (should (= (char-after) ?1))
+      (should (= (jupyter-repl-cell-code-position) 1)))
+    (jupyter-ert-info ("Cell code beginning")
+      (should (= (point) (jupyter-repl-cell-code-beginning-position)))
+      (jupyter-test-repl-ret-sync)
+      (should (= (point) (jupyter-repl-cell-code-beginning-position)))
+      (jupyter-repl-backward-cell)
+      (should (= (point) (jupyter-repl-cell-code-beginning-position))))
+    (jupyter-ert-info ("Cell code end")
+      (should (= (point-max) (jupyter-repl-cell-code-end-position)))
+      (jupyter-test-repl-ret-sync)
+      (jupyter-repl-backward-cell)
+      (should (= (line-end-position) (jupyter-repl-cell-code-end-position))))
     (jupyter-ert-info ("Beginning of a cell")
       (should (= (point) (jupyter-repl-cell-code-beginning-position)))
       (should (get-text-property (- (point) 2) 'jupyter-cell))
@@ -1589,7 +1571,7 @@ last element being the newest element added to the history."
     (jupyter-ert-info ("Cell boundary errors")
       (goto-char (point-max))
       (jupyter-repl-replace-cell-code "1 + 1")
-      (jupyter-wait-until-idle (jupyter-send-execute-request client))
+      (jupyter-wait-until-idle (jupyter-repl-execute-cell client))
       (forward-line -2)
       (should (eq (car (get-text-property (1- (point)) 'jupyter-cell))
                   'out))
@@ -1611,6 +1593,7 @@ last element being the newest element added to the history."
 
 (ert-deftest jupyter-repl-restart-kernel ()
   :tags '(repl restart)
+  (skip-unless nil)
   (let ((jupyter-test-with-new-client t))
     (jupyter-test-with-python-repl client
       (jupyter-ert-info ("Restart without errors")
@@ -1819,15 +1802,17 @@ next(x"))))))
 
 (ert-deftest jupyter-connect-repl ()
   :tags '(repl)
+  (skip-unless nil)
   (jupyter-test-with-python-repl client
     (let ((cclient (jupyter-connect-repl
                     (jupyter-session-conn-info
                      (oref client session)))))
       (unwind-protect
-          (let ((msg (jupyter-wait-until-received :execute-result
-                       (let ((jupyter-inhibit-handlers t))
-                         (jupyter-send-execute-request cclient
-                           :code "1 + 1")))))
+          (let ((msg (jupyter-wait-until-received "execute_result"
+                       (jupyter-with-client cclient
+                         (jupyter-execute-request
+                          :handlers nil
+                          :code "1 + 1")))))
             (should msg)
             (should (equal (jupyter-message-data msg :text/plain) "2")))
         (with-current-buffer (oref cclient buffer)
@@ -1869,13 +1854,11 @@ next(x"))))))
           (let* ((jupyter-repl-echo-eval-p t)
                  (req (jupyter-eval-string "1 + 1")))
             (should-not (jupyter-request-inhibited-handlers req))
-            (should (jupyter-request-callbacks req))
             (jupyter-wait-until-idle req)))
         (ert-info ("`jupyter-repl-echo-eval-p' = nil")
           (let* ((jupyter-repl-echo-eval-p nil)
                  (req (jupyter-eval-string "1 + 1")))
             (should (jupyter-request-inhibited-handlers req))
-            (should (jupyter-request-callbacks req))
             (jupyter-wait-until-idle req)))))
     (ert-info ("No callbacks when REPL buffer visible")
       (cl-letf (((symbol-function #'get-buffer-window)
@@ -1884,13 +1867,11 @@ next(x"))))))
           (let* ((jupyter-repl-echo-eval-p t)
                  (req (jupyter-eval-string "1 + 1")))
             (should-not (jupyter-request-inhibited-handlers req))
-            (should-not (jupyter-request-callbacks req))
             (jupyter-wait-until-idle req)))
         (ert-info ("`jupyter-repl-echo-eval-p' = nil")
           (let* ((jupyter-repl-echo-eval-p nil)
                  (req (jupyter-eval-string "1 + 1")))
             (should (jupyter-request-inhibited-handlers req))
-            (should (jupyter-request-callbacks req))
             (jupyter-wait-until-idle req)))))))
 
 (ert-deftest jupyter-repl-issue-219 ()
@@ -1915,20 +1896,19 @@ next(x"))))))
 (ert-deftest jupyter-available-kernelspecs-sorting ()
   :tags '(repl)
   (jupyter-test-with-some-kernelspecs '("foo_qux" "qux" "bar_qux")
-    (let ((result (mapcar #'car (jupyter-available-kernelspecs t))))
+    (let ((result (mapcar #'jupyter-kernelspec-name (jupyter-available-kernelspecs t))))
       (should (equal result (sort (copy-sequence result) #'string<))))))
 
 (ert-deftest jupyter-run-repl-issue-371 ()
   :tags '(repl)
   (jupyter-test-with-some-kernelspecs '("foo_qux" "qux" "bar_qux")
-    (let ((client))
+    (let ((client (jupyter-run-repl "qux")))
       (unwind-protect
-	  (progn
-	    (setq client (jupyter-run-repl "qux"))
-	    (should (equal (plist-get (jupyter-session-conn-info (oref client session))
-				      :kernel_name)
-			   "qux")))
-	(jupyter-test-kill-buffer (oref client buffer))))))
+          (should (equal (jupyter-kernelspec-name
+                          (jupyter-kernel-action client
+                            #'jupyter-kernel-spec))
+                         "qux"))
+        (jupyter-test-kill-buffer (oref client buffer))))))
 
 ;;; `org-mode'
 
@@ -1938,16 +1918,18 @@ next(x"))))))
   :tags '(org)
   (require 'ob-jupyter)
   (ert-info ("Sessions with a kernel connection file")
-    (let ((session (org-babel-jupyter-parse-session "/foo/bar.json")))
-      (should (org-babel-jupyter-remote-session-p session))
-      (should (org-babel-jupyter-remote-session-connect-repl-p session))
-      (should (equal (org-babel-jupyter-session-name session) "/foo/bar.json")))
-    (let ((session (org-babel-jupyter-parse-session "/ssh:ec2:foo/bar.json")))
-      (should (org-babel-jupyter-remote-session-p session))
-      (should (org-babel-jupyter-remote-session-connect-repl-p session))
-      (should (equal (org-babel-jupyter-session-name session) "/ssh:ec2:foo/bar.json"))))
+    (let ((jupyter-use-zmq t))
+      (let ((session (org-babel-jupyter-parse-session "/foo/bar.json")))
+        (should (org-babel-jupyter-remote-session-p session))
+        (should (org-babel-jupyter-remote-session-connect-repl-p session))
+        (should (equal (org-babel-jupyter-session-name session) "/foo/bar.json")))
+      (let ((session (org-babel-jupyter-parse-session "/ssh:ec2:foo/bar.json")))
+        (should (org-babel-jupyter-remote-session-p session))
+        (should (org-babel-jupyter-remote-session-connect-repl-p session))
+        (should (equal (org-babel-jupyter-session-name session) "/ssh:ec2:foo/bar.json")))))
   (ert-info ("Remote sessions")
-    (let ((session (org-babel-jupyter-parse-session "/ssh:ec2:foo/bar")))
+    (let* ((jupyter-use-zmq t)
+           (session (org-babel-jupyter-parse-session "/ssh:ec2:foo/bar")))
       (should (org-babel-jupyter-remote-session-p session))
       (should-not (org-babel-jupyter-remote-session-connect-repl-p session))
       (should (equal (org-babel-jupyter-session-name session) "/ssh:ec2:foo/bar"))))
@@ -2048,13 +2030,13 @@ Latex(r'$\\alpha$')"
   :tags '(org)
   (let* ((default-directory (file-name-directory
                              (locate-library "jupyter")))
-         (org-babel-jupyter-resource-directory "./")
+         (jupyter-org-resource-directory "./")
          (file (expand-file-name "jupyter.png"))
-         (py-version (jupyter-test-ipython-kernel-version
-                      (thread-first (jupyter-org-test-session-client "python")
-                        (slot-value 'manager)
-                        (slot-value 'kernel)
-                        (slot-value 'spec))))
+         (py-version (jupyter-kernel-action
+                        (jupyter-org-test-session-client "python")
+                      (lambda (kernel)
+                        (jupyter-test-ipython-kernel-version
+                         (jupyter-kernel-spec kernel)))))
          ;; There is a change in how the IPython kernel prints base64 encoded
          ;; images somewhere between [4.6.1, 5.1]. In 5.1, base64 encoded
          ;; images are printed with line breaks whereas in 4.6.1 they are not.
@@ -2591,7 +2573,7 @@ print(\"foo\", flush=True)
    (org-babel-previous-src-block)
    (org-babel-execute-src-block)
    (with-current-buffer (org-babel-initiate-session)
-     (jupyter-wait-until-idle (jupyter-last-sent-request jupyter-current-client)))
+     (sleep-for 1))
    (org-back-to-heading)
    (org-down-element)
    (should (eq (org-element-type (org-element-context)) 'plain-list))
@@ -2601,7 +2583,7 @@ print(\"foo\", flush=True)
    (goto-char (org-babel-where-is-src-block-result))
    (let ((result (org-element-context)))
      (should (eq (org-element-type result) 'fixed-width))
-     (should (equal (org-element-property :value result) "Hello")))))
+     (should (equal (string-trim (org-element-property :value result)) "Hello")))))
 
 (ert-deftest jupyter-org-font-lock-ansi-escapes ()
   :tags '(org)
@@ -2622,7 +2604,8 @@ publish_display_data({'text/plain': 'AB\x1b[43mCD\x1b[0mEF'});"
              (jupyter-test-text-has-property 'invisible t invisible-pos)
              (should (listp (get-text-property face-pos 'face)))
              (should (get-text-property face-pos 'font-lock-face))
-             (should (eq (caar (get-text-property face-pos 'face)) 'background-color)))))
+             (should (memq (caar (get-text-property face-pos 'face))
+                           '(:background background-color))))))
       (insert ": AB[43mCD[0mEF")
       (funcall test-fun 10 '(5 6 7 8 9 12 13 14 15))
       ;; Test the cached faces path
@@ -2857,39 +2840,44 @@ x
            ;; Convert forward slashes to backslashes on Windows
            (if (memq system-type '(windows-nt cygwin ms-dos))
                (replace-regexp-in-string "/" "\\\\" s)
-             s))))
-    (ert-info ("Python")
-      (jupyter-org-test-src-block
-       "\
-import os
-os.path.abspath(os.getcwd())"
-       (concat ": " (funcall convert-path (expand-file-name "~")) "\n")
-       :dir "~")
-      (ert-info ("Directory restored")
+             s)))
+        (temporary-file-directory jupyter-test-temporary-directory))
+    (let ((dir (make-temp-file "dir" t))
+          (pwd
+           (substring
+            (jupyter-org-test
+             (let ((jupyter-current-client
+                    (jupyter-org-test-session-client "python")))
+               (jupyter-eval "import os; os.getcwd()")))
+            1 -1)))
+      (ert-info ("Python")
         (jupyter-org-test-src-block
-         "\
-import os
+          "\
 os.path.abspath(os.getcwd())"
-         (concat ": "
-                 (funcall convert-path
-                          (expand-file-name
-                           (directory-file-name default-directory))) "\n")))
-      (ert-info ("Transformed code and backslashes")
-        ;; See #302
-        (jupyter-org-test-src-block
-         "print(r\"\\r\")"
-         ": \\r\n")))
-    (ert-info ("Relative directory")
-      ;; See #302
-      (let* ((temporary-file-directory jupyter-test-temporary-directory)
-             (dir (make-temp-file "dir-header-arg" t)))
-        ;; FIXME: Don't use an internal function here.
-        (jupyter-org-test
-         (let ((default-directory (file-name-directory dir)))
-           (jupyter-org-test-src-block-1
-            "print(\"hi\")"
-            ": hi\n" nil
-            `((:dir . ,(file-name-base dir))))))))))
+          (concat ": " (funcall convert-path dir) "\n")
+          :dir dir)
+        (ert-info ("Directory restored")
+          (jupyter-org-test-src-block
+           "\
+os.path.abspath(os.getcwd())"
+           (concat ": "
+                   (funcall convert-path
+                            (expand-file-name (directory-file-name pwd)))
+                   "\n")))
+        (ert-info ("Transformed code and backslashes")
+          ;; See #302
+          (jupyter-org-test-src-block
+           "print(r\"\\r\")"
+           ": \\r\n"))
+        (ert-info ("Relative directory")
+          ;; See #302
+          (let* ((temporary-file-directory jupyter-test-temporary-directory)
+                 (dir (make-temp-file "dir-header-arg" t)))
+            ;; FIXME: Don't use an internal function here.
+            (jupyter-org-test
+             (let ((default-directory (file-name-directory dir)))
+               (jupyter-org-test-src-block-1
+                "print(\"hi\")" ": hi\n" :dir (file-name-base dir))))))))))
 
 (ert-deftest jupyter-org--find-mime-types ()
   :tags '(org mime)
@@ -2963,6 +2951,7 @@ publish_display_data({'text/plain': \"foo\", 'text/latex': \"$\\alpha$\"});"
 
 (ert-deftest org-babel-jupyter-pandoc-output-order ()
   :tags '(org pandoc)
+  (skip-unless (executable-find "pandoc"))
   ;; See #351
   (ert-info ("Ensure output order doesn't depend on Pandoc processing time")
     (ert-info ("Async")

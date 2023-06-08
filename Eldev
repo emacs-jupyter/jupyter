@@ -1,0 +1,6 @@
+; -*- mode: emacs-lisp; lexical-binding: t -*-
+
+(eldev-require-version "1.2")
+(eldev-use-package-archive 'melpa)
+(eldev-add-extra-dependencies 'test 'org)
+(setq eldev-standard-excludes `(:or ,eldev-standard-excludes "./js"))

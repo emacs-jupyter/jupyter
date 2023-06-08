@@ -243,7 +243,7 @@ request data."
   (when data
     (setq data (json-encode-plist data))
     (when (multibyte-string-p data)
-      (setq data (encode-coding-string data 'utf-8))))
+      (setq data (encode-coding-string data 'utf-8 'nocopy))))
   (let ((jupyter-api-request-method method)
         (jupyter-api-request-data (or data jupyter-api-request-data))
         (jupyter-api-request-headers
@@ -499,7 +499,7 @@ error with the data being the error received by `url-retrieve'."
             jupyter-api-request-headers)
         (jupyter-api-get-kernelspec client)))))
 
-(cl-defgeneric jupyter-api-authenticate ((client jupyter-rest-client) &rest args)
+(cl-defgeneric jupyter-api-authenticate (client &rest args)
   (declare (indent 1)))
 
 (cl-defmethod jupyter-api-authenticate ((client jupyter-rest-client) (authenticator function))
@@ -633,7 +633,7 @@ will be '(:k1 ...)."
       ;; Remove any trailing empty strings or nil values so that something like
       ;; ("contents?content=0" "") doesn't get turned into
       ;; "api/contents?contents=0/" below.
-      (if (memq (car plist) '(nil "")) (pop plist)
+      (if (member (car plist) '(nil "")) (pop plist)
         (cl-check-type (car plist) string
                        "Endpoint can only be constructed from strings")
         (push (pop plist) endpoint)))
@@ -651,7 +651,7 @@ will be '(:k1 ...)."
                               "&"))))
     (cons endpoint plist)))
 
-(cl-defgeneric jupyter-api-request ((client jupyter-rest-client) method &rest plist)
+(cl-defgeneric jupyter-api-request (client method &rest plist)
   (declare (indent 2)))
 
 (cl-defmethod jupyter-api-request ((client jupyter-rest-client) method &rest plist)
@@ -720,7 +720,7 @@ the server."
 
 ;;;; Endpoints
 
-(cl-defgeneric jupyter-api/kernels ((client jupyter-rest-client) method &rest plist)
+(cl-defgeneric jupyter-api/kernels (client method &rest plist)
   (declare (indent 2)))
 
 (cl-defmethod jupyter-api/kernels ((client jupyter-rest-client) method &rest plist)
@@ -729,7 +729,7 @@ METHOD is the HTTP method to use.  PLIST has the same meaning as
 in `jupyter-api-request'."
   (apply #'jupyter-api-request client method "api" "kernels" plist))
 
-(cl-defgeneric jupyter-api/kernelspecs ((client jupyter-rest-client) method &rest plist)
+(cl-defgeneric jupyter-api/kernelspecs (client method &rest plist)
   (declare (indent 2)))
 
 (cl-defmethod jupyter-api/kernelspecs ((client jupyter-rest-client) method &rest plist)
@@ -738,7 +738,7 @@ METHOD is the HTTP method to use.  PLIST has the same meaning as
 in `jupyter-api-request'."
   (apply #'jupyter-api-request client method "api" "kernelspecs" plist))
 
-(cl-defgeneric jupyter-api/contents ((client jupyter-rest-client) method &rest plist)
+(cl-defgeneric jupyter-api/contents (client method &rest plist)
   (declare (indent 2)))
 
 (cl-defmethod jupyter-api/contents ((client jupyter-rest-client) method &rest plist)
@@ -747,7 +747,7 @@ METHOD is the HTTP method to use.  PLIST has the same meaning as
 in `jupyter-api-request'."
   (apply #'jupyter-api-request client method "api" "contents" plist))
 
-(cl-defgeneric jupyter-api/config ((client jupyter-rest-client) method &rest plist)
+(cl-defgeneric jupyter-api/config (client method &rest plist)
   (declare (indent 2)))
 
 (cl-defmethod jupyter-api/config ((client jupyter-rest-client) method &rest plist)
@@ -815,16 +815,18 @@ request."
 
 ;;;; Kernel websocket
 
-(defun jupyter-api-get-kernel-ws (client id &rest plist)
+(defun jupyter-api-kernel-websocket (client id &rest plist)
   "Return a websocket using CLIENT's ws-url slot.
 ID identifies the kernel to connect to, PLIST will be passed to
 the call to `websocket-open' to initialize the websocket.
 
-Note the `websocket-client-data' of the returned websocket will
-be a plist containing ID as the value of the :id key and the
-value of the :session key will be `jupyter-session' with its
-`jupyter-session-id' slot set to the session ID associated with
-the websocket."
+The `websocket-client-data' of the websocket will be a plist like
+
+    (:id ID :session SESSION)
+
+where SESSION is a `jupyter-session' with a `jupyter-session-id'
+equal to the one associated with the kernel on the server CLIENT
+is communicating with."
   (let* ((session (jupyter-session))
          (ws (apply #'jupyter-api/kernels client "WS" id "channels"
                     `(("session_id" . ,(jupyter-session-id session)))

@@ -527,24 +527,20 @@ the =:kernel= header argument must match the name of the kernel's kernelspec.
 To connect to a kernel behind an =HTTPS= connection, use a TRAMP file name that
 looks like =/jpys:...= instead.
 
-*** TODO Standard output, displayed data, and code block results
+*** Standard output, displayed data, and code block results
 
-One significant difference between Jupyter code blocks and regular =org-mode=
-code blocks is that the underlying Jupyter kernel can request that the client
-display extra data in addition to output or the result of a code block. See
-[[https://jupyter-client.readthedocs.io/en/stable/messaging.html#display-data][display_data messages]].
+In contrast to non-Jupyter code blocks, the kernel of Jupyter code
+block can request extra data, other than stdout or a code block's
+result, be displayed (see [[https://jupyter-client.readthedocs.io/en/stable/messaging.html#display-data][display_data messages]]).
 
-To account for this, Jupyter code blocks do not go through the normal
-=org-mode= result insertion mechanism (see =org-babel-insert-result=). The
-downside of this is that, compared to normal code blocks, only a small subset
-of the header arguments common to all code blocks are supported. The upside is
-that all forms of results produced by a kernel can be inserted into the buffer
-similar to a Jupyter notebook.
+To account for this, Jupyter code blocks do not go through the
+normal =org-mode= result insertion mechanism
+(see =org-babel-insert-result=), instead providing its own result
+insertion.  The downside is that, compared to normal =org-mode= code
+blocks, only a small subset of the header arguments are supported.
+The upside is that all forms of results produced by a kernel can be
+inserted into the buffer similar to a Jupyter notebook.
 
-The implementation of =org-mode= code blocks is really meant to handle either
-capturing the standard output /or/ the result of a code block. When using
-Jupyter code blocks, if the kernel produces output or asks to display extra
-information, the results are appended to a =:RESULTS:= drawer.
 *** =jupyter-org-interaction-mode=
 
 A minor mode that enables completion and custom keybindings when =point= is

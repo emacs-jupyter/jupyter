@@ -116,7 +116,7 @@ See also the docstring of `org-image-actual-width' for more details."
 
 (defvar org-babel-jupyter-current-src-block-params)
 
-(cl-defmethod jupyter-generate-request ((_client jupyter-org-client) _msg)
+(cl-defmethod jupyter-generate-request ((_client jupyter-org-client) &rest slots)
   "Return a `jupyter-org-request' for the current source code block."
   (if (and org-babel-current-src-block-location
            org-babel-jupyter-current-src-block-params
@@ -132,39 +132,39 @@ See also the docstring of `org-image-actual-width' for more details."
         (goto-char org-babel-current-src-block-location)
         (let* ((context (org-element-context))
                (block-params org-babel-jupyter-current-src-block-params)
-               (result-params (alist-get :result-params block-params)))
-          (jupyter-org-request
-           :marker (copy-marker org-babel-current-src-block-location)
-           :inline-block-p (and (memq (org-element-type context)
-                                      '(inline-babel-call inline-src-block))
-                                t)
-           :result-type (alist-get :result-type block-params)
-           :file (alist-get :file block-params)
-           :block-params block-params
-           :async-p (equal (alist-get :async block-params) "yes")
-           :silent-p (car (or (member "none" result-params)
-                              (member "silent" result-params))))))
+               (result-params (alist-get :result-params block-params))
+               (req
+                (apply #'jupyter-org-request
+                       (append
+                        (list
+                         :marker (copy-marker org-babel-current-src-block-location)
+                         :inline-block-p (and (memq (org-element-type context)
+                                                    '(inline-babel-call inline-src-block))
+                                              t)
+                         :result-type (alist-get :result-type block-params)
+                         :file (alist-get :file block-params)
+                         :block-params block-params
+                         :async-p (equal (alist-get :async block-params) "yes")
+                         :silent-p (car (or (member "none" result-params)
+                                            (member "silent" result-params))))
+                        slots))))
+          (put-text-property
+           org-babel-current-src-block-location
+           (1+ org-babel-current-src-block-location)
+           'jupyter-request req)
+          req))
     (cl-call-next-method)))
-
-(cl-defmethod jupyter-drop-request ((_client jupyter-org-client)
-                                    (req jupyter-org-request))
-  (when (markerp (jupyter-org-request-marker req))
-    (set-marker (jupyter-org-request-marker req) nil)))
-
-(defvar org-babel-jupyter-session-clients) ; in ob-jupyter.el
 
 (defun jupyter-org-request-at-point ()
   "Return the `jupyter-org-request' associated with `point' or nil."
-  (when-let* ((session (org-babel-jupyter-src-block-session))
-              (client (gethash session org-babel-jupyter-session-clients)))
-    (catch 'req
-      (jupyter-map-pending-requests client
-        (lambda (req)
-          (when (jupyter-org-request-p req)
-            (let ((marker (jupyter-org-request-marker req)))
-              (and (equal (marker-position marker) (point))
-                   (equal (marker-buffer marker) (current-buffer))
-                   (throw 'req req)))))))))
+  (when-let* ((context (org-element-context))
+              (babel-p (memq (org-element-type context)
+                             '(src-block babel-call
+                               inline-babel-call inline-src-block)))
+              (pos (jupyter-org-element-begin-after-affiliated context))
+              (req (get-text-property pos 'jupyter-request)))
+    (and (not (jupyter-request-idle-p req))
+         req)))
 
 ;;;; Stream
 
@@ -244,59 +244,63 @@ to."
   (jupyter-with-message-content msg (traceback)
     (setq traceback (org-element-normalize-string
                      (mapconcat #'identity traceback "\n")))
-    (cond
-     ((or (jupyter-org-request-inline-block-p req)
-          (jupyter-org-request-silent-p req))
-      ;; Remove old inline results when an error happens since, if this was not
-      ;; done, it would look like the code which caused the error produced the
-      ;; old result.
-      (when (jupyter-org-request-inline-block-p req)
-        (org-with-point-at (jupyter-org-request-marker req)
-          (org-babel-remove-inline-result)))
-      (jupyter-with-display-buffer "traceback" 'reset
-        (jupyter-insert-ansi-coded-text traceback)
-        (goto-char (point-min))
-        (when (jupyter-org-request-silent-p req)
-          (insert (jupyter-org--goto-error-string req) "\n\n"))
-        (pop-to-buffer (current-buffer))))
-     (t
-      ;; The keymap property in the string returned by
-      ;; `jupyter-org--goto-error-string' gets removed by font-lock so ensure it
-      ;; is re-added.
-      (unless (memq 'jupyter-org-add-error-keymap org-font-lock-hook)
-        (add-hook 'org-font-lock-hook 'jupyter-org-add-error-keymap nil t))
-      (jupyter-org--add-result
-       req (jupyter-org-comment
-            (with-temp-buffer
-              (insert traceback)
-              (jupyter-org--goto-error-string req))))
-      (jupyter-org--add-result req traceback)))))
+    (pcase-let (((cl-struct jupyter-org-request
+                            marker inline-block-p silent-p)
+                 req))
+      (cond
+       ((or inline-block-p silent-p)
+        ;; Remove old inline results when an error happens since, if this was not
+        ;; done, it would look like the code which caused the error produced the
+        ;; old result.
+        (when inline-block-p
+          (org-with-point-at marker
+            (org-babel-remove-inline-result)))
+        (jupyter-with-display-buffer "traceback" 'reset
+          (jupyter-insert-ansi-coded-text traceback)
+          (goto-char (point-min))
+          (when silent-p
+            (insert (jupyter-org--goto-error-string req) "\n\n"))
+          (pop-to-buffer (current-buffer))))
+       (t
+        ;; The keymap property in the string returned by
+        ;; `jupyter-org--goto-error-string' gets removed by font-lock so ensure it
+        ;; is re-added.
+        (unless (memq 'jupyter-org-add-error-keymap org-font-lock-hook)
+          (add-hook 'org-font-lock-hook 'jupyter-org-add-error-keymap nil t))
+        (jupyter-org--add-result
+         req (jupyter-org-comment
+              (with-temp-buffer
+                (insert traceback)
+                (jupyter-org--goto-error-string req))))
+        (jupyter-org--add-result req traceback))))))
 
 ;;;; Execute result
 
 (cl-defmethod jupyter-handle-execute-result ((client jupyter-org-client) (req jupyter-org-request) msg)
   (unless (eq (jupyter-org-request-result-type req) 'output)
     (jupyter-with-message-content msg (data metadata)
-      (cond
-       ((jupyter-org-request-inline-block-p req)
-        ;; For inline results, only text/plain results are allowed at the moment.
-        ;;
-        ;; TODO: Handle all of the different macro types for inline results, see
-        ;; `org-babel-insert-result'.
-        (setq data `(:text/plain ,(plist-get data :text/plain)))
-        (let ((result (let ((r (jupyter-org-result req data metadata)))
-                        (if (stringp r) r
-                          (or (org-element-property :value r) "")))))
-          (if (jupyter-org-request-async-p req)
-              (org-with-point-at (jupyter-org-request-marker req)
-                (org-babel-insert-result
-                 result (jupyter-org-request-block-params req)
-                 nil nil (jupyter-kernel-language client)))
-            ;; The results are returned in `org-babel-execute:jupyter' in the
-            ;; synchronous case
-            (jupyter-org--add-result req result))))
-       (t
-        (jupyter-org--add-result req (jupyter-org-result req data metadata)))))))
+      (pcase-let (((cl-struct jupyter-org-request
+                              inline-block-p async-p marker block-params)
+                   req))
+        (cond
+         (inline-block-p
+          ;; For inline results, only text/plain results are allowed at the moment.
+          ;;
+          ;; TODO: Handle all of the different macro types for inline results, see
+          ;; `org-babel-insert-result'.
+          (setq data `(:text/plain ,(plist-get data :text/plain)))
+          (let ((result (let ((r (jupyter-org-result req data metadata)))
+                          (if (stringp r) r
+                            (or (org-element-property :value r) "")))))
+            (if async-p
+                (org-with-point-at marker
+                  (org-babel-insert-result
+                   result block-params nil nil (jupyter-kernel-language client)))
+              ;; The results are returned in `org-babel-execute:jupyter' in the
+              ;; synchronous case
+              (jupyter-org--add-result req result))))
+         (t
+          (jupyter-org--add-result req (jupyter-org-result req data metadata))))))))
 
 ;;;; Display data
 
@@ -375,7 +379,7 @@ most recent completion request.")
     (let* ((el (org-element-at-point))
            (lang (org-element-property :language el)))
       (when (org-babel-jupyter-language-p lang)
-        (let* ((info (org-babel-get-src-block-info nil el))
+        (let* ((info (org-babel-get-src-block-info t el))
                (params (nth 2 info))
                (beg (save-excursion
                       (goto-char (org-element-property :post-affiliated el))
@@ -1479,6 +1483,25 @@ Assumes `point' is on the #+RESULTS keyword line."
    (org-element-property :value el)
    cb))
 
+;; A simplification of `text-property-search-forward' in Emacs >= 27
+;; used for our purposes.
+(defun jupyter-org--search-for-text-property (property value)
+  (let ((origin (point))
+        (ended nil)
+        pos)
+    ;; Fix the next candidate.
+    (while (not ended)
+      (setq pos (next-single-property-change (point) property))
+      (if (not pos)
+          (progn
+            (goto-char origin)
+            (setq ended t))
+        (goto-char pos)
+        (when (eq value (get-text-property (point) property))
+          (setq ended 'found))))
+    (and (not (eq ended t))
+         ended)))
+
 (defun jupyter-org-pandoc-placeholder-element (req el)
   "Launch a Pandoc conversion process of EL, return a placeholder string.
 REQ is the `jupyter-org-request' which generated EL as a result.
@@ -1499,10 +1522,12 @@ EL is an Org element with the properties
                      (save-excursion
                        (goto-char src-pos)
                        (set-marker src-pos nil)
-                       (when (text-property-search-forward 'jupyter-pandoc proc)
+                       (when (jupyter-org--search-for-text-property 'jupyter-pandoc proc)
                          (delete-region (point)
-                                        (1+ (next-single-property-change
-                                             (point) 'jupyter-pandoc)))
+                                        (let ((pos (next-single-property-change
+                                                    (point) 'jupyter-pandoc)))
+                                          (if pos (1+ pos)
+                                            (point-max))))
                          (insert to-string)))))))
            (proc (jupyter-org--start-pandoc-conversion el cb)))
     (jupyter-org-raw-string
@@ -1539,7 +1564,8 @@ RESULT is the new result, as an org element, to be inserted.")
     (insert "\n")))
 
 (cl-defmethod jupyter-org--insert-result :after (_req _context result)
-  "Toggle display of LaTeX fragment results depending on `jupyter-org-toggle-latex'."
+  "Toggle display of LaTeX fragment results.
+See `jupyter-org-toggle-latex'."
   (when (and jupyter-org-toggle-latex
              (memq (org-element-type result)
                    '(latex-fragment latex-environment)))

@@ -608,7 +608,7 @@ property."
      (save-excursion (jupyter-beginning-of-display) (point))
      (save-excursion (jupyter-end-of-display) (point)))))
 
-(cl-defgeneric jupyter-update-display ((display-id string) data &optional metadata)
+(cl-defmethod jupyter-update-display ((display-id string) data &optional metadata)
   "Update the display with DISPLAY-ID using DATA.
 DATA and METADATA have the same meaning as in a `:display-data'
 message."

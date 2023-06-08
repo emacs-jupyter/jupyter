@@ -199,7 +199,7 @@ For example suppose we define an argument type, jupyter-channel:
 and define an event like
 
     (jupyter-ioloop-add-event ioloop stop-channel ((channel jupyter-channel))
-      (jupyter-stop-channel channel))
+      (jupyter-stop channel))
 
 Finally after adding other events and starting the ioloop we send
 an event like
@@ -298,7 +298,10 @@ By default this adds the events quit, callback, and timer."
        ;; Can only send lists at the moment
        (when (and res (listp res)) (zmq-prin1 res)))))
 
-(cl-defgeneric jupyter-ioloop-add-callback ((ioloop jupyter-ioloop) cb)
+(cl-defgeneric jupyter-ioloop-add-callback ()
+  (declare (indent 1)))
+
+(cl-defmethod jupyter-ioloop-add-callback ((ioloop jupyter-ioloop) cb)
   "In IOLOOP, add CB to be run in the IOLOOP environment.
 CB is run at the start of every polling loop.  Callbacks are
 called in the order they are added.
@@ -308,7 +311,6 @@ sending closures to the IOLOOP.  An example:
 
     (jupyter-ioloop-add-callback ioloop
       `(lambda () (zmq-prin1 'foo \"bar\")))"
-  (declare (indent 1))
   (cl-assert (functionp cb))
   (cl-callf append (oref ioloop callbacks) (list cb))
   (when (process-live-p (oref ioloop process))
@@ -412,7 +414,7 @@ polling the STDIN file handle."
        (t
         (funcall handler event))))))
 
-(cl-defgeneric jupyter-ioloop-start ((ioloop jupyter-ioloop)
+(cl-defmethod jupyter-ioloop-start ((ioloop jupyter-ioloop)
                                      handler
                                      &key buffer)
   "Start an IOLOOP.
@@ -443,13 +445,6 @@ the IOLOOP subprocess buffer, see `zmq-start-process'."
       (setq port (zmq-bind-to-random-port stdin "tcp://127.0.0.1")))
     (let ((process (zmq-start-process
                     (jupyter-ioloop--function ioloop (when stdin port))
-                    ;; We go through this Emacs-fu, brought to you by Chris
-                    ;; Wellons, https://nullprogram.com/blog/2014/01/27/,
-                    ;; because we want OBJECT to be the final say in when
-                    ;; everything gets garbage collected.  If OBJECT loses
-                    ;; scope, the ioloop process should be killed off.  This
-                    ;; wouldn't happen if we hold a strong reference to
-                    ;; OBJECT.
                     :filter (jupyter-ioloop--make-filter ioloop handler)
                     :buffer buffer)))
       (oset ioloop process process)
@@ -457,7 +452,7 @@ the IOLOOP subprocess buffer, see `zmq-start-process'."
         (process-put process :stdin stdin))
       (jupyter-ioloop-wait-until ioloop 'start #'identity))))
 
-(cl-defgeneric jupyter-ioloop-stop ((ioloop jupyter-ioloop))
+(cl-defmethod jupyter-ioloop-stop ((ioloop jupyter-ioloop))
   "Stop IOLOOP.
 Send a quit event to IOLOOP, wait until it actually quits before
 returning."
@@ -497,7 +492,7 @@ serializable."
             (while (not sent)
               (condition-case nil
                   (progn
-                    (zmq-send stdin msg zmq-DONTWAIT)
+                    (zmq-send stdin (encode-coding-string msg 'utf-8) zmq-DONTWAIT)
                     (setq sent t))
                 (zmq-EAGAIN (accept-process-output nil 0)))))
         (zmq-subprocess-send process args)))))

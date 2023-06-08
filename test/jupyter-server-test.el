@@ -30,10 +30,6 @@
 (require 'jupyter-org-client)
 (require 'subr-x)
 
-(defun jupyter-server-test-server (url)
-  (or (jupyter-find-server url)
-      (jupyter-server :url url)))
-
 ;;; REST API
 
 (ert-deftest jupyter-api-construct-endpoint ()
@@ -115,7 +111,7 @@
                                  jupyter-api-request-headers))))))
 
 (ert-deftest jupyter-api-copy-cookies-for-websocket ()
-  :tags '(rest)
+  :tags '(rest server)
   (let* (url-cookie-storage
          (port (jupyter-test-ensure-notebook-server))
          (host (format "localhost:%s" port)))
@@ -184,14 +180,14 @@
     (should cookies-copied-before-write)
     (should cookies-written)))
 
-(ert-deftest jupyter-api-get-kernel-ws ()
-  :tags '(rest)
+(ert-deftest jupyter-api-kernel-websocket ()
+  :tags '(rest server)
   (jupyter-test-rest-api-with-notebook client
     (cl-destructuring-bind (&key id &allow-other-keys)
         (jupyter-api-start-kernel client)
       (unwind-protect
           (let ((kernel-id id)
-                (ws (jupyter-api-get-kernel-ws client id)))
+                (ws (jupyter-api-kernel-websocket client id)))
             (unwind-protect
                 (cl-destructuring-bind (&key id session &allow-other-keys)
                     (websocket-client-data ws)
@@ -202,12 +198,12 @@
         (jupyter-api-shutdown-kernel client id)))))
 
 (ert-deftest jupyter-api-server-accessible-p ()
-  :tags '(rest)
+  :tags '(rest server)
   (jupyter-test-rest-api-with-notebook client
     (should (jupyter-api-server-accessible-p client))))
 
 (ert-deftest jupyter-api-request-xsrf-cookie ()
-  :tags '(rest)
+  :tags '(rest server)
   (jupyter-test-rest-api-with-notebook client
     (let ((url (oref client url)))
       (should-not (jupyter-api-xsrf-header-from-cookies url))
@@ -215,7 +211,7 @@
       (should (jupyter-api-xsrf-header-from-cookies url)))))
 
 (ert-deftest jupyter-api-authenticate ()
-  :tags '(rest)
+  :tags '(rest server)
   (cl-letf (((symbol-function #'url-cookie-write-file) #'ignore))
     (ert-info ("Password authentication")
       (let ((jupyter-test-notebook nil)
@@ -257,42 +253,6 @@
 
 ;;; Server
 
-;; And `jupyter-server-kernel-comm'
-(ert-deftest jupyter-server ()
-  :tags '(server)
-  (jupyter-test-with-notebook server
-    (ert-info ("`jupyter-comm-layer' methods")
-      (when (jupyter-comm-alive-p server)
-        (jupyter-comm-stop server))
-      (should-not (jupyter-comm-alive-p server))
-      (jupyter-comm-start server)
-      (should (jupyter-comm-alive-p server)))
-    (jupyter-test-with-server-kernel server "python" kernel
-      (should (oref kernel id))
-      (let ((id (oref kernel id)))
-        (should (jupyter-api-get-kernel server id))
-        (ert-info ("Connecting kernel comm to server")
-          (let ((kcomm (jupyter-server-kernel-comm
-                        :kernel kernel)))
-            (should-not (jupyter-server-kernel-connected-p server id))
-            (jupyter-comm-add-handler server kcomm)
-            (should (jupyter-server-kernel-connected-p server id))
-            (should (jupyter-comm-alive-p kcomm))
-            (jupyter-comm-stop kcomm)
-            (should-not (jupyter-comm-alive-p kcomm))
-            (should (jupyter-comm-alive-p server))))
-        (ert-info ("Connecting kernel comm starts server comm if necessary")
-          (let ((kcomm (jupyter-server-kernel-comm
-                        :kernel kernel)))
-            (jupyter-comm-stop server)
-            (should-not (jupyter-comm-alive-p server))
-            (should-not (jupyter-server-kernel-connected-p server id))
-            (jupyter-comm-start kcomm)
-            (should (jupyter-comm-alive-p server))
-            (should (jupyter-server-kernel-connected-p server id))
-            (should (jupyter-comm-alive-p kcomm))
-            (jupyter-comm-stop kcomm)))))))
-
 (ert-deftest jupyter-server-reauthentication ()
   :tags '(server)
   (let ((jupyter-test-notebook nil)
@@ -305,10 +265,12 @@
           (cl-letf (((symbol-function #'read-passwd)
                      (lambda (&rest _) "foobar")))
             (jupyter-api-ensure-authenticated server))
-          (cl-destructuring-bind (manager client)
-              (jupyter-server-start-new-kernel server "python")
+          (cl-destructuring-bind (_ client)
+              (list nil (jupyter-client (jupyter-kernel :server server :spec "python")))
             (unwind-protect
-                (let ((id (oref (oref manager kernel) id))
+                (let ((id (jupyter-kernel-action client
+                            (lambda (kernel)
+                              (jupyter-server-kernel-id kernel))))
                       (jupyter-current-client client))
                   (should (equal (jupyter-eval "1 + 1") "2"))
                   (let (url-cookie-storage)
@@ -321,73 +283,12 @@
                       (cl-letf (((symbol-function #'read-passwd)
                                  (lambda (&rest _) "foobar")))
                         (should (jupyter-api-get-kernel server)))
-                      (should (jupyter-api-server-accessible-p server))
-                      (should (jupyter-server-kernel-connected-p server id)))
+                      (should (jupyter-api-server-accessible-p server)))
                     (ert-info ("Verify clients still work after re-authentication")
                       (should (equal (jupyter-eval "1 + 1") "2")))))
-              (jupyter-shutdown-kernel manager))))
+              (jupyter-shutdown-kernel client))))
       (when (process-live-p (car jupyter-test-notebook))
         (delete-process (car jupyter-test-notebook))))))
-
-(ert-deftest jupyter-server-kernel ()
-  :tags '(kernel server)
-  (jupyter-test-with-notebook server
-    (let ((kernel (jupyter-server-kernel
-                   :server server
-                   :spec (jupyter-guess-kernelspec
-                          "python" (jupyter-server-kernelspecs server)))))
-      (should (slot-boundp kernel 'server))
-      (should (eq (oref kernel server) server))
-      (should-not (slot-boundp kernel 'id))
-      (should-not (jupyter-kernel-alive-p kernel))
-      (jupyter-start-kernel kernel)
-      (should (slot-boundp kernel 'id))
-      (let ((id (oref kernel id)))
-        (unwind-protect
-            (progn
-              (should (jupyter-api-get-kernel server id))
-              (should (jupyter-kernel-alive-p kernel)))
-         (jupyter-api-shutdown-kernel server id))))))
-
-(ert-deftest jupyter-server-kernel-manager ()
-  :tags '(server)
-  (jupyter-test-with-notebook server
-    (let* ((kernel (jupyter-server-kernel
-                    :server server
-                    :spec (jupyter-guess-kernelspec
-                           "python" (jupyter-server-kernelspecs server))))
-           (manager (jupyter-server-kernel-manager
-                     :kernel kernel)))
-      (should-not (jupyter-kernel-alive-p manager))
-      (jupyter-start-kernel manager)
-      (unwind-protect
-          (progn
-            (should (jupyter-kernel-alive-p (oref manager kernel)))
-            (should (jupyter-comm-alive-p (oref manager comm)))
-            (should (jupyter-kernel-alive-p manager)))
-        (jupyter-shutdown-kernel manager)))))
-
-(ert-deftest jupyter-server-start-new-kernel ()
-  :tags '(server)
-  (jupyter-test-with-notebook server
-    (cl-destructuring-bind (manager client)
-        (jupyter-server-start-new-kernel server "python")
-      (unwind-protect
-          (let ((jupyter-current-client client))
-            (should (jupyter-kernel-alive-p
-                     (thread-first jupyter-current-client
-                       (oref manager)
-                       (oref kernel))))
-            (should (jupyter-comm-alive-p (oref jupyter-current-client kcomm)))
-            (should (eq (oref client manager) manager))
-            (should (slot-boundp manager 'comm))
-            (should (jupyter-comm-alive-p (oref manager comm)))
-            (should (slot-boundp client 'kcomm))
-            (should (eq (oref manager comm) (oref client kcomm)))
-            (jupyter-comm-handler-loop (oref client kcomm) c
-              (should (eq c client)))
-            (should (equal (jupyter-eval "1 + 1") "2")))
-        (jupyter-shutdown-kernel manager)))))
 
 (ert-deftest jupyter-run-server-repl ()
   :tags '(server)
@@ -395,13 +296,7 @@
     (with-current-buffer
         (oref (jupyter-run-server-repl server "python") buffer)
       (unwind-protect
-          (progn
-            (should (jupyter-kernel-alive-p
-                     (thread-first jupyter-current-client
-                       (oref manager)
-                       (oref kernel))))
-            (should (jupyter-comm-alive-p (oref jupyter-current-client kcomm)))
-            (should (equal (jupyter-eval "1 + 1") "2")))
+          (should (equal (jupyter-eval "1 + 1") "2"))
         (jupyter-test-kill-buffer (current-buffer))))))
 
 (ert-deftest jupyter-connect-server-repl ()
@@ -412,48 +307,8 @@
       (with-current-buffer
           (oref (jupyter-connect-server-repl server id) buffer)
         (unwind-protect
-            (progn
-              (should (jupyter-kernel-alive-p
-                       (thread-first jupyter-current-client
-                         (oref manager)
-                         (oref kernel))))
-              (should (jupyter-comm-alive-p (oref jupyter-current-client kcomm)))
-              (should (equal (jupyter-eval "1 + 1") "2")))
+            (should (equal (jupyter-eval "1 + 1") "2"))
           (jupyter-test-kill-buffer (current-buffer)))))))
-
-(ert-deftest org-babel-jupyter-server-session ()
-  :tags '(server org)
-  (require 'ob-jupyter)
-  (jupyter-test-with-notebook server
-    (let* ((remote (file-remote-p (jupyter-tramp-file-name-from-url (oref server url))))
-           (initiate-session
-            (lambda (session &optional args)
-              (erase-buffer)
-              (insert (format "\
-#+BEGIN_SRC jupyter-python :session %s %s
-1 + 1
-#+END_SRC" session (or args "")))
-              (goto-char (point-min))
-              (let ((params (nth 2 (org-babel-get-src-block-info))))
-                (org-babel-jupyter-initiate-session
-                 (alist-get :session params) params)))))
-      (with-temp-buffer
-        (org-mode)
-        (ert-info ("No session name")
-          (should-error (funcall initiate-session remote)))
-        (ert-info ("Non-existent kernel")
-          (should-error (funcall initiate-session (concat remote "py") ":kernel foo")))
-        (ert-info ("Connect to an existing kernel")
-          (let* ((id (plist-get (jupyter-api-start-kernel server) :id))
-                 (session (funcall initiate-session (concat remote id))))
-            (unwind-protect
-                (should (not (null session)))
-              (jupyter-test-kill-buffer session))))
-        (ert-info ("Start a new kernel")
-          (let ((session (funcall initiate-session (concat remote "py"))))
-            (unwind-protect
-                (should (not (null session)))
-              (jupyter-test-kill-buffer session))))))))
 
 ;;; Naming kernels
 
@@ -532,29 +387,58 @@
 
 (ert-deftest jupyter-server-name-client-kernel ()
   :tags '(server)
-  (let* ((jupyter-server-kernel-names
-          '(("http://localhost:8882"
-             ("id1" . "name1"))))
-         (server (jupyter-server :url "http://localhost:8882"))
-         (client (jupyter-kernel-client)))
-    (oset client kcomm (jupyter-server-kernel-comm
-                        :kernel (jupyter-server-kernel
-                                 :id "id1"
-                                 :server server)))
-    (jupyter-server-name-client-kernel client "foo")
-    (should (equal jupyter-server-kernel-names
-                   '(("http://localhost:8882"
-                      ("id1" . "foo")))))))
+  (jupyter-test-with-notebook server
+    (jupyter-test-with-server-kernel server "python" kernel
+      (let* ((jupyter-server-kernel-names
+              `((,(oref server url)
+                 (,(jupyter-server-kernel-id kernel) . "name1"))))
+             (client (jupyter-client kernel)))
+        (jupyter-server-name-client-kernel client "foo")
+        (should (equal jupyter-server-kernel-names
+                       `((,(oref server url)
+                          (,(jupyter-server-kernel-id kernel) . "foo")))))))))
 
 ;;; Org
 
 (ert-deftest org-babel-jupyter-server-session ()
   :tags '(org server)
-  (let ((session (org-babel-jupyter-parse-session "/jpy::foo/bar.json")))
-    (should (org-babel-jupyter-server-session-p session))
-    (should (equal (org-babel-jupyter-session-name session) "/jpy::foo/bar.json")))
-  (let ((session (org-babel-jupyter-parse-session "/jpy::foo/bar")))
-    (should (org-babel-jupyter-server-session-p session))
-    (should (equal (org-babel-jupyter-session-name session) "/jpy::foo/bar"))))
+  (require 'ob-jupyter)
+  (jupyter-test-with-notebook server
+    (let* ((remote (file-remote-p (jupyter-tramp-file-name-from-url (oref server url))))
+           (initiate-session
+            (lambda (session &optional args)
+              (erase-buffer)
+              (insert (format "\
+#+BEGIN_SRC jupyter-python :session %s %s
+1 + 1
+#+END_SRC" session (or args "")))
+              (goto-char (point-min))
+              (let ((params (nth 2 (org-babel-get-src-block-info))))
+                (org-babel-jupyter-initiate-session
+                 (alist-get :session params) params)))))
+      (with-temp-buffer
+        (org-mode)
+        (ert-info ("No session name")
+          (should-error (funcall initiate-session remote)))
+        (ert-info ("Non-existent kernel")
+          (should-error (funcall initiate-session (concat remote "py") ":kernel foo")))
+        (ert-info ("Connect to an existing kernel")
+          (let* ((id (plist-get (jupyter-api-start-kernel server) :id))
+                 (session (funcall initiate-session (concat remote id))))
+            (unwind-protect
+                (should (not (null session)))
+              (jupyter-test-kill-buffer session))))
+        (ert-info ("Start a new kernel")
+          (let ((session (funcall initiate-session (concat remote "py"))))
+            (unwind-protect
+                (should (not (null session)))
+              (jupyter-test-kill-buffer session)))))))
+  (ert-info ("Test parsing session paths")
+    (let ((session (org-babel-jupyter-parse-session "/jpy::foo/bar.json")))
+      (should (org-babel-jupyter-server-session-p session))
+      (should (equal (org-babel-jupyter-session-name session) "/jpy::foo/bar.json")))
+    (let ((session (org-babel-jupyter-parse-session "/jpy::foo/bar")))
+      (should (org-babel-jupyter-server-session-p session))
+      (should (equal (org-babel-jupyter-session-name session) "/jpy::foo/bar")))))
 
 ;;; jupyter-server-test.el ends here

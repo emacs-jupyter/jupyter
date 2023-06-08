@@ -42,13 +42,14 @@
 (declare-function org-element-at-point "org-element")
 (declare-function org-element-property "org-element" (property element))
 (declare-function org-element-context "org-element" (&optional element))
+(declare-function org-babel-execute-src-block "ob-core" (&optional arg info params executor-type))
 (declare-function org-babel-variable-assignments:python "ob-python" (params))
 (declare-function org-babel-expand-body:generic "ob-core" (body params &optional var-lines))
 (declare-function org-export-derived-backend-p "ox" (backend &rest backends))
 
 (declare-function jupyter-run-server-repl "jupyter-server")
 (declare-function jupyter-connect-server-repl "jupyter-server")
-(declare-function jupyter-server-kernelspecs "jupyter-server")
+(declare-function jupyter-kernelspecs "jupyter-server")
 (declare-function jupyter-server-kernel-id-from-name "jupyter-server")
 (declare-function jupyter-server-name-client-kernel "jupyter-server")
 (declare-function jupyter-api-get-kernel "jupyter-rest-api")
@@ -56,6 +57,17 @@
 (declare-function jupyter-tramp-url-from-file-name "jupyter-tramp")
 (declare-function jupyter-tramp-server-from-file-name "jupyter-tramp")
 (declare-function jupyter-tramp-file-name-p "jupyter-tramp")
+
+(defcustom org-babel-jupyter-language-aliases '(("python3" "python"))
+  "An alist mapping kernel language names to another name.
+If a kernel has a language name matching the CAR of an element of
+this list, the associated name will be used for the names of the
+source blocks instead.
+
+So if this variable has an entry like '(\"python3\" \"python\")
+then instead of jupyter-python3 source blocks, you can use
+jupyter-python source blocks for the associated kernel."
+  :type '(alist :key-type string :value-type string))
 
 (defvaralias 'org-babel-jupyter-resource-directory
   'jupyter-org-resource-directory)
@@ -208,7 +220,7 @@ return nil."
   (with-current-buffer (org-babel-jupyter-initiate-session session params)
     (goto-char (point-max))
     (and (org-babel-jupyter--insert-variable-assignments params)
-         (jupyter-send-execute-request jupyter-current-client))
+         (jupyter-repl-execute-cell jupyter-current-client))
     (current-buffer)))
 
 (defun org-babel-load-session:jupyter (session body params)
@@ -232,11 +244,11 @@ return nil."
                (:constructor org-babel-jupyter-remote-session))
   connect-repl-p)
 
-(cl-defgeneric org-babel-jupyter-parse-session ((session string))
+(cl-defmethod org-babel-jupyter-parse-session ((session string))
   "Return a parsed representation of SESSION."
   (org-babel-jupyter-session :name session))
 
-(cl-defgeneric org-babel-jupyter-initiate-client ((_session org-babel-jupyter-session) kernel)
+(cl-defmethod org-babel-jupyter-initiate-client ((_session org-babel-jupyter-session) kernel)
   "Launch SESSION's KERNEL, return a `jupyter-org-client' connected to it.
 SESSION is the :session header argument of a source block and
 KERNEL is the name of the kernel to launch."
@@ -269,12 +281,16 @@ file name, with `org-babel-jupyter-remote-session-connect-repl-p'
 set to nil.  The CONNECT-REPL-P slot indicates that a connection
 file is read to connect to the session, as oppossed to launcing a
 kernel."
-  (let ((json-p (string-suffix-p ".json" session)))
-    (if (or json-p (file-remote-p session))
-        (org-babel-jupyter-remote-session
-         :name session
-         :connect-repl-p json-p)
-      (cl-call-next-method))))
+  (if jupyter-use-zmq
+      (let ((json-p (string-suffix-p ".json" session)))
+        (if (or json-p (file-remote-p session))
+            (org-babel-jupyter-remote-session
+             :name session
+             :connect-repl-p json-p)
+          (cl-call-next-method)))
+    (when (file-remote-p session)
+      (error "ZMQ is required for remote sessions (%s)" session))
+    (cl-call-next-method)))
 
 (cl-defmethod org-babel-jupyter-initiate-client :before ((session org-babel-jupyter-remote-session) _kernel)
   "Raise an error if SESSION's name is a remote file name without a local name.
@@ -309,14 +325,26 @@ session."
 
 (cl-defmethod org-babel-jupyter-initiate-client ((session org-babel-jupyter-server-session) kernel)
   (let* ((rsession (org-babel-jupyter-session-name session))
-         (url (jupyter-tramp-url-from-file-name rsession))
-         (server (jupyter-server :url url)))
+         (server (with-parsed-tramp-file-name rsession nil
+                   (when (member host '("127.0.0.1" "localhost"))
+                     (setq port (tramp-file-name-port-or-default v))
+                     (when (jupyter-port-available-p port)
+                       (if (y-or-n-p (format "Notebook not started on port %s. Launch one? "
+                                             port))
+                           ;; TODO: Specify authentication?  But then
+                           ;; how would you get the token for the
+                           ;; login that happens in
+                           ;; `jupyter-tramp-server-from-file-name'.
+                           (jupyter-launch-notebook port)
+                         (user-error "Launch a notebook on port %s first." port))))
+                   (jupyter-tramp-server-from-file-name rsession))))
     (unless (jupyter-server-has-kernelspec-p server kernel)
-      (error "No kernelspec matching \"%s\" exists at %s" kernel url))
+      (error "No kernelspec matching \"%s\" exists at %s"
+             kernel (oref server url)))
     ;; Language aliases may not exist for the kernels that are accessible on
     ;; the server so ensure they do.
     (org-babel-jupyter-aliases-from-kernelspecs
-     nil (jupyter-server-kernelspecs server))
+     nil (jupyter-kernelspecs server))
     (let ((sname (file-local-name rsession)))
       (if-let ((id (jupyter-server-kernel-id-from-name server sname)))
           ;; Connecting to an existing kernel
@@ -427,36 +455,38 @@ These parameters are handled internally."
     (setcar fresult "")
     (delq fparam params)))
 
+(defconst org-babel-jupyter-async-inline-results-pending-indicator "???"
+  "A string to disambiguate pending inline results from empty results.")
+
 (defun org-babel-jupyter--execute (code async-p)
-  (let ((req (jupyter-send-execute-request jupyter-current-client :code code)))
-    `(,req
-      ,(cond
-        (async-p
-         (when (bound-and-true-p org-export-current-backend)
-           (jupyter-add-idle-sync-hook
-            'org-babel-after-execute-hook req 'append))
-         (if (jupyter-org-request-inline-block-p req)
-             org-babel-jupyter-async-inline-results-pending-indicator
-           ;; This returns the message ID of REQ as an indicator
-           ;; for the pending results.
-           (jupyter-org-pending-async-results req)))
-        (t
-         (jupyter-idle-sync req)
-         (if (jupyter-org-request-inline-block-p req)
-             ;; When evaluating a source block synchronously, only the
-             ;; :execute-result will be in `jupyter-org-request-results' since
-             ;; stream results and any displayed data will be placed in a separate
-             ;; buffer.
-             (car (jupyter-org-request-results req))
-           ;; This returns an Org formatted string of the collected
-           ;; results.
-           (jupyter-org-sync-results req)))))))
+  (jupyter-run-with-client jupyter-current-client
+    (jupyter-mlet* ((req (jupyter-sent (jupyter-execute-request :code code))))
+      (jupyter-return
+        `(,req
+          ,(cond
+            (async-p
+             (when (bound-and-true-p org-export-current-backend)
+               (jupyter-add-idle-sync-hook
+                'org-babel-after-execute-hook req 'append))
+             (if (jupyter-org-request-inline-block-p req)
+                 org-babel-jupyter-async-inline-results-pending-indicator
+               ;; This returns the message ID of REQ as an indicator
+               ;; for the pending results.
+               (jupyter-org-pending-async-results req)))
+            (t
+             (jupyter-idle-sync req)
+             (if (jupyter-org-request-inline-block-p req)
+                 ;; When evaluating a source block synchronously, only the
+                 ;; :execute-result will be in `jupyter-org-request-results' since
+                 ;; stream results and any displayed data will be placed in a separate
+                 ;; buffer.
+                 (car (jupyter-org-request-results req))
+               ;; This returns an Org formatted string of the collected
+               ;; results.
+               (jupyter-org-sync-results req)))))))))
 
 (defvar org-babel-jupyter-current-src-block-params nil
   "The block parameters of the most recently executed Jupyter source block.")
-
-(defconst org-babel-jupyter-async-inline-results-pending-indicator "???"
-  "A string to disambiguate pending inline results from empty results.")
 
 (defun org-babel-execute:jupyter (body params)
   "Execute BODY according to PARAMS.
@@ -682,9 +712,9 @@ For all kernel SPECS, make a language alias for the kernel
 language if one does not already exist.  The alias is created with
 `org-babel-jupyter-make-language-alias'.
 
-SPECS defaults to `jupyter-available-kernelspecs'.  Optional
-argument REFRESH has the same meaning as in
-`jupyter-available-kernelspecs'.
+SPECS defaults to those associated with the `default-directory'.
+Optional argument REFRESH has the same meaning as in
+`jupyter-kernelspecs'.
 
 Note, spaces in the kernel language name are converted into
 dashes in the language alias, e.g.
@@ -699,11 +729,14 @@ variable in their configurations without having to also set the
 :kernel header argument since it is common for only one per
 language to exist on someone's system."
   (cl-loop
-   with specs = (or specs
-                    (with-demoted-errors "Error retrieving kernelspecs: %S"
-                      (jupyter-available-kernelspecs refresh)))
-   for (kernel . (_dir . spec)) in specs
-   for lang = (jupyter-canonicalize-language-string (plist-get spec :language))
+   for spec in (or specs
+                   (with-demoted-errors "Error retrieving kernelspecs: %S"
+                     (jupyter-kernelspecs default-directory refresh)))
+   for kernel = (jupyter-kernelspec-name spec)
+   for lang = (let ((lang (jupyter-canonicalize-language-string
+                           (plist-get (jupyter-kernelspec-plist spec) :language))))
+                (or (cadr (assoc lang org-babel-jupyter-language-aliases))
+                    lang))
    unless (member lang languages) collect lang into languages and
    do (org-babel-jupyter-make-language-alias kernel lang)
    ;; KLUDGE: The :kernel header argument is always set, even when we aren't
@@ -725,8 +758,8 @@ mapped to their appropriate minted language in
   (cond
    ((org-export-derived-backend-p backend 'latex)
     (cl-loop
-     for (_kernel . (_dir . spec)) in (jupyter-available-kernelspecs)
-     for lang = (plist-get spec :language)
+     for spec in (jupyter-kernelspecs default-directory)
+     for lang = (plist-get (jupyter-kernelspec-plist spec) :language)
      do (cl-pushnew (list (intern (concat "jupyter-" lang)) lang)
                     org-latex-minted-langs :test #'equal)))))
 
@@ -745,7 +778,17 @@ mapped to their appropriate minted language in
 
 ;;; Hook into `org'
 
-(org-babel-jupyter-aliases-from-kernelspecs)
+;; Defer generation of the aliases until the first call to
+;; `org-babel-execute-src-block' to avoid generating them at top-level
+;; when loading ob-jupyter.  Some users, e.g. those who use conda
+;; environments, may not have a jupyter command available at load
+;; time.
+(defun org-babel-jupyter--aliases-advice (&rest _)
+  (let ((default-directory user-emacs-directory))
+    (org-babel-jupyter-aliases-from-kernelspecs))
+  (advice-remove #'org-babel-execute-src-block #'org-babel-jupyter--aliases-advice))
+(advice-add #'org-babel-execute-src-block :before #'org-babel-jupyter--aliases-advice)
+
 (add-hook 'org-export-before-processing-hook #'org-babel-jupyter-setup-export)
 (add-hook 'org-export-before-parsing-hook #'org-babel-jupyter-strip-ansi-escapes)
 

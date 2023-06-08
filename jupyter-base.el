@@ -39,6 +39,8 @@
 (declare-function jupyter-message-content "jupyter-messages" (msg))
 (declare-function jupyter-new-uuid "jupyter-messages")
 
+(cl-deftype json-plist () '(satisfies json-plist-p))
+
 ;;; Custom variables
 
 (defcustom jupyter-pop-up-frame nil
@@ -52,16 +54,23 @@ pop-up frames instead of windows.
 `jupyter-pop-up-frame' can also be a list of message type
 keywords for messages which will cause frames to be used.  For any
 message type not in the list, windows will be used instead.
-Currently only `:execute-result', `:error', and `:stream'
+Currently only `execute_result', `error', and `stream'
 messages consider this variable."
   :group 'jupyter
   :type '(choice (const :tag "Pop up frames" t)
                  (const :tag "Pop up windows" nil)
                  ;; TODO: These are the only ones where `jupyter-pop-up-frame'
                  ;; is checked at the moment.
-                 (set (const :execute-result)
-                      (const :error)
-                      (const :stream))))
+                 (set (const "execute_result")
+                      (const "error")
+                      (const "stream"))))
+
+(defcustom jupyter-use-zmq (and (locate-library "zmq") t)
+  "Whether or not ZMQ can be used to communicate with kernels.
+If ZMQ is not available for use, kernels can only be launched
+from a backing notebook server."
+  :group 'jupyter
+  :type 'boolean)
 
 (defconst jupyter-root (file-name-directory load-file-name)
   "Root directory containing emacs-jupyter.")
@@ -70,40 +79,38 @@ messages consider this variable."
   "The jupyter protocol version that is implemented.")
 
 (defconst jupyter-message-types
-  (list :execute-result "execute_result"
-        :execute-request "execute_request"
-        :execute-reply "execute_reply"
-        :inspect-request "inspect_request"
-        :inspect-reply "inspect_reply"
-        :complete-request "complete_request"
-        :complete-reply "complete_reply"
-        :history-request "history_request"
-        :history-reply "history_reply"
-        :is-complete-request "is_complete_request"
-        :is-complete-reply "is_complete_reply"
-        :comm-info-request "comm_info_request"
-        :comm-info-reply "comm_info_reply"
-        :comm-open "comm_open"
-        :comm-msg "comm_msg"
-        :comm-close "comm_close"
-        :kernel-info-request "kernel_info_request"
-        :kernel-info-reply "kernel_info_reply"
-        :shutdown-request "shutdown_request"
-        :shutdown-reply "shutdown_reply"
-        :interupt-request "interrupt_request"
-        :interrupt-reply "interrupt_reply"
-        :stream "stream"
-        :display-data "display_data"
-        :update-display-data "update_display_data"
-        :execute-input "execute_input"
-        :error "error"
-        :status "status"
-        :clear-output "clear_output"
-        :input-reply "input_reply"
-        :input-request "input_request")
-  "A plist mapping keywords to Jupyter message type strings.
-The plist values are the message types either sent or received
-from the kernel.")
+  (list "execute_result"
+        "execute_request"
+        "execute_reply"
+        "inspect_request"
+        "inspect_reply"
+        "complete_request"
+        "complete_reply"
+        "history_request"
+        "history_reply"
+        "is_complete_request"
+        "is_complete_reply"
+        "comm_info_request"
+        "comm_info_reply"
+        "comm_open"
+        "comm_msg"
+        "comm_close"
+        "kernel_info_request"
+        "kernel_info_reply"
+        "shutdown_request"
+        "shutdown_reply"
+        "interrupt_request"
+        "interrupt_reply"
+        "stream"
+        "display_data"
+        "update_display_data"
+        "execute_input"
+        "error"
+        "status"
+        "clear_output"
+        "input_reply"
+        "input_request")
+  "A list of valid Jupyter message types.")
 
 (defconst jupyter-mime-types '(:application/vnd.jupyter.widget-view+json
                                :text/html :text/markdown
@@ -120,9 +127,16 @@ from the kernel.")
   "When non-nil, some parts of Jupyter will emit debug statements.
 If the symbol 'message, messages received by a kernel will only
 be handled by clients when the function
-`jupyter--debug-run-message-queue' is called manually.  This
+`jupyter--debug-replay-requests' is called manually.  This
 allows for stepping through the code with Edebug.")
 
+(defvar jupyter--debug-request-queue nil)
+
+(defun jupyter-debug (format-string &rest args)
+  "Display a message when `jupyter--debug' is non-nil.
+FORMAT-STRING and ARGS have the same meaning as in `message'."
+  (when jupyter--debug
+    (apply #'message (concat "Jupyter: " format-string) args)))
 
 (defvar jupyter-default-timeout 2.5
   "The default timeout in seconds for `jupyter-wait-until'.")
@@ -335,7 +349,7 @@ new window or frame."
 (defun jupyter-pop-up-frame-p (msg-type)
   "Return non-nil if a frame should be popped up for MSG-TYPE."
   (or (eq jupyter-pop-up-frame t)
-      (memq msg-type jupyter-pop-up-frame)))
+      (member msg-type jupyter-pop-up-frame)))
 
 (defun jupyter-display-current-buffer-guess-where (msg-type)
   "Display the current buffer in a window or frame depending on MSG-TYPE.
@@ -381,11 +395,10 @@ Adds the method `jupyter-add-finalizer' which maintains a list of
 finalizer functions to be called when the object is garbage
 collected.")
 
-(cl-defgeneric jupyter-add-finalizer ((obj jupyter-finalized-object) finalizer)
+(cl-defmethod jupyter-add-finalizer ((obj jupyter-finalized-object) finalizer)
   "Cleanup resources automatically.
 FINALIZER if a function to be added to a list of finalizers that
 will be called when OBJ is garbage collected."
-  (declare (indent 1))
   (cl-check-type finalizer function)
   (push (make-finalizer finalizer) (oref obj finalizers)))
 
@@ -432,9 +445,7 @@ fields:
 
 ;;; Request object definition
 
-(cl-defstruct (jupyter-request
-               (:constructor nil)
-               (:constructor jupyter-request))
+(cl-defstruct jupyter-request
   "Represents a request made to a kernel.
 Requests sent by a client always return something that can be
 interpreted as a `jupyter-request'.  It holds the state of a
@@ -443,17 +454,20 @@ each other.  A client has a request table to keep track of all
 requests that are not considered idle.  The most recent idle
 request is also kept track of.
 
-Each request contains: a message ID, a time sent, a last message
-received by the client that sent it, a list of message types that
-tell the client to not call the handler methods of those types,
-and an alist mapping message types to callback functions a client
-should call."
-  (id "")
+Each request contains: a message ID, a request type, a request
+message, a time sent, a last message received by the client that
+sent it, and a list of message types that tell the client to not
+call the handler methods of those types."
+  (id (jupyter-new-uuid) :read-only t)
+  (type nil :read-only t)
+  (content nil :read-only t)
+  (client nil :read-only nil)
   (time (current-time) :read-only t)
   (idle-p nil)
   (last-message nil)
-  (inhibited-handlers nil)
-  (callbacks nil))
+  (messages nil)
+  (message-publisher nil)
+  (inhibited-handlers nil))
 
 ;;; Connecting to a kernel's channels
 
@@ -490,6 +504,20 @@ should call."
    ;; seconds
    "sleep 60"))
 
+(defun jupyter-read-connection (conn-file)
+  "Return the connection information in CONN-FILE.
+Return a property list representation of the JSON in CONN-FILE, a
+Jupyter connection file."
+  (let ((conn-info (jupyter-read-plist conn-file)))
+    ;; Also validate the signature scheme here.
+    (cl-destructuring-bind (&key key signature_scheme &allow-other-keys)
+        conn-info
+      (when (and (> (length key) 0)
+                 (not (functionp
+                       (intern (concat "jupyter-" signature_scheme)))))
+        (error "Unsupported signature scheme: %s" signature_scheme)))
+    conn-info))
+
 (defun jupyter-tunnel-connection (conn-file &optional server)
   "Forward local ports to the remote ports in CONN-FILE.
 CONN-FILE is the path to a Jupyter connection file, SERVER is the
@@ -503,7 +531,7 @@ contained in the file name.
 
 Note only SSH tunnels are currently supported."
   (catch 'no-tunnels
-    (let ((conn-info (jupyter-read-plist conn-file)))
+    (let ((conn-info (jupyter-read-connection conn-file)))
       (when (and (file-remote-p conn-file)
                  (functionp 'tramp-dissect-file-name))
         (pcase-let (((cl-struct tramp-file-name method user host)
@@ -533,22 +561,30 @@ Note only SSH tunnels are currently supported."
                      (jupyter-make-ssh-tunnel lport maybe-rport server remoteip)))
          else collect maybe-rport)))))
 
-(defun jupyter-read-connection (conn-file)
-  "Return the connection information in CONN-FILE.
-Return a property list representation of the JSON in CONN-FILE, a
-Jupyter connection file.
+(defun jupyter-connection-file-to-session (conn-file)
+  "Return a `jupyter-session' based on CONN-FILE.
+CONN-FILE is a Jupyter connection file.  If CONN-FILE is a remote
+file, open local SSH tunnels to the remote ports listed in
+CONN-FILE.  The returned session object will have the remote
+ports remapped to the local ports."
+  (let ((conn-info (if (file-remote-p conn-file)
+                       (jupyter-tunnel-connection conn-file)
+                     (jupyter-read-connection conn-file))))
+    (jupyter-session
+     :conn-info conn-info
+     :key (plist-get conn-info :key))))
 
-If CONN-FILE is a remote file, possibly create an SSH tunnel
-between the localhost and the kernel on the remote host where
-CONN-FILE lives.  The returned connection info. will reflect
-these changes.
+;;; Kernel I/O
 
-See `jupyter-tunnel-connection' for more details on creating
-tunnels.  For more information on connection files, see
-https://jupyter-client.readthedocs.io/en/stable/kernels.html#connection-files"
-  (if (file-remote-p conn-file)
-      (jupyter-tunnel-connection conn-file)
-    (jupyter-read-plist conn-file)))
+(defvar jupyter-io-cache (make-hash-table :weakness 'key))
+
+(cl-defgeneric jupyter-io (thing)
+  "Return the I/O object of THING.")
+
+(cl-defmethod jupyter-io :around (thing)
+  "Cache the I/O object of THING in `jupyter-io-cache'."
+  (or (gethash thing jupyter-io-cache)
+      (puthash thing (cl-call-next-method) jupyter-io-cache)))
 
 ;;; Helper functions
 

@@ -27,18 +27,19 @@
 ;;; Code:
 
 (require 'zmq)
-(require 'jupyter-client)
-(require 'jupyter-repl)
 (require 'jupyter-zmq-channel-ioloop)
-(require 'jupyter-channel-ioloop-comm)
+(require 'jupyter-kernel-process)
+(require 'jupyter-repl)
+(require 'jupyter-server)
 (require 'jupyter-org-client)
-(require 'jupyter-kernel-process-manager)
 (require 'org-element)
 (require 'subr-x)
 (require 'cl-lib)
 (require 'ert)
 
 (declare-function jupyter-servers "jupyter-server")
+
+(setq jupyter-use-zmq nil)
 
 ;; Increase timeouts when testing for consistency. I think what is going on is
 ;; that communication with subprocesses gets slowed down when many processes
@@ -88,71 +89,33 @@ handling a message is always
 
 (cl-defmethod initialize-instance ((client jupyter-echo-client) &optional _slots)
   (cl-call-next-method)
-  (oset client messages (make-ring 10))
-  (oset client kcomm (jupyter-channel-ioloop-comm
-                      :ioloop-class 'jupyter-zmq-channel-ioloop))
-  (with-slots (kcomm) client
-    (oset kcomm hb (jupyter-hb-channel))
-    (oset kcomm channels
-          (list :stdin (make-jupyter-proxy-channel)
-                :shell (make-jupyter-proxy-channel)
-                :iopub (make-jupyter-proxy-channel)))))
+  (oset client messages (make-ring 10)))
 
-(cl-defmethod jupyter-send ((client jupyter-echo-client)
-                            channel
-                            type
-                            message
-                            &optional _flags)
-  (let ((req (jupyter-request :id (jupyter-new-uuid))))
-    (if (string-match "request" (symbol-name type))
-        (setq type (intern (replace-match "reply" nil nil (symbol-name type))))
+(cl-defmethod jupyter-send ((client jupyter-echo-client) (type string) &rest content)
+  (let ((req (make-jupyter-request :type type :content content)))
+    (if (string-match "request" type)
+        (setq type (replace-match "reply" nil nil type))
       (error "Not a request message type (%s)" type))
     ;; Message flow
     ;; - status: busy
     ;; - reply message
     ;; - status: idle
     ;;
-    ;; Needed internally by a `jupyter-kernel-client', this is mainly handled
-    ;; by the eventloop.
-    (puthash (jupyter-request-id req) req (oref client requests))
     ;; Simulate a delay
     (run-at-time
      0.001 nil
      (lambda ()
        (jupyter-handle-message
-        client :iopub (jupyter-test-message req :status (list :execution_state "busy")))
-       (jupyter-handle-message client channel (jupyter-test-message req type message))
+        client "iopub" (jupyter-test-message req "status" (list :execution_state "busy")))
+       (jupyter-handle-message client "shell" (jupyter-test-message req type content))
        (jupyter-handle-message
-        client :iopub (jupyter-test-message req :status (list :execution_state "idle")))))
+        client "iopub" (jupyter-test-message req "status" (list :execution_state "idle")))
+       (setf (jupyter-request-idle-p req) t)))
     req))
 
 (cl-defmethod jupyter-handle-message ((client jupyter-echo-client) _channel msg)
   (ring-insert+extend (oref client messages) msg 'grow)
   (cl-call-next-method))
-
-;;; `jupyter-mock-comm-layer'
-
-(defclass jupyter-mock-comm-layer (jupyter-comm-layer
-                                   jupyter-comm-autostop)
-  ((alive :initform nil)))
-
-(cl-defmethod jupyter-comm-alive-p ((comm jupyter-mock-comm-layer))
-  (oref comm alive))
-
-(cl-defmethod jupyter-comm-start ((comm jupyter-mock-comm-layer))
-  (unless (oref comm alive)
-    (oset comm alive 0))
-  (cl-incf (oref comm alive)))
-
-(cl-defmethod jupyter-comm-stop ((comm jupyter-mock-comm-layer))
-  (cl-decf (oref comm alive))
-  (when (zerop (oref comm alive))
-    (oset comm alive nil)))
-
-(cl-defstruct jupyter-mock-comm-obj event)
-
-(cl-defmethod jupyter-event-handler ((obj jupyter-mock-comm-obj) event)
-  (setf (jupyter-mock-comm-obj-event obj) event))
 
 ;;; Macros
 
@@ -210,29 +173,38 @@ If the `current-buffer' is not a REPL, this is identical to
        (cl-loop
         for saved in (copy-sequence ,saved-sym)
         for client = (cdr saved)
-        when (and client (slot-boundp client 'manager)
-                  (not (jupyter-kernel-alive-p (oref client manager))))
-        do (jupyter-stop-channels client)
+        when (and client
+                  (not (and (jupyter-connected-p client)
+                            (jupyter-kernel-action client
+                              (lambda (kernel)
+                                (jupyter-alive-p kernel))))))
+        do (jupyter-disconnect client)
         (cl-callf2 delq saved ,saved-sym))
        (let* ((,spec (progn (jupyter-error-if-no-kernelspec ,kernel)
                             (car (jupyter-find-kernelspecs ,kernel))))
-              (,saved (cdr (assoc (car ,spec) ,saved-sym)))
+              (,saved (cdr (assoc (jupyter-kernelspec-name ,spec) ,saved-sym)))
               (,client (if (and ,saved (not jupyter-test-with-new-client))
                            ,saved
                          ;; Want a fresh kernel, so shutdown the cached one
-                         (when ,saved
-                           (if (slot-boundp ,saved 'manager)
-                               (jupyter-shutdown-kernel (oref ,saved manager))
-                             (jupyter-send-shutdown-request ,saved))
-                           (jupyter-stop-channels ,saved))
-                         (let ((client (,client-fun (car ,spec))))
+                         (when (and ,saved (jupyter-connected-p ,saved))
+                           (jupyter-run-with-client ,saved
+                             (jupyter-sent (jupyter-shutdown-request)))
+                           (jupyter-disconnect ,saved))
+                         (let ((client (,client-fun (jupyter-kernelspec-name ,spec))))
                            (prog1 client
-                             (let ((el (cons (car ,spec) client)))
+                             (let ((el (cons (jupyter-kernelspec-name ,spec) client)))
                                (push el ,saved-sym)))))))
          ;; See the note about increasing timeouts during CI testing at the top
          ;; of jupyter-test.el
          (accept-process-output nil 1)
          ,@body))))
+
+(defmacro jupyter-test-with-notebook (server &rest body)
+  (declare (indent 1))
+  `(let* ((host (format "localhost:%s" (jupyter-test-ensure-notebook-server)))
+          (url (format "http://%s" host))
+          (,server (jupyter-server :url url)))
+     ,@body))
 
 (defmacro jupyter-test-with-kernel-client (kernel client &rest body)
   "Start a new KERNEL client, bind it to CLIENT, evaluate BODY.
@@ -240,12 +212,19 @@ This only starts a single global client unless the variable
 `jupyter-test-with-new-client' is non-nil."
   (declare (indent 2) (debug (stringp symbolp &rest form)))
   `(jupyter-test-with-client-cache
-       (lambda (name) (cadr (jupyter-start-new-kernel name)))
-       jupyter-test-global-clients ,kernel ,client
-     (unwind-protect
-         (progn ,@body)
-       (when jupyter-test-with-new-client
-         (jupyter-shutdown-kernel (oref client manager))))))
+    (lambda (name)
+      (jupyter-client
+       (jupyter-test-with-notebook server
+        (jupyter-kernel
+         :server server
+         :spec name))
+       'jupyter-kernel-client))
+    jupyter-test-global-clients ,kernel ,client
+    (unwind-protect
+        (jupyter-with-client ,client
+          ,@body)
+      (when jupyter-test-with-new-client
+        (jupyter-shutdown-kernel ,client)))))
 
 (defmacro jupyter-test-with-python-client (client &rest body)
   "Start a new Python kernel, bind it to CLIENT, evaluate BODY."
@@ -345,25 +324,17 @@ For `url-retrieve', the callback will be called with a nil status."
           (,client (jupyter-rest-client :url (format "http://%s" host))))
      ,@body))
 
-(defmacro jupyter-test-with-notebook (server &rest body)
-  (declare (indent 1))
-  `(let* ((host (format "localhost:%s" (jupyter-test-ensure-notebook-server)))
-          (url (format "http://%s" host))
-          (,server (or (jupyter-find-server url)
-                       (jupyter-server :url url))))
-     ,@body))
-
 (defmacro jupyter-test-with-server-kernel (server name kernel &rest body)
   (declare (indent 3))
   (let ((id (make-symbol "id")))
-    `(let ((,kernel (jupyter-server-kernel
+    `(let ((,kernel (jupyter-kernel
                      :server server
                      :spec (jupyter-guess-kernelspec
-                            ,name (jupyter-server-kernelspecs ,server)))))
-       (let ((,id (jupyter-start-kernel kernel)))
-         (unwind-protect
-             (progn ,@body)
-           (jupyter-api-shutdown-kernel ,server ,id))))))
+                            ,name (jupyter-kernelspecs ,server)))))
+       (jupyter-launch ,kernel)
+       (unwind-protect
+           (progn ,@body)
+         (jupyter-shutdown ,kernel)))))
 
 (defmacro jupyter-test-with-some-kernelspecs (names &rest body)
   "Execute BODY in the context where extra kernelspecs with NAMES are available.
@@ -372,12 +343,20 @@ Those kernelspecs will be created in a temporary dir, which will
 be presented to Jupyter process via JUPYTER_PATH environemnt
 variable."
   (declare (indent 1) (debug (listp body)))
-  `(unwind-protect
-       (let ((jupyter-extra-dir (make-temp-file "jupyter-extra-dir" 'directory)))
-	 (jupyter-test-create-some-kernelspecs ,names jupyter-extra-dir)
-	 (setenv "JUPYTER_PATH" jupyter-extra-dir)
-	 ,@body)
-     (setenv "JUPYTER_PATH")))
+  `(let ((jupyter-extra-dir (make-temp-file "jupyter-extra-dir" 'directory))
+         (old-path (getenv "JUPYTER_PATH")))
+     (unwind-protect
+         (progn
+           (setenv "JUPYTER_PATH" jupyter-extra-dir)
+           (jupyter-test-create-some-kernelspecs ,names jupyter-extra-dir)
+           ;; Refresh the list of kernelspecs to make the new ones
+           ;; visible to BODY.
+           (jupyter-available-kernelspecs t)
+           ,@body)
+       (setenv "JUPYTER_PATH" old-path)
+       (delete-directory jupyter-extra-dir t)
+       ;; Refresh again to remove them.
+       (jupyter-available-kernelspecs t))))
 
 ;;; Functions
 
@@ -389,8 +368,8 @@ The only difference between them will be their names."
 	(save-silently t))
     (dolist (name kernel-names)
       (let ((kernel-dir (format "%s/kernels/%s" data-dir name)))
-	(make-directory kernel-dir t)
-	(append-to-file (json-serialize
+	    (make-directory kernel-dir t)
+	(append-to-file (json-encode
 			 `(:argv ,argv :display_name ,name :language "python"))
 			nil
 			(format "%s/kernel.json" kernel-dir))))))
@@ -399,11 +378,10 @@ The only difference between them will be their names."
   "Return the IPython kernel version string corresponding to SPEC.
 Assumes that SPEC is a kernelspec for a Python kernel and
 extracts the IPython kernel's semver."
-  (let* ((cmd (aref (plist-get spec :argv) 0))
+  (let* ((cmd (aref (plist-get (jupyter-kernelspec-plist spec) :argv) 0))
          (process-environment
           (append
-           (cl-loop for (key val) on (plist-get spec :env) by #'cddr
-                    collect (concat (substring (symbol-name key) 1) "=" val))
+           (jupyter-process-environment spec)
            process-environment))
          (version
           (with-temp-buffer
@@ -516,7 +494,8 @@ should have PROP with VAL."
     (require 'org)
     (require 'ob-python)
     (require 'ob-julia nil t)
-    (require 'ob-jupyter))
+    (require 'ob-jupyter)
+    (org-babel-jupyter-aliases-from-kernelspecs))
   (unless jupyter-org-test-buffer
     (setq jupyter-org-test-buffer (get-buffer-create "ob-jupyter-test"))
     (with-current-buffer jupyter-org-test-buffer
@@ -556,37 +535,49 @@ then the source code block will begin like
 Note if ARGS contains a key, regexp, then if regexp is non-nil,
 EXPECTED-RESULT is a regular expression to match against the
 results instead of an equality match."
-  (let (regexp)
-    (setq args
-          (cl-loop for (arg val) on args by #'cddr
-                   if (eq arg :regexp) do (setq regexp val)
-                   else collect (cons arg val)))
-    `(jupyter-org-test
-      (jupyter-org-test-src-block-1 ,block ,expected-result ,regexp ',args))))
+  `(jupyter-org-test
+    (jupyter-org-test-src-block-1
+     ,block ,expected-result ,@args)))
 
 (defun jupyter-org-test-make-block (code args)
-  (let ((arg-str (mapconcat
-                  (lambda (x)
-                    (cl-destructuring-bind (name . val) x
-                      (concat (symbol-name name) " " (format "%s" val))))
-                  args " ")))
+  (let ((arg-str
+         (let ((s (concat ":session " jupyter-org-test-session)))
+           (while args
+             (setq s (concat (symbol-name (car args)) " "
+                             (format "%s" (cadr args)) " "
+                             s))
+             (setq args (cddr args)))
+           s)))
     (concat
-     "#+BEGIN_SRC jupyter-python " arg-str " :session "
-     jupyter-org-test-session "\n"
+     "#+BEGIN_SRC jupyter-python " arg-str "\n"
      code "\n"
      "#+END_SRC")))
 
-(defun jupyter-org-test-src-block-1 (code test-result &optional regexp args)
-  (let ((src-block (jupyter-org-test-make-block code args)))
+(defun jupyter-test-plist-without-prop (plist prop)
+  (let ((head plist))
+    (while (eq (car head) prop)
+      (setq head (cddr head)
+            plist head))
+    (setq plist (cdr plist))
+    (while (cdr plist)
+      (when (eq (cadr plist) prop)
+        (setcdr plist (cdddr plist)))
+      (setq plist (cddr plist)))
+    head))
+
+(defun jupyter-org-test-src-block-1 (code test-result &rest args)
+  (let ((regexp (plist-get args :regexp))
+        (src-block (jupyter-org-test-make-block
+                    code (jupyter-test-plist-without-prop args :regexp))))
     (insert src-block)
     (let* ((info (org-babel-get-src-block-info)))
       (save-window-excursion
         (org-babel-execute-src-block nil info)
-        (when (equal (alist-get :async args) "yes")
-          (jupyter-idle-sync
-           (jupyter-last-sent-request
-            (jupyter-org-test-client-from-info info)))))
-      (org-with-point-at (org-babel-where-is-src-block-result nil info)
+        (when (equal (plist-get args :async) "yes")
+          ;; Add a delay to try and ensure the last request of the
+          ;; client has been completed.
+          (sleep-for 0.2))
+        (goto-char (or (org-babel-where-is-src-block-result) (point)))
         (let ((element (org-element-context)))
           ;; Handle empty results with just a RESULTS keyword
           ;;
@@ -687,15 +678,11 @@ see the documentation on the --NotebookApp.password argument."
 (add-hook
  'kill-emacs-hook
  (lambda ()
-   (ignore-errors (delete-directory jupyter-test-temporary-directory))
-   (ignore-errors (delete-process (car jupyter-test-notebook)))
-   (cl-loop for server in (jupyter-servers)
-            do (ignore-errors (jupyter-comm-stop server)))
+   (ignore-errors (delete-directory jupyter-test-temporary-directory t))
    (cl-loop
-    for client in (jupyter-clients)
-    do (ignore-errors (jupyter-stop-channels client))
-    (when (oref client manager)
-      (ignore-errors (jupyter-shutdown-kernel (oref client manager)))))
+    for client in (jupyter-all-objects 'jupyter--clients)
+    do (ignore-errors (jupyter-shutdown-kernel client)))
+   (ignore-errors (delete-process (car jupyter-test-notebook)))
    (cl-loop
     for sock being the hash-keys of jupyter-test-zmq-sockets do
     (ignore-errors

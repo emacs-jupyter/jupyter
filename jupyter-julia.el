@@ -121,21 +121,21 @@ Make the character after `point' invisible."
   "Return the Pkg prompt.
 If the Pkg prompt can't be retrieved from the kernel, return
 nil."
-  (when-let* ((msg (jupyter-wait-until-received :execute-reply
-                     (jupyter-send-execute-request jupyter-current-client
-                       :code ""
-                       :silent t
-                       :user-expressions
-                       (list :prompt "import Pkg; Pkg.REPLMode.promptf()"))
-                     ;; Longer timeout to account for initial Pkg import and
-                     ;; compilation.
-                     jupyter-long-timeout)))
-    (cl-destructuring-bind (&key prompt &allow-other-keys)
-        (jupyter-message-get msg :user_expressions)
-      (cl-destructuring-bind (&key status data &allow-other-keys)
-          prompt
-        (when (equal status "ok")
-          (plist-get data :text/plain))))))
+  (let ((prompt-code "import Pkg; Pkg.REPLMode.promptf()"))
+    (jupyter-run-with-client jupyter-current-client
+      (jupyter-mlet* ((msg
+                       (jupyter-reply
+                        (jupyter-execute-request
+                         :code ""
+                         :silent t
+                         :user-expressions (list :prompt prompt-code)))))
+        (cl-destructuring-bind (&key prompt &allow-other-keys)
+            (jupyter-message-get msg :user_expressions)
+          (cl-destructuring-bind (&key status data &allow-other-keys)
+              prompt
+            (jupyter-return
+              (when (equal status "ok")
+                (plist-get data :text/plain)))))))))
 
 (cl-defmethod jupyter-repl-after-change ((_type (eql insert)) beg _end
                                          &context (jupyter-lang julia))
@@ -188,15 +188,15 @@ nil."
 ;;; `jupyter-repl-after-init'
 
 (defun jupyter-julia--setup-hooks (client)
-  (let ((jupyter-inhibit-handlers t))
-    (jupyter-send-execute-request client
-      :store-history nil
-      :silent t
-      ;; This is mainly for supporting the :dir header argument in `org-mode'
-      ;; source blocks.  We send this after initializing the REPL and after a
-      ;; kernel restart so that we can get proper line numbers when an error
-      ;; occurs.
-      :code "\
+  (jupyter-run-with-client client
+     (jupyter-sent
+      (jupyter-execute-request
+       :handlers nil
+       :store-history nil
+       :silent t
+       ;; This is mainly for supporting the :dir header argument in
+       ;; `org-mode' source blocks.
+       :code "\
 if !isdefined(Main, :__JUPY_saved_dir)
     Core.eval(Main, :(__JUPY_saved_dir = Ref(\"\")))
     let popdir = () -> begin
@@ -208,7 +208,7 @@ if !isdefined(Main, :__JUPY_saved_dir)
         IJulia.push_posterror_hook(popdir)
         IJulia.push_postexecute_hook(popdir)
     end
-end")))
+end"))))
 
 (cl-defmethod jupyter-repl-after-init (&context (jupyter-lang julia))
   (add-function

@@ -173,8 +173,8 @@ host, localname, ..., are all bound to values parsed from FILE."
     (insert-file-contents . tramp-handle-insert-file-contents)
     (load . tramp-handle-load)
     (make-auto-save-file-name . tramp-handle-make-auto-save-file-name)
-    ;; `make-directory' performed by default handler.
-    (make-directory-internal . jupyter-tramp-make-directory-internal)
+    (make-directory . jupyter-tramp-make-directory)
+    (make-directory-internal . ignore)
     (make-nearby-temp-file . tramp-handle-make-nearby-temp-file)
     (make-symbolic-link . tramp-handle-make-symbolic-link)
     ;; `process-file' performed by default handler.
@@ -221,13 +221,20 @@ Operations not mentioned here will be handled by the default Emacs primitives.")
   "Return METHOD if it corresponds to a Jupyter filename method or nil."
   (and (string-match-p "\\`jpys?\\'" method) method))
 
+;; Port of `tramp-ensure-dissected-file-name' in Emacs 29
+;;;###autoload
+(defun jupyter-tramp-ensure-dissected-file-name (vec-or-filename)
+  (cond
+   ((tramp-file-name-p vec-or-filename) vec-or-filename)
+   ((tramp-tramp-file-p vec-or-filename)
+    (tramp-dissect-file-name vec-or-filename))))
+
 ;; NOTE: Needs to be a `defsubst' to avoid recursive loading.
 ;;;###autoload
-(defsubst jupyter-tramp-file-name-p (filename)
+(defsubst jupyter-tramp-file-name-p (vec-or-filename)
   "If FILENAME is a Jupyter filename, return its method otherwise nil."
-  (when (tramp-tramp-file-p filename)
-    (jupyter-tramp-file-name-method-p
-     (tramp-file-name-method (tramp-dissect-file-name filename)))))
+  (when-let* ((vec (jupyter-tramp-ensure-dissected-file-name vec-or-filename)))
+    (jupyter-tramp-file-name-method-p (tramp-file-name-method vec))))
 
 ;;;###autoload
 (defun jupyter-tramp-file-name-handler (operation &rest args)
@@ -291,8 +298,7 @@ fails."
   (with-parsed-tramp-file-name filename nil
     (with-tramp-connection-property v "server"
       (let* ((url (jupyter-tramp-url-from-file-name filename))
-             (client (or (jupyter-find-server url)
-                         (jupyter-server :url url))))
+             (client (jupyter-server :url url)))
         (prog1 client
           (unless (jupyter-api-server-accessible-p client)
             (cond
@@ -332,7 +338,9 @@ fails."
       (jupyter-api-http-error
        (cl-destructuring-bind (_ code msg) err
          (if (and (eq code 404)
-                  (string-match-p "No such file or directory" msg))
+                  (string-match-p
+                   "\\(?:No such \\)?file or directory\\(?:does not exist\\)?"
+                   msg))
              (list :path path :name nil
                    ;; If a file doesn't exist we need to check if the
                    ;; containing directory is writable to determine if
@@ -601,10 +609,22 @@ See `jupyter-tramp-get-file-model' for details on what a file model is."
         ;; `file-attributes' reads the values from there.
         (jupyter-tramp-flush-file-and-directory-properties newname)))))
 
-(defun jupyter-tramp-make-directory-internal (dir)
+;; Ported from `trapm-skeleton-make-directory' in Emacs 29
+(defun jupyter-tramp-make-directory (dir &optional parents)
   (jupyter-tramp-with-api-connection dir
-    (jupyter-api-make-directory jupyter-current-server dir)
-    (jupyter-tramp-flush-file-and-directory-properties dir)))
+    (let* ((dir (directory-file-name (expand-file-name dir)))
+           (par (file-name-directory dir)))
+      (when (and (null parents) (file-exists-p dir))
+        (tramp-error v 'file-already-exists dir))
+      ;; Make missing directory parts.
+      (when parents
+        (unless (file-directory-p par)
+          (make-directory par parents)))
+      ;; Just do it.
+      (if (file-exists-p dir) t
+        (jupyter-tramp-flush-file-and-directory-properties dir)
+        (jupyter-api-make-directory jupyter-current-server dir)
+        nil))))
 
 ;;; File name completion
 
@@ -681,6 +701,7 @@ the server.  For any other file, call ORIG, which is the function
           (unwind-protect
               (with-temp-buffer
                 (insert-file-contents-literally tmpfile)
+                (decode-coding-region (point-min) (point-max) 'utf-8-auto)
                 (jupyter-api-write-file-content
                     jupyter-current-server
                   filename (buffer-string) binary))
@@ -747,7 +768,7 @@ the server.  For any other file, call ORIG, which is the function
   (jupyter-tramp-with-api-connection filename
     (unless (file-exists-p filename)
       (tramp-error
-       v tramp-file-missing
+       v 'file-missing
        "Cannot make local copy of non-existing file `%s'" filename))
     ;; Ensure we grab a fresh model since the cached version may be out of
     ;; sync with the server.

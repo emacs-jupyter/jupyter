@@ -37,7 +37,7 @@
   "Add spacing between the first occurance of ENAME and \"Traceback\".
 Do this only when the traceback of REQ was inserted into the REPL
 buffer."
-  (unless (eq (jupyter-message-parent-type msg) :comm-msg)
+  (unless (equal (jupyter-message-parent-type msg) "comm_msg")
     (jupyter-with-repl-buffer client
       (jupyter-with-message-content msg (ename)
         (save-excursion
@@ -61,7 +61,7 @@ buffer."
     (prog1 mime
       (cond
        ((and (eq mime :text/plain)
-             (eq (jupyter-message-type msg) :inspect-reply))
+             (string= (jupyter-message-type msg) "inspect_reply"))
         (save-excursion
           (goto-char (point-min))
           (when (re-search-forward "^Docstring:" nil t)

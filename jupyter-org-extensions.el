@@ -105,7 +105,9 @@ assumed to not be inside a source block."
                                (point))))))))
         ;; If all else fails, query for the language to use
         (let* ((kernelspec (jupyter-completing-read-kernelspec))
-               (lang (plist-get (cddr kernelspec) :language)))
+               (lang (plist-get
+                      (jupyter-kernelspec-plist kernelspec)
+                      :language)))
           (if (org-babel-jupyter-language-p lang) lang
             (format "jupyter-%s" lang))))))
 
@@ -546,7 +548,7 @@ If BELOW is non-nil, add the cloned block below."
       (save-excursion
         (goto-char next-src-block-end)
         (when (looking-at-p "[[:space:]]*$")
-          (set-marker next-src-block-end (+ (point-at-eol) 1))))
+          (set-marker next-src-block-end (+ (line-end-position) 1))))
       (delete-region next-src-block-beg next-src-block-end)
       (set-marker next-src-block-beg nil)
       (set-marker next-src-block-end nil)))
@@ -573,7 +575,7 @@ If BELOW is non-nil, move the block down, otherwise move it up."
       ;; if there is an empty line remaining, take that line as part of the
       ;; ... block
       (when (and (looking-at-p "[[:space:]]*$") (/= (point) (point-max)))
-        (delete-region (point-at-bol) (+ (point-at-eol) 1))
+        (delete-region (line-beginning-position) (+ (line-end-position) 1))
         (setq block (concat block "\n")))
       (if below
           ;; if below, move past the next source block or its result

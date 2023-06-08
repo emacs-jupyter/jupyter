@@ -42,7 +42,11 @@
 (eval-when-compile (require 'subr-x))
 (require 'jupyter-base)
 (require 'hmac-def)
+(require 'parse-time)
 (require 'json)
+
+(declare-function jupyter-request "jupyter-monads" (type &rest content))
+(declare-function jupyter-verify-inhibited-handlers "jupyter-client")
 
 (defgroup jupyter-messages nil
   "Jupyter messages"
@@ -152,34 +156,33 @@ If PART is a list whose first element is the symbol,
 is non-nil.  If it is nil, then set the list's second element to
 the result of calling `jupyter--encode' on the third element and
 return the result."
-  (let ((json-recursive-encoder-sym (if (fboundp 'json--print) 'json--print 'json-encode)))
-    (unwind-protect
-        (progn
-          (add-function :around (symbol-function json-recursive-encoder-sym) #'jupyter--json-encode-preproc)
-          (encode-coding-string
-           (cond
-            ((stringp part) part)
-            (t (json-encode part)))
-           'utf-8 t))
-      (remove-function (symbol-function json-recursive-encoder-sym) #'jupyter--json-encode-preproc))))
+  (let ((original (if (fboundp 'json--print)
+                      #'json--print
+                    #'json-encode)))
+    (cl-letf (((symbol-function original)
+               (apply-partially #'jupyter--json-encode
+                                (symbol-function original))))
+      (encode-coding-string
+       (cond
+        ((stringp part) part)
+        (t (json-encode part)))
+       'utf-8 t))))
 
-(defun jupyter--json-encode-preproc (old-json-recursive-encoder object)
+(defun jupyter--json-encode (original object)
   (let (msg-type)
-    (cl-flet ((json-encode
-               (object)
-               (jupyter--json-encode-preproc old-json-recursive-encoder object)))
-     (cond
-      ((eq (car-safe object) 'message-part)
-       (cl-destructuring-bind (_ encoded-rep decoded-rep) object
-         (or encoded-rep (setf (nth 1 object) (json-encode decoded-rep)))))
-      ((and (keywordp object)
-            (setf msg-type (plist-get jupyter-message-types object)))
-       (json-encode msg-type))
-      ((and (listp object)
-            (= (length object) 4)
-            (cl-every #'integerp object))
-       (jupyter-encode-time object))
-      (t (funcall old-json-recursive-encoder object))))))
+    (cond
+     ((eq (car-safe object) 'message-part)
+      (cl-destructuring-bind (_ encoded-rep decoded-rep) object
+        (or encoded-rep (setf (nth 1 object)
+                              (jupyter--json-encode original decoded-rep)))))
+     ((and (keywordp object)
+           (setf msg-type (plist-get jupyter-message-types object)))
+      (json-encode msg-type))
+     ((and (listp object)
+           (= (length object) 4)
+           (cl-every #'integerp object))
+      (jupyter-encode-time object))
+     (t (funcall original object)))))
 
 (defun jupyter--decode (part)
   "Decode a message PART.
@@ -197,17 +200,12 @@ decoded string."
       (cl-destructuring-bind (_ encoded-rep decoded-rep) part
         (or decoded-rep (setf (nth 2 part) (jupyter--decode encoded-rep))))
     (let* ((json-object-type 'plist)
-           (str (decode-coding-string part 'utf-8))
-           (val (condition-case nil
-                    (json-read-from-string str)
-                  ;; If it can't be read as JSON, assume its just a regular
-                  ;; string
-                  (json-unknown-keyword str))))
-      (prog1 val
-        (when-let* ((msg-type (and (listp val)
-                                   (plist-get val :msg_type))))
-          (plist-put
-           val :msg_type (jupyter-message-type-as-keyword msg-type)))))))
+           (str (decode-coding-string part 'utf-8)))
+      (condition-case nil
+          (json-read-from-string str)
+        ;; If it can't be read as JSON, assume its just a regular
+        ;; string
+        (json-unknown-keyword str)))))
 
 (defun jupyter-decode-time (str)
   "Decode an ISO 8601 time STR into a time object.
@@ -350,7 +348,7 @@ and `:msg_type'."
       ;; TODO: digest_history
       ;; https://github.com/jupyter/jupyter_client/blob/7a0278af7c1652ac32356d6f00ae29d24d78e61c/jupyter_client/session.py#L915
       (unless (string= (jupyter-sign-message session (cdr parts) signer) signature)
-        (error "Invalid signature: %s" signature))))
+        (error "Invalid signature (%s) for parts %S" signature (cdr parts)))))
   (cl-destructuring-bind
       (header parent-header metadata content &rest buffers)
       (cdr parts)
@@ -367,110 +365,154 @@ and `:msg_type'."
        :content (list 'message-part content nil)
        :buffers buffers))))
 
+(defvar jupyter-inhibit-handlers)
+
+(defmacro jupyter-with-client-handlers (handlers &rest body)
+  "Evaluate BODY with `jupyter-inhibit-handlers' bound according to HANDLERS.
+HANDLERS has the inverted meaning of `jupyter-inhibit-handlers'."
+  (declare (indent 1) (debug (form body)))
+  (let ((h (make-symbol "handlers")))
+    `(let* ((,h ,handlers)
+            (jupyter-inhibit-handlers
+             (pcase ,h
+               ('t nil)
+               ('nil t)
+               (`(not . ,els) els)
+               (_ (cons 'not ,h)))))
+       (jupyter-verify-inhibited-handlers)
+       ,@body)))
+
 ;;; Control messages
 
-(cl-defun jupyter-message-interrupt-request ()
-  (list))
+(cl-defun jupyter-interrupt-request (&key (handlers t))
+  (jupyter-with-client-handlers handlers
+    (jupyter-request "interrupt_request")))
 
 ;;; stdin messages
 
-(cl-defun jupyter-message-input-reply (&key value)
-  (cl-check-type value string)
-  (list :value value))
+(cl-defun jupyter-input-reply (&key value (handlers t))
+  (jupyter-with-client-handlers handlers
+    (cl-check-type value string)
+    (jupyter-request "input_reply"
+      :value value)))
 
 ;;; shell messages
 
-(cl-defun jupyter-message-kernel-info-request ()
-  (list))
+(cl-defun jupyter-kernel-info-request (&key (handlers t))
+  (jupyter-with-client-handlers handlers
+    (jupyter-request "kernel_info_request")))
 
-(cl-defun jupyter-message-execute-request (&key
-                                           code
-                                           (silent nil)
-                                           (store-history t)
-                                           (user-expressions nil)
-                                           (allow-stdin t)
-                                           (stop-on-error nil))
-  (cl-check-type code string)
-  (cl-check-type user-expressions json-plist)
-  (list :code code :silent (if silent t jupyter--false)
-        :store_history (if store-history t jupyter--false)
-        :user_expressions (or user-expressions jupyter--empty-dict)
-        :allow_stdin (if allow-stdin t jupyter--false)
-        :stop_on_error (if stop-on-error t jupyter--false)))
+(cl-defun jupyter-execute-request (&key code
+                                        (silent nil)
+                                        (store-history t)
+                                        (user-expressions nil)
+                                        (allow-stdin t)
+                                        (stop-on-error nil)
+                                        (handlers t))
+  (jupyter-with-client-handlers handlers
+    (cl-check-type code string)
+    (cl-check-type user-expressions json-plist)
+    (jupyter-request "execute_request"
+      :code code :silent (if silent t jupyter--false)
+      :store_history (if store-history t jupyter--false)
+      :user_expressions (or user-expressions jupyter--empty-dict)
+      :allow_stdin (if allow-stdin t jupyter--false)
+      :stop_on_error (if stop-on-error t jupyter--false))))
 
-(cl-defun jupyter-message-inspect-request (&key code pos detail)
-  (setq detail (or detail 0))
-  (unless (member detail '(0 1))
-    (error "Detail can only be 0 or 1 (%s)" detail))
-  (when (markerp pos)
-    (setq pos (marker-position pos)))
-  (cl-check-type code string)
-  (cl-check-type pos integer)
-  (list :code code :cursor_pos pos :detail_level detail))
+(cl-defun jupyter-inspect-request (&key code (pos 0) (detail 0)
+                                        (handlers t))
+  (jupyter-with-client-handlers handlers
+    (setq detail (or detail 0))
+    (unless (member detail '(0 1))
+      (error "Detail can only be 0 or 1 (%s)" detail))
+    (when (markerp pos)
+      (setq pos (marker-position pos)))
+    (cl-check-type code string)
+    (cl-check-type pos integer)
+    (jupyter-request "inspect_request"
+      :code code :cursor_pos pos :detail_level detail)))
 
-(cl-defun jupyter-message-complete-request (&key code pos)
-  (when (markerp pos)
-    (setq pos (marker-position pos)))
-  (cl-check-type code string)
-  (cl-check-type pos integer)
-  (list :code code :cursor_pos pos))
+(cl-defun jupyter-complete-request (&key code (pos 0) (handlers t))
+  (jupyter-with-client-handlers handlers
+    (when (markerp pos)
+      (setq pos (marker-position pos)))
+    (cl-check-type code string)
+    (cl-check-type pos integer)
+    (jupyter-request "complete_request"
+      :code code :cursor_pos pos)))
 
-(cl-defun jupyter-message-history-request (&key
-                                           output
-                                           raw
-                                           hist-access-type
-                                           session
-                                           start
-                                           stop
-                                           n
-                                           pattern
-                                           unique)
-  (unless (member hist-access-type '("range" "tail" "search"))
-    (error "History access type can only be one of (range, tail, search)"))
-  (append
-   (list :output (if output t jupyter--false) :raw (if raw t jupyter--false)
-         :hist_access_type hist-access-type)
-   (cond
-    ((equal hist-access-type "range")
-     (cl-check-type session integer)
-     (cl-check-type start integer)
-     (cl-check-type stop integer)
-     (list :session session :start start :stop stop))
-    ((equal hist-access-type "tail")
-     (cl-check-type n integer)
-     (list :n n))
-    ((equal hist-access-type "search")
-     (cl-check-type pattern string)
-     (cl-check-type n integer)
-     (list :pattern pattern :unique (if unique t jupyter--false) :n n)))))
+(cl-defun jupyter-history-request (&key
+                                   output
+                                   raw
+                                   (hist-access-type "tail")
+                                   session
+                                   start
+                                   stop
+                                   (n 10)
+                                   pattern
+                                   unique
+                                   (handlers t))
+  (jupyter-with-client-handlers handlers
+    (unless (member hist-access-type '("range" "tail" "search"))
+      (error "History access type can only be one of (range, tail, search)"))
+    (apply #'jupyter-request "history_request"
+           (append
+            (list :output (if output t jupyter--false) :raw (if raw t jupyter--false)
+                  :hist_access_type hist-access-type)
+            (cond
+             ((equal hist-access-type "range")
+              (cl-check-type session integer)
+              (cl-check-type start integer)
+              (cl-check-type stop integer)
+              (list :session session :start start :stop stop))
+             ((equal hist-access-type "tail")
+              (cl-check-type n integer)
+              (list :n n))
+             ((equal hist-access-type "search")
+              (cl-check-type pattern string)
+              (cl-check-type n integer)
+              (list :pattern pattern :unique (if unique t jupyter--false) :n n)))))))
 
-(cl-defun jupyter-message-is-complete-request (&key code)
-  (cl-check-type code string)
-  (list :code code))
+(cl-defun jupyter-is-complete-request (&key code (handlers t))
+  (jupyter-with-client-handlers handlers
+    (cl-check-type code string)
+    (jupyter-request "is_complete_request"
+      :code code)))
 
-(cl-defun jupyter-message-comm-info-request (&key target-name)
-  (when target-name
+(cl-defun jupyter-comm-info-request (&key (target-name "")
+                                          (handlers t))
+  (jupyter-with-client-handlers handlers
     (cl-check-type target-name string)
-    (list :target_name target-name)))
+    (jupyter-request "comm_info_request"
+      :target_name target-name)))
 
-(cl-defun jupyter-message-comm-open (&key id target-name data)
-  (cl-check-type id string)
-  (cl-check-type target-name string)
-  (cl-check-type data json-plist)
-  (list :comm_id id :target_name target-name :data data))
+(cl-defun jupyter-comm-open (&key id target-name data
+                                  (handlers t))
+  (jupyter-with-client-handlers handlers
+    (cl-check-type id string)
+    (cl-check-type target-name string)
+    (cl-check-type data json-plist)
+    (jupyter-request "comm_open"
+      :comm_id id :target_name target-name :data data)))
 
-(cl-defun jupyter-message-comm-msg (&key id data)
-  (cl-check-type id string)
-  (cl-check-type data json-plist)
-  (list :comm_id id :data data))
+(cl-defun jupyter-comm-msg (&key id data (handlers t))
+  (jupyter-with-client-handlers handlers
+    (cl-check-type id string)
+    (cl-check-type data json-plist)
+    (jupyter-request "comm_msg"
+      :comm_id id :data data)))
 
-(cl-defun jupyter-message-comm-close (&key id data)
-  (cl-check-type id string)
-  (cl-check-type data json-plist)
-  (list :comm_id id :data data))
+(cl-defun jupyter-comm-close (&key id data (handlers t))
+  (jupyter-with-client-handlers handlers
+    (cl-check-type id string)
+    (cl-check-type data json-plist)
+    (jupyter-request "comm_close"
+      :comm_id id :data data)))
 
-(cl-defun jupyter-message-shutdown-request (&key restart)
-  (list :restart (if restart t jupyter--false)))
+(cl-defun jupyter-shutdown-request (&key restart (handlers t))
+  (jupyter-with-client-handlers handlers
+    (jupyter-request "shutdown_request"
+      :restart (if restart t jupyter--false))))
 
 ;;; Convenience functions and macros
 
@@ -598,18 +640,6 @@ return the value of KEY in MSG."
   "Get the type of MSG's parent message."
   (jupyter-message-type (jupyter-message-parent-header msg)))
 
-(defun jupyter-message-type-as-keyword (msg-type)
-  "Return MSG-TYPE as one of the keys in `jupyter-message-types'.
-If MSG-TYPE is already a valid message type keyword, return it.
-Otherwise return the MSG-TYPE string as a keyword."
-  (if (keywordp msg-type)
-      (if (plist-get jupyter-message-types msg-type) msg-type
-        (error "Invalid message type (`%s')" msg-type))
-    (or (cl-loop
-         for (k v) on jupyter-message-types by #'cddr
-         thereis (and (string= msg-type v) k))
-        (error "Invalid message type (`%s')" msg-type))))
-
 (defun jupyter-message-time (msg)
   "Get the MSG time.
 The returned time has the same form as returned by
@@ -635,13 +665,13 @@ return nil."
 
 (defsubst jupyter-message-status-idle-p (msg)
   "Determine if MSG is a status: idle message."
-  (and (eq (jupyter-message-type msg) :status)
-       (equal (jupyter-message-get msg :execution_state) "idle")))
+  (and (string= (jupyter-message-type msg) "status")
+       (string= (jupyter-message-get msg :execution_state) "idle")))
 
 (defun jupyter-message-status-starting-p (msg)
   "Determine if MSG is a status: starting message."
-  (and (eq (jupyter-message-type msg) :status)
-       (equal (jupyter-message-get msg :execution_state) "starting")))
+  (and (string= (jupyter-message-type msg) "status")
+       (string= (jupyter-message-get msg :execution_state) "starting")))
 
 (provide 'jupyter-messages)
 

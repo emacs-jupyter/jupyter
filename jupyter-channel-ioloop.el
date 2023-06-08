@@ -38,7 +38,7 @@
 ;; When you call `jupyter-ioloop-start' a `jupyter-session' object needs to
 ;; passed as the second argument with whatever object you would like to receive
 ;; events as the third.  The `jupyter-session-id' will be used as the value of
-;; the :identity key in the call to `jupyter-start-channel' when starting a
+;; the :identity key in the call to `jupyter-start' when starting a
 ;; channel.
 ;;
 ;; Each event sent to the subprocess will send back a corresponding
@@ -89,7 +89,7 @@
   (jupyter-channel-ioloop-add-stop-channel-event ioloop)
   (jupyter-channel-ioloop-add-send-event ioloop)
   (jupyter-ioloop-add-teardown ioloop
-    (mapc #'jupyter-stop-channel jupyter-channel-ioloop-channels)))
+    (mapc #'jupyter-stop jupyter-channel-ioloop-channels)))
 
 (defun jupyter-channel-ioloop-set-session (ioloop session)
   "In the IOLOOP, set SESSION as the `jupyter-channel-ioloop-session'.
@@ -136,12 +136,12 @@ is returned to the parent process."
   (jupyter-ioloop-add-event
       ioloop start-channel ((channel jupyter-channel) endpoint)
     ;; Stop the channel if it is already alive
-    (when (jupyter-channel-alive-p channel)
-      (jupyter-stop-channel channel))
+    (when (jupyter-alive-p channel)
+      (jupyter-stop channel))
     ;; Start the channel
     (oset channel endpoint endpoint)
     (let ((identity (jupyter-session-id jupyter-channel-ioloop-session)))
-      (jupyter-start-channel channel :identity identity))
+      (jupyter-start channel :identity identity))
     (list 'start-channel (oref channel type))))
 
 (defun jupyter-channel-ioloop-add-stop-channel-event (ioloop)
@@ -159,8 +159,8 @@ A list with the form
 is returned to the parent process."
   (jupyter-ioloop-add-event ioloop stop-channel (type)
     (let ((channel (object-assoc type :type jupyter-channel-ioloop-channels)))
-      (when (and channel (jupyter-channel-alive-p channel))
-        (jupyter-stop-channel channel))
+      (when (and channel (jupyter-alive-p channel))
+        (jupyter-stop channel))
       (list 'stop-channel type))))
 
 (defun jupyter-channel-ioloop-add-send-event (ioloop)
