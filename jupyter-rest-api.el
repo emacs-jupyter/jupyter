@@ -633,7 +633,7 @@ will be '(:k1 ...)."
       ;; Remove any trailing empty strings or nil values so that something like
       ;; ("contents?content=0" "") doesn't get turned into
       ;; "api/contents?contents=0/" below.
-      (if (memq (car plist) '(nil "")) (pop plist)
+      (if (member (car plist) '(nil "")) (pop plist)
         (cl-check-type (car plist) string
                        "Endpoint can only be constructed from strings")
         (push (pop plist) endpoint)))

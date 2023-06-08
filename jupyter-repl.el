@@ -852,7 +852,7 @@ Return the `jupyter-request' representing the executed code."
 (cl-defmethod jupyter-handle-display-data ((client jupyter-repl-client) req msg)
   (let ((clear (prog1 (oref client wait-to-clear)
                  (oset client wait-to-clear nil)))
-        (req (if (eq (jupyter-message-parent-type msg) "comm_msg")
+        (req (if (equal (jupyter-message-parent-type msg) "comm_msg")
                  ;; For comm messages which produce a display_data message,
                  ;; the request is assumed to be the most recently completed
                  ;; one.
@@ -902,7 +902,7 @@ Return the `jupyter-request' representing the executed code."
                 (jupyter-with-message-content msg (wait)
                   (eq wait t)))
     (cond
-     ((eq (jupyter-message-parent-type msg) "comm_msg")
+     ((equal (jupyter-message-parent-type msg) "comm_msg")
       (with-current-buffer (jupyter-get-buffer-create "output")
         (erase-buffer)))
      (t
@@ -941,9 +941,9 @@ buffer to display TEXT."
     (if (null req)
         (jupyter-repl-display-other-output client name text)
       (cond
-       ((eq (jupyter-message-parent-type
-             (jupyter-request-last-message req))
-            "comm_msg")
+       ((equal (jupyter-message-parent-type
+                (jupyter-request-last-message req))
+               "comm_msg")
         (jupyter-with-display-buffer "output" req
           (jupyter-insert-ansi-coded-text text)
           (jupyter-display-current-buffer-reuse-window)))
