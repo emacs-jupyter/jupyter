@@ -45,6 +45,9 @@
 (require 'parse-time)
 (require 'json)
 
+(declare-function jupyter-request "jupyter-monads" (type &rest content))
+(declare-function jupyter-verify-inhibited-handlers "jupyter-client")
+
 (defgroup jupyter-messages nil
   "Jupyter messages"
   :group 'jupyter)

@@ -45,6 +45,7 @@
 (declare-function jupyter-handle-message "jupyter-client")
 (declare-function jupyter-kernel-io "jupyter-client")
 (declare-function jupyter-generate-request "jupyter-client")
+(declare-function jupyter-wait-until-idle "jupyter-client" (req &optional timeout progress-msg))
 
 (defgroup jupyter-monads nil
   "Monadic Jupyter"
