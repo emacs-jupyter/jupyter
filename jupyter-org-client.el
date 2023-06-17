@@ -948,30 +948,26 @@ As an example, if DATA only contains the mimetype
 
 (defun jupyter-org--find-mime-types (req-types)
   "Return the keywords in `jupyter-org-mime-types' that match REQ-TYPES.
+REQ-TYPES is a string such as \"plain\", \"plain html\", or
+\"text/plain\".  The string \"text\" is translated to the keyword
+`:text/plain' and \"image\" to `:image/png'.
 
-If a match is not found, return nil.  Try to be intelligent and
-return what the user might intend to use.
-
-REQ-TYPES can be a string such as `plain', `plain html', or
-`text/plain'.  The string `text' is translated to `:text/plain'
-and `image' to `:image/png'."
-  (when req-types
+If a match is not found, return nil."
+  (when (stringp req-types)
     ;; Iterate the user-specified mimetypes looking for symbols that match a
     ;; symbol in `jupyter-org-mime-types'.  Invalid mimetypes are ignored.
-    (delete nil
-            (mapcar
-             (lambda (req-type)
-               (pcase req-type
-                 ("text" :text/plain)
-                 ("image" :image/png)
-                 ((pred stringp)
-                  (let ((regexp (if (string-match "/" req-type)
-                                    req-type
-                                  (concat "/" req-type "$"))))
-                    (cl-loop for ii in jupyter-org-mime-types
-                             if (string-match regexp (symbol-name ii))
-                             return ii)))))
-               (split-string req-types)))))
+    (cl-loop
+     with translations = `(("text" . :text/plain)
+                           ("image" . :image/png))
+     for req-type in (split-string req-types)
+     for match = (or (cdr (assoc req-type translations))
+                     (let ((regexp (if (string-match "/" req-type)
+                                       req-type
+                                     (concat "/" req-type "$"))))
+                       (cl-loop for mime-type in jupyter-org-mime-types
+                                if (string-match regexp (symbol-name mime-type))
+                                return mime-type)))
+     if match collect match)))
 
 (cl-defmethod jupyter-org-result ((req jupyter-org-request) plist &optional metadata)
   "For REQ, return a rendered form of a message PLIST.
