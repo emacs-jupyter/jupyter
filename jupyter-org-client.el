@@ -936,14 +936,13 @@ will be inserted by calling `org-element-interpret-data' first.
 The returned result should be a representation of a MIME type's
 CONTENT. CONTENT is a property list like
 
-    '(:data ... :metadata ...)
+    '(:data DATA :metadata METADATA)
 
-that contains the data/metadata of the mime type.
+that contains the DATA/METADATA of the mime type.  As an example,
+if MIME is `:text/markdown', then DATA should be the markdown
+string.  The returned result in this case will be
 
-As an example, if DATA only contains the mimetype
-`:text/markdown', then the returned results is
-
-    (jupyter-org-export-block \"markdown\" data)"
+    (jupyter-org-export-block \"markdown\" DATA)"
   (ignore))
 
 (defun jupyter-org--find-mime-types (req-types)
@@ -993,27 +992,28 @@ If the source block parameters have a value for the :display
 header argument, like \"image/png html plain\", then loop over
 those mime types instead."
   (cl-assert plist json-plist)
-  (org-with-point-at (jupyter-org-request-marker req)
-    (let* ((params (jupyter-org-request-block-params req))
-           (display-mime-types (jupyter-org--find-mime-types
-                                (alist-get :display params))))
-      ;; Push :file back into PARAMS if it was present in
-      ;; `org-babel-execute:jupyter'.  That function removes it because
-      ;; we don't want `org-babel-insert-result' to handle it.
-      (when (jupyter-org-request-file req)
-        (push (cons :file (jupyter-org-request-file req)) params))
-      (cond
-       ((jupyter-map-mime-bundle (or display-mime-types jupyter-org-mime-types)
-            (jupyter-normalize-data plist metadata)
-          (lambda (mime content)
-            (jupyter-org-result mime content params))))
-       (t
+  (let* ((params (jupyter-org-request-block-params req))
+         (display (alist-get :display params))
+         (mime-types (or (jupyter-org--find-mime-types display)
+                         jupyter-org-mime-types)))
+    ;; Push :file back into PARAMS if it was present in
+    ;; `org-babel-execute:jupyter'.  That function removes it because
+    ;; we don't want `org-babel-insert-result' to handle it.
+    (when (jupyter-org-request-file req)
+      (push (cons :file (jupyter-org-request-file req)) params))
+    (or (org-with-point-at
+            (jupyter-org-request-marker req)
+          (jupyter-map-mime-bundle mime-types
+              (jupyter-normalize-data plist metadata)
+            (lambda (mime content)
+              (jupyter-org-result mime content params))))
         (let ((warning
                (format
                 "%s did not return requested mimetype(s): %s"
                 (jupyter-message-type (jupyter-request-last-message req))
-                (or display-mime-types jupyter-org-mime-types))))
-          (display-warning 'jupyter warning)))))))
+                mime-types)))
+          (display-warning 'jupyter warning)
+          nil))))
 
 (cl-defmethod jupyter-org-result ((_mime (eql :application/vnd.jupyter.widget-view+json)) _content _params)
   ;; TODO: Clickable text to open up a browser
