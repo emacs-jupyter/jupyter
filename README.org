@@ -397,6 +397,13 @@ generated and the image is written
 to =org-babel-jupyter-resource-directory=. To specify your own file name
 for the image, set the =:file= header argument.
 
+If no file extension is specified in the provided =:file=, then one will be inferred
+from the returned output. This can be useful in scenarios where the file resulting
+from the src-block can have different types depeneding on the code, e.g. if the image
+type returned can be either =png= or =svg= depending on certain settings, you can
+specify =:file = output= which will be converted into  =output.png= or =output.svg=
+depending on the MIME type return by the executed src-block.
+
 **** Changing the mime-type priority with the =:display= argument
 
 The priority of mimetypes used to display results can be overwritten using the
