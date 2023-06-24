@@ -45,6 +45,7 @@
 (declare-function org-babel-execute-src-block "ob-core" (&optional arg info params executor-type))
 (declare-function org-edit-special "org" (&optional arg))
 (declare-function org-edit-src-code "org-src" (&optional code edit-buffer-name))
+(declare-function org-edit-inline-src-code "org-src" ())
 (declare-function org-babel-variable-assignments:python "ob-python" (params))
 (declare-function org-babel-expand-body:generic "ob-core" (body params &optional var-lines))
 (declare-function org-export-derived-backend-p "ox" (backend &rest backends))
@@ -790,8 +791,11 @@ mapped to their appropriate minted language in
     (org-babel-jupyter-aliases-from-kernelspecs))
   (advice-remove #'org-babel-execute-src-block #'org-babel-jupyter--aliases-advice))
 (advice-add #'org-babel-execute-src-block :before #'org-babel-jupyter--aliases-advice)
+;; NOTE: We need `org-edit-special' too because it might call `org-babel-prep-session:LANG'
+;; before we hit `org-edit-src-code'.
 (advice-add #'org-edit-special :before #'org-babel-jupyter--aliases-advice)
 (advice-add #'org-edit-src-code :before #'org-babel-jupyter--aliases-advice)
+(advice-add #'org-edit-inline-src-code :before #'org-babel-jupyter--aliases-advice)
 
 (add-hook 'org-export-before-processing-hook #'org-babel-jupyter-setup-export)
 (add-hook 'org-export-before-parsing-hook #'org-babel-jupyter-strip-ansi-escapes)
