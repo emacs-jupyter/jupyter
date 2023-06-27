@@ -778,16 +778,14 @@ mapped to their appropriate minted language in
 
 ;;; Hook into `org'
 
-;; Defer generation of the aliases until the first call to
-;; `org-babel-execute-src-block' to avoid generating them at top-level
-;; when loading ob-jupyter.  Some users, e.g. those who use conda
-;; environments, may not have a jupyter command available at load
-;; time.
-(defun org-babel-jupyter--aliases-advice (&rest _)
+;; Defer generation of the aliases until Org is enabled in a buffer to
+;; avoid generating them at top-level when loading ob-jupyter.  Some
+;; users, e.g. those who use conda environments, may not have a
+;; jupyter command available at load time.
+(defun org-babel-jupyter-make-local-aliases ()
   (let ((default-directory user-emacs-directory))
-    (org-babel-jupyter-aliases-from-kernelspecs))
-  (advice-remove #'org-babel-execute-src-block #'org-babel-jupyter--aliases-advice))
-(advice-add #'org-babel-execute-src-block :before #'org-babel-jupyter--aliases-advice)
+    (org-babel-jupyter-aliases-from-kernelspecs)))
+(add-hook 'org-mode-hook #'org-babel-jupyter-make-local-aliases)
 
 (add-hook 'org-export-before-processing-hook #'org-babel-jupyter-setup-export)
 (add-hook 'org-export-before-parsing-hook #'org-babel-jupyter-strip-ansi-escapes)
