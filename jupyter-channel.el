@@ -25,7 +25,8 @@
 ;; Defines the `jupyter-channel' interface.
 
 ;;; Code:
-(require 'eieio-base)
+
+(require 'eieio)
 
 (defclass jupyter-channel ()
   ((type
