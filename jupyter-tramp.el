@@ -306,7 +306,7 @@ fails."
               (jupyter-api-authenticate client 'token))
              (t
               ;; This is here so that reading a password using
-              ;; `tramp-read-passwd' via `jupyter-api-read-passwd' will check
+              ;; `tramp-read-passwd' via `jupyter-tramp-read-passwd' will check
               ;; auth sources.
               (tramp-set-connection-property v "first-password-request" t)
               (jupyter-api-authenticate client
