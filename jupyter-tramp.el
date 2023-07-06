@@ -312,10 +312,9 @@ fails."
               (jupyter-api-authenticate client
                 'password
                 (let ((remote (file-remote-p filename)))
-                  (lambda (try)
+                  (lambda ()
                     (jupyter-tramp-read-passwd
-                     filename (unless (zerop try)
-                                (format "Password for %s " remote))))))))))))))
+                     filename (format "Password [%s]: " remote)))))))))))))
 
 ;;; Getting information about file models
 

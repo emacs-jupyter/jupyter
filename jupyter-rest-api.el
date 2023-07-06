@@ -532,8 +532,9 @@ slot of CLIENT and restore the AUTH slot on failure."
                                         &optional passwd)
   "Authenticate CLIENT by asking for a password.
 If PASSWD is provided it must be a function that takes zero
-arguments.  It will be called before each authentication attempt.
-If CLIENT could not be authenticated raise an error."
+arguments and returns a password, it defaults to a call to
+`read-passwd'.  It will be called before each authentication
+attempt.  If CLIENT could not be authenticated raise an error."
   (or (functionp passwd)
       (setq passwd (lambda () (read-passwd (format "Password [%s]: "
                                               (oref client url))))))
