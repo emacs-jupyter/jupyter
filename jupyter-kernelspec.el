@@ -76,10 +76,17 @@ REFRESH."
           (or (and (not refresh) (gethash host jupyter--kernelspecs))
               (let ((specs
                      (plist-get
-                      (let ((json (or (jupyter-command "kernelspec" "list"
+                      (let* ((json-result (or (jupyter-command "kernelspec" "list"
                                                        "--json" "--log-level" "ERROR")
                                       (error "\
-Can't obtain kernelspecs from jupyter shell command"))))
+Can't obtain kernelspecs from jupyter shell command")))
+                             (_ (string-match "{.*}" json-result))
+                             (json-start (car (match-data)))
+                             (json-end (cadr (match-data)))
+                             (json (substring json-result json-start json-end)))
+                        (when (> json-start 0)
+                          (warn "Getting kernelspec has warning(s):"
+                                (substring json-result 0 json-start)))
                         (condition-case nil
                             (jupyter-read-plist-from-string json)
                           (error
