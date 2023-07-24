@@ -80,7 +80,7 @@ REFRESH."
                                                        "--json" "--log-level" "ERROR")
                                       (error "\
 Can't obtain kernelspecs from jupyter shell command")))
-                             (_ (string-match "{.*}" json-result))
+                             (_ (string-match "{\\(.\\|\n\\)*}" json-result))
                              (json-start (car (match-data)))
                              (json-end (cadr (match-data)))
                              (json (substring json-result json-start json-end)))
