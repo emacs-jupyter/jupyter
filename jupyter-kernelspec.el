@@ -53,7 +53,33 @@
    :read-only t))
 
 (defvar jupyter--kernelspecs (make-hash-table :test #'equal :size 5)
-  "A hash table mapping hosts to the kernelspecs available on them.")
+  "A hash table mapping hosts to the kernelspecs available on them.
+The top level hash-table maps hosts to nested hash-tables keyed
+on virtual environment path or nil for a system-wide Jupyter
+install: hosts[hash-table] -> venv[hash-table] -> kernelspecs.")
+
+(defun jupyter-kernelspecs-ensure-cache (host)
+  "Return, creating if necessary, the hash-table for HOST."
+  (let ((cache (gethash host jupyter--kernelspecs)))
+    (if cache cache
+      (puthash host (make-hash-table :test #'equal :size 5)
+               jupyter--kernelspecs))))
+
+(defun jupyter-kernelspecs-cache-put (host kernelspecs)
+  "Cache KERNELSPECS available on HOST.
+This takes into account any currently active virtual
+environment."
+  (let ((venv (getenv "VIRTUAL_ENV")))
+    (let ((cache (jupyter-kernelspecs-ensure-cache host)))
+      (puthash venv kernelspecs cache))))
+
+(defun jupyter-kernelspecs-cache-get (host)
+  "Retrieve cached KERNELSPECS available on HOST.
+This takes into account any currently active virtual
+environment."
+  (let ((venv (getenv "VIRTUAL_ENV")))
+    (let ((cache (jupyter-kernelspecs-ensure-cache host)))
+      (gethash venv cache))))
 
 (defun jupyter-available-kernelspecs (&optional refresh)
   "Return the available kernelspecs.
@@ -61,7 +87,8 @@ Return a list of `jupyter-kernelspec's available on the host
 associated with the `default-directory'.  If `default-directory'
 is a remote file name, return the list of available kernelspecs
 on the remote system.  The kernelspecs on the local system are
-returned otherwise.
+returned otherwise (taking into account any currently active
+virtual environment).
 
 On any system, the list is formed by parsing the output of the
 shell command
@@ -73,7 +100,7 @@ update of the cached kernelspecs, give a non-nil value to
 REFRESH."
   (let* ((host (or (file-remote-p default-directory) "local"))
          (kernelspecs
-          (or (and (not refresh) (gethash host jupyter--kernelspecs))
+          (or (and (not refresh) (jupyter-kernelspecs-cache-get host))
               (let ((specs
                      (plist-get
                       (let ((json (or (jupyter-command "kernelspec" "list"
@@ -91,7 +118,7 @@ Jupyter kernelspecs couldn't be parsed from
 To investiagate further, run that command in a shell and examine
 why it isn't returning valid JSON."))))
                       :kernelspecs)))
-                (puthash
+                (jupyter-kernelspecs-cache-put
                  host
                  (sort
                   (cl-loop
@@ -106,8 +133,7 @@ why it isn't returning valid JSON."))))
                             :plist (plist-get spec :spec)))
                   (lambda (x y)
                     (string< (jupyter-kernelspec-name x)
-                             (jupyter-kernelspec-name y))))
-                 jupyter--kernelspecs)))))
+                             (jupyter-kernelspec-name y)))))))))
     kernelspecs))
 
 (cl-defgeneric jupyter-kernelspecs (host &optional refresh)
