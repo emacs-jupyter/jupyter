@@ -347,7 +347,8 @@ to."
       (message "An error occurred when evaluating code block."))
     (when (jupyter-org-request-async-p req)
       (jupyter-org--clear-request-id req)
-      (run-hooks 'org-babel-after-execute-hook))))
+      (org-with-point-at (jupyter-org-request-marker req)
+        (run-hooks 'org-babel-after-execute-hook)))))
 
 ;;; Completion in code blocks
 
