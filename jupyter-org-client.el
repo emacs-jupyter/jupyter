@@ -811,14 +811,6 @@ Otherwise, return VALUE formated as a fixed-width `org-element'."
    (t
     (org-element-create 'fixed-width (list :value (format "%S" value))))))
 
-(defun jupyter-org-latex-fragment (value)
-  "Return a latex-fragment `org-element' consisting of VALUE."
-  (org-element-create 'latex-fragment (list :value value)))
-
-(defun jupyter-org-latex-environment (value)
-  "Return a latex-fragment `org-element' consisting of VALUE."
-  (org-element-create 'latex-environment (list :value value)))
-
 (defun jupyter-org-results-drawer (&rest results)
   "Return a drawer `org-element' containing RESULTS.
 RESULTS can be either strings or other `org-element's.  Newlines
@@ -1048,17 +1040,15 @@ fragment or environment is parsed and returned.  If neither can be
 parsed, wrap DATA in a minipage environment and return it."
   (with-temp-buffer
     (insert data)
-    (goto-char (point-min))
-    (let ((context (org-element-context)))
-      (cond ((memq (org-element-type context) '(latex-fragment latex-environment))
-             context)
+    (let ((elts (org-element-map (org-element-parse-buffer)
+                    '(latex-fragment latex-environment) 'identity)))
+      (cond ((and (= (length elts) 1) (car elts)))
             (t
              ;; If all else fails, wrap DATA in a minipage environment
-             (jupyter-org-latex-environment
-              (concat "\
+             (org-element-create 'latex-environment (list :value (concat "\
 \\begin{minipage}{\\textwidth}
 \\begin{flushright}\n" data "\n\\end{flushright}
-\\end{minipage}")))))))
+\\end{minipage}"))))))))
 
 (cl-defmethod jupyter-org-result ((_mime (eql :text/latex)) content params)
   (if (member "raw" (alist-get :result-params params))
