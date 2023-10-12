@@ -38,6 +38,11 @@ directory is where kernel connection files are written to.
 This variable should not be used.  To obtain the runtime directory
 call the function `jupyter-runtime-directory'.")
 
+(defcustom jupyter-executable "jupyter"
+  "The `jupyter` command executable."
+  :type 'string
+  :group 'jupyter)
+
 (defun jupyter-command (&rest args)
   "Run a Jupyter shell command synchronously, return its output.
 The shell command run is
@@ -49,7 +54,12 @@ return nil."
   (let ((stderr-file (make-temp-file "jupyter"))
         (stdout (get-buffer-create " *jupyter-command-stdout*")))
     (unwind-protect
-        (let* ((status (apply #'process-file "jupyter" nil (list stdout stderr-file) nil args))
+        (let* ((status (apply #'process-file
+                              jupyter-executable
+                              nil
+                              (list stdout stderr-file)
+                              nil
+                              args))
                (buffer (find-file-noselect stderr-file)))
           (unwind-protect
               (with-current-buffer buffer
