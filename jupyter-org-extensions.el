@@ -460,9 +460,12 @@ Defaults to `jupyter-org-jump-to-block-context-lines'."
     (let* ((header-start (nth 5 src-info))
            (header-end (save-excursion (goto-char header-start)
                                        (line-end-position))))
-      (setf (buffer-substring header-start header-end)
-            (read-string "Header: "
-                         (buffer-substring header-start header-end))))))
+      (let ((header (read-string "Header: "
+                                 (buffer-substring header-start header-end))))
+        (save-excursion
+          (delete-region header-start header-end)
+          (goto-char header-start)
+          (insert header))))))
 
 (defun jupyter-org-src-block-bounds ()
   "Return the region containing the current source block.

@@ -955,7 +955,7 @@ buffer to display TEXT."
   (when req
     (jupyter-with-message-content msg (traceback)
       (cond
-       ((eq (jupyter-message-parent-type msg) "comm_msg")
+       ((equal (jupyter-message-parent-type msg) "comm_msg")
         (jupyter-display-traceback traceback))
        (t
         (jupyter-repl-append-output client req
@@ -1348,6 +1348,8 @@ this method is called."
   ;; Ensure that the `front-sticky' property at the beginning of cell code is
   ;; added after deleting text at the beginning of a cell.
   (jupyter-repl-mark-as-cell-code beg (min (point-max) (+ beg 1))))
+
+(defvar jupyter-repl-interaction-mode)
 
 (defun jupyter-repl--deactivate-interaction-buffers ()
   (cl-loop
@@ -1872,8 +1874,8 @@ Do so only if possible in the `current-buffer'."
 
 (defun jupyter-repl-interaction-mode-line ()
   "Return a mode line string with the status of the kernel.
-'*' means the kernel is busy, '-' means the kernel is idle and
-the REPL is connected, 'x' means the REPL is disconnected
+`*' means the kernel is busy, `-' means the kernel is idle and
+the REPL is connected, `x' means the REPL is disconnected
 from the kernel."
   (and (cl-typep jupyter-current-client 'jupyter-repl-client)
        (concat " JuPy["
