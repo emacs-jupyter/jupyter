@@ -300,15 +300,16 @@ Ex. Subscribe to a publisher and unsubscribe after receiving two
 (defun jupyter-sent (dreq)
   (jupyter-mlet* ((client (jupyter-get-state))
                   (req dreq))
-    (jupyter-run-with-io (jupyter-kernel-io client)
-      (jupyter-do
-        (jupyter-subscribe (jupyter-request-message-publisher req))
-        (jupyter-publish
-          (list 'send
-                (if (jupyter-request-idle-p req) "stdin" "shell")
-                (jupyter-request-type req)
-                (jupyter-request-content req)
-                (jupyter-request-id req)))))
+    (let ((type (jupyter-request-type req)))
+      (jupyter-run-with-io (jupyter-kernel-io client)
+        (jupyter-do
+          (jupyter-subscribe (jupyter-request-message-publisher req))
+          (jupyter-publish
+            (list 'send
+                  (jupyter-channel-from-request-type type)
+                  type
+                  (jupyter-request-content req)
+                  (jupyter-request-id req))))))
     (jupyter-return req)))
 
 (defun jupyter-idle (dreq &optional timeout)
@@ -448,10 +449,7 @@ the callbacks."
 TYPE is the message type of the message that CONTENT, a property
 list, represents."
   (declare (indent 1))
-  (let ((ih jupyter-inhibit-handlers)
-        (ch (if (member type '("input_reply" "input_request"))
-                "stdin"
-              "shell")))
+  (let ((ih jupyter-inhibit-handlers))
     (lambda (client)
       (let* ((req (jupyter-generate-request
                    client
@@ -460,7 +458,8 @@ list, represents."
                    :client client
                    ;; Anything sent to stdin is a reply not a request
                    ;; so consider the "request" completed.
-                   :idle-p (string= ch "stdin")
+                   :idle-p (string= "stdin"
+                                    (jupyter-channel-from-request-type type))
                    :inhibited-handlers ih))
              (pub (jupyter-message-publisher req)))
         (setf (jupyter-request-message-publisher req) pub)

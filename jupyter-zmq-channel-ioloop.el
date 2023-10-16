@@ -48,7 +48,7 @@
     (require 'jupyter-zmq-channel-ioloop)
     (push 'jupyter-zmq-channel-ioloop--recv-messages jupyter-ioloop-post-hook)
     (cl-loop
-     for channel in '(:shell :stdin :iopub)
+     for channel in '(:shell :stdin :iopub :control)
      unless (object-assoc channel :type jupyter-channel-ioloop-channels)
      do (push (jupyter-zmq-channel
                :session jupyter-channel-ioloop-session
@@ -64,9 +64,9 @@ message on the channel and print a list with the form
 
     (message CHANNEL-TYPE . MSG...)
 
-to stdout.  CHANNEL-TYPE is the channel on which MSG was received,
-either :shell, :stdin, or :iopub.  MSG is a list as returned by
-`jupyter-recv'."
+to stdout.  CHANNEL-TYPE is the channel on which MSG was
+received, either :shell, :stdin, :iopub, or :control.  MSG is a
+list as returned by `jupyter-recv'."
   (let (messages)
     (dolist (channel jupyter-channel-ioloop-channels)
       (with-slots (type socket) channel

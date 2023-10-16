@@ -430,7 +430,8 @@ fields:
 (cl-defmethod jupyter-session-endpoints ((session jupyter-session))
   "Return a property list containing the endpoints from SESSION."
   (cl-destructuring-bind
-      (&key shell_port iopub_port stdin_port hb_port ip transport
+      (&key shell_port iopub_port stdin_port hb_port control_port
+            ip transport
             &allow-other-keys)
       (jupyter-session-conn-info session)
     (cl-assert (and transport ip))
@@ -439,7 +440,8 @@ fields:
        for (channel . port) in `((:hb . ,hb_port)
                                  (:stdin . ,stdin_port)
                                  (:shell . ,shell_port)
-                                 (:iopub . ,iopub_port))
+                                 (:iopub . ,iopub_port)
+                                 (:control . ,control_port))
        do (cl-assert port) and
        collect channel and collect (funcall addr port)))))
 
@@ -468,6 +470,13 @@ call the handler methods of those types."
   (messages nil)
   (message-publisher nil)
   (inhibited-handlers nil))
+
+(defun jupyter-channel-from-request-type (type)
+  "Return the name of the channel that a request with TYPE is sent on."
+  (pcase type
+    ((or "input_reply" "input_request") "stdin")
+    ("interrupt_request" "control")
+    (_ "shell")))
 
 ;;; Connecting to a kernel's channels
 

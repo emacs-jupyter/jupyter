@@ -483,9 +483,19 @@ longer connected to a kernel."
 
 (cl-defmethod jupyter-interrupt-kernel ((client jupyter-kernel-client))
   "Interrupt the kernel CLIENT is connected to."
-  (let ((kaction-sub (jupyter-kernel-action-subscriber client)))
-    (jupyter-run-with-io kaction-sub
-      (jupyter-publish 'interrupt))))
+  (let ((interrupt-mode (jupyter-kernel-action client
+                          (lambda (kernel)
+                            (plist-get
+                             (jupyter-kernelspec-plist
+                              (jupyter-kernel-spec kernel))
+                             :interrupt_mode)))))
+    (if (equal interrupt-mode "message")
+        (jupyter-run-with-client client
+          (jupyter-sent (jupyter-interrupt-request)))
+      (let ((kaction-sub (jupyter-kernel-action-subscriber client)))
+        (jupyter-run-with-io kaction-sub
+          (jupyter-publish 'interrupt))))))
+
 
 ;;; Waiting for messages
 
@@ -1746,6 +1756,10 @@ CLIENT is a kernel client."
 ;;;; Shutdown
 
 (define-jupyter-client-handler shutdown-reply)
+
+;;;; Interrupt
+
+(define-jupyter-client-handler interrupt-reply)
 
 ;;; IOPUB handlers
 

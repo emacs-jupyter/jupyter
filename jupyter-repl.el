@@ -2135,7 +2135,14 @@ like the symbol `jupyter-repl-client', which is the default. "
    (jupyter-client
     (jupyter-kernel
      :conn-info file
-     :connect-p t)
+     :connect-p t
+     ;; Interrupting a kernel with a message is the only way to
+     ;; interrupt kernels connected to using a connection file since
+     ;; there is no way of telling what kind of kernel it is that is
+     ;; being connected to using this method.  See
+     ;; `jupyter-interrupt-kernel'.
+     :spec (make-jupyter-kernelspec
+            :plist '(:interrupt_mode "message")))
     client-class)
    repl-name associate-buffer display))
 

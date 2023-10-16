@@ -91,7 +91,7 @@ Call the next method if ARGS does not contain a :spec or
     (let ((spec (plist-get args :spec))
           (conn-info (plist-get args :conn-info)))
       (cond
-       (spec
+       ((and spec (not conn-info))
         (when (stringp spec)
           (plist-put args :spec
                      (or (jupyter-guess-kernelspec spec)
@@ -114,7 +114,7 @@ Call the next method if ARGS does not contain a :spec or
 (cl-defmethod jupyter-zmq-io ((kernel jupyter-kernel-process))
   (unless (jupyter-kernel-process-connect-p kernel)
     (jupyter-launch kernel))
-  (let ((channels '(:shell :iopub :stdin))
+  (let ((channels '(:shell :iopub :stdin :control))
         session ch-group hb kernel-io ioloop shutdown)
     (cl-macrolet ((continue-after
                    (cond on-timeout)
@@ -385,7 +385,6 @@ See also https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-spe
 (cl-defmethod jupyter-restart ((_kernel jupyter-kernel-process))
   (cl-call-next-method))
 
-;; TODO Fallback to interrupt_request on kernel's control channel
 (cl-defmethod jupyter-interrupt ((kernel jupyter-kernel-process))
   "Interrupt KERNEL's process.
 The process can be interrupted when the interrupt mode of
@@ -396,10 +395,13 @@ See also https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-spe
                ((cl-struct jupyter-kernel-process spec) kernel)
                ((cl-struct jupyter-kernelspec plist) spec)
                (imode (plist-get plist :interrupt_mode)))
-    (if (or (null imode) (string= imode "signal"))
-        (when (process-live-p process)
-          (interrupt-process process t))
-      (cl-call-next-method))))
+    (cond
+     ((or (null imode) (string= imode "signal"))
+      (when (process-live-p process)
+        (interrupt-process process t)))
+     ((string= imode "message")
+      (error "Send an interrupt_request using a client"))
+     (t (cl-call-next-method)))))
 
 (provide 'jupyter-kernel-process)
 
