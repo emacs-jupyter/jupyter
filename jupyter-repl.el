@@ -156,6 +156,20 @@ as is done when this variable is nil."
   :type 'boolean
   :group 'jupyter-repl)
 
+(defcustom jupyter-repl-completion-at-point-hook-depth nil
+  "The DEPTH of `jupyter-completion-at-point' in `completion-at-point-functions'.
+
+`completion-at-point-functions' hooks are tried in order. A value of nil for
+this variable means `jupyter-completion-at-point' will be added to the head of
+the list, which means it will be tried first on completion attempts. This might
+prevent other hooks like `lsp-completion-at-point' from running.
+
+If you'd prefer to give `jupyter-completion-at-point' lower priority, set this
+variable to something like 1. Check `add-hook' documentation for more details
+about DEPTH."
+  :type 'integer
+  :group 'jupyter-repl)
+
 ;;; Implementation
 
 (defclass jupyter-repl-client (jupyter-widget-client jupyter-kernel-client)
@@ -1853,7 +1867,10 @@ the `current-buffer' will automatically have
   :init-value nil
   (cond
    (jupyter-repl-interaction-mode
-    (add-hook 'completion-at-point-functions 'jupyter-completion-at-point nil t)
+    (add-hook 'completion-at-point-functions
+              'jupyter-completion-at-point
+              jupyter-repl-completion-at-point-hook-depth
+              t)
     (add-hook 'after-revert-hook 'jupyter-repl-interaction-mode nil t))
    (t
     (remove-hook 'completion-at-point-functions 'jupyter-completion-at-point t)
