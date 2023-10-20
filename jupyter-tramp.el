@@ -102,6 +102,7 @@ host, localname, ..., are all bound to values parsed from FILE."
 ;; jupyter-tramp-expand-file-name
 ;; jupyter-tramp-file-attributes
 ;; jupyter-tramp-file-directory-p
+;; jupyter-tramp-file-exists-p
 ;; jupyter-tramp-file-local-copy
 ;; jupyter-tramp-file-name-all-completions
 ;; jupyter-tramp-file-remote-p
@@ -135,7 +136,7 @@ host, localname, ..., are all bound to values parsed from FILE."
     (file-directory-p . jupyter-tramp-file-directory-p)
     (file-equal-p . tramp-handle-file-equal-p)
     (file-executable-p . tramp-handle-file-exists-p)
-    (file-exists-p . tramp-handle-file-exists-p)
+    (file-exists-p . jupyter-tramp-file-exists-p)
     (file-in-directory-p . tramp-handle-file-in-directory-p)
     (file-local-copy . jupyter-tramp-file-local-copy)
     (file-modes . tramp-handle-file-modes)
@@ -429,17 +430,23 @@ See `jupyter-tramp-get-file-model' for details on what a file model is."
 
 (defvar url-http-open-connections)
 
+(defun jupyter-tramp-connected-p (vec-or-filename)
+  "Return non-nil if connected to a Jupyter based remote host."
+  (let* ((vec (tramp-ensure-dissected-file-name vec-or-filename))
+         (port (tramp-file-name-port-or-default vec))
+         (key (cons (tramp-file-name-host vec)
+                    (if (numberp port) port
+                      (string-to-number port)))))
+    (catch 'connected
+      (dolist (conn (gethash key url-http-open-connections))
+        (when (memq (process-status conn) '(run open connect))
+          (throw 'connected t))))))
+
 (defun jupyter-tramp-file-remote-p (file &optional identification connected)
   (when (file-name-absolute-p file)
     (with-parsed-tramp-file-name file nil
       (when (or (null connected)
-                (let* ((port (or port (tramp-file-name-port-or-default v)))
-                       (key (cons host (if (numberp port) port
-                                         (string-to-number port)))))
-                  (catch 'connected
-                    (dolist (conn (gethash key url-http-open-connections))
-                      (when (memq (process-status conn) '(run open connect))
-                        (throw 'connected t))))))
+                (jupyter-tramp-connected-p v))
         (cl-case identification
           (method method)
           (host host)
@@ -447,6 +454,18 @@ See `jupyter-tramp-get-file-model' for details on what a file model is."
           (localname localname)
           (t (tramp-make-tramp-file-name
               method user domain host port "")))))))
+
+;; Adapted from `tramp-handle-file-exists-p'
+(defun jupyter-tramp-file-exists-p (filename)
+  ;; `file-exists-p' is used as predicate in file name completion.
+  ;; We don't want to run it when `non-essential' is t, or there is
+  ;; no connection process yet.
+  (when (or (jupyter-tramp-connected-p filename)
+            (not non-essential))
+    (with-parsed-tramp-file-name (expand-file-name filename) nil
+      (with-tramp-file-property v localname "file-exists-p"
+	(not (null (file-attributes filename)))))))
+
 
 ;;; File name manipulation
 
