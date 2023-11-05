@@ -1681,7 +1681,7 @@ Return the buffer switched to."
       (jupyter-sent
        (jupyter-history-request
         :n jupyter-repl-history-maximum-length
-        :raw nil
+        :raw t
         :unique t
         :handlers '(not "status"))))
     (erase-buffer)
