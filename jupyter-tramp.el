@@ -297,25 +297,24 @@ fails."
   (unless (jupyter-tramp-file-name-p filename)
     (error "Not a Jupyter filename"))
   (with-parsed-tramp-file-name filename nil
-    (with-tramp-connection-property v "server"
-      (let* ((url (jupyter-tramp-url-from-file-name filename))
-             (client (jupyter-server :url url)))
-        (prog1 client
-          (unless (jupyter-api-server-accessible-p client)
-            (cond
-             ((y-or-n-p (format "Login to %s using a token? " url))
-              (jupyter-api-authenticate client 'token))
-             (t
-              ;; This is here so that reading a password using
-              ;; `tramp-read-passwd' via `jupyter-tramp-read-passwd' will check
-              ;; auth sources.
-              (tramp-set-connection-property v "first-password-request" t)
-              (jupyter-api-authenticate client
-                'password
-                (let ((remote (file-remote-p filename)))
-                  (lambda ()
-                    (jupyter-tramp-read-passwd
-                     filename (format "Password [%s]: " remote)))))))))))))
+    (let* ((url (jupyter-tramp-url-from-file-name filename))
+           (client (jupyter-server :url url)))
+      (prog1 client
+        (unless (jupyter-api-server-accessible-p client)
+          (cond
+           ((y-or-n-p (format "Login to %s using a token? " url))
+            (jupyter-api-authenticate client 'token))
+           (t
+            ;; This is here so that reading a password using
+            ;; `tramp-read-passwd' via `jupyter-tramp-read-passwd' will check
+            ;; auth sources.
+            (tramp-set-connection-property v "first-password-request" t)
+            (jupyter-api-authenticate client
+              'password
+              (let ((remote (file-remote-p filename)))
+                (lambda ()
+                  (jupyter-tramp-read-passwd
+                   filename (format "Password [%s]: " remote))))))))))))
 
 ;;; Getting information about file models
 
