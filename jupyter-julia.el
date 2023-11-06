@@ -211,9 +211,11 @@ if !isdefined(Main, :__JUPY_saved_dir)
 end"))))
 
 (cl-defmethod jupyter-repl-after-init (&context (jupyter-lang julia))
-  (add-function
-   :after (local 'syntax-propertize-function)
-   #'jupyter-julia--propertize-repl-mode-char)
+  (if syntax-propertize-function
+      (add-function
+       :after (local 'syntax-propertize-function)
+       #'jupyter-julia--propertize-repl-mode-char)
+    (setq-local syntax-propertize-function #'jupyter-julia--propertize-repl-mode-char))
   (jupyter-julia--setup-hooks jupyter-current-client)
   ;; Setup hooks after restart as well
   (jupyter-add-hook jupyter-current-client 'jupyter-iopub-message-hook
