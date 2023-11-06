@@ -6,7 +6,7 @@
 ;; Created: 11 Jan 2018
 ;; Version: 0.8.2
 ;; Package-Requires: ((emacs "26") (cl-lib "0.5") (org "9.1.6") (zmq "0.10.10") (simple-httpd "1.5.0") (websocket "1.9"))
-;; URL: https://github.com/nnicandro/emacs-jupyter
+;; URL: https://github.com/emacs-jupyter/jupyter
 
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
