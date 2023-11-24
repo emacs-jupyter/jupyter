@@ -640,8 +640,6 @@ C-x C-e         `jupyter-eval-line-or-region'"
     (add-hook 'after-revert-hook 'jupyter-org-interaction-mode nil t)
     (setq-local char-property-alias-alist
                 (copy-tree char-property-alias-alist))
-    (cl-callf append (alist-get 'invisible char-property-alias-alist)
-      '(jupyter-invisible))
     (unless (cl-find-if
              (lambda (x) (eq (car x) 'jupyter-org-font-lock-ansi-escapes))
              org-font-lock-keywords)
@@ -650,8 +648,6 @@ C-x C-e         `jupyter-eval-line-or-region'"
    (t
     (remove-hook 'completion-at-point-functions 'jupyter-org-completion-at-point t)
     (remove-hook 'after-revert-hook 'jupyter-org-interaction-mode t)
-    (cl-callf2 delq 'jupyter-invisible
-               (alist-get 'invisible char-property-alias-alist))
     (cl-callf2 cl-remove-if
         (lambda (x) (eq (car x) 'jupyter-org-font-lock-ansi-escapes))
         org-font-lock-keywords))))
