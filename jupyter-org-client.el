@@ -34,6 +34,7 @@
 (declare-function org-babel-python-table-or-string "ob-python" (results))
 (declare-function org-babel-jupyter-initiate-session "ob-jupyter" (&optional session params))
 (declare-function org-babel-jupyter-src-block-session "ob-jupyter" ())
+(declare-function org-babel-jupyter-session-initiated-p "ob-jupyter" (params))
 (declare-function org-babel-jupyter-language-p "ob-jupyter" (lang))
 (declare-function org-element-context "org-element" (&optional element))
 (declare-function org-element-create "org-element" (type &optional props &rest children))
@@ -54,6 +55,19 @@
 (declare-function org-at-table-p "org" ())
 (declare-function org-inside-LaTeX-fragment-p "org" ())
 (declare-function org-toggle-latex-fragment "org" (&optional arg))
+
+(defcustom jupyter-org-auto-connect t
+  "Automatically establish a connection to a src-block session.
+If this variable is non-nil, then a connection to a src-block
+session is automatically established under certain conditions,
+e.g. during auto-completion.  Otherwise there would have to be an
+available connection already if this variable is nil for features
+like auto-completion to work.
+
+When this variable is nil, you can establish a connection to a
+session by, for example, executing a src-block."
+  :group 'ob-jupyter
+  :type 'boolean)
 
 (defcustom jupyter-org-resource-directory "./.ob-jupyter/"
   "Directory used to store automatically generated image files.
@@ -417,7 +431,8 @@ returned."
 
 (defmacro jupyter-org-with-src-block-client (&rest body)
   "Evaluate BODY with `jupyter-current-client' set to the session's client.
-A client is initialized if necessary.
+A client is initialized if needed when `jupyter-org-auto-connect'
+is non-nil.
 
 If `point' is not inside the code of a Jupyter source block, BODY
 is not evaluated and nil is returned.  Return the result of BODY
@@ -427,17 +442,21 @@ In addition to evaluating BODY with an active Jupyter client set,
 the `syntax-table' will be set to that of the REPL buffers."
   (declare (debug (body)))
   (let ((params (make-symbol "params"))
-        (syntax (make-symbol "syntax")))
+        (key (make-symbol "key"))
+        (syntax (make-symbol "syntax"))
+        (buffer (make-symbol "buffer")))
     `(jupyter-org-when-in-src-block
-      (let* ((,params (car jupyter-org--src-block-cache))
-             (jupyter-current-client
-              (buffer-local-value 'jupyter-current-client
-                                  (org-babel-jupyter-initiate-session
-                                   (alist-get :session ,params) ,params)))
-             (,syntax (jupyter-kernel-language-syntax-table
-                       jupyter-current-client)))
-        (with-syntax-table ,syntax
-          ,@body)))))
+      (let ((,params (car jupyter-org--src-block-cache)))
+        (when (or jupyter-org-auto-connect
+                  (org-babel-jupyter-session-initiated-p ,params))
+          (let* ((,buffer (org-babel-jupyter-initiate-session
+                           (alist-get :session ,params) ,params))
+                 (jupyter-current-client
+                  (buffer-local-value 'jupyter-current-client ,buffer))
+                 (,syntax (jupyter-kernel-language-syntax-table
+                           jupyter-current-client)))
+            (with-syntax-table ,syntax
+              ,@body)))))))
 
 (cl-defmethod jupyter-code-context ((_type (eql inspect))
                                     &context (major-mode org-mode))

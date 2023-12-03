@@ -199,13 +199,20 @@ associated with the session found in INFO.
 
 If the session is a Jupyter TRAMP file name, the
 `default-directory' of the edit buffer is set to the root
-directory the notebook serves."
+directory the notebook serves.
+
+If `jupyter-org-auto-connect' is nil, this function does nothing
+if the session has not been initiated yet."
   (let* ((params (nth 2 info))
          (session (alist-get :session params))
-         (client-buffer (org-babel-jupyter-initiate-session session params)))
-    (jupyter-repl-associate-buffer client-buffer)
-    (when (jupyter-tramp-file-name-p session)
-      (setq default-directory (concat (file-remote-p session) "/")))))
+         (client-buffer
+          (when (or jupyter-org-auto-connect
+                    (org-babel-jupyter-session-initiated-p params))
+            (org-babel-jupyter-initiate-session session params))))
+    (when client-buffer
+      (jupyter-repl-associate-buffer client-buffer)
+      (when (jupyter-tramp-file-name-p session)
+        (setq default-directory (concat (file-remote-p session) "/"))))))
 
 (defun org-babel-jupyter--insert-variable-assignments (params)
   "Insert variable assignment lines from PARAMS into the `current-buffer'.
@@ -367,6 +374,11 @@ session."
             ;;
             ;; TODO: Would we always want to do this?
             (jupyter-server-name-client-kernel client sname)))))))
+
+(defun org-babel-jupyter-session-initiated-p (params)
+  "Return non-nil if the session corresponding to PARAMS is initiated."
+  (let ((key (org-babel-jupyter-session-key params)))
+    (gethash key org-babel-jupyter-session-clients)))
 
 (defun org-babel-jupyter-initiate-session-by-key (session params)
   "Return the Jupyter REPL buffer for SESSION.
