@@ -137,11 +137,27 @@ why it isn't returning valid JSON."))))
     kernelspecs))
 
 (cl-defgeneric jupyter-kernelspecs (host &optional refresh)
-  "Return a list of kernelspecs on HOST.")
+  "Return a list of kernelspecs on HOST.
+If REFRESH is non-nil, then refresh the list of cached
+kernelspecs first.  Otherwise a cached version of the kernelspecs
+may be returned.")
 
 (cl-defmethod jupyter-kernelspecs ((host string) &optional refresh)
   (let ((default-directory host))
     (jupyter-available-kernelspecs refresh)))
+
+(cl-defmethod jupyter-do-refresh-kernelspecs ()
+  (jupyter-kernelspecs default-directory 'refresh))
+
+;;;###autoload
+(defun jupyter-refresh-kernelspecs ()
+  "Refresh the list of available kernelspecs.
+Execute this command if the kernelspecs seen by Emacs is out of
+sync with those specified on your system or notebook server."
+  (interactive)
+  (message "Refreshing kernelspecs...")
+  (jupyter-do-refresh-kernelspecs)
+  (message "Refreshing kernelspecs...done"))
 
 (defun jupyter-get-kernelspec (name &optional specs refresh)
   "Get the kernelspec for a kernel named NAME.

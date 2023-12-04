@@ -417,7 +417,7 @@ the host."
       (setq session (org-babel-read session)))
     (org-babel-jupyter-initiate-session-by-key session params)))
 
-;;;;  `org-babel-execute:jupyter'
+;;;; Helper functions
 
 ;;;###autoload
 (defun org-babel-jupyter-scratch-buffer ()
@@ -429,6 +429,17 @@ the host."
                     (jupyter-repl-scratch-buffer))))
     (if buffer (pop-to-buffer buffer)
       (user-error "No source block at point"))))
+
+(cl-defmethod jupyter-do-refresh-kernelspecs (&context (major-mode org-mode))
+  (or (jupyter-org-when-in-src-block
+       (let* ((info (org-babel-get-src-block-info 'light))
+              (params (nth 2 info))
+              (session (org-babel-read (alist-get :session params))))
+         (when (file-remote-p session)
+           (jupyter-kernelspecs session 'refresh))))
+      (cl-call-next-method)))
+
+;;;;  `org-babel-execute:jupyter'
 
 (defvar org-bracket-link-regexp)
 
