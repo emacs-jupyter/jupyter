@@ -800,6 +800,14 @@ lines, truncate it to something less than
        (jupyter-repl-insert-prompt 'in))))
   (goto-char (point-max)))
 
+(defun jupyter-repl-clear-input ()
+  "Clear the contents of the input cell."
+  (interactive)
+  (goto-char (point-max))
+  (delete-region
+   (jupyter-repl-cell-code-beginning-position)
+   (point-max)))
+
 ;;; Handlers
 
 (defun jupyter-repl-history-add (code)
@@ -1649,6 +1657,7 @@ Return the buffer switched to."
     (define-key map (kbd "M-n") #'jupyter-repl-history-next)
     (define-key map (kbd "M-p") #'jupyter-repl-history-previous)
     (define-key map (kbd "C-c C-o") #'jupyter-repl-clear-cells)
+    (define-key map (kbd "C-c C-u") #'jupyter-repl-clear-input)
     (define-key map (kbd "C-c M-r") #'jupyter-repl-history-previous-matching)
     (define-key map (kbd "C-c M-s") #'jupyter-repl-history-next-matching)
     map))
