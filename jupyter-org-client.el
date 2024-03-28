@@ -590,7 +590,7 @@ and they only take effect when the variable
 If (BEGIN . END) is not marked with a jupyter-ansi text property,
 apply `jupyter-ansi-color-apply-on-region' on the region and mark
 it with a non-nil jupyter-ansi property.  Otherwise, prepend any
-non-nil font-lock-face properties in the region to the face
+non-nil jupyter-face properties in the region to the face
 property."
   ;; Don't add these changes to the undo list, gives a slight speed up.
   (let ((buffer-undo-list t)

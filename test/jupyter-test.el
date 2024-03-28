@@ -2603,7 +2603,7 @@ publish_display_data({'text/plain': 'AB\x1b[43mCD\x1b[0mEF'});"
              (font-lock-ensure)
              (jupyter-test-text-has-property 'invisible t invisible-pos)
              (should (listp (get-text-property face-pos 'face)))
-             (should (get-text-property face-pos 'font-lock-face))
+             (should (get-text-property face-pos 'jupyter-face))
              (should (memq (caar (get-text-property face-pos 'face))
                            '(:background background-color))))))
       (insert ": AB[43mCD[0mEF")
