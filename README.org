@@ -571,6 +571,16 @@ available when =jupyter-org-interaction-mode= is enabled
 | =C-c C-i=   | =jupyter-repl-interrupt-kernel= |
 | =C-c C-r=   | =jupyter-repl-restart-kernel=   |
 
+*** Disable automatic connections to a source block session
+
+When typing into the region of a Jupyter source block, under certain
+conditions, an attempt at connecting to the source block's session is
+made if not already connected.
+
+This behavior can be suppressed by setting =jupyter-org-auto-connect=
+to =nil=.  In this case, a connection is attempted upon executing a
+source block, for example.
+
 ** Kernel/notebook server
 *** Managing live kernels
 
