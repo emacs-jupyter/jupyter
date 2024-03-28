@@ -49,22 +49,18 @@ git ls-files | grep -E '.el$'
 #+begin_src elisp :results silent :var files=source-files eval-in-file=eval-in-file
 (let ((lexical-binding t)
       (copyright-re "^;; Copyright (C) \\([0-9]+\\)\\(?:-\\([0-9]+\\)\\)?")
-      (version-re "^;; Version: \\(\\([0-9]+\\)\\.\\([0-9]+\\)\\.\\([0-9]+\\)\\)")
-      (this-year (string-to-number (format-time-string "%Y"))))
+	  (version-re "^;; Version: \\(\\([0-9]+\\)\\.\\([0-9]+\\)\\.\\([0-9]+\\)\\)")
+	  (this-year (format-time-string "%Y")))
   (dolist (file files)
-    (funcall
-     eval-in-file (car file)
-     (lambda ()
-       (when (re-search-forward copyright-re nil t)
-         (let* ((end-group (if (match-string 2) 2 1))
-                (new-span (= end-group 1))
-                (year (string-to-number (match-string end-group)))
-                (new-year (and (<= (1+ year) this-year)
-                               (number-to-string (1+ year)))))
-           (when new-year
-             (if (not new-span) (replace-match new-year nil nil nil end-group)
-               (goto-char (match-end end-group))
-               (insert "-" new-year)))))
+	(funcall
+	 eval-in-file (car file)
+	 (lambda ()
+	   (when (re-search-forward copyright-re nil t)
+		 (let* ((end-group (if (match-string 2) 2 1))
+				(new-span (= end-group 1)))
+		   (if (not new-span) (replace-match this-year nil nil nil end-group)
+			 (goto-char (match-end end-group))
+			 (insert "-" this-year))))
        (when (re-search-forward version-re nil t)
          (replace-match version nil nil nil 1)))))
   (funcall eval-in-file "jupyter-base.el"
