@@ -2996,6 +2996,30 @@ print(2)"
 "
        :pandoc "t"))))
 
+(ert-deftest org-babel-src-block-name-resolution ()
+  :tags '(org)
+  (let ((src (format "\
+#+NAME: x
+#+BEGIN_SRC jupyter-python :session %s :async yes
+2
+#+END_SRC
+
+#+BEGIN_SRC jupyter-python :session %s :noweb yes
+3*<<x()>>
+#+END_SRC
+"
+                     jupyter-org-test-session
+                     jupyter-org-test-session)))
+    (jupyter-org-test
+     (insert src)
+     (org-backward-element)
+     (org-ctrl-c-ctrl-c)
+     (let ((pos (org-babel-where-is-src-block-result)))
+       (should pos)
+       (goto-char pos)
+       (forward-line)
+       (should (looking-at-p ": 6"))))))
+
 ;; Local Variables:
 ;; byte-compile-warnings: (unresolved obsolete lexical)
 ;; eval: (and (functionp 'aggressive-indent-mode) (aggressive-indent-mode -1))

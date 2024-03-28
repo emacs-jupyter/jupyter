@@ -124,6 +124,27 @@ See also the docstring of `org-image-actual-width' for more details."
   marker
   async-p)
 
+(defun jupyter-org-execute-async-p (params)
+  "Return non-nil if an execution should be asynchronous based on PARAMS.
+
+PARAMS are the source block arguments as returned by,
+e.g. `org-babel-get-src-block-info'."
+  (and (member (alist-get :async params) '("yes" nil))
+       ;; When computing results but not doing anything with them, it
+       ;; typically signifies that a reference to this source block is
+       ;; being resolved (`org-babel-ref-resolve').
+       ;;
+       ;; TODO Although if a source block had
+       ;;
+       ;;     :results none :async yes
+       ;;
+       ;; as header arguments it would still make sense to execute it
+       ;; asynchronously when executing it manually instead of through
+       ;; a reference so there needs to be a way to determine if an
+       ;; execution of a source block is occurring due to resolution
+       ;; of a reference.
+       (not (member "none" (alist-get :result-params params)))))
+
 ;;; `jupyter-kernel-client' interface
 
 ;;;; `jupyter-request' interface
@@ -158,7 +179,7 @@ See also the docstring of `org-image-actual-width' for more details."
                          :result-type (alist-get :result-type block-params)
                          :file (alist-get :file block-params)
                          :block-params block-params
-                         :async-p (equal (alist-get :async block-params) "yes")
+                         :async-p (jupyter-org-execute-async-p block-params)
                          :silent-p (car (or (member "none" result-params)
                                             (member "silent" result-params))))
                         slots))))
@@ -297,28 +318,13 @@ to."
 (cl-defmethod jupyter-handle-execute-result ((client jupyter-org-client) (req jupyter-org-request) msg)
   (unless (eq (jupyter-org-request-result-type req) 'output)
     (jupyter-with-message-content msg (data metadata)
-      (pcase-let (((cl-struct jupyter-org-request
-                              inline-block-p async-p marker block-params)
-                   req))
-        (cond
-         (inline-block-p
-          ;; For inline results, only text/plain results are allowed at the moment.
-          ;;
-          ;; TODO: Handle all of the different macro types for inline results, see
-          ;; `org-babel-insert-result'.
-          (setq data `(:text/plain ,(plist-get data :text/plain)))
-          (let ((result (let ((r (jupyter-org-result req data metadata)))
-                          (if (stringp r) r
-                            (or (org-element-property :value r) "")))))
-            (if async-p
-                (org-with-point-at marker
-                  (org-babel-insert-result
-                   result block-params nil nil (jupyter-kernel-language client)))
-              ;; The results are returned in `org-babel-execute:jupyter' in the
-              ;; synchronous case
-              (jupyter-org--add-result req result))))
-         (t
-          (jupyter-org--add-result req (jupyter-org-result req data metadata))))))))
+      (when (jupyter-org-request-inline-block-p req)
+        ;; For inline results, only text/plain results are allowed at the moment.
+        ;;
+        ;; TODO: Handle all of the different macro types for inline results, see
+        ;; `org-babel-insert-result'.
+        (setq data `(:text/plain ,(plist-get data :text/plain))))
+      (jupyter-org--add-result req data metadata))))
 
 ;;;; Display data
 
@@ -334,7 +340,7 @@ to."
           (jupyter-insert data metadata)
           (pop-to-buffer (current-buffer))
           (set-window-point (get-buffer-window (current-buffer)) (point-min)))
-      (jupyter-org--add-result req (jupyter-org-result req data metadata)))))
+      (jupyter-org--add-result req data metadata))))
 
 ;;;; Execute reply
 
@@ -1469,32 +1475,41 @@ Assumes `point' is on the #+RESULTS keyword line."
     context))
 
 (defun jupyter-org--do-insert-result (req result)
-  (org-with-point-at (jupyter-org-request-marker req)
-    (let ((res-begin (org-babel-where-is-src-block-result 'insert)))
-      (goto-char res-begin)
-      (let* ((indent (current-indentation))
-             (context (jupyter-org--normalized-insertion-context))
-             (pos (jupyter-org--append-stream-result-p context result)))
-        (if pos (goto-char pos)
-          (forward-line 1)
-          (unless (bolp) (insert "\n"))
-          (jupyter-org--prepare-append-result context))
-        (jupyter-org-indent-inserted-region indent
-          (if pos (jupyter-org--append-stream-result result)
-            (jupyter-org--insert-result req context result)))
-        (when (jupyter-org--stream-result-p result)
-          (let ((end (point-marker)))
-            (unwind-protect
-                (jupyter-org--handle-control-codes
-                 (if pos (save-excursion
-                           (goto-char pos)
-                           ;; Go back one line to account for an edge case
-                           ;; where a control code is at the end of a line.
-                           (line-beginning-position 0))
-                   res-begin)
-                 end)
-              (set-marker end nil)))
-          (jupyter-org--mark-stream-result-newline result))))))
+  (pcase-let (((cl-struct jupyter-org-request
+                          marker inline-block-p block-params client)
+               req))
+    (org-with-point-at marker
+      (if inline-block-p
+          (org-babel-insert-result
+           (if (stringp result) result
+             (or (org-element-property :value result) ""))
+           (alist-get :result-params block-params)
+           nil nil (jupyter-kernel-language client))
+        (let ((res-begin (org-babel-where-is-src-block-result 'insert)))
+          (goto-char res-begin)
+          (let* ((indent (current-indentation))
+                 (context (jupyter-org--normalized-insertion-context))
+                 (pos (jupyter-org--append-stream-result-p context result)))
+            (if pos (goto-char pos)
+              (forward-line 1)
+              (unless (bolp) (insert "\n"))
+              (jupyter-org--prepare-append-result context))
+            (jupyter-org-indent-inserted-region indent
+              (if pos (jupyter-org--append-stream-result result)
+                (jupyter-org--insert-result req context result)))
+            (when (jupyter-org--stream-result-p result)
+              (let ((end (point-marker)))
+                (unwind-protect
+                    (jupyter-org--handle-control-codes
+                     (if pos (save-excursion
+                               (goto-char pos)
+                               ;; Go back one line to account for an edge case
+                               ;; where a control code is at the end of a line.
+                               (line-beginning-position 0))
+                       res-begin)
+                     end)
+                  (set-marker end nil)))
+              (jupyter-org--mark-stream-result-newline result))))))))
 
 (defun jupyter-org--start-pandoc-conversion (el cb)
   (jupyter-pandoc-convert
@@ -1599,19 +1614,32 @@ See `jupyter-org-toggle-latex'."
 
 ;;;; Add result
 
-(defun jupyter-org--add-result (req result)
-  (cond
-   ((jupyter-org-request-silent-p req)
-    (unless (equal (jupyter-org-request-silent-p req) "none")
-      (if (eq (org-element-type result) 'pandoc)
-          (message "[%s] %s" (org-element-property :type result)
-                   (org-element-property :value result))
-        (message "%s" (org-element-interpret-data result)))))
-   ((jupyter-org-request-async-p req)
-    (jupyter-org--clear-request-id req)
-    (jupyter-org--do-insert-result req result))
-   (t
-    (push result (jupyter-org-request-results req)))))
+(defun jupyter-org--add-result (req data &optional metadata)
+  (let ((org-element-p
+         (lambda (data)
+           (let ((type (org-element-type data)))
+             (or (eq type 'plain-text)
+                 (memq type org-element-all-objects)
+                 (memq type org-element-all-elements))))))
+    (pcase-let (((cl-struct jupyter-org-request async-p silent-p) req))
+      (when (equal silent-p "silent")
+        (message "%s" (if (funcall org-element-p data)
+                          (org-element-interpret-data data)
+                        (jupyter-map-mime-bundle (jupyter-org-display-mime-types req)
+                            (jupyter-normalize-data data metadata)
+                          (lambda (_mime content)
+                            (org-babel-script-escape (plist-get content :data)))))))
+      (cond
+       (async-p
+        (jupyter-org--clear-request-id req)
+        (unless silent-p
+          (jupyter-org--do-insert-result
+           req (if (funcall org-element-p data) data
+                 (jupyter-org-result req data metadata)))))
+       (t
+        (push (if (stringp data) data
+                (list :data data :metadata metadata))
+              (jupyter-org-request-results req)))))))
 
 ;;; org-babel functions
 ;; These are meant to be called by `org-babel-execute:jupyter'
@@ -1628,14 +1656,14 @@ the return value for asynchronous Jupyter source blocks in
 `org-babel-execute:jupyter'."
   (prog1 nil
     (let ((log-max message-log-max)
-          (hook org-babel-after-execute-hook)
-          (id (jupyter-org-scalar (jupyter-org-request-id req))))
+          (hook org-babel-after-execute-hook))
       (setq message-log-max nil)
       (setq org-babel-after-execute-hook
             (list (lambda ()
                     (setq message-log-max log-max)
                     (unwind-protect
-                        (jupyter-org--add-result req id)
+                        (jupyter-org--add-result
+                         req (list :text/plain (jupyter-org-request-id req)))
                       (setq org-babel-after-execute-hook hook)
                       (run-hooks 'org-babel-after-execute-hook))))))))
 
@@ -1643,20 +1671,18 @@ the return value for asynchronous Jupyter source blocks in
   "Return RESULTS with all contiguous stream results concatenated.
 All stream results are then turned into fixed-width or
 example-block elements."
-  (cl-labels ((scalar (s) (jupyter-org-scalar
-                           (jupyter-org-strip-last-newline s))))
-    (let (lst str)
-      (while (consp results)
-        (let ((value (pop results)))
-          (if (jupyter-org--stream-result-p value)
-              (cl-callf concat str value)
-            (when str
-              (push (scalar str) lst)
-              (setq str nil))
-            (push value lst))))
-      (when str
-        (push (scalar str) lst))
-      (nreverse lst))))
+  (let (lst str)
+    (while (consp results)
+      (let ((value (pop results)))
+        (if (jupyter-org--stream-result-p value)
+            (cl-callf concat str value)
+          (when str
+            (push str lst)
+            (setq str nil))
+          (push value lst))))
+    (when str
+      (push str lst))
+    (nreverse lst)))
 
 (defun jupyter-org--process-pandoc-results (results)
   (let* ((results (copy-sequence results))
@@ -1680,17 +1706,36 @@ example-block elements."
   "Return the result string in org syntax for the results of REQ.
 Meant to be used as the return value of
 `org-babel-execute:jupyter'."
-  (when-let* ((results (jupyter-org--coalesce-stream-results
-                        (jupyter-org--process-pandoc-results
-                         (nreverse (jupyter-org-request-results req)))))
-              (params (jupyter-org-request-block-params req))
-              (result-params (alist-get :result-params params)))
-    (org-element-interpret-data
-     (if (or (and (= (length results) 1)
-                  (jupyter-org-babel-result-p (car results)))
-             (member "raw" result-params))
-         (car results)
-       (apply #'jupyter-org-results-drawer results)))))
+  (pcase-let (((cl-struct jupyter-org-request block-params
+                          results silent-p block-params)
+               req))
+    (setq results (jupyter-org--coalesce-stream-results (nreverse results)))
+    (if silent-p
+        (org-babel-script-escape
+         (mapconcat
+          (lambda (result)
+            (if (consp result)
+                (or (jupyter-mime-value result :text/plain) "")
+              (cl-check-type result string)
+              result))
+          results
+          "\n"))
+      (when-let* ((results
+                   (mapcar (lambda (r)
+                        (if (jupyter-org--stream-result-p r)
+                            (jupyter-org-scalar
+                             (jupyter-org-strip-last-newline r))
+                          r))
+                      (jupyter-org--process-pandoc-results
+                       (mapcar (lambda (result) (jupyter-org-result req result))
+                          results))))
+                  (result-params (alist-get :result-params block-params)))
+        (org-element-interpret-data
+         (if (or (and (= (length results) 1)
+                      (jupyter-org-babel-result-p (car results)))
+                 (member "raw" result-params))
+             (car results)
+           (apply #'jupyter-org-results-drawer results)))))))
 
 (provide 'jupyter-org-client)
 

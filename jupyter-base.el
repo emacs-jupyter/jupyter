@@ -233,6 +233,17 @@ M is any associated metadata."
        mime-types)
       nil)))
 
+(defun jupyter-mime-value (content mime)
+  "Extract a value from a mime bundle.
+CONTENT has the same meaning as in `jupyter-map-mime-bundle'.
+Return the value of MIME in CONTENT.  If MIME is not in CONTENT,
+return nil."
+  (jupyter-map-mime-bundle (list mime)
+      content
+    (lambda (_mime content)
+      (plist-get content :data))))
+
+
 ;;;; Display buffers
 
 (defvar-local jupyter-display-buffer-marker nil
