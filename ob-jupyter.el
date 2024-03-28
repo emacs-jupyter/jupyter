@@ -64,7 +64,7 @@ If a kernel has a language name matching the CAR of an element of
 this list, the associated name will be used for the names of the
 source blocks instead.
 
-So if this variable has an entry like '(\"python3\" \"python\")
+So if this variable has an entry like \\='(\"python3\" \"python\")
 then instead of jupyter-python3 source blocks, you can use
 jupyter-python source blocks for the associated kernel."
   :type '(alist :key-type string :value-type string))
@@ -441,7 +441,7 @@ the host."
 
 ;;;;  `org-babel-execute:jupyter'
 
-(defvar org-bracket-link-regexp)
+(defvar org-link-bracket-re)
 
 (defun org-babel-jupyter-cleanup-file-links ()
   "Delete the files of image links for the current source block result.
@@ -449,7 +449,7 @@ Do this only if the file exists in
 `org-babel-jupyter-resource-directory'."
   (when-let*
       ((pos (org-babel-where-is-src-block-result))
-       (link-re (format "^[ \t]*%s[ \t]*$" org-bracket-link-regexp))
+       (link-re (format "^[ \t]*%s[ \t]*$" org-link-bracket-re))
        (resource-dir (expand-file-name org-babel-jupyter-resource-directory)))
     (save-excursion
       (goto-char pos)
@@ -589,11 +589,11 @@ ALIAS-ACTION and VAR-ACTION are functions of one argument.
 
 When ALIAS-ACTION is called, the argument will be a symbol that
 represents an Org Babel operation that can be defined by a
-language extension to Org Babel, e.g. 'execute.
+language extension to Org Babel, e.g. \\='execute.
 
 Similarly VAR-ACTION is called with a symbol representing an Org
 Babel variable that can be defined for a language,
-e.g. 'header-args."
+e.g. \\='header-args."
   (declare (indent 0))
   (dolist (op org-babel-jupyter--babel-ops)
     (funcall alias-action op))
