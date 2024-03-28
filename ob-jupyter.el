@@ -282,11 +282,11 @@ client."
 
 (cl-defmethod org-babel-jupyter-parse-session :extra "remote" ((session string))
   "If SESSION is a remote file name, return a `org-babel-jupyter-remote-session'.
-A `org-babel-jupyter-remote-session' session is also returned if
-SESSION ends in \".json\", regardless of SESSION being a remote
-file name, with `org-babel-jupyter-remote-session-connect-repl-p'
-set to nil.  The CONNECT-REPL-P slot indicates that a connection
-file is read to connect to the session, as oppossed to launcing a
+A `org-babel-jupyter-remote-session' is also returned if SESSION
+ends in \".json\", regardless of SESSION being a remote file
+name, with `org-babel-jupyter-remote-session-connect-repl-p' set
+to nil.  The CONNECT-REPL-P slot indicates that a connection file
+is read to connect to the session, as opposed to launching a
 kernel."
   (if jupyter-use-zmq
       (let ((json-p (string-suffix-p ".json" session)))
