@@ -796,7 +796,7 @@ the server.  For any other file, call ORIG, which is the function
       (let ((coding-system-for-write
              (if (jupyter-api-binary-content-p model)
                  'no-conversion
-               'utf-8-auto)))
+               'utf-8)))
         (tramp-run-real-handler
          'make-temp-file
          (list "jupyter-tramp." nil (file-name-extension filename t)
