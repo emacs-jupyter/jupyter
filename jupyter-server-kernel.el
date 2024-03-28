@@ -255,9 +255,9 @@ this case FN will be evaluated on KERNEL."
                  (jupyter-publish
                    (list 'error (websocket-frame-opcode frame)))))))))
     (pcase-let* (((cl-struct jupyter-server-kernel server id) kernel)
-                 (pub (or (gethash server jupyter--reauth-subscribers)
-                          (setf (gethash server jupyter--reauth-subscribers)
-                                (jupyter-publisher)))))
+                 (reauth-pub (or (gethash server jupyter--reauth-subscribers)
+                                 (setf (gethash server jupyter--reauth-subscribers)
+                                       (jupyter-publisher)))))
       (setq make-websocket (lambda ()
                              (jupyter-api-kernel-websocket
                               server id
@@ -265,7 +265,7 @@ this case FN will be evaluated on KERNEL."
                               ;; TODO: on-error publishes to status-pub
                               :on-message on-message))
             ws (funcall make-websocket))
-      (jupyter-run-with-io pub
+      (jupyter-run-with-io reauth-pub
         (jupyter-subscribe
           (jupyter-subscriber
             (lambda (_reauth)
