@@ -79,7 +79,7 @@ table for the source block at `point'.")
 
 (defvar org-babel-header-args:jupyter '((kernel . :any)
                                         (async . ((yes no))))
-  "Available header arguments for Jupter src-blocks.")
+  "Available header arguments for Jupyter src-blocks.")
 
 (defvar org-babel-default-header-args:jupyter '((:kernel . "python")
                                                 (:async . "no"))
