@@ -1,6 +1,6 @@
 ;;; jupyter-kernel-process.el --- Jupyter kernels as Emacs processes -*- lexical-binding: t -*-
 
-;; Copyright (C) 2020 Nathaniel Nicandro
+;; Copyright (C) 2020-2024 Nathaniel Nicandro
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 25 Apr 2020

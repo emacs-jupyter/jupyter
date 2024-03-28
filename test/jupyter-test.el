@@ -1,6 +1,6 @@
 ;;; jupyter-test.el --- Jupyter tests -*- lexical-binding: t -*-
 
-;; Copyright (C) 2018-2020 Nathaniel Nicandro
+;; Copyright (C) 2018-2024 Nathaniel Nicandro
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 08 Jan 2018
@@ -2995,6 +2995,34 @@ print(2)"
 :END:
 "
        :pandoc "t"))))
+
+(ert-deftest org-babel-jupyter-ssh-connections ()
+  :tags '(org ssh)
+  (skip-unless (getenv "SSH_HOST"))
+  (let* ((session (make-temp-name "ob-jupyter-test"))
+         (src (format "\
+#+BEGIN_SRC jupyter-python :session /ssh:test:%s
+\"hello\"
+#+END_SRC
+
+" session)))
+    (jupyter-org-test
+     (save-excursion (insert src))
+     (org-ctrl-c-ctrl-c)
+     (goto-char (org-babel-where-is-src-block-result))
+     (forward-line)
+     (unwind-protect
+         (should (looking-at-p ": hello"))
+       (let ((params (nth 2
+                          (progn
+                            (org-previous-block 1)
+                            (org-babel-get-src-block-info)))))
+         (cl-letf (((symbol-function 'yes-or-no-p)
+                    (lambda (_prompt) t))
+                   ((symbol-function 'y-or-n-p)
+                    (lambda (_prompt) t)))
+           (kill-buffer (org-babel-jupyter-initiate-session
+                         (alist-get :session params) params))))))))
 
 (ert-deftest org-babel-src-block-name-resolution ()
   :tags '(org)

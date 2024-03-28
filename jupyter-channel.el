@@ -1,6 +1,6 @@
 ;;; jupyter-channel.el --- Jupyter channel interface -*- lexical-binding: t -*-
 
-;; Copyright (C) 2019-2020 Nathaniel Nicandro
+;; Copyright (C) 2019-2024 Nathaniel Nicandro
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 27 Jun 2019

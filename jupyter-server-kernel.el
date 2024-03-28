@@ -1,6 +1,6 @@
 ;;; jupyter-server-kernel.el --- Working with kernels behind a Jupyter server -*- lexical-binding: t -*-
 
-;; Copyright (C) 2020 Nathaniel Nicandro
+;; Copyright (C) 2020-2024 Nathaniel Nicandro
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 23 Apr 2020

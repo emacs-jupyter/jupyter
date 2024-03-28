@@ -1,6 +1,6 @@
 ;;; jupyter-monad-test.el --- Test monadic I/O -*- lexical-binding: t -*-
 
-;; Copyright (C) 2020 Nathaniel Nicandro
+;; Copyright (C) 2020-2024 Nathaniel Nicandro
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 16 May 2020

@@ -1,6 +1,6 @@
 ;;; jupyter-messages.el --- Jupyter messages -*- lexical-binding: t -*-
 
-;; Copyright (C) 2018-2020 Nathaniel Nicandro
+;; Copyright (C) 2018-2024 Nathaniel Nicandro
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 08 Jan 2018

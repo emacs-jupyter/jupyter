@@ -1,6 +1,6 @@
 ;;; jupyter-zmq-channel-ioloop.el --- IOLoop functions for Jupyter channels -*- lexical-binding: t -*-
 
-;; Copyright (C) 2018-2020 Nathaniel Nicandro
+;; Copyright (C) 2018-2024 Nathaniel Nicandro
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 08 Nov 2018

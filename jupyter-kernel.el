@@ -1,6 +1,6 @@
 ;;; jupyter-kernel.el --- Kernels -*- lexical-binding: t -*-
 
-;; Copyright (C) 2020 Nathaniel Nicandro
+;; Copyright (C) 2020-2024 Nathaniel Nicandro
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 21 Apr 2020

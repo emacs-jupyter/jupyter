@@ -1,6 +1,6 @@
 ;;; jupyter-kernelspec.el --- Jupyter kernelspecs -*- lexical-binding: t -*-
 
-;; Copyright (C) 2018-2020 Nathaniel Nicandro
+;; Copyright (C) 2018-2024 Nathaniel Nicandro
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 17 Jan 2018

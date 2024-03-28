@@ -1,6 +1,6 @@
 ;;; jupyter-R.el --- Jupyter support for R -*- lexical-binding: t -*-
 
-;; Copyright (C) 2019-2020 Nathaniel Nicandro
+;; Copyright (C) 2019-2024 Nathaniel Nicandro
 
 ;; Author: Jack Kamm <jackkamm@gmail.com>
 ;;         Nathaniel Nicandro <nathanielnicandro@gmail.com>
