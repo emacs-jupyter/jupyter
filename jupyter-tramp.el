@@ -744,7 +744,8 @@ the server.  For any other file, call ORIG, which is the function
              ;; We must pass modtime explicitly, because FILENAME can
              ;; be different from (buffer-file-name), f.e. if
              ;; `file-precious-flag' is set.
-             (tramp-compat-file-attribute-modification-time file-attr))))
+             (or (file-attribute-modification-time file-attr)
+                 (current-time)))))
         (when (and (null noninteractive)
                    (or (eq visit t) (null visit) (stringp visit)))
           (tramp-message v 0 "Wrote %s" filename))))
