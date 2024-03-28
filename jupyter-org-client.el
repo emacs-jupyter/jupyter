@@ -1003,29 +1003,30 @@ block parameters.
 If the source block parameters have a value for the :display
 header argument, like \"image/png html plain\", then loop over
 those mime types instead."
-  (cl-assert plist json-plist)
-  (let* ((params (jupyter-org-request-block-params req))
-         (display (alist-get :display params))
-         (mime-types (or (jupyter-org--find-mime-types display)
-                         jupyter-org-mime-types)))
-    ;; Push :file back into PARAMS if it was present in
-    ;; `org-babel-execute:jupyter'.  That function removes it because
-    ;; we don't want `org-babel-insert-result' to handle it.
-    (when (jupyter-org-request-file req)
-      (push (cons :file (jupyter-org-request-file req)) params))
-    (or (org-with-point-at
-            (jupyter-org-request-marker req)
-          (jupyter-map-mime-bundle mime-types
-              (jupyter-normalize-data plist metadata)
-            (lambda (mime content)
-              (jupyter-org-result mime content params))))
-        (let ((warning
-               (format
-                "%s did not return requested mimetype(s): %s"
-                (jupyter-message-type (jupyter-request-last-message req))
-                mime-types)))
-          (display-warning 'jupyter warning)
-          nil))))
+  (or (and (stringp plist) plist)     ; Pass strings unaffected, Org
+                                      ; treats them as valid elements.
+      (let* ((params (jupyter-org-request-block-params req))
+             (mime-types (or (jupyter-org--find-mime-types (alist-get :display params))
+                             jupyter-org-mime-types)))
+        (cl-assert plist json-plist)
+        ;; Push :file back into PARAMS if it was present in
+        ;; `org-babel-execute:jupyter'.  That function removes it because
+        ;; we don't want `org-babel-insert-result' to handle it.
+        (when (jupyter-org-request-file req)
+          (push (cons :file (jupyter-org-request-file req)) params))
+        (or (org-with-point-at
+                (jupyter-org-request-marker req)
+              (jupyter-map-mime-bundle mime-types
+                  (jupyter-normalize-data plist metadata)
+                (lambda (mime content)
+                  (jupyter-org-result mime content params))))
+            (let ((warning
+                   (format
+                    "%s did not return requested mimetype(s): %s"
+                    (jupyter-message-type (jupyter-request-last-message req))
+                    mime-types)))
+              (display-warning 'jupyter warning)
+              nil)))))
 
 (cl-defmethod jupyter-org-result ((_mime (eql :application/vnd.jupyter.widget-view+json)) _content _params)
   ;; TODO: Clickable text to open up a browser
