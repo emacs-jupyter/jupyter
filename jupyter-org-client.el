@@ -985,6 +985,12 @@ If a match is not found, return nil."
                                 return mime-type)))
      if match collect match)))
 
+(defun jupyter-org-display-mime-types (req)
+  "Return the mime types to display for REQ."
+  (or (jupyter-org--find-mime-types
+       (alist-get :display (jupyter-org-request-block-params req)))
+      jupyter-org-mime-types))
+
 (cl-defmethod jupyter-org-result ((req jupyter-org-request) plist &optional metadata)
   "For REQ, return a rendered form of a message PLIST.
 PLIST and METADATA have the same meaning as in
@@ -1009,10 +1015,9 @@ If the source block parameters have a value for the :display
 header argument, like \"image/png html plain\", then loop over
 those mime types instead."
   (or (and (stringp plist) plist)     ; Pass strings unaffected, Org
-                                      ; treats them as valid elements.
-      (let* ((params (jupyter-org-request-block-params req))
-             (mime-types (or (jupyter-org--find-mime-types (alist-get :display params))
-                             jupyter-org-mime-types)))
+                                        ; treats them as valid elements.
+      (let* ((mime-types (jupyter-org-display-mime-types req))
+             (params (jupyter-org-request-block-params req)))
         (cl-assert plist json-plist)
         ;; Push :file back into PARAMS if it was present in
         ;; `org-babel-execute:jupyter'.  That function removes it because
