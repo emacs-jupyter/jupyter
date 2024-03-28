@@ -436,14 +436,15 @@ returned."
 (defmacro jupyter-org-with-src-block-client (&rest body)
   "Evaluate BODY with `jupyter-current-client' set to the session's client.
 A client is initialized if needed when `jupyter-org-auto-connect'
-is non-nil.
+is non-nil.  When that variable is nil and no client is present
+for the source block, don't evaluate BODY and return nil.
 
 If `point' is not inside the code of a Jupyter source block, BODY
 is not evaluated and nil is returned.  Return the result of BODY
 when it is evaluated.
 
 In addition to evaluating BODY with an active Jupyter client set,
-the `syntax-table' will be set to that of the REPL buffers."
+the `syntax-table' will be set to that of the REPL buffer's."
   (declare (debug (body)))
   (let ((params (make-symbol "params"))
         (key (make-symbol "key"))
