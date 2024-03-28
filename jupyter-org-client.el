@@ -1352,10 +1352,11 @@ non-nil, ensure that the appended RESULT begins on a newline."
           ;; `org-element-interpret-data'
           (when (eq (char-after) ?\n)
             (delete-char 1))
-          (insert (thread-last tail
-                    jupyter-org-strip-last-newline
-                    jupyter-org-scalar
-                    org-element-interpret-data)))))))
+          (unless (string-empty-p tail)
+            (insert (thread-last tail
+                      jupyter-org-strip-last-newline
+                      jupyter-org-scalar
+                      org-element-interpret-data))))))))
 
 (defun jupyter-org--append-to-example-block (result keep-newline)
   "Append RESULT to the end of the current example block.
