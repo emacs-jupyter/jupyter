@@ -41,6 +41,9 @@
 (declare-function org-element-type "org-element" (element))
 (declare-function org-element-normalize-string "org-element" (s))
 (declare-function org-element-at-point "org-element" ())
+(declare-function org-element-parse-buffer "org-element" (&optional granularity visible-only))
+(declare-function org-element-map "org-element"
+                  (data types fun &optional info first-match no-recursion with-affiliated))
 (declare-function org-drag-element-forward "org-element" ())
 (declare-function org-element-property "org-element" (property element))
 (declare-function org-element-set-contents "org-element" (element &rest contents))
@@ -315,7 +318,7 @@ to."
 
 ;;;; Execute result
 
-(cl-defmethod jupyter-handle-execute-result ((client jupyter-org-client) (req jupyter-org-request) msg)
+(cl-defmethod jupyter-handle-execute-result ((_client jupyter-org-client) (req jupyter-org-request) msg)
   (unless (eq (jupyter-org-request-result-type req) 'output)
     (jupyter-with-message-content msg (data metadata)
       (when (jupyter-org-request-inline-block-p req)
@@ -453,7 +456,6 @@ In addition to evaluating BODY with an active Jupyter client set,
 the `syntax-table' will be set to that of the REPL buffer's."
   (declare (debug (body)))
   (let ((params (make-symbol "params"))
-        (key (make-symbol "key"))
         (syntax (make-symbol "syntax"))
         (buffer (make-symbol "buffer")))
     `(jupyter-org-when-in-src-block
