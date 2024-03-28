@@ -1,4 +1,39 @@
-* master
+* v1.0
+
+- The results of executing named Jupyter source blocks can now be
+  referenced by other source blocks.  In other words, referencing a
+  Jupyter block in the context of noweb expansion, using =org-sbe=, or
+  as the value of a source block variable works now.
+
+- Added the customizable variable =jupyter-org-auto-connect= which
+  determines if a session should automatically be connected to upon
+  the first insertion into a source block's region.
+
+- The Jupyter executable used by underlying calls to =jupyter-command=
+  may now be set using the variable =jupyter-executable=.
+
+- Virtual environments are supported.  If the =VIRTUAL_ENV= environment
+  variable is set, then the available kernels to launch will be those
+  under the virtual environment assuming your =exec-path= is set
+  correctly to contain the Jupyter executable under the virtual
+  environment.  See for
+  example https://github.com/jorgenschaefer/pyvenv.
+
+- Added =org-babel-jupyter-language-aliases= which allows you to change
+  the name of the Org source block for a particular kernel language.
+  Usually the name of the source block is jupyter-LANG where LANG is
+  the name of the kernel language.  This variable allows you to
+  specify something else for LANG.
+
+- Added the =jupyter-use-zmq= variable which determines whether or
+  not =zmq= based connections are available for use.  If this variable
+  is =nil= then only server based connections can be used and in some
+  instances a default notebook server is started to manage those
+  connections, e.g. when calling =jupyter-run-repl=.
+
+* v0.8.3
+
+- Additional bug fixes.
 
 - Fixed a regression that appears when executing an =org-mode= source
   block of a previously created session.  A new connection to the

@@ -146,7 +146,7 @@ FORMAT-STRING and ARGS have the same meaning as in `message'."
 A longer timeout is needed, for example, when retrieving the
 `jupyter-kernel-info' to allow for the kernel to startup.")
 
-(defconst jupyter-version "0.8.2-dev"
+(defconst jupyter-version "1.0"
   "Current version of Jupyter.")
 
 ;;; Macros

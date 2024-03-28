@@ -6,7 +6,7 @@ changes, etc.  Write a few sentences describing the change and how it affects
 users going forward.
 
 #+NAME: changelog
-#+HEADER: :var PREV_VERSION="v0.8.2" VERSION="master"
+#+HEADER: :var PREV_VERSION="v1.0" VERSION="master"
 #+BEGIN_SRC shell :results output
 git log --pretty=format:"%s" ${PREV_VERSION}...${VERSION}
 #+END_SRC
@@ -19,7 +19,7 @@ git log --pretty=format:"%s" ${PREV_VERSION}...${VERSION}
 - Set the Version header
 - Set =jupyter-version= in file:jupyter-base.el
 
-#+CALL: update-project-metadata(version="0.8.2")
+#+CALL: update-project-metadata(version="1.0")
 
 #+NAME: source-files
 #+begin_src shell
