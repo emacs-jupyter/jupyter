@@ -186,7 +186,11 @@ See also the docstring of `org-image-actual-width' for more details."
   (jupyter-with-message-content msg (text)
     (if (jupyter-org-request-inline-block-p req)
         (jupyter-with-display-buffer "org-results" req
-          (insert (ansi-color-apply text))
+          (jupyter-with-insertion-bounds
+              beg end (insert text)
+            (when ansi-color-context-region
+              (move-marker (cadr ansi-color-context-region) (point)))
+            (ansi-color-apply-on-region beg end))
           (pop-to-buffer (current-buffer)))
       (jupyter-org--add-result req text))))
 
