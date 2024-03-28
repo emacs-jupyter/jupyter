@@ -8,7 +8,7 @@ TESTSELECTORS =
 
 ifneq ($(TAGS),)
 comma := ,
-TESTSELECTORS := $(foreach tag,$(subst $(comma), ,$(TAGS)),\"(tag $(tag))\")
+TESTSELECTORS := $(foreach tag,$(subst $(comma), ,$(TAGS)),"(tag $(tag))")
 endif
 
 ifneq ($(PATTERN),)
