@@ -1475,17 +1475,13 @@ Assumes `point' is on the #+RESULTS keyword line."
       (let* ((indent (current-indentation))
              (context (jupyter-org--normalized-insertion-context))
              (pos (jupyter-org--append-stream-result-p context result)))
-        (cond
-         (pos
-          (goto-char pos)
-          (jupyter-org-indent-inserted-region indent
-            (jupyter-org--append-stream-result result)))
-         (t
+        (if pos (goto-char pos)
           (forward-line 1)
           (unless (bolp) (insert "\n"))
-          (jupyter-org--prepare-append-result context)
-          (jupyter-org-indent-inserted-region indent
-            (jupyter-org--insert-result req context result))))
+          (jupyter-org--prepare-append-result context))
+        (jupyter-org-indent-inserted-region indent
+          (if pos (jupyter-org--append-stream-result result)
+            (jupyter-org--insert-result req context result)))
         (when (jupyter-org--stream-result-p result)
           (let ((end (point-marker)))
             (unwind-protect
