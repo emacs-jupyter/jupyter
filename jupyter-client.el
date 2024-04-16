@@ -1695,18 +1695,22 @@ name are changed to \"-\" and all uppercase characters lowered."
   (or (oref client kernel-info)
       (progn
         (message "Requesting kernel info...")
-        (jupyter-run-with-client client
-          (jupyter-mlet* ((msg (jupyter-reply
-                                (jupyter-kernel-info-request
-                                 :handlers nil)
-                                (* 3 jupyter-long-timeout))))
-            (message "Requesting kernel info...done")
-            (oset client kernel-info (jupyter-message-content msg))
-            (let* ((info (plist-get (oref client kernel-info) :language_info))
-                   (lang (plist-get info :name))
-                   (name (jupyter-canonicalize-language-string lang)))
-              (plist-put info :name (intern name)))
-            (jupyter-return (oref client kernel-info)))))))
+        ;; Don't generate this request in an unknown buffer.  This is
+        ;; mainly so that the Org client's generate-request doesn't
+        ;; confuse it for an execute_request in the Org buffer.
+        (jupyter-with-client-buffer client
+          (jupyter-run-with-client client
+            (jupyter-mlet* ((msg (jupyter-reply
+                                  (jupyter-kernel-info-request
+                                   :handlers nil)
+                                  (* 3 jupyter-long-timeout))))
+              (message "Requesting kernel info...done")
+              (oset client kernel-info (jupyter-message-content msg))
+              (let* ((info (plist-get (oref client kernel-info) :language_info))
+                     (lang (plist-get info :name))
+                     (name (jupyter-canonicalize-language-string lang)))
+                (plist-put info :name (intern name)))
+              (jupyter-return (oref client kernel-info))))))))
 
 (defun jupyter-kernel-language-mode-properties (client)
   "Get the `major-mode' info of CLIENT's kernel language.
