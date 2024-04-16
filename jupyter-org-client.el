@@ -212,8 +212,6 @@ e.g. `org-babel-get-src-block-info'."
         (jupyter-with-display-buffer "org-results" req
           (jupyter-with-insertion-bounds
               beg end (insert text)
-            (when ansi-color-context-region
-              (move-marker (cadr ansi-color-context-region) (point)))
             (ansi-color-apply-on-region beg end))
           (jupyter-display-current-buffer-reuse-window))
       (jupyter-org--add-result req text))))

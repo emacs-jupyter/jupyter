@@ -328,7 +328,8 @@ the output buffer."
                (jupyter-current-client ,client))
            (when (jupyter--reset-display-buffer-p ,reset)
              (erase-buffer)
-             (set-marker jupyter-display-buffer-marker (point)))
+             (set-marker jupyter-display-buffer-marker (point))
+             (setq ansi-color-context-region nil))
            (goto-char jupyter-display-buffer-marker)
            (jupyter-with-control-code-handling ,@body))))))
 
