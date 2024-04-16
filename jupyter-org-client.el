@@ -125,7 +125,8 @@ See also the docstring of `org-image-actual-width' for more details."
   id-cleared-p
   inline-block-p
   marker
-  async-p)
+  async-p
+  overlay)
 
 (defun jupyter-org-execute-async-p (params)
   "Return non-nil if an execution should be asynchronous based on PARAMS.
@@ -153,6 +154,26 @@ e.g. `org-babel-get-src-block-info'."
 ;;;; `jupyter-request' interface
 
 (defvar org-babel-jupyter-current-src-block-params)
+
+(defun jupyter-org--make-overlay  (beg end &optional inline)
+  "Create overlay between BEG and END positions and return it."
+  (let ((overlay (make-overlay beg end)))
+    (overlay-put overlay 'face 'secondary-selection)
+    (let ((read-only
+	       (list
+	        (lambda (&rest _)
+	          (user-error
+	           "Cannot modify an area of a source block being executed")))))
+      (overlay-put overlay 'modification-hooks read-only)
+      (overlay-put overlay 'insert-in-front-hooks read-only)
+      (unless inline
+        (overlay-put overlay 'insert-behind-hooks read-only)))
+    overlay))
+
+
+(defun jupyter-org--remove-overlay (req)
+  (when (overlayp (jupyter-org-request-overlay req))
+    (delete-overlay (jupyter-org-request-overlay req))))
 
 (cl-defmethod jupyter-generate-request ((_client jupyter-org-client) &rest slots)
   "Return a `jupyter-org-request' for the current source code block."
@@ -190,6 +211,19 @@ e.g. `org-babel-get-src-block-info'."
            org-babel-current-src-block-location
            (1+ org-babel-current-src-block-location)
            'jupyter-request req)
+          (setf (jupyter-org-request-overlay req)
+                (pcase (org-element-type context)
+                  (`src-block
+                   (jupyter-org--make-overlay
+                    (save-excursion
+                      (goto-char (jupyter-org-element-begin-after-affiliated context))
+                      (line-beginning-position 2))
+                    (jupyter-org-element-contents-end context)))
+                  ((and type (or `inline-src-block `babel-call `inline-babel-call))
+                   (jupyter-org--make-overlay
+                    (jupyter-org-element-begin-after-affiliated context)
+                    (jupyter-org-element-end-before-blanks context)
+                    (memq type '(inline-src-block babel-call inline-babel-call))))))
           req))
     (cl-call-next-method)))
 
@@ -368,6 +402,7 @@ to."
     (when payload
       (org-with-point-at (jupyter-org-request-marker req)
         (jupyter-handle-payload payload)))
+    (jupyter-org--remove-overlay req)
     (if (equal status "ok")
         (message "Code block evaluation complete.")
       (message "An error occurred when evaluating code block."))
