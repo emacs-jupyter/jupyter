@@ -227,8 +227,8 @@ end"))))
 
 (cl-defmethod jupyter-org-error-location (&context (jupyter-lang julia))
   (when (and (re-search-forward "^Stacktrace:" nil t)
-             (re-search-forward
-              "top-level scope at In\\[[0-9]+\\]:\\([0-9]+\\)" nil t))
+             (re-search-forward "top-level scope" nil t)
+             (re-search-forward "In\\[[0-9]+\\]:\\([0-9]+\\)" nil t))
     (string-to-number (match-string 1))))
 
 (cl-defmethod org-babel-jupyter-transform-code (code changelist &context (jupyter-lang julia))
