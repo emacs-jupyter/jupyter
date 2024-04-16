@@ -72,11 +72,12 @@ this gateway.  Access them through `jupyter-kernelspecs'.")))
 
 (defun jupyter-servers ()
   "Return a list of all `jupyter-server's."
+  (jupyter-gc-servers)
   jupyter--servers)
 
 (defun jupyter-gc-servers ()
   "Delete `jupyter-server' instances that are no longer accessible."
-  (dolist (server (jupyter-servers))
+  (dolist (server jupyter--servers)
     (unless (jupyter-api-server-exists-p server)
       (jupyter-api-delete-cookies (oref server url))
       (delete-instance server))))
