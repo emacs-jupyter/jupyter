@@ -44,25 +44,25 @@
  Typical endpoints look like \"tcp://127.0.0.1:5555\"."))
   :abstract t)
 
-(cl-defmethod jupyter-start ((channel jupyter-channel) &key identity)
+(cl-defmethod jupyter-start ((_channel jupyter-channel) &key _identity)
   "Start a Jupyter CHANNEL using IDENTITY as the routing ID.
 If CHANNEL is already alive, do nothing."
   (cl-call-next-method))
 
-(cl-defmethod jupyter-stop ((channel jupyter-channel))
+(cl-defmethod jupyter-stop ((_channel jupyter-channel))
   "Stop a Jupyter CHANNEL.
 If CHANNEL is already stopped, do nothing."
   (cl-call-next-method))
 
-(cl-defmethod jupyter-alive-p ((channel jupyter-channel))
+(cl-defmethod jupyter-alive-p ((_channel jupyter-channel))
   "Return non-nil if a CHANNEL is alive."
   (cl-call-next-method))
 
-(cl-defmethod jupyter-send (channel type message &optional msg-id)
+(cl-defmethod jupyter-send (_channel _type _message &optional _msg-id)
   "On CHANNEL send MESSAGE which has message TYPE and optionally a MSG-ID."
   (cl-call-next-method))
 
-(cl-defmethod jupyter-recv (channel &optional dont-wait)
+(cl-defmethod jupyter-recv (_channel &optional _dont-wait)
   "Receive a message on CHANNEL.
 If DONT-WAIT is non-nil, return nil immediately if there is no
 message available to receive."

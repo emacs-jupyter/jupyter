@@ -33,6 +33,7 @@
 (require 'jupyter-monads)
 (require 'websocket)
 
+(declare-function jupyter-encode-raw-message "jupyter-messages")
 (declare-function jupyter-tramp-server-from-file-name "jupyter-tramp")
 (declare-function jupyter-tramp-file-name-p "jupyter-tramp")
 (declare-function jupyter-server-kernel-id-from-name "jupyter-server")
@@ -201,12 +202,12 @@ KERNEL.
 
 To send a message to KERNEL, publish a list of the form
 
-    (list 'send CHANNEL MSG-TYPE CONTENT MSG-ID)
+    (list \='send CHANNEL MSG-TYPE CONTENT MSG-ID)
 
 to IO-PUB, e.g.
 
     (jupyter-run-with-io IO-PUB
-      (jupyter-publish (list 'send CHANNEL MSG-TYPE CONTENT MSG-ID)))
+      (jupyter-publish (list \='send CHANNEL MSG-TYPE CONTENT MSG-ID)))
 
 To receive messages from KERNEL, subscribe to IO-PUB e.g.
 
@@ -216,8 +217,8 @@ To receive messages from KERNEL, subscribe to IO-PUB e.g.
           (lambda (msg)
              ...))))
 
-The value 'interrupt or 'shutdown can be published to ACTION-SUB
-to interrupt or shutdown KERNEL.  The value (list 'action FN)
+The value \='interrupt or \='shutdown can be published to ACTION-SUB
+to interrupt or shutdown KERNEL.  The value (list \='action FN)
 where FN is a single argument function can also be published, in
 this case FN will be evaluated on KERNEL."
   (jupyter-launch kernel)
@@ -262,10 +263,10 @@ this case FN will be evaluated on KERNEL."
                  server id
                  :custom-header-alist (jupyter-api-auth-headers server)
                  :on-open
-                 (lambda (ws)
+                 (lambda (_ws)
                    (setq ws-failed-to-open nil))
                  :on-close
-                 (lambda (ws)
+                 (lambda (_ws)
                    (if ws-failed-to-open
                        ;; TODO: Retry?
                        (error "Kernel connection could not be established")

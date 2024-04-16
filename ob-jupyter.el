@@ -812,8 +812,8 @@ mapped to their appropriate minted language in
     (org-babel-jupyter-aliases-from-kernelspecs)))
 (add-hook 'org-mode-hook #'org-babel-jupyter-make-local-aliases 10)
 
-(add-hook 'org-export-before-processing-hook #'org-babel-jupyter-setup-export)
-(add-hook 'org-export-before-parsing-hook #'org-babel-jupyter-strip-ansi-escapes)
+(add-hook 'org-export-before-processing-functions #'org-babel-jupyter-setup-export)
+(add-hook 'org-export-before-parsing-functions  #'org-babel-jupyter-strip-ansi-escapes)
 
 (provide 'ob-jupyter)
 

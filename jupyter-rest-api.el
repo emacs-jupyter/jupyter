@@ -616,18 +616,18 @@ remainder of PLIST.
 
 So if PLIST looks like
 
-    '(\"api\" \"kernels\" :k1 ...)
+    \='(\"api\" \"kernels\" :k1 ...)
 
-ENDPOINT will be \"api/kernels\" and REST will be '(:k1 ...).
+ENDPOINT will be \"api/kernels\" and REST will be \='(:k1 ...).
 
 If there is an alist after the strings of PLIST that make up the
 ENDPOINT, the alist is interpreted as the query component of
 ENDPOINT.  So if PLIST looks like
 
-    '(\"api\" \"contents\" ((\"content\" . \"1\")) :k1 ...)
+    \='(\"api\" \"contents\" ((\"content\" . \"1\")) :k1 ...)
 
 The returned ENDPOINT will be \"api/contents?content=1\" and REST
-will be '(:k1 ...)."
+will be \='(:k1 ...)."
   (let (endpoint)
     (while (and plist (or (null (car plist))
                           (stringp (car plist))))
@@ -675,7 +675,7 @@ as no request data at all and NOT as an empty JSON dictionary.
 A call to this method can also look like
 
    \(jupyter-api-request client \"GET\"
-      \"api\" \"contents\" '((\"content\" . \"1\"))
+      \"api\" \"contents\" \='((\"content\" . \"1\"))
 
 In this case, the alist after the strings that make up the base
 endpoint, but before the rest of the non-strings elements of

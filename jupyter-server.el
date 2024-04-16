@@ -80,7 +80,7 @@ example, when using `savehist' you can add the following to your
 init file to persist the server names across Emacs sessions.
 
     \(savehist-mode\)
-    \(add-to-list 'savehist-additional-variables 'jupyter-server-kernel-names\).")
+    \(add-to-list \='savehist-additional-variables \='jupyter-server-kernel-names\).")
 
 (defun jupyter-server-cull-kernel-names (&optional server)
   "Ensure all names in `jupyter-server-kernel-names' map to existing kernels.

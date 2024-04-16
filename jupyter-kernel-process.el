@@ -33,7 +33,13 @@
   "Jupyter kernels as Emacs processes"
   :group 'jupyter)
 
+(declare-function jupyter-ioloop-start "jupyter-ioloop")
+(declare-function jupyter-ioloop-stop "jupyter-ioloop")
+(declare-function jupyter-send "jupyter-ioloop")
+(declare-function jupyter-ioloop-alive-p "jupyter-ioloop")
 (declare-function jupyter-channel-ioloop-set-session "jupyter-channel-ioloop")
+(declare-function ansi-color-apply "ansi-color")
+(declare-function jupyter-hb-pause "jupyter-zmq-channel")
 
 (defvar jupyter--kernel-processes '()
   "The list of kernel processes launched.

@@ -204,7 +204,7 @@ and define an event like
 Finally after adding other events and starting the ioloop we send
 an event like
 
-    (jupyter-send ioloop 'stop-channel :shell)
+    (jupyter-send ioloop \='stop-channel :shell)
 
 Then before the stop-channel event defined by
 `jupyter-ioloop-add-event' is called in the IOLOOP environment,
@@ -310,7 +310,7 @@ WARNING: A function added as a callback should be quoted to avoid
 sending closures to the IOLOOP.  An example:
 
     (jupyter-ioloop-add-callback ioloop
-      `(lambda () (zmq-prin1 'foo \"bar\")))"
+      `(lambda () (zmq-prin1 \='foo \"bar\")))"
   (cl-assert (functionp cb))
   (cl-callf append (oref ioloop callbacks) (list cb))
   (when (process-live-p (oref ioloop process))

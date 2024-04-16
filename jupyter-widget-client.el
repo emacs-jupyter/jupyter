@@ -102,13 +102,7 @@ callbacks."
       (_
        ;; Any other message the browser sends is meant for the kernel so do the
        ;; redirection and setup the callbacks
-       (let* ((msg-id (jupyter-message-id msg))
-              (msg-type (jupyter-message-type msg))
-              (channel (pcase (plist-get msg :channel)
-                         ("shell" :shell)
-                         ("iopub" :iopub)
-                         ("stdin" :stdin)
-                         (_ (error "Invalid channel"))))
+       (let* ((msg-type (jupyter-message-type msg))
               (content (jupyter-message-content msg)))
          (jupyter-run-with-client client
            (jupyter-sent

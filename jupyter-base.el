@@ -125,10 +125,10 @@ from a backing notebook server."
 
 (defvar jupyter--debug nil
   "When non-nil, some parts of Jupyter will emit debug statements.
-If the symbol 'message, messages received by a kernel will only
+If the symbol \='message, messages received by a kernel will only
 be handled by clients when the function
-`jupyter--debug-replay-requests' is called manually.  This
-allows for stepping through the code with Edebug.")
+`jupyter--debug-replay-requests' is called manually.  This allows
+for stepping through the code with Edebug.")
 
 (defvar jupyter--debug-request-queue nil)
 
@@ -215,7 +215,7 @@ lists with mime-type keywords as keys.
 
 A call to FUN looks like this
 
-    \(funcall fun MIME-TYPE '(:data D :metadata M))
+    \(funcall fun MIME-TYPE \='(:data D :metadata M))
 
 where D will be the data associated with MIME-TYPE in CONTENT and
 M is any associated metadata."

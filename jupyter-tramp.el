@@ -451,8 +451,7 @@ See `jupyter-tramp-get-file-model' for details on what a file model is."
           (host host)
           (user user)
           (localname localname)
-          (t (tramp-make-tramp-file-name
-              method user domain host port "")))))))
+          (t (tramp-make-tramp-file-name v "")))))))
 
 ;; Adapted from `tramp-handle-file-exists-p'
 (defun jupyter-tramp-file-exists-p (filename)
@@ -477,15 +476,10 @@ See `jupyter-tramp-get-file-model' for details on what a file model is."
       (let ((v (tramp-dissect-file-name name)))
         (if (jupyter-tramp-file-name-method-p (tramp-file-name-method v))
             (tramp-make-tramp-file-name
-             (tramp-file-name-method v)
-             (tramp-file-name-user v)
-             (tramp-file-name-domain v)
-             (tramp-file-name-host v)
-             (tramp-file-name-port v)
+             v
              (tramp-drop-volume-letter
               (tramp-run-real-handler
-               'expand-file-name (list (tramp-file-name-localname v) "/")))
-             (tramp-file-name-hop v))
+               'expand-file-name (list (tramp-file-name-localname v) "/"))))
           (let ((tramp-foreign-file-name-handler-alist
                  (remove (cons 'jupyter-tramp-file-name-p
                                'jupyter-tramp-file-name-handler)

@@ -160,7 +160,7 @@ Ex. Unsubscribe after consuming one message
 
     (jupyter-run-with-io (jupyter-publisher)
       (jupyter-subscribe sub)
-      (jupyter-publish (list 'topic \"today's news\")))"
+      (jupyter-publish (list \='topic \"today's news\")))"
   (declare (indent 0))
   (lambda (sub-content)
     (pcase sub-content
@@ -240,13 +240,13 @@ Ex. Publish the value 1 regardless of what is given to PUB-FN.
       (lambda (_)
         (jupyter-content 1)))
 
-Ex. Publish 'app if 'app is given to a publisher, nothing is sent
+Ex. Publish \='app if \='app is given to a publisher, nothing is sent
     to subscribers otherwise.  In this case, a publisher is a
     filter of the value given to it for publishing.
 
     (jupyter-publisher
       (lambda (value)
-        (if (eq value 'app)
+        (if (eq value \='app)
           (jupyter-content value))))"
   (declare (indent 0))
   (let ((subs (list 'subscribers))
@@ -268,7 +268,7 @@ subscription is canceled.
 Ex. Subscribe to a publisher and unsubscribe after receiving two
     messages.
 
-    (let* ((msgs '())
+    (let* ((msgs \='())
            (pub (jupyter-publisher))
            (sub (jupyter-subscriber
                   (lambda (n)
@@ -277,10 +277,10 @@ Ex. Subscribe to a publisher and unsubscribe after receiving two
       (jupyter-run-with-io pub
         (jupyter-subscribe sub))
       (cl-loop
-       for x in '(1 2 3)
+       for x in \='(1 2 3)
        do (jupyter-run-with-io pub
             (jupyter-publish x)))
-      (reverse msgs)) ; => '(1 2)"
+      (reverse msgs)) ; => \='(1 2)"
   (declare (indent 0))
   (lambda (io)
     (funcall io (list 'subscribe sub))

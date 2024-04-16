@@ -163,7 +163,7 @@ types.
 For example to prevent a client from calling its \"execute_reply\"
 handler:
 
-    (let ((jupyter-inhibit-handlers '(\"execute_reply\")))
+    (let ((jupyter-inhibit-handlers \='(\"execute_reply\")))
       (jupyter-send client \"execute_request\" ...)))
 
 In addition, if the first element of the list is the symbol

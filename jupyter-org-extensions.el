@@ -32,12 +32,13 @@
 (eval-when-compile (require 'subr-x))
 
 (declare-function org-babel-jupyter-initiate-session "ob-jupyter" (&optional session params))
+(declare-function org-babel-jupyter-session-initiated-p "ob-jupyter" (&optional session params))
 (declare-function org-babel-jupyter-src-block-session "ob-jupyter" ())
 (declare-function org-babel-jupyter-language-p "ob-jupyter" (lang))
 (declare-function org-in-src-block-p "org" (&optional inside))
 (declare-function org-narrow-to-subtree "org" ())
 (declare-function org-previous-line-empty-p "org" ())
-(declare-function org-show-context "org" (&optional key))
+(declare-function org-fold-show-context "org-fold" (&optional key))
 (declare-function org-next-line-empty-p "org" ())
 (declare-function org-element-context "org-element" (&optional element))
 (declare-function org-element-type "org-element" (element))
@@ -345,7 +346,7 @@ When BACKWARD is non-nil, jump to the previous block."
                (zerop (cl-decf count)))
      finally (goto-char origin)
      (user-error "No %s busy code blocks" (if backward "previous" "further"))))
-  (save-match-data (org-show-context)))
+  (save-match-data (org-fold-show-context)))
 
 ;;;###autoload
 (defun jupyter-org-previous-busy-src-block (arg)

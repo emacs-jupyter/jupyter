@@ -57,7 +57,7 @@
 (declare-function org-next-block "org" (arg &optional backward block-regexp))
 (declare-function org-at-table-p "org" ())
 (declare-function org-inside-LaTeX-fragment-p "org" ())
-(declare-function org-toggle-latex-fragment "org" (&optional arg))
+(declare-function org-latex-preview "org" (&optional arg))
 
 (defcustom jupyter-org-auto-connect t
   "Automatically establish a connection to a src-block session.
@@ -896,7 +896,7 @@ non-nil, return FILE with EXT as the extension.  Otherwise, return
 FILE."
   (cond
    ((null file) file)
-   ((image-type-from-file-name file) file)
+   ((image-supported-file-p file) file)
    ((not (null ext)) (concat file "." ext))
    (t file)))
 
@@ -962,7 +962,7 @@ will be inserted by calling `org-element-interpret-data' first.
 The returned result should be a representation of a MIME type's
 CONTENT. CONTENT is a property list like
 
-    '(:data DATA :metadata METADATA)
+    \='(:data DATA :metadata METADATA)
 
 that contains the DATA/METADATA of the mime type.  As an example,
 if MIME is `:text/markdown', then DATA should be the markdown
@@ -1496,7 +1496,7 @@ Assumes `point' is on the #+RESULTS keyword line."
     (when (eq (org-element-type context) 'paragraph)
       (save-excursion
         (goto-char (jupyter-org-element-begin-after-affiliated context))
-        (when (looking-at-p (format "^[ \t]*%s[ \t]*$" org-bracket-link-regexp))
+        (when (looking-at-p (format "^[ \t]*%s[ \t]*$" org-link-bracket-re))
           (setq context (org-element-context)))))
     context))
 
@@ -1636,7 +1636,7 @@ See `jupyter-org-toggle-latex'."
       (let ((ov (car (overlays-at (point)))))
         (unless (and ov (eq (overlay-get ov 'org-overlay-type)
                             'org-latex-overlay))
-          (org-toggle-latex-fragment))))))
+          (org-latex-preview))))))
 
 ;;;; Add result
 
