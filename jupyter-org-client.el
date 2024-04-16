@@ -215,7 +215,7 @@ e.g. `org-babel-get-src-block-info'."
             (when ansi-color-context-region
               (move-marker (cadr ansi-color-context-region) (point)))
             (ansi-color-apply-on-region beg end))
-          (pop-to-buffer (current-buffer)))
+          (jupyter-display-current-buffer-reuse-window))
       (jupyter-org--add-result req text))))
 
 ;;;; Errors
@@ -234,7 +234,8 @@ line in the previous source block.  See
 `jupyter-org-error-location'."
   (interactive)
   (when-let* ((loc (get-text-property (point) 'jupyter-error-loc)))
-    (pop-to-buffer (marker-buffer loc))
+    (with-current-buffer (marker-buffer loc)
+      (jupyter-display-current-buffer-reuse-window))
     (goto-char loc)))
 
 ;;;;; `jupyter-org-error-location'
@@ -302,7 +303,7 @@ to."
           (goto-char (point-min))
           (when silent-p
             (insert (jupyter-org--goto-error-string req) "\n\n"))
-          (pop-to-buffer (current-buffer))))
+          (jupyter-display-current-buffer-reuse-window)))
        (t
         ;; The keymap property in the string returned by
         ;; `jupyter-org--goto-error-string' gets removed by font-lock so ensure it
@@ -341,7 +342,7 @@ to."
     (if (jupyter-org-request-inline-block-p req)
         (jupyter-with-display-buffer "org-results" req
           (jupyter-insert data metadata)
-          (pop-to-buffer (current-buffer))
+          (jupyter-display-current-buffer-reuse-window)
           (set-window-point (get-buffer-window (current-buffer)) (point-min)))
       (jupyter-org--add-result req data metadata))))
 
