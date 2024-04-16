@@ -1671,9 +1671,7 @@ the return value for asynchronous Jupyter source blocks in
                       (run-hooks 'org-babel-after-execute-hook))))))))
 
 (defun jupyter-org--coalesce-stream-results (results)
-  "Return RESULTS with all contiguous stream results concatenated.
-All stream results are then turned into fixed-width or
-example-block elements."
+  "Return RESULTS with all contiguous stream results concatenated."
   (let (lst str)
     (while (consp results)
       (let ((value (pop results)))

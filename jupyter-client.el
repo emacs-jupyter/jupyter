@@ -307,9 +307,9 @@ method is called."
 ;;; Client local variables
 
 (defmacro jupyter-with-client-buffer (client &rest body)
-  "Run a form inside CLIENT's IOloop subprocess buffer.
-BODY is run with the current buffer set to CLIENT's IOloop
-subprocess buffer."
+  "Run a form inside CLIENT's internal state buffer.
+This buffer has all of the variables of CLIENT that were set
+using `jupyter-set' and `jupyter-add-hook'."
   (declare (indent 1))
   `(progn
      (cl-check-type ,client jupyter-kernel-client)

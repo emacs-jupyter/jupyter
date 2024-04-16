@@ -1970,7 +1970,7 @@ the `jupyter-current-client' local to the buffer."
       (jupyter-repl-interaction-mode))))
 
 (defun jupyter-repl-propagate-client (buffer &rest _)
-  "Propagate the `jupyter-current-client' to BUFFER.
+  "Set the `jupyter-current-client' in BUFFER.
 If BUFFER's value of the variable `jupyter-repl-interaction-mode'
 is nil and the buffer has the same `major-mode' as the
 `jupyter-current-client's language mode, set the buffer local
@@ -2083,7 +2083,7 @@ completing all of the above.")
 (defun jupyter-repl-server ()
   "Return a `jupyter-server' that can be used to launch REPLs with.
 The server is used by the `jupyter-run-repl' command to launch
-all of its REPLs if ZMQ based connections are not being used."
+all of its REPLs if `jupyter-use-zmq' is nil."
   (let ((server jupyter--repl-server))
     (if (and server
              (process-live-p
