@@ -1000,6 +1000,14 @@ If a match is not found, return nil."
        (alist-get :display (jupyter-org-request-block-params req)))
       jupyter-org-mime-types))
 
+(defun jupyter-org-element-p (obj)
+  "Return non-nil if OBJ is an Org element."
+  (let ((type (org-element-type obj)))
+    (and type
+         (or (eq type 'plain-text)
+             (memq type org-element-all-objects)
+             (memq type org-element-all-elements)))))
+
 (cl-defmethod jupyter-org-result ((req jupyter-org-request) plist &optional metadata)
   "For REQ, return a rendered form of a message PLIST.
 PLIST and METADATA have the same meaning as in
@@ -1023,29 +1031,28 @@ block parameters.
 If the source block parameters have a value for the :display
 header argument, like \"image/png html plain\", then loop over
 those mime types instead."
-  (or (and (stringp plist) plist)     ; Pass strings unaffected, Org
-                                        ; treats them as valid elements.
-      (let* ((mime-types (jupyter-org-display-mime-types req))
-             (params (jupyter-org-request-block-params req)))
-        (cl-assert plist json-plist)
-        ;; Push :file back into PARAMS if it was present in
-        ;; `org-babel-execute:jupyter'.  That function removes it because
-        ;; we don't want `org-babel-insert-result' to handle it.
-        (when (jupyter-org-request-file req)
-          (push (cons :file (jupyter-org-request-file req)) params))
-        (or (org-with-point-at
-                (jupyter-org-request-marker req)
-              (jupyter-map-mime-bundle mime-types
-                  (jupyter-normalize-data plist metadata)
-                (lambda (mime content)
-                  (jupyter-org-result mime content params))))
-            (let ((warning
-                   (format
-                    "%s did not return requested mimetype(s): %s"
-                    (jupyter-message-type (jupyter-request-last-message req))
-                    mime-types)))
-              (display-warning 'jupyter warning)
-              nil)))))
+  (if (jupyter-org-element-p plist) plist
+    (let* ((mime-types (jupyter-org-display-mime-types req))
+           (params (jupyter-org-request-block-params req)))
+      (cl-assert plist json-plist)
+      ;; Push :file back into PARAMS if it was present in
+      ;; `org-babel-execute:jupyter'.  That function removes it because
+      ;; we don't want `org-babel-insert-result' to handle it.
+      (when (jupyter-org-request-file req)
+        (push (cons :file (jupyter-org-request-file req)) params))
+      (or (org-with-point-at
+              (jupyter-org-request-marker req)
+            (jupyter-map-mime-bundle mime-types
+                (jupyter-normalize-data plist metadata)
+              (lambda (mime content)
+                (jupyter-org-result mime content params))))
+          (let ((warning
+                 (format
+                  "%s did not return requested mimetype(s): %s"
+                  (jupyter-message-type (jupyter-request-last-message req))
+                  mime-types)))
+            (display-warning 'jupyter warning)
+            nil)))))
 
 (cl-defmethod jupyter-org-result ((_mime (eql :application/vnd.jupyter.widget-view+json)) _content _params)
   ;; TODO: Clickable text to open up a browser
@@ -1634,31 +1641,23 @@ See `jupyter-org-toggle-latex'."
 ;;;; Add result
 
 (defun jupyter-org--add-result (req data &optional metadata)
-  (let ((org-element-p
-         (lambda (data)
-           (let ((type (org-element-type data)))
-             (or (eq type 'plain-text)
-                 (memq type org-element-all-objects)
-                 (memq type org-element-all-elements))))))
-    (pcase-let (((cl-struct jupyter-org-request async-p silent-p) req))
-      (when (equal silent-p "silent")
-        (message "%s" (if (funcall org-element-p data)
-                          (org-element-interpret-data data)
-                        (jupyter-map-mime-bundle (jupyter-org-display-mime-types req)
-                            (jupyter-normalize-data data metadata)
-                          (lambda (_mime content)
-                            (org-babel-script-escape (plist-get content :data)))))))
-      (cond
-       (async-p
-        (jupyter-org--clear-request-id req)
-        (unless silent-p
-          (jupyter-org--do-insert-result
-           req (if (funcall org-element-p data) data
-                 (jupyter-org-result req data metadata)))))
-       (t
-        (push (if (stringp data) data
-                (list :data data :metadata metadata))
-              (jupyter-org-request-results req)))))))
+  (pcase-let (((cl-struct jupyter-org-request async-p silent-p) req))
+    (when (equal silent-p "silent")
+      (message "%s" (if (jupyter-org-element-p data)
+                        (org-element-interpret-data data)
+                      (jupyter-map-mime-bundle (jupyter-org-display-mime-types req)
+                          (jupyter-normalize-data data metadata)
+                        (lambda (_mime content)
+                          (org-babel-script-escape (plist-get content :data)))))))
+    (cond
+     (async-p
+      (jupyter-org--clear-async-indicator req)
+      (unless silent-p
+        (jupyter-org--do-insert-result req (jupyter-org-result req data metadata))))
+     (t
+      (push (if (jupyter-org-element-p data) data
+              (list :data data :metadata metadata))
+            (jupyter-org-request-results req))))))
 
 ;;; org-babel functions
 ;; These are meant to be called by `org-babel-execute:jupyter'
