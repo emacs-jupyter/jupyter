@@ -374,7 +374,7 @@ to."
         (message "Code block evaluation complete.")
       (message "An error occurred when evaluating code block."))
     (when (jupyter-org-request-async-p req)
-      (jupyter-org--clear-request-id req)
+      (jupyter-org--clear-async-indicator req)
       (org-with-point-at (jupyter-org-request-marker req)
         (run-hooks 'org-babel-after-execute-hook)))))
 
@@ -1144,14 +1144,29 @@ new \"scalar\" result with the result of calling
                         (upcase (org-element-property :drawer-name context)))))
     (t (not (jupyter-org--wrappable-element-p context)))))
 
-(defun jupyter-org--clear-request-id (req)
-  "Delete the ID of REQ in the `org-mode' buffer if present."
+(defvar org-babel-jupyter-async-inline-results-pending-indicator)
+
+(defun jupyter-org--clear-async-indicator (req)
+  "Clear any async indicators of REQ in the buffer."
   (unless (jupyter-org-request-id-cleared-p req)
     (org-with-point-at (jupyter-org-request-marker req)
-      (when (search-forward (jupyter-request-id req) nil t)
-        (delete-region (line-beginning-position)
-                       (1+ (line-end-position)))
-        (setf (jupyter-org-request-id-cleared-p req) t)))))
+      (if (jupyter-org-request-inline-block-p req)
+          (when-let* ((pos (org-babel-where-is-src-block-result)))
+            (goto-char pos)
+            (when-let* ((result (org-element-context))
+                        (args (org-element-property :args result))
+                        (arg (and (= (length args) 1) (car args))))
+              (when (equal
+                     (concat "="
+                             org-babel-jupyter-async-inline-results-pending-indicator
+                             "=")
+                     arg)
+                (jupyter-org--do-insert-result req "")
+                (setf (jupyter-org-request-id-cleared-p req) t))))
+        (when (search-forward (jupyter-request-id req) nil t)
+          (delete-region (line-beginning-position)
+                         (1+ (line-end-position)))
+          (setf (jupyter-org-request-id-cleared-p req) t))))))
 
 (defun jupyter-org-element-begin-after-affiliated (element)
   "Return the beginning position of ELEMENT after any affiliated keywords."
