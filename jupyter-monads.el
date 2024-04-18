@@ -187,19 +187,18 @@ those subscribers that cancel their subscription.
 Errors signaled by a subscriber are demoted to messages."
   (pcase (funcall pub-fn content)
     ((and `(content ,_) sub-content)
-     (while subs
-       ;; NOTE: The first element of SUBS is ignored here so that
-       ;; the pointer to the subscriber list remains the same for
-       ;; each publisher, even when subscribers are being
-       ;; destructively removed.
-       (when (cadr subs)
-         (with-demoted-errors "Jupyter: I/O subscriber error: %S"
-           ;; Publish subscriber content to subscribers
-           (pcase (funcall (cadr subs) sub-content)
-             ;; Destructively remove the subscriber when it returns an
-             ;; unsubscribe value.
-             ('(unsubscribe) (setcdr subs (cddr subs))))))
-       (pop subs))
+     ;; NOTE: The first element of SUBS is ignored here so that the
+     ;; pointer to the subscriber list remains the same for each
+     ;; publisher, even when subscribers are being destructively
+     ;; removed.
+     (while (cadr subs)
+       (with-demoted-errors "Jupyter: I/O subscriber error: %S"
+         ;; Publish subscriber content to subscribers
+         (pcase (funcall (cadr subs) sub-content)
+           ;; Destructively remove the subscriber when it returns an
+           ;; unsubscribe value.
+           ('(unsubscribe) (setcdr subs (cddr subs)))
+           (_ (pop subs)))))
      nil)
     ;; Cancel a publisher's subscription to another publisher.
     ('(unsubscribe) '(unsubscribe))
