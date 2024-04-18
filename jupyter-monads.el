@@ -179,26 +179,41 @@ result of this function to cancel its subscription with the
 publisher providing content."
   (list 'unsubscribe))
 
+(define-error 'jupyter-publisher-subscribers-had-errors
+  "Publisher's subscribers had errors")
+
 (defun jupyter-pseudo-bind-content (pub-fn content subs)
   "Apply PUB-FN on submitted CONTENT to produce published content.
 Call each subscriber in SUBS on the published content.  Remove
 those subscribers that cancel their subscription.
 
-Errors signaled by a subscriber are demoted to messages."
+When a subscriber signals an error it is noted and the remaining
+subscribers are processed.  After processing all subscribers, a
+`jupyter-publisher-errors' error is raised with the data being
+the list of errors raised when calling subscribers.  Note, when a
+subscriber errors, it remains in the list of subscribers."
   (pcase (funcall pub-fn content)
     ((and `(content ,_) sub-content)
      ;; NOTE: The first element of SUBS is ignored here so that the
      ;; pointer to the subscriber list remains the same for each
      ;; publisher, even when subscribers are being destructively
      ;; removed.
-     (while (cadr subs)
-       (with-demoted-errors "Jupyter: I/O subscriber error: %S"
-         ;; Publish subscriber content to subscribers
-         (pcase (funcall (cadr subs) sub-content)
-           ;; Destructively remove the subscriber when it returns an
-           ;; unsubscribe value.
-           ('(unsubscribe) (setcdr subs (cddr subs)))
-           (_ (pop subs)))))
+     (let ((errors nil))
+       (while (cadr subs)
+         (condition-case err
+             ;; Publish subscriber content to subscribers
+             (pcase (funcall (cadr subs) sub-content)
+               ;; Destructively remove the subscriber when it returns an
+               ;; unsubscribe value.
+               ('(unsubscribe) (setcdr subs (cddr subs)))
+               (_ (pop subs)))
+           (error
+            ;; Skip over any subscribers that raised an error.
+            (pop subs)
+            (push err errors))))
+       ;; Inform about the errors.
+       (when errors
+         (signal 'jupyter-publisher-subscribers-had-errors errors)))
      nil)
     ;; Cancel a publisher's subscription to another publisher.
     ('(unsubscribe) '(unsubscribe))
