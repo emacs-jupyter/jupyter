@@ -1,3 +1,17 @@
+* master
+
+- Prevent multiple executions of the same source block as the source
+  block is being run.
+
+- Add a new customization =jupyter-org-queue-requests= which, when
+  non-nil, does client-side queuing of source block execute requests
+  and aborts any queued requests when one that has been sent raises an error.
+
+- In Org, add an overlay to the source block regions as the source
+  blocks are being executed.  Block users from attempting to edit the
+  source block while it is being edited, similar to how source blocks
+  can't be edited when an =org-src= edit buffer is editing its contents. 
+
 * v1.0
 
 - The results of executing named Jupyter source blocks can now be
