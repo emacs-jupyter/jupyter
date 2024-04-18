@@ -262,6 +262,77 @@
         (should (memq req1 unsubed-reqs))
         (should (equal initial-msgs (reverse client-msgs)))))))
 
+(ert-deftest jupyter-subscriber-error ()
+  :tags '(monad)
+  ;; Test that a subscriber that raises an error just gets skipped
+  ;; over, not removed.
+  (let ((called1 0)
+        (called2 0))
+    (let ((sub1 (jupyter-subscriber
+                  (lambda (msg)
+                    (setq called1 (1+ called1)))))
+          (sub2 (jupyter-subscriber
+                  (lambda (msg)
+                    (setq called2 (1+ called2))
+                    (error "Subscriber error"))))
+          (pub (jupyter-publisher #'jupyter-content)))
+      (jupyter-run-with-io pub
+        (jupyter-do
+          (jupyter-subscribe sub2)
+          (jupyter-subscribe sub1)))
+      (should-error
+       (jupyter-run-with-io pub
+         (jupyter-publish 'msg)))
+      (should (eq called1 1))
+      (should (eq called2 1))
+      (should-error
+       (jupyter-run-with-io pub
+         (jupyter-publish 'msg)))
+      (should (eq called1 2))
+      (should (eq called2 2))
+      (should-error
+       (jupyter-run-with-io pub
+         (jupyter-publish 'msg)))
+      (should (eq called1 3))
+      (should (eq called2 3)))))
+
+(ert-deftest jupyter-subscriber-skipping ()
+  :tags '(monad)
+  ;; Test that subscribers evaluation doesn't get skipped whenever a
+  ;; previous subscriber unsubscribes.
+  (let* ((count1 0)
+         (count2 0)
+         (count3 0)
+         (sub1
+          (jupyter-subscriber
+            (lambda (msg)
+              (setq count1 (1+ count1)))))
+         (sub2
+          (jupyter-subscriber
+            (lambda (msg)
+              (setq count2 (1+ count2))
+              (jupyter-unsubscribe))))
+         (sub3
+          (jupyter-subscriber
+            (lambda (msg)
+              (setq count3 (1+ count3)))))
+         (pub (jupyter-publisher #'jupyter-content)))
+    (jupyter-run-with-io pub
+      (jupyter-do
+        (jupyter-subscribe sub3)
+        (jupyter-subscribe sub2)
+        (jupyter-subscribe sub1)))
+    (jupyter-run-with-io pub
+      (jupyter-publish 'msg))
+    (should (eq count1 1))
+    (should (eq count2 1))
+    (should (eq count3 1))
+    (jupyter-run-with-io pub
+      (jupyter-publish 'msg))
+    (should (eq count1 2))
+    (should (eq count2 1))
+    (should (eq count3 2))))
+
 ;; - `seq-elt'
 ;; - `seq-length'
 ;; - `seq-do'
