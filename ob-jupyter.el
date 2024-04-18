@@ -240,6 +240,16 @@ return nil."
       (insert (org-babel-expand-body:jupyter (org-babel-chomp body) params))
       (current-buffer))))
 
+(defvar org-babel-jupyter-resolving-reference-p nil
+  "Non-nil if a reference is being resolved.")
+
+(defun org-babel-jupyter--indicate-resolve (&rest args)
+  "Set `org-babel-jupyter-resolving-referece-p', apply ARGS."
+  (let ((org-babel-jupyter-resolving-reference-p t))
+    (apply args)))
+
+(advice-add #'org-babel-ref-resolve :around #'org-babel-jupyter--indicate-resolve)
+
 ;;;; Initializing session clients
 
 (cl-defstruct (org-babel-jupyter-session

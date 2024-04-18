@@ -128,26 +128,15 @@ See also the docstring of `org-image-actual-width' for more details."
   async-p
   overlay)
 
+(defvar org-babel-jupyter-resolving-reference-p)
+
 (defun jupyter-org-execute-async-p (params)
   "Return non-nil if an execution should be asynchronous based on PARAMS.
 
 PARAMS are the source block arguments as returned by,
 e.g. `org-babel-get-src-block-info'."
   (and (member (alist-get :async params) '("yes" nil))
-       ;; When computing results but not doing anything with them, it
-       ;; typically signifies that a reference to this source block is
-       ;; being resolved (`org-babel-ref-resolve').
-       ;;
-       ;; TODO Although if a source block had
-       ;;
-       ;;     :results none :async yes
-       ;;
-       ;; as header arguments it would still make sense to execute it
-       ;; asynchronously when executing it manually instead of through
-       ;; a reference so there needs to be a way to determine if an
-       ;; execution of a source block is occurring due to resolution
-       ;; of a reference.
-       (not (member "none" (alist-get :result-params params)))))
+       (not org-babel-jupyter-resolving-reference-p)))
 
 ;;; `jupyter-kernel-client' interface
 
