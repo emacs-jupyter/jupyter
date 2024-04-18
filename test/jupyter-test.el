@@ -3048,6 +3048,60 @@ print(2)"
        (forward-line)
        (should (looking-at-p ": 6"))))))
 
+(ert-deftest org-babel-src-block-queuing  ()
+  :tags '(org)
+  (let ((jupyter-org-queue-requests t)
+        (src (apply #'format "\
+* Tree
+
+#+BEGIN_SRC jupyter-python :session %s :async yes
+1
+#+END_SRC
+
+#+BEGIN_SRC jupyter-python :session %s :async yes
+raise Exception(\"This is an error\")
+#+END_SRC
+
+#+BEGIN_SRC jupyter-python :session %s :async yes
+3
+#+END_SRC
+
+#+BEGIN_SRC jupyter-python :session %s :async yes
+4
+#+END_SRC
+
+#+BEGIN_SRC jupyter-python :session %s :async yes
+5
+#+END_SRC
+
+#+BEGIN_SRC jupyter-python :session %s :async yes
+6
+#+END_SRC
+"
+                    (cl-loop repeat 6 collect jupyter-org-test-session))))
+    (jupyter-org-test
+     (insert src)
+     (let ((check-result
+            (lambda (result)
+              (let ((pos (org-babel-where-is-src-block-result)))
+                (save-excursion
+                  (should pos)
+                  (goto-char pos)
+                  (forward-line)
+                  (should (equal (buffer-substring
+                                  (line-beginning-position)
+                                  (line-end-position))
+                                 result)))))))
+       (org-babel-execute-subtree)
+       (while (jupyter-org-request-at-point)
+         (sleep-for 0.1))
+       (funcall check-result "")
+       (org-previous-block 1)
+       (org-babel-execute-src-block)
+       (while (jupyter-org-request-at-point)
+         (sleep-for 0.1))
+       (funcall check-result ": 6")))))
+
 ;; Local Variables:
 ;; byte-compile-warnings: (unresolved obsolete lexical)
 ;; eval: (and (functionp 'aggressive-indent-mode) (aggressive-indent-mode -1))

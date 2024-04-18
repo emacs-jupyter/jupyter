@@ -72,6 +72,26 @@ session by, for example, executing a src-block."
   :group 'ob-jupyter
   :type 'boolean)
 
+(defcustom jupyter-org-queue-requests nil
+  "Whether or not source block evaluations should be queued.
+When this variable is nil and, for example, multiple source
+blocks are executed in rapid succession the underlying
+\"execute_request\" messages are sent to the kernel immediately
+and are queued on the kernel side so that when one of the source
+blocks raises an error, the kernel will typically just execute
+the next \"execute_request\" message queued up so the effect is
+that source blocks that come after the failed one are executed.
+Some may find this behavior undesirable.
+
+Instead, when this variable is non-nil, the \"execute_request\"
+messages of the source blocks are queued on the client side and
+whenever one of the source blocks raises an error, all of the
+queued \"execute_request\" messages are aborted and don't get
+sent to the kernel so the effect is that source blocks that come
+after the failed one are not executed."
+  :group 'ob-jupyter
+  :type 'boolean)
+
 (defcustom jupyter-org-resource-directory "./.ob-jupyter/"
   "Directory used to store automatically generated image files.
 See `jupyter-org-image-file-name'."
@@ -111,7 +131,16 @@ See also the docstring of `org-image-actual-width' for more details."
   "MIME types handled by Jupyter Org.")
 
 (defclass jupyter-org-client (jupyter-repl-client)
-  ())
+  ((most-recent-request
+    :type (or jupyter-request null)
+    :initform nil
+    :initarg :most-recent-request
+    :documentation "The most recently sent request.")
+   (last-queued-request
+    :type (or jupyter-request null)
+    :initform nil
+    :initarg :last-queued-request
+    :documentation "The last queued request.")))
 
 (cl-defstruct (jupyter-org-request
                (:include jupyter-request)
@@ -399,6 +428,96 @@ to."
       (jupyter-org--clear-async-indicator req)
       (org-with-point-at (jupyter-org-request-marker req)
         (run-hooks 'org-babel-after-execute-hook)))))
+
+;;; Queueing requests
+
+(defun jupyter-org-abort (req)
+  "Abort REQ.
+Set the request as being idle.  Remove any indication that REQ is
+a running execute_request from the Org buffer.  Publish an abort
+message down the chain of subscribers to the REQ's message
+publisher to indicate that any subsequent, queued, requests
+should also be aborted."
+  (setf (jupyter-request-idle-p req) t)
+  (let ((client (jupyter-request-client req)))
+    (when (eq (oref client last-queued-request) req)
+      (oset client last-queued-request nil)))
+  (jupyter-org--remove-overlay req)
+  (jupyter-org--clear-async-indicator req)
+  (let ((marker (jupyter-org-request-marker req)))
+    (message (format "Source block execution in %s at position %s canceled"
+                     (buffer-name (marker-buffer marker))
+                     (marker-position marker))))
+  (with-demoted-errors "Error while aborting subscribers: %S"
+    (jupyter-run-with-io
+        (jupyter-request-message-publisher req)
+      ;; Propagate the abort down the chain of queued requests.
+      (jupyter-publish 'abort)))
+  (jupyter-unsubscribe))
+
+(defun jupyter-org-maybe-queued (dreq)
+  "Return a monadic value that either sends or continues to delay DREQ.
+DREQ is an already delayed request, as returned by
+`jupyter-request' and friends.  When the value is bound to a
+client, using e.g. `jupyter-run-with-client', send DREQ if there
+are no queued requests otherwise queue DREQ.  The value returns
+the unboxed request contained in DREQ.
+
+If the variable `jupyter-org-queue-requests' is nil, just send
+the request immediately instead of attempting to queue it."
+  (if (not jupyter-org-queue-requests)
+      (jupyter-sent dreq)
+    (jupyter-mlet* ((client (jupyter-get-state))
+                    (req dreq))
+      (let* ((send
+              (lambda (req)
+                (jupyter-run-with-client client
+                  (jupyter-mlet* ((req (jupyter-sent
+                                        (jupyter-return req))))
+                    (oset client most-recent-request req)
+                    (jupyter-run-with-io
+                        (jupyter-request-message-publisher req)
+                      (jupyter-subscribe
+                        (jupyter-subscriber
+                          (lambda (msg)
+                            (when (or (eq msg 'abort)
+                                      (equal (jupyter-message-type msg) "execute_reply"))
+                              (when (eq (oref client most-recent-request) req)
+                                (oset client most-recent-request nil))
+                              (jupyter-unsubscribe))))))
+                    (when (eq (oref client last-queued-request) req)
+                      (oset client last-queued-request nil))
+                    (jupyter-return req)))))
+             (queue
+              ;; Subscribe REQ to the message publisher of QREQ such that
+              ;; REQ is sent or aborted when QREQ receives an
+              ;; execute_reply.
+              (lambda (qreq req)
+                (let ((pub (jupyter-request-message-publisher qreq)))
+                  (jupyter-run-with-io pub
+                    (jupyter-subscribe
+                      (jupyter-subscriber
+                        (lambda (msg)
+                          (if (eq msg 'abort)
+                              (jupyter-org-abort req)
+                            (pcase (jupyter-message-type msg)
+                              ("execute_reply"
+                               (jupyter-with-message-content msg (status)
+                                 (if (equal status "ok")
+                                     (funcall send req)
+                                   (jupyter-org-abort req)))
+                               (jupyter-unsubscribe))))))))))))
+        (let ((mreq (oref client most-recent-request)) qreq)
+          (cond
+           ((null mreq)
+            (funcall send req))
+           ((setq qreq (oref client last-queued-request))
+            (funcall queue qreq req)
+            (oset client last-queued-request req))
+           (t
+            (funcall queue mreq req)
+            (oset client last-queued-request req)))
+          (jupyter-return req))))))
 
 ;;; Completion in code blocks
 

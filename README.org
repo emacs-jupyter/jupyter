@@ -581,6 +581,18 @@ This behavior can be suppressed by setting =jupyter-org-auto-connect=
 to =nil=.  In this case, a connection is attempted upon executing a
 source block, for example.
 
+*** Enable client-side queuing of requests
+
+If the customizable variable =jupyter-org-queue-requests= is non-nil,
+then perform client side queuing of source block execute requests.
+This means that when multiple requests are made, for example by
+executing a subtree, the requests are queued locally in Emacs instead
+of sending all the requests immediately to the kernel as would happen
+when =:async yes= is specified on all the source blocks.  It is only
+when one request finishes that the next is sent.  In addition, if any
+request fails all the queued requests that are meant to come after it
+are aborted and do not get sent to the kernel.
+
 ** Kernel/notebook server
 *** Managing live kernels
 

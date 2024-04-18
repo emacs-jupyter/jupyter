@@ -400,6 +400,8 @@ the callbacks."
     (jupyter-publisher
       (lambda (msg)
         (pcase (jupyter-message-type msg)
+          ;; Send what doesn't appear to be a message as is.
+          ((pred null) (jupyter-content msg))
           ;; A status message after a request goes idle means there is
           ;; a new request and there will, theoretically, be no more
           ;; messages for the idle one.
@@ -466,8 +468,10 @@ list, represents."
             (jupyter-subscribe
               (jupyter-subscriber
                 (lambda (msg)
-                  (let ((channel (plist-get msg :channel)))
-                    (jupyter-handle-message client channel msg)))))))
+                  ;; Only handle what looks to be a Jupyter message.
+                  (when (jupyter-message-type msg)
+                    (let ((channel (plist-get msg :channel)))
+                      (jupyter-handle-message client channel msg))))))))
         (cons req client)))))
 
 (provide 'jupyter-monads)
