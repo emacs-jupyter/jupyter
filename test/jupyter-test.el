@@ -1901,8 +1901,14 @@ next(x"))))))
 
 (ert-deftest jupyter-run-repl-issue-371 ()
   :tags '(repl)
-  (jupyter-test-with-some-kernelspecs '("foo_qux" "qux" "bar_qux")
-    (let ((client (jupyter-run-repl "qux")))
+  (jupyter-test-with-some-kernelspecs
+   '("foo_qux" "qux" "bar_qux")
+   ;; FIXME Should remove the usage of `jupyter-use-zmq', the
+   ;; kernelspec is searched for in the kernelspecs of the notebook
+   ;; server without this, but since the notebook server is already up
+   ;; by the time this test runs, it won't find the kernelspec.
+   (let* ((jupyter-use-zmq t)
+          (client (jupyter-run-repl "qux")))
       (unwind-protect
           (should (equal (jupyter-kernelspec-name
                           (jupyter-kernel-action client

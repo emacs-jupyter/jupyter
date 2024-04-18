@@ -365,14 +365,14 @@ variable."
 
 The only difference between them will be their names."
   (let ((argv (vector "python" "-m" "ipykernel_launcher" "-f" "{connection_file}"))
-	(save-silently t))
+        (save-silently t))
     (dolist (name kernel-names)
       (let ((kernel-dir (format "%s/kernels/%s" data-dir name)))
-	    (make-directory kernel-dir t)
-	(append-to-file (json-encode
-			 `(:argv ,argv :display_name ,name :language "python"))
-			nil
-			(format "%s/kernel.json" kernel-dir))))))
+        (make-directory kernel-dir t)
+        (append-to-file (json-encode
+                         `(:argv ,argv :display_name ,name :language "python"))
+                        nil
+                        (format "%s/kernel.json" kernel-dir))))))
 
 (defun jupyter-test-ipython-kernel-version (spec)
   "Return the IPython kernel version string corresponding to SPEC.
