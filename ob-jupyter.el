@@ -529,6 +529,11 @@ These parameters are handled internally."
   "Execute BODY according to PARAMS.
 BODY is the code to execute for the current Jupyter `:session' in
 the PARAMS alist."
+  (when org-babel-current-src-block-location
+    (save-excursion
+      (goto-char org-babel-current-src-block-location)
+      (when (jupyter-org-request-at-point)
+        (user-error "Source block currently being executed"))))
   (let* ((result-params (assq :result-params params))
          (async-p (jupyter-org-execute-async-p params)))
     (when (member "replace" result-params)

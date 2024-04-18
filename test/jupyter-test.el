@@ -3102,6 +3102,21 @@ raise Exception(\"This is an error\")
          (sleep-for 0.1))
        (funcall check-result ": 6")))))
 
+(ert-deftest org-babel-prevent-multiple-executions  ()
+  :tags '(org q)
+  (let ((src (format "\
+#+BEGIN_SRC jupyter-python :session %s :async yes
+1
+#+END_SRC
+"
+                    jupyter-org-test-session)))
+    (jupyter-org-test
+     (insert src)
+     (org-previous-block 1)
+     (org-babel-execute-src-block)
+     (should (jupyter-org-request-at-point))
+     (should-error (org-babel-execute-src-block)))))
+
 ;; Local Variables:
 ;; byte-compile-warnings: (unresolved obsolete lexical)
 ;; eval: (and (functionp 'aggressive-indent-mode) (aggressive-indent-mode -1))
