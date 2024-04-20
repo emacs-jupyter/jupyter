@@ -593,6 +593,9 @@ when one request finishes that the next is sent.  In addition, if any
 request fails all the queued requests that are meant to come after it
 are aborted and do not get sent to the kernel.
 
+To turn client side queuing on or off you
+can =M-x jupyter-org-toggle-request-queuing=.
+
 ** Kernel/notebook server
 *** Managing live kernels
 

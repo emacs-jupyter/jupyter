@@ -431,6 +431,13 @@ to."
 
 ;;; Queueing requests
 
+;;;###autoload
+(defun jupyter-org-toggle-request-queuing ()
+  "Toggle on or off client side queuing."
+  (interactive)
+  (setq jupyter-org-queue-requests
+        (not jupyter-org-queue-requests)))
+
 (defun jupyter-org-abort (req)
   "Abort REQ.
 Set the request as being idle.  Remove any indication that REQ is
