@@ -645,10 +645,10 @@ return the value of KEY in MSG."
 The returned time has the same form as returned by
 `current-time'."
   (let* ((header (jupyter-message-header msg))
-         (date (plist-member header :data)))
-    (when (stringp (car date))
-      (setcar date (jupyter-decode-time (car date))))
-    (car date)))
+         (date (plist-member header :date)))
+    (when (stringp (cadr date))
+      (setcar (cdr date) (jupyter-decode-time (cadr date))))
+    (cadr date)))
 
 (defsubst jupyter-message-get (msg key)
   "Get the value in MSG's `jupyter-message-content' that corresponds to KEY."
