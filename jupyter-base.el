@@ -751,7 +751,7 @@ TIME is assumed to have the same form as the return value of
           (format "%s%d hours%s"
                   (if past "" "in ")
                   hours
-                  (if hours " ago" ""))))
+                  (if past " ago" ""))))
        ((not (zerop minutes))
         (if (= minutes 1)
             (if past "a minute ago"
