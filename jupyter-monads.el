@@ -182,16 +182,17 @@ publisher providing content."
 (define-error 'jupyter-publisher-subscribers-had-errors
   "Publisher's subscribers had errors")
 
-(defun jupyter-pseudo-bind-content (pub-fn content subs)
+(defun jupyter-distribute-content (pub-fn content subs)
   "Apply PUB-FN on submitted CONTENT to produce published content.
 Call each subscriber in SUBS on the published content.  Remove
 those subscribers that cancel their subscription.
 
 When a subscriber signals an error it is noted and the remaining
 subscribers are processed.  After processing all subscribers, a
-`jupyter-publisher-errors' error is raised with the data being
-the list of errors raised when calling subscribers.  Note, when a
-subscriber errors, it remains in the list of subscribers."
+`jupyter-publisher-subscribers-had-errors' error is raised with
+the data being the list of errors raised when calling
+subscribers.  Note, when a subscriber errors, it remains in the
+list of subscribers."
   (pcase (funcall pub-fn content)
     ((and `(content ,_) sub-content)
      ;; NOTE: The first element of SUBS is ignored here so that the
@@ -269,7 +270,7 @@ Ex. Publish \='app if \='app is given to a publisher, nothing is sent
     ;; or a value representing content to send to subscribers.
     (lambda (pub-value)
       (pcase (car-safe pub-value)
-        ('content (jupyter-pseudo-bind-content pub-fn (cadr pub-value) subs))
+        ('content (jupyter-distribute-content pub-fn (cadr pub-value) subs))
         ('subscribe (cl-pushnew (cadr pub-value) (cdr subs)))
         (_ (error "Unhandled publisher content: %s" pub-value))))))
 
