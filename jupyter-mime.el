@@ -205,23 +205,14 @@ value of t is added to render the escape sequences invisible.
 Also, the `ansi-color-apply-face-function' is hard-coded to a
 custom function that prepends to the face property of the text
 and also sets the FACE-PROP to the prepended face, if FACE-PROP
-is nil it defaults to `font-lock-face'.
-
-For convenience, a jupyter-invisible property is also added with
-a value of t.  This is mainly for modes like `org-mode' which
-strip invisible properties during fontification.  In such cases,
-the jupyter-invisible property can act as an alias to the
-invisible property by adding it to `char-property-alias-alist'."
-  (cl-letf (((symbol-function #'delete-region)
-             (lambda (beg end)
-               (add-text-properties beg end '(invisible t jupyter-invisible t))))
-            (ansi-color-apply-face-function
+is nil it defaults to `font-lock-face'. "
+  (cl-letf ((ansi-color-apply-face-function
              (lambda (beg end face)
                (when face
                  (setq face (list face))
                  (font-lock-prepend-text-property beg end 'face face)
                  (put-text-property beg end (or face-prop 'font-lock-face) face)))))
-    (ansi-color-apply-on-region begin end)))
+    (ansi-color-apply-on-region begin end t)))
 
 ;;; `jupyter-insert' method
 
