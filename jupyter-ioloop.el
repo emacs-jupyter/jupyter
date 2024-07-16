@@ -50,6 +50,7 @@
 
 (require 'jupyter-base)
 (require 'zmq)
+(eval-and-compile (zmq-load))
 (eval-when-compile (require 'subr-x))
 
 (defvar jupyter-ioloop-poller nil

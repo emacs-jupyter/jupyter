@@ -36,6 +36,7 @@
 
 (require 'jupyter-messages)
 (require 'zmq)
+(eval-and-compile (zmq-load))
 (require 'jupyter-channel)
 (eval-when-compile (require 'subr-x))
 
