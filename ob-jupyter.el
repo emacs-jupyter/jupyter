@@ -30,6 +30,11 @@
   "Jupyter integration with org-mode"
   :group 'org-babel)
 
+;; This package does not use TRAMP directly, but it inlines
+;; `jupyter-tramp-file-name-p' at byte-compile time. Therefore, it may
+;; be loaded in a context where tramp is needed but not yet loaded.
+(autoload 'tramp-tramp-file-p "tramp" "Return t if NAME is a string with Tramp file name syntax." nil nil)
+
 (require 'jupyter-env)
 (require 'jupyter-kernelspec)
 (require 'jupyter-org-client)
