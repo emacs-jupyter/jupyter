@@ -195,17 +195,18 @@ send the current line for evaluation by the client's kernel.
 When =jupyter-repl-interaction-mode= is enabled, the following
 keybindings are available
 
-| Key binding | Command                       |
-|-------------+-------------------------------|
-| =C-M-x=       | =jupyter-eval-defun=            |
-| =M-i=         | =jupyter-inspect-at-point=      |
-| =C-c C-b=     | =jupyter-eval-buffer=           |
-| =C-c C-c=     | =jupyter-eval-line-or-region=   |
-| =C-c C-i=     | =jupyter-repl-interrupt-kernel= |
-| =C-c C-r=     | =jupyter-repl-restart-kernel=   |
-| =C-c C-s=     | =jupyter-repl-scratch-buffer=   |
-| =C-c C-o=     | =jupyter-eval-remove-overlays=  |
-| =C-c M-:=     | =jupyter-eval-string=           |
+| Key binding | Command                         |
+|-------------+---------------------------------|
+| =C-M-x=     | =jupyter-eval-defun=            |
+| =M-i=       | =jupyter-inspect-at-point=      |
+| =C-c C-d=   | =jupyter-describe=              |
+| =C-c C-b=   | =jupyter-eval-buffer=           |
+| =C-c C-c=   | =jupyter-eval-line-or-region=   |
+| =C-c C-i=   | =jupyter-repl-interrupt-kernel= |
+| =C-c C-r=   | =jupyter-repl-restart-kernel=   |
+| =C-c C-s=   | =jupyter-repl-scratch-buffer=   |
+| =C-c C-o=   | =jupyter-eval-remove-overlays=  |
+| =C-c M-:=   | =jupyter-eval-string=           |
 
 **** Integration with =emacsclient=
 
