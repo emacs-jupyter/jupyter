@@ -170,6 +170,16 @@ about DEPTH."
   :type 'integer
   :group 'jupyter-repl)
 
+(defcustom jupyter-repl-isearch-override t
+  "Override isearch behavior in REPL buffers.
+If non-nil, whenever a new REPL buffer is created, the isearch behavior will
+be overriden so that instead of searching the contents of the buffer, we
+search over the REPL command history instead.
+
+Can set this variable to nil in order to keep the standard isearch behavior."
+  :type 'boolean
+  :group 'jupyter-repl)
+
 ;;; Implementation
 
 (defclass jupyter-repl-client (jupyter-widget-client jupyter-kernel-client)
@@ -1715,7 +1725,8 @@ Return the buffer switched to."
     (add-hook 'pre-redisplay-functions 'jupyter-repl-preserve-window-margins nil t)
     ;; Initialize the REPL
     (jupyter-repl-initialize-fontification)
-    (jupyter-repl-isearch-setup)
+    (if jupyter-repl-isearch-override
+        (jupyter-repl-isearch-setup))
     (jupyter-repl-sync-execution-state)
     (jupyter-repl-interaction-mode)
     ;; Do this last so that it runs before any other `change-major-mode-hook's.
