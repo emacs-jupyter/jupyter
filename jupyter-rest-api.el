@@ -288,7 +288,14 @@ this will cause errors in the URL library."
   ;; Don't use `jupyter-api-request' here to avoid an infinite authentication
   ;; loop since this function is used during authentication.
   (let (jupyter-api-request-headers jupyter-api-request-data)
-    (jupyter-api-http-request (oref client url) "login" "GET")))
+    (or
+     ;; Already have the xsrf cookie, no need to request the login
+     ;; page to receive it as a side effect.
+     (jupyter-api-xsrf-header-from-cookies (oref client url))
+     ;; FIXME: It is not reliable to attempt to get the xsrf cookie as
+     ;; a side effect of requesting the login page since it may not
+     ;; always exist.
+     (jupyter-api-http-request (oref client url) "login" "GET"))))
 
 (defun jupyter-api-url-cookies (url)
   "Return the list of cookies for URL."
@@ -441,18 +448,6 @@ Return the modified PLIST."
                       t))))
          ,@body))))
 
-(defun jupyter-api--verify-login (status)
-  (let ((err (plist-get status :error)))
-    (unless
-        (or (not err)
-            ;; Handle HTTP 1.0.  When given a POST request, 302 redirection
-            ;; doesn't change the method to GET dynamically.  On the Jupyter
-            ;; notebook, the redirected page expects a GET and will return
-            ;; 405 (invalid method).
-            (and (plist-get status :redirect)
-                 (= (nth 2 err) 405)))
-      (signal 'jupyter-api-login-failed err))))
-
 (defun jupyter-api-login (client)
   "Attempt to login to the server using CLIENT.
 Login is attempted by sending a GET request to CLIENT's login
@@ -468,25 +463,35 @@ raise an error.
 
 If the login attempt failed, raise a `jupyter-api-login-failed'
 error with the data being the error received by `url-retrieve'."
-  (jupyter-api--without-url-http-authentication-handler
-    (condition-case err
-        (let (status done)
-          (jupyter-api-url-request
-           (concat (oref client url) "/login")
-           (lambda (s &rest _)
-             (url-mark-buffer-as-dead (current-buffer))
-             (setq status s done t)))
-          (jupyter-with-timeout
-              (nil jupyter-long-timeout
-                   (error "Timeout reached during login"))
-            done)
-          (jupyter-api--verify-login status)
-          (jupyter-api-copy-cookies-for-websocket (oref client url))
-          (url-cookie-write-file)
-          t)
-      (error
-       (when (eq (nth 2 err) 'connection-failed)
-         (signal (car err) (cdr err)))))))
+  (let (status done)
+    (jupyter-api--without-url-http-authentication-handler
+      (jupyter-api-url-request
+       (concat (oref client url) "/login")
+       (lambda (s &rest _)
+         (url-mark-buffer-as-dead (current-buffer))
+         (setq status s done t)))
+      (jupyter-with-timeout
+          (nil jupyter-long-timeout
+               (error "Login [%s]: Timeout reached" (oref client url)))
+        done))
+    ;; Verify login.
+    (let ((err (plist-get status :error)))
+      (unless
+          (or (not err)
+              ;; jupyter_server can sometimes not have a login page,
+              ;; for example when there is no password or token.
+              ;; Therefore no need to login.
+              (= (nth 2 err) 404)
+              ;; Handle HTTP 1.0.  When given a POST request, 302 redirection
+              ;; doesn't change the method to GET dynamically.  On the Jupyter
+              ;; notebook, the redirected page expects a GET and will return
+              ;; 405 (invalid method).
+              (and (plist-get status :redirect)
+                   (= (nth 2 err) 405)))
+        (signal 'jupyter-api-login-failed err)))
+    ;; Handle cookies.
+    (jupyter-api-copy-cookies-for-websocket (oref client url))
+    (url-cookie-write-file)))
 
 ;;;; Authenticators
 
