@@ -332,15 +332,13 @@ Return nil if SYMBOL is not bound for CLIENT."
 
 ;;; Hooks
 
-(defun jupyter-add-hook (client hook function &optional append)
+(defun jupyter-add-hook (client hook function &optional depth)
   "Add to the CLIENT value of HOOK the function FUNCTION.
-APPEND has the same meaning as in `add-hook' and FUNCTION is
-added to HOOK using `add-hook', but local only to CLIENT.  Note
-that the CLIENT should have its channels already started before
-this is called."
+DEPTH has the same meaning as in `add-hook' and FUNCTION is added
+to HOOK using `add-hook', but local only to CLIENT."
   (declare (indent 2))
   (jupyter-with-client-buffer client
-    (add-hook hook function append t)))
+    (add-hook hook function depth t)))
 
 (defun jupyter-remove-hook (client hook function)
   "Remove from CLIENT's value of HOOK the function FUNCTION."
@@ -434,7 +432,7 @@ kernel whose kernelspec if SPEC."
   (let ((client (make-instance client-class)))
     (oset client io (jupyter-io kernel))
     (unless (jupyter-kernel-info client)
-      (error "Kernel did not respond to :kernel-info-request"))
+      (error "Kernel did not respond to kernel_info_request"))
     ;; If the connection can resolve the kernel's heartbeat channel,
     ;; start monitoring it now.
     (jupyter-hb-unpause client)
@@ -551,11 +549,11 @@ reporting progress to the user while waiting."
   "Return only when REQ has received a status: idle message."
   (while (null (jupyter-wait-until-idle req jupyter-long-timeout))))
 
-(defun jupyter-add-idle-sync-hook (hook req &optional append)
+(defun jupyter-add-idle-sync-hook (hook req &optional depth)
   "Add a function to HOOK that waits until REQ receives a status: idle message.
 The function will not return until either a status: idle message
-has been received by REQ or an error is signaled.  APPEND and has
-the same meaning as in `add-hook'.
+has been received by REQ or an error is signaled.  DEPTH has the
+same meaning as in `add-hook'.
 
 The function is added to the global value of HOOK.  When the
 function is evaluated, it removes itself from HOOK *before*
@@ -566,7 +564,7 @@ waiting."
         ()
         (remove-hook hook #'sync-hook)
         (jupyter-idle-sync req)))
-    (add-hook hook #'sync-hook append)))
+    (add-hook hook #'sync-hook depth)))
 
 ;;; Client handlers
 

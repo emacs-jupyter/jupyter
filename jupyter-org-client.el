@@ -188,7 +188,6 @@ e.g. `org-babel-get-src-block-info'."
         (overlay-put overlay 'insert-behind-hooks read-only)))
     overlay))
 
-
 (defun jupyter-org--remove-overlay (req)
   (when (overlayp (jupyter-org-request-overlay req))
     (delete-overlay (jupyter-org-request-overlay req))))
