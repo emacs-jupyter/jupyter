@@ -193,6 +193,19 @@ Call the next method if ARGS does not contain :server."
     (jupyter-run-with-io pub
       (jupyter-publish 'reauthenticate))))
 
+(defvar jupyter-server-kernel-frame-acc "")
+
+(defun jupyter-server-kernel-parse-frame (frame)
+  "Accumulate the WebSocket frame data and return the full response when complete.
+Return nil if the frame is not yet complete."
+  (let ((payload (websocket-frame-payload frame)))
+    (setq jupyter-server-kernel-frame-acc (concat jupyter-server-kernel-frame-acc payload))
+    (if (websocket-frame-completep frame)
+        (let ((full-response jupyter-server-kernel-frame-acc))
+          (setq jupyter-server-kernel-frame-acc "")
+          full-response)
+      nil)))
+
 (cl-defmethod jupyter-websocket-io ((kernel jupyter-server-kernel))
   "Return a list representing an IO connection to KERNEL.
 The list is composed of two elements (IO-PUB ACTION-SUB), IO-PUB
@@ -274,16 +287,16 @@ this case FN will be evaluated on KERNEL."
                  ;; TODO: on-error publishes to status-pub
                  :on-message
                  (lambda (_ws frame)
-                   (pcase (websocket-frame-opcode frame)
-                     ((or 'text 'binary)
-                      (let ((msg (jupyter-read-plist-from-string
-                                  (websocket-frame-payload frame))))
-                        (jupyter-run-with-io kernel-io
-                          (jupyter-publish (cons 'message msg)))))
-                     (_
-                      (jupyter-run-with-io status-pub
-                        (jupyter-publish
-                          (list 'error (websocket-frame-opcode frame))))))))))
+                   (when-let ((response (jupyter-server-kernel-parse-frame frame)))
+                     (pcase (websocket-frame-opcode frame)
+                       ((or 'text 'binary 'continuation)
+                        (let ((msg (jupyter-read-plist-from-string response)))
+                          (jupyter-run-with-io kernel-io
+                            (jupyter-publish (cons 'message msg)))))
+                       (_
+                        (jupyter-run-with-io status-pub
+                          (jupyter-publish
+                            (list 'error (websocket-frame-opcode frame)))))))))))
              (ws (prog1 (funcall make-websocket)
                    (jupyter-run-with-io reauth-pub
                      (jupyter-subscribe
