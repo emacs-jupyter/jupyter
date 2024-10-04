@@ -179,7 +179,7 @@ The session can be used to write a connection file, see
         (jupyter-with-timeout
             (nil jupyter-default-timeout
                  (delete-file conn-file))
-          (file-exists-p conn-file))
+          (not (file-exists-p conn-file)))
         (delete-process process)
         (let ((new-key (jupyter-new-uuid)))
           (plist-put conn-info :key new-key)
