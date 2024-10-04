@@ -29,11 +29,11 @@
 (eval-when-compile (require 'subr-x))
 (require 'jupyter-repl)
 
-(declare-function julia-latexsub-or-indent "ext:julia-mode" (arg))
+(declare-function julia-indent-line "ext:julia-mode" ())
 
 (cl-defmethod jupyter-indent-line (&context (major-mode julia-mode))
-  "Call `julia-latexsub-or-indent'."
-  (call-interactively #'julia-latexsub-or-indent))
+  "Call `julia-indent-line'."
+  (julia-indent-line))
 
 (cl-defmethod jupyter-load-file-code (file &context (jupyter-lang julia))
   (format "include(\"%s\");" file))
@@ -91,7 +91,7 @@ manual for <section>.  Otherwise follow the link normally."
       (if (string= url "@ref")
           ;; Links have the form `fun`
           (let ((fun (substring link-text 1 -1)))
-            (if (not (eq major-mode 'jupyter-repl-mode))
+            (if (not (derived-mode-p 'jupyter-repl-mode))
                 (jupyter-inspect fun (1- (length fun)))
               (goto-char (point-max))
               (jupyter-repl-replace-cell-code (concat "?" fun))
