@@ -431,7 +431,7 @@ See `jupyter-tramp-get-file-model' for details on what a file model is."
 
 (defun jupyter-tramp-connected-p (vec-or-filename)
   "Return non-nil if connected to a Jupyter based remote host."
-  (let* ((vec (tramp-ensure-dissected-file-name vec-or-filename))
+  (let* ((vec (jupyter-tramp-ensure-dissected-file-name vec-or-filename))
          (port (tramp-file-name-port-or-default vec))
          (key (cons (tramp-file-name-host vec)
                     (if (numberp port) port
