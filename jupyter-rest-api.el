@@ -295,7 +295,8 @@ this will cause errors in the URL library."
      ;; FIXME: It is not reliable to attempt to get the xsrf cookie as
      ;; a side effect of requesting the login page since it may not
      ;; always exist.
-     (jupyter-api-http-request (oref client url) "login" "GET"))))
+     (ignore-errors
+       (jupyter-api-http-request (oref client url) "login" "GET")))))
 
 (defun jupyter-api-url-cookies (url)
   "Return the list of cookies for URL."
