@@ -176,6 +176,7 @@ e.g. `org-babel-get-src-block-info'."
 (defun jupyter-org--make-overlay  (beg end &optional inline)
   "Create overlay between BEG and END positions and return it."
   (let ((overlay (make-overlay beg end)))
+    (overlay-put overlay 'jupyter t)
     (overlay-put overlay 'face 'secondary-selection)
     (let ((read-only
 	       (list

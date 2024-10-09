@@ -501,6 +501,12 @@ should have PROP with VAL."
     (with-current-buffer jupyter-org-test-buffer
       (org-mode)))
   (with-current-buffer jupyter-org-test-buffer
+    ;; NOTE: Remove overlays introduced by
+    ;; `jupyter-org--make-overlay', these should have no bearing on if
+    ;; a test passes or not.
+    (dolist (ov (overlays-in (point-min) (point-max)))
+      (when (overlay-get ov 'jupyter)
+        (delete-overlay ov)))
     (erase-buffer)))
 
 (defun jupyter-org-test-client-from-info (info)
