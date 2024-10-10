@@ -2052,8 +2052,6 @@ Latex(r'$\\alpha$')"
                    (set-buffer-multibyte nil)
                    (insert-file-contents-literally file)
                    (base64-encode-region (point-min) (point-max) line-breaks)
-                   (goto-char (point-max))
-                   (insert "\n")
                    (buffer-substring-no-properties (point-min) (point-max)))))
          (image-file-name (jupyter-org-image-file-name data "png")))
     (unwind-protect
