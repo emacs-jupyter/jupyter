@@ -197,6 +197,26 @@ function."
 
 ;;; Special handling of ANSI sequences
 
+(defalias 'jupyter--ansi-color-apply-on-region
+  (if (version< emacs-version "28.1")
+      (lambda (begin end)
+        (cl-letf (((symbol-function #'delete-and-extract-region)
+                   (lambda (beg end)
+                     (add-text-properties beg end '(invisible t jupyter-invisible t))
+                     (buffer-substring beg end))))
+          (ansi-color-apply-on-region begin end)))
+    (lambda (begin end)
+      (ansi-color-apply-on-region begin end t)
+      (dolist (ov (overlays-in begin end))
+        (when (and (overlay-get ov 'invisible)
+                   (<= begin (overlay-start ov)
+                       (overlay-end ov) end))
+          ;; Assume invisible overlay added by
+          ;; `ansi-color-apply-on-region'.
+          (add-text-properties (overlay-start ov) (overlay-end ov)
+                               '(invisible t jupyter-invisible t))
+          (delete-overlay ov))))))
+
 (defun jupyter-ansi-color-apply-on-region (begin end &optional face-prop)
   "`ansi-color-apply-on-region' with Jupyter specific modifications.
 In particular, does not delete escape sequences between BEGIN and
@@ -212,16 +232,13 @@ a value of t.  This is mainly for modes like `org-mode' which
 strip invisible properties during fontification.  In such cases,
 the jupyter-invisible property can act as an alias to the
 invisible property by adding it to `char-property-alias-alist'."
-  (cl-letf (((symbol-function #'delete-region)
-             (lambda (beg end)
-               (add-text-properties beg end '(invisible t jupyter-invisible t))))
-            (ansi-color-apply-face-function
-             (lambda (beg end face)
-               (when face
-                 (setq face (list face))
-                 (font-lock-prepend-text-property beg end 'face face)
-                 (put-text-property beg end (or face-prop 'font-lock-face) face)))))
-    (ansi-color-apply-on-region begin end)))
+  (let ((ansi-color-apply-face-function
+         (lambda (beg end face)
+           (when face
+             (setq face (list face))
+             (font-lock-prepend-text-property beg end 'face face)
+             (put-text-property beg end (or face-prop 'font-lock-face) face)))))
+    (jupyter--ansi-color-apply-on-region begin end)))
 
 ;;; `jupyter-insert' method
 
