@@ -171,8 +171,17 @@ If the maximum number of redirects are reached a
     (let* ((json-object-type 'plist)
            (json-false nil)
            (resp (when (and (equal url-http-content-type "application/json")
-                            (not (eobp)))
-                   (json-read))))
+                           (not (eobp)))
+                  (if (< url-http-response-status 400)
+                      (json-read)
+                    ;; Handle cases, for example, where status is 404
+                    ;; and the message of the error is returned
+                    ;; instead of JSON.
+                    (let ((start (point)))
+                      (condition-case nil
+                          (json-read)
+                        (error
+                         (list :message (buffer-substring start (point-max))))))))))
       (cond
        ((>= url-http-response-status 400)
         (cl-destructuring-bind
