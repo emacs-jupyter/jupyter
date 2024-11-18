@@ -1691,25 +1691,6 @@ Assumes `point' is on the #+RESULTS keyword line."
    (org-element-property :value el)
    cb))
 
-;; A simplification of `text-property-search-forward' in Emacs >= 27
-;; used for our purposes.
-(defun jupyter-org--search-for-text-property (property value)
-  (let ((origin (point))
-        (ended nil)
-        pos)
-    ;; Fix the next candidate.
-    (while (not ended)
-      (setq pos (next-single-property-change (point) property))
-      (if (not pos)
-          (progn
-            (goto-char origin)
-            (setq ended t))
-        (goto-char pos)
-        (when (eq value (get-text-property (point) property))
-          (setq ended 'found))))
-    (and (not (eq ended t))
-         ended)))
-
 (defun jupyter-org-pandoc-placeholder-element (req el)
   "Launch a Pandoc conversion process of EL, return a placeholder string.
 REQ is the `jupyter-org-request' which generated EL as a result.
@@ -1730,7 +1711,7 @@ EL is an Org element with the properties
                      (save-excursion
                        (goto-char src-pos)
                        (set-marker src-pos nil)
-                       (when (jupyter-org--search-for-text-property 'jupyter-pandoc proc)
+                       (when (text-property-search-forward 'jupyter-pandoc proc)
                          (delete-region (point)
                                         (let ((pos (next-single-property-change
                                                     (point) 'jupyter-pandoc)))
