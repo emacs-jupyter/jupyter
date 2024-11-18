@@ -2844,7 +2844,9 @@ x
            ;; Convert forward slashes to backslashes on Windows
            (if (memq system-type '(windows-nt cygwin ms-dos))
                (replace-regexp-in-string "/" "\\\\" s)
-             s)))
+             ;; Account for symlinked directories like /var being
+             ;; linked to /private/var on OSX.
+             (file-truename s))))
         (temporary-file-directory jupyter-test-temporary-directory))
     (let ((dir (make-temp-file "dir" t))
           (pwd
