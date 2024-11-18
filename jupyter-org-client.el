@@ -896,7 +896,10 @@ VALUE."
 
 (defun jupyter-org-file-link (path)
   "Return a file link `org-element' that points to PATH."
-  (org-element-create 'link (list :type "file" :path path)))
+  (org-element-create 'link
+                      (list :type "file"
+                            :path path
+                            :type-explicit-p t)))
 
 (defun jupyter-org-image-link (path &optional width height)
   "Return an `org-element' for an image at PATH.
