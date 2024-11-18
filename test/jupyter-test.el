@@ -246,6 +246,7 @@
 
 (ert-deftest jupyter-insert-html ()
   :tags '(mime)
+  (skip-unless (functionp 'libxml-parse-html-region))
   (ert-info ("Correct libxml parser is called depending on prolog")
     (ert-info ("XML prolog means to parse as XML")
       (with-temp-buffer
