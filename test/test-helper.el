@@ -583,6 +583,12 @@ results instead of an equality match."
           (when-let* ((req (jupyter-org-request-at-point)))
             (jupyter-idle-sync req)))
         (goto-char (or (org-babel-where-is-src-block-result) (point)))
+        (when (plist-get args :pandoc)
+          (let ((start (point)))
+            ;; Wait until all pandoc processes have been completed.
+            (while (text-property-search-forward 'jupyter-pandoc)
+              (sleep-for 0.2)
+              (goto-char start))))
         (let ((element (org-element-context)))
           ;; Handle empty results with just a RESULTS keyword
           ;;
