@@ -1715,7 +1715,7 @@ EL is an Org element with the properties
                          (delete-region (point)
                                         (let ((pos (next-single-property-change
                                                     (point) 'jupyter-pandoc)))
-                                          (if pos (1+ pos)
+                                          (if pos (min (1+ pos) (point-max))
                                             (point-max))))
                          (insert to-string)))))))
            (proc (jupyter-org--start-pandoc-conversion el cb)))
