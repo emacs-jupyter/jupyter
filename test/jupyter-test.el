@@ -517,25 +517,28 @@
          (died-cb-called nil)
          (jupyter-hb-max-failures 1))
     (oset channel time-to-dead 0.1)
-    (should-not (jupyter-alive-p channel))
-    (should-not (jupyter-hb-beating-p channel))
-    (should (oref channel paused))
+    (ert-info ("Initial conditions")
+      (should-not (jupyter-alive-p channel))
+      (should-not (jupyter-hb-beating-p channel))
+      (should (oref channel paused)))
     (oset channel beating t)
     (jupyter-start channel)
     (jupyter-hb-on-kernel-dead channel (lambda () (setq died-cb-called t)))
-    (should (jupyter-alive-p channel))
-    ;; `jupyter-hb-unpause' needs to explicitly called
-    (should (oref channel paused))
+    (ert-info ("After channel start")
+      (should (jupyter-alive-p channel))
+      ;; `jupyter-hb-unpause' needs to explicitly called
+      (should (oref channel paused)))
     (jupyter-hb-unpause channel)
     (sleep-for 0.2)
     ;; It seems the timers are run after returning from the first `sleep-for'
     ;; call.
     (sleep-for 0.1)
-    (should (oref channel paused))
-    (should-not (oref channel beating))
-    (should died-cb-called)
-    (should (jupyter-alive-p channel))
-    (should-not (jupyter-hb-beating-p channel))))
+    (ert-info ("After unpausing and waiting")
+      (should (oref channel paused))
+      (should-not (oref channel beating))
+      (should died-cb-called)
+      (should (jupyter-alive-p channel))
+      (should-not (jupyter-hb-beating-p channel)))))
 
 ;;; GC
 
