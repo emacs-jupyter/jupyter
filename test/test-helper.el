@@ -580,9 +580,8 @@ results instead of an equality match."
       (save-window-excursion
         (org-babel-execute-src-block nil info)
         (when (equal (plist-get args :async) "yes")
-          ;; Add a delay to try and ensure the last request of the
-          ;; client has been completed.
-          (sleep-for 0.2))
+          (when-let* ((req (jupyter-org-request-at-point)))
+            (jupyter-idle-sync req)))
         (goto-char (or (org-babel-where-is-src-block-result) (point)))
         (let ((element (org-element-context)))
           ;; Handle empty results with just a RESULTS keyword
