@@ -529,10 +529,8 @@
       ;; `jupyter-hb-unpause' needs to explicitly called
       (should (oref channel paused)))
     (jupyter-hb-unpause channel)
-    (sleep-for 0.2)
-    ;; It seems the timers are run after returning from the first `sleep-for'
-    ;; call.
-    (sleep-for 0.1)
+    (jupyter-with-timeout (nil jupyter-long-timeout)
+      (oref channel paused))
     (ert-info ("After unpausing and waiting")
       (should (oref channel paused))
       (should-not (oref channel beating))
