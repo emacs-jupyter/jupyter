@@ -1,5 +1,5 @@
 EMACS ?= emacs
-ELDEV ?= $(shell command -v eldev)
+ELDEV ?= eldev
 
 FILES = $(wildcard *.el)
 ELCFILES = $(FILES:.el=.elc)
