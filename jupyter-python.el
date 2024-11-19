@@ -91,6 +91,41 @@ buffer."
            (re-search-forward "^[\t ]*File.+line \\([0-9]+\\)$" nil t))
        (string-to-number (match-string 1))))
 
+(defun jupyter-python-raw-string (code)
+  "Construct a Python raw string from CODE.
+Return valid Python code that can be interpreted by Python as if
+CODE was a raw string in Python."
+  (mapconcat
+   (lambda (s)
+     (let ((begin (if (string-prefix-p "\"" s)
+                      (if (string-prefix-p "\"\"" s)
+                          2
+                        1)
+                    0))
+           (end (if (string-suffix-p "\"" s)
+                    (if (string-suffix-p "\"\"" s)
+                        -2
+                      -1)
+                  nil)))
+       (setq s (substring s begin end))
+       (let ((slashes (when (string-match "\\(\\\\+\\)$" s)
+                        (prog1 (match-string 1 s)
+                          (setq s (substring s 0 (match-beginning 1)))))))
+         (concat (cond
+                  ((= begin 2) "'\"\"' + ")
+                  ((= begin 1) "'\"' + ")
+                  (t ""))
+                 "r\"\"\"" s "\"\"\""
+                 (if slashes
+                     (concat " + '" (concat slashes slashes) "'")
+                   "")
+                 (cond
+                  ((null end) "")
+                  ((= end -2) " + '\"\"'")
+                  ((= end -1) " + '\"'"))))))
+   (split-string code "\"\\{3\\}")
+   " + '\"\"\"' + "))
+
 (cl-defmethod org-babel-jupyter-transform-code (code changelist &context (jupyter-lang python))
   (when (plist-get changelist :dir)
     (setq code
@@ -99,10 +134,11 @@ import os
 __JUPY_saved_dir = os.getcwd()
 os.chdir(\"%s\")
 try:
-    get_ipython().run_cell(r\"\"\"%s\"\"\")
+    get_ipython().run_cell(%s)
 finally:
     os.chdir(__JUPY_saved_dir)"
-                  (plist-get changelist :dir) code)))
+                  (plist-get changelist :dir)
+                  (jupyter-python-raw-string code))))
   code)
 
 (provide 'jupyter-python)
