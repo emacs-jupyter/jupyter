@@ -2879,7 +2879,20 @@ os.path.abspath(os.getcwd())"
           ;; See #302
           (jupyter-org-test-src-block
            "print(r\"\\r\")"
-           ": \\r\n"))
+           ": \\r\n")
+          ;; See #561
+          (jupyter-org-test-src-block
+           "\"\"\"foo\"\"\""
+           ": foo\n"
+           :dir dir)
+          (jupyter-org-test-src-block
+           "\"test\""
+           ": test\n"
+           :dir dir))
+        (jupyter-org-test-src-block
+         "\"test\\\"\""
+         ": test\"\n"
+         :dir dir)
         (ert-info ("Relative directory")
           ;; See #302
           (let* ((temporary-file-directory jupyter-test-temporary-directory)
