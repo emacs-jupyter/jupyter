@@ -833,7 +833,7 @@ Return the `jupyter-request' representing the executed code."
     (save-excursion
       (goto-char (jupyter-repl-cell-code-beginning-position))
       (run-hooks 'jupyter-repl-cell-pre-send-hook))
-    (let ((code (string-trim (jupyter-repl-cell-code))))
+    (let ((code (string-trim (jupyter-repl-cell-code) "[\r\n]+")))
       (jupyter-run-with-client client
         (jupyter-mlet* ((req (jupyter-execute-request
                               :code code
