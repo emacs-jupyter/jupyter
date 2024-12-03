@@ -62,6 +62,7 @@
 (require 'jupyter-kernelspec)
 (require 'jupyter-widget-client)
 (require 'ring)
+(require 'face-remap)
 
 (declare-function jupyter-notebook-process "jupyter-server")
 (declare-function jupyter-launch-notebook "jupyter-server")
@@ -367,18 +368,25 @@ MODE has the same meaning as in
 (defsubst jupyter-repl--prompt-face (ov)
   (nth 1 (overlay-get ov 'jupyter-prompt)))
 
-(defun jupyter-repl--prompt-margin-alignment (str)
-  (- jupyter-repl-prompt-margin-width (length str)))
+(defun jupyter-repl--prompt-scale-factor ()
+  (expt text-scale-mode-step
+        text-scale-mode-amount))
 
 (defun jupyter-repl--prompt-display-value (str face)
   "Return the margin display value for a prompt STR.
 FACE is the `font-lock-face' to use for STR."
   (list '(margin left-margin)
-        (propertize
-         (concat
-          (make-string (jupyter-repl--prompt-margin-alignment str) ?\s) str)
-         'fontified t
-         'font-lock-face face)))
+        (let ((s (concat
+                  (make-string
+                   (let ((width (floor
+                                 (- left-margin-width
+                                    (* (length str)
+                                       (jupyter-repl--prompt-scale-factor))
+                                    (expt 2 (jupyter-repl--prompt-scale-factor))))))
+                     (if (>= width 0) width 0))
+                   ?\s)
+                  str)))
+          (propertize s 'fontified t 'font-lock-face face))))
 
 (defun jupyter-repl--reset-prompt-display (ov)
   (when-let* ((prompt (jupyter-repl--prompt-string ov))
@@ -387,23 +395,30 @@ FACE is the `font-lock-face' to use for STR."
               (md (jupyter-repl--prompt-display-value prompt face)))
     (overlay-put ov 'after-string (propertize " " 'display md))))
 
-(defun jupyter-repl--reset-prompts ()
+(defun jupyter-repl--reset-prompts (&optional size-hint)
   "Re-calculate all prompt strings in the buffer.
 Also set the local value of `left-margin-width' to
 `jupyter-repl-prompt-margin-width'."
-  (setq-local left-margin-width jupyter-repl-prompt-margin-width)
-  (dolist (ov (overlays-in (point-min) (point-max)))
-    (jupyter-repl--reset-prompt-display ov)))
+  (let ((ovs (cl-remove-if-not
+              (lambda (ov) (overlay-get ov 'jupyter-prompt))
+              (overlays-in (point-min) (point-max))))
+        (max-width size-hint))
+    (dolist (ov ovs)
+      (cl-callf max max-width (length (jupyter-repl--prompt-string ov))))
+    (cl-callf * max-width (jupyter-repl--prompt-scale-factor))
+    (setq-local left-margin-width (ceiling max-width)
+                jupyter-repl-prompt-margin-width left-margin-width)
+    (dolist (ov ovs)
+      (jupyter-repl--reset-prompt-display ov))))
 
 (defun jupyter-repl--make-prompt (str face props)
   "Make a prompt overlay for the character before POS.
 STR is used as the prompt string and FACE is its
 `font-lock-face'.  Add PROPS as text properties to the character."
-  (when (< (jupyter-repl--prompt-margin-alignment str) 0)
-    (setq-local jupyter-repl-prompt-margin-width
-                (+ jupyter-repl-prompt-margin-width
-                   (abs (jupyter-repl--prompt-margin-alignment str))))
-    (jupyter-repl--reset-prompts))
+  (let ((size-hint (* (length str)
+                      (jupyter-repl--prompt-scale-factor))))
+    (when (> size-hint left-margin-width)
+      (jupyter-repl--reset-prompts size-hint)))
   (let ((ov (make-overlay (1- (point)) (point) nil t)))
     (overlay-put ov 'jupyter-prompt (list str face))
     (overlay-put ov 'evaporate t)
@@ -1765,8 +1780,9 @@ Return the buffer switched to."
     ;; Add local hooks
     (add-hook 'kill-buffer-query-functions #'jupyter-repl-kill-buffer-query-function nil t)
     (add-hook 'kill-buffer-hook #'jupyter-repl--deactivate-interaction-buffers nil t)
-    (add-hook 'after-change-functions 'jupyter-repl-do-after-change nil t)
-    (add-hook 'pre-redisplay-functions 'jupyter-repl-preserve-window-margins nil t)
+    (add-hook 'after-change-functions #'jupyter-repl-do-after-change nil t)
+    (add-hook 'pre-redisplay-functions #'jupyter-repl-preserve-window-margins nil t)
+    (add-hook 'text-scale-mode-hook #'jupyter-repl--reset-prompts nil t)
     ;; Initialize the REPL
     (jupyter-repl-initialize-fontification)
     (jupyter-repl-isearch-setup)
