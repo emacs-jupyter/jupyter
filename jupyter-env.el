@@ -166,7 +166,7 @@ The session can be used to write a connection file, see
         (and (process-live-p process)
              (goto-char (point-min))
              (re-search-forward (rx "Connection file: "
-                                    (group (+ (not cntrl)) ".json")
+                                    (group (+ any) ".json")
                                     (* whitespace) line-end)
                                 nil t)))
       (let* ((conn-file (concat
