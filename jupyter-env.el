@@ -165,7 +165,10 @@ The session can be used to write a connection file, see
                (error "`jupyter kernel` failed to show connection file path"))
         (and (process-live-p process)
              (goto-char (point-min))
-             (re-search-forward "Connection file: \\(.+\\)\n" nil t)))
+             (re-search-forward (rx "Connection file: "
+                                    (group (+ any) ".json")
+                                    (* whitespace) line-end)
+                                nil t)))
       (let* ((conn-file (concat
                         (save-match-data
                           (file-remote-p default-directory))
