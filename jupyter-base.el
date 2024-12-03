@@ -151,6 +151,13 @@ A longer timeout is needed, for example, when retrieving the
 
 ;;; Macros
 
+(defmacro jupyter-run-soon (&rest body)
+  "Arrange to evaluate BODY the next time timers are evaluated.
+This is useful, for example, to postpone evaluation until around
+the beginning of the next command loop."
+  (declare (indent 0))
+  `(run-at-time 0 nil (lambda () ,@body)))
+
 (defmacro jupyter-with-timeout (spec &rest wait-forms)
   "Periodically evaluate WAIT-FORMS until timeout.
 Or until WAIT-FORMS evaluates to a non-nil value.
