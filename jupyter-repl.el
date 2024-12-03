@@ -143,6 +143,24 @@ send the code to the kernel."
   :type 'boolean
   :group 'jupyter-repl)
 
+(defcustom jupyter-repl-without-is-complete nil
+  "Whether or not is_complete_request handling is done.
+If this variable is nil, an is_complete_request is usually sent
+to the kernel on every press of
+\\<jupyter-repl-mode-map>\\[jupyter-repl-ret] to determine if the
+code is syntactically correct before sending it to be executed.
+If the kernel responds to this message by saying that the code is
+correct, then the code is sent to be executed immediately.
+
+If this variable is non-nil,
+\\<jupyter-repl-mode-map>\\[jupyter-repl-ret] no longer sends
+is_complete_request messages nor does what is explained by
+`jupyter-repl-use-builtin-is-complete' and just inserts a newline
+and indents.  In order to send an execute_request in this case,
+you have to press \\<jupyter-repl-mode-map>\\[jupyter-repl-send]."
+  :type 'boolean
+  :group 'jupyter-repl)
+
 (defcustom jupyter-repl-echo-eval-p nil
   "Copy evaluation input to a REPL cell if non-nil.
 If non-nil, and when calling the `jupyter-eval-*' functions like
@@ -196,11 +214,18 @@ current output of the cell.  Set when the kernel sends a
   "The history of the current Jupyter REPL.")
 
 (defvar-local jupyter-repl-use-builtin-is-complete nil
-  "Whether or not to send `:is-complete-request's to a kernel.
+  "Whether or not to send an is_complete_request to a kernel.
 If a Jupyter kernel does not respond to an is_complete_request,
 the buffer local value of this variable is set to t and code in a
 cell is considered complete if the last line in a code cell is a
-blank line, i.e. if RET is pressed twice in a row.")
+blank line, i.e. if \\<jupyter-repl-mode-map>\\[jupyter-repl-ret]
+is pressed twice in a row.
+
+Note `jupyter-repl-without-is-complete' takes precedence over
+this variable so when `jupyter-repl-without-is-complete' is
+non-nil you have to press
+\\<jupyter-repl-mode-map>\\[jupyter-repl-send] to send the code
+regardless of the setting of this variable..")
 
 (cl-generic-define-context-rewriter jupyter-repl-mode (mode &rest modes)
   `(jupyter-repl-lang-mode (derived-mode ,mode ,@modes)))
@@ -1169,16 +1194,23 @@ elements."
            (when restart
              (jupyter-repl--insert-banner-and-prompt client))))))))
 
+(defun jupyter-repl-send ()
+  "Send the current cell code to the kernel.
+As opposed to `jupyter-repl-ret' this sends the code immediately
+without considering the syntactical correctness of the code."
+  (interactive)
+  (jupyter-repl-ret 'force))
+
 (defun jupyter-repl-ret (&optional force)
   "Send the current cell code to the kernel.
 If `point' is before the last cell in the REPL buffer move to
 `point-max', i.e. move to the last cell.  Otherwise if `point' is
 at some position within the last cell, either insert a newline or
 ask the kernel to execute the cell code depending on the kernel's
-response to an `:is-complete-request'.
+response to an is_complete_request.
 
 If a prefix argument is given, FORCE the kernel to execute the
-current cell code without sending an `:is-complete-request'.  See
+current cell code without sending an is_complete_request.  See
 `jupyter-repl-use-builtin-is-complete' for yet another way to
 execute the current cell."
   (interactive "P")
@@ -1190,27 +1222,33 @@ execute the current cell."
             (goto-char (point-max))
           (unless (jupyter-repl-connected-p)
             (error "Kernel not alive"))
-          ;; NOTE: kernels allow execution requests to queue up, but we prevent
-          ;; sending a request when the kernel is busy because of the
-          ;; is-complete request.  Some kernels don't respond to this request
-          ;; when the kernel is busy.
-          (when (and (jupyter-kernel-busy-p jupyter-current-client)
-                     (not jupyter-repl-allow-RET-when-busy))
-            (error "Kernel busy"))
+          (unless (eq this-command 'jupyter-repl-send)
+            ;; NOTE: kernels allow execution requests to queue up, but
+            ;; we prevent sending a request when the kernel is busy
+            ;; because of the is_complete_request.  Some kernels don't
+            ;; respond to this request when the kernel is busy.
+            (when (and (jupyter-kernel-busy-p jupyter-current-client)
+                       (not jupyter-repl-allow-RET-when-busy))
+              (error "Kernel busy")))
           (cond
            (force (jupyter-repl-execute-cell))
+           (jupyter-repl-without-is-complete
+            (newline)
+            (jupyter-repl-indent-line))
            ((or jupyter-repl-use-builtin-is-complete
                 (and jupyter-repl-allow-RET-when-busy
                      (jupyter-kernel-busy-p jupyter-current-client)))
-            (goto-char (point-max))
-            (let ((complete-p (equal (buffer-substring-no-properties
-                                      (line-beginning-position) (point))
-                                     "")))
-              (jupyter-handle-is-complete-reply
-               jupyter-current-client
-               nil `(:content
-                     (:status ,(if complete-p "complete" "incomplete")
-                              :indent "")))))
+            (if (save-excursion
+                  (goto-char (point-max))
+                  (string-empty-p
+                   (buffer-substring
+                    (line-beginning-position)
+                    (point))))
+                (let ((client jupyter-current-client))
+                  (jupyter-run-soon
+                    (jupyter-repl-execute-cell client)))
+              (newline)
+              (jupyter-repl-indent-line)))
            (t
             (condition-case nil
                 (jupyter-run-with-client jupyter-current-client
@@ -1221,7 +1259,7 @@ execute the current cell."
                    jupyter-repl-maximum-is-complete-timeout))
               (jupyter-timeout-before-idle
                (message "\
-Kernel did not respond to is-complete-request, using built-in is-complete.
+Kernel did not respond to is_complete_request, using built-in is_complete.
 Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
                (setq jupyter-repl-use-builtin-is-complete t)
                (jupyter-repl-ret force)))))))
@@ -1658,6 +1696,9 @@ Return the buffer switched to."
     (define-key map [remap backward-sentence] #'jupyter-repl-backward-cell)
     (define-key map [remap forward-sentence] #'jupyter-repl-forward-cell)
     (define-key map (kbd "RET") #'jupyter-repl-ret)
+    (define-key map (kbd "S-RET") #'jupyter-repl-send)
+    (define-key map (kbd "<return>") #'jupyter-repl-ret)
+    (define-key map (kbd "S-<return>") #'jupyter-repl-send)
     (define-key map (kbd "M-n") #'jupyter-repl-history-next)
     (define-key map (kbd "M-p") #'jupyter-repl-history-previous)
     (define-key map (kbd "C-c C-o") #'jupyter-repl-clear-cells)
