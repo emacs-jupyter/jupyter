@@ -1272,23 +1272,32 @@ Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
 
 (defun jupyter-repl-indent-line ()
   "Indent the line according to the language of the REPL."
-  (when-let* ((pos (and (jupyter-repl-cell-line-p)
-                        (jupyter-repl-cell-code-position)))
-              (code (jupyter-repl-cell-code))
-              (replacement
-               (jupyter-with-repl-lang-buffer
-                 (insert code)
-                 (goto-char pos)
-                 (let ((tick (buffer-chars-modified-tick)))
-                   (jupyter-indent-line)
-                   (unless (eq tick (buffer-chars-modified-tick))
-                     (setq pos (point))
-                     (current-buffer))))))
-    ;; Don't modify the buffer when unnecessary, this allows
-    ;; `company-indent-or-complete-common' to work.
-    (when replacement
-      (jupyter-repl-replace-cell-code replacement)
-      (goto-char (+ pos (jupyter-repl-cell-code-beginning-position))))))
+  (let ((indent-tabs indent-tabs-mode))
+    (when-let* ((pos (and (jupyter-repl-cell-line-p)
+                          (jupyter-repl-cell-code-position)))
+                (code (jupyter-repl-cell-code))
+                (replacement
+                 (jupyter-with-repl-lang-buffer
+                   (if indent-tabs
+                       (unless indent-tabs-mode
+                         (indent-tabs-mode 1))
+                     (when indent-tabs-mode
+                       (indent-tabs-mode -1)))
+                   (insert code)
+                   (goto-char pos)
+                   (let ((tick (buffer-chars-modified-tick)))
+                     (jupyter-indent-line)
+                     (unless (eq tick (buffer-chars-modified-tick))
+                       ;; FIXME: Why the 1-.  It seems necessary for
+                       ;; the Python kernel.  Maybe to do with
+                       ;; prompts?
+                       (setq pos (1- (point)))
+                       (current-buffer))))))
+      ;; Don't modify the buffer when unnecessary, this allows
+      ;; `company-indent-or-complete-common' to work.
+      (when replacement
+        (jupyter-repl-replace-cell-code replacement)
+        (goto-char (+ pos (jupyter-repl-cell-code-beginning-position)))))))
 
 ;;; Buffer change functions
 
