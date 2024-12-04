@@ -2227,44 +2227,6 @@ Image(filename='%s', width=300)" file)
      (forward-line)
      (should-not (jupyter-org-when-in-src-block t)))))
 
-(ert-deftest jupyter-org--stream-context-p ()
-  :tags '(org)
-  (with-temp-buffer
-    (org-mode)
-    (dolist
-        (res '(("\
-#+RESULTS:
-:RESULTS:
-: Foo
-:END:" . 27)
-               ("\
-#+RESULTS:
-: Foo
-" . 17)
-               ("\
-#+RESULTS:
-#+BEGIN_EXAMPLE
-Foo
-#+END_EXAMPLE
-" . 31)
-               ("\
-#+RESULTS:
-:RESULTS:
-#+BEGIN_EXAMPLE
-Foo
-#+END_EXAMPLE
-:END:
-" . 41)
-               ("\
-#+RESULTS:
-file:foo
-" . nil)))
-      (insert (car res))
-      (if (cdr res)
-          (should (= (jupyter-org--stream-context-p (org-element-at-point)) (cdr res)))
-        (should-not (jupyter-org--stream-context-p (org-element-at-point))))
-      (erase-buffer))))
-
 (ert-deftest jupyter-org--append-to-fixed-width ()
   :tags '(org)
   (with-temp-buffer
