@@ -799,7 +799,11 @@ If NAME is not provided use the default kernelspec."
 
 (defun jupyter-api-shutdown-kernel (client id)
   "Send the HTTP request using CLIENT to shutdown a kernel with ID."
-  (jupyter-api/kernels client "DELETE" id))
+  (condition-case err
+      (jupyter-api/kernels client "DELETE" id)
+    (jupyter-api-http-error
+     (unless (= (nth 1 err) 404) ; Not Found
+       (signal (car err) (cdr err))))))
 
 (defun jupyter-api-restart-kernel (client id)
   "Send an HTTP request using CLIENT to restart a kernel with ID."
