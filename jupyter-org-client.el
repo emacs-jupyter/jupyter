@@ -91,6 +91,20 @@ after the failed one are not executed."
   :group 'ob-jupyter
   :type 'boolean)
 
+(defcustom jupyter-org-display-execution-time nil
+  "Whether or not to display the execution time of a source block.
+If this variable is nil, the execution times are not displayed.
+When it is t, display the execution times regardless of how long
+it took to execute.  When it is a number, display the execution
+time when it is longer than that many seconds.
+
+To clear the execution time information from the source block
+simply edit it or call `jupyter-org-clear-execution-time'."
+  :group 'ob-jupyter
+  :type '(choice (const :tag "Never display" nil)
+                 (const :tag "Always display" t)
+                 (number :tag "Display when above this threshold (in seconds)")))
+
 (defcustom jupyter-org-resource-directory "./.ob-jupyter/"
   "Directory used to store automatically generated image files.
 See `jupyter-org-image-file-name'."
@@ -216,6 +230,7 @@ nothing and return nil."
       ;; started due to sending a completion request.
       (save-excursion
         (goto-char org-babel-current-src-block-location)
+        (jupyter-org-clear-execution-time)
         (let* ((context (org-element-context))
                (block-params org-babel-jupyter-current-src-block-params)
                (result-params (alist-get :result-params block-params))
@@ -422,7 +437,51 @@ to."
       (forward-line)
       (insert (org-element-normalize-string (plist-get pl :text))))))
 
+(defun jupyter-org--display-execution-time (req)
+  "In the Org buffer of REQ, show the REQ's execution time."
+  (pcase jupyter-org-display-execution-time
+    ((and (or (and `t
+                   (let time (jupyter-execution-time req)))
+              (and (pred numberp) secs
+                   (let time (jupyter-execution-time req))
+                   (guard (> time secs))))
+          (let (cl-struct jupyter-org-request inline-block-p) req)
+          (guard (not inline-block-p)))
+     (jupyter-org-with-point-at req
+       (let* ((src-block (org-element-at-point))
+              (ov (make-overlay
+                   (org-element-property :begin src-block)
+                   ;; Exclude the newline to make it look like
+                   ;;
+                   ;;    #+end_src Execution time ...
+                   (1- (jupyter-org-element-end-before-blanks src-block)))))
+         (let ((delete
+                (list (lambda (&rest _)
+                        (delete-overlay ov)))))
+           (overlay-put ov 'evaporate t)
+           (overlay-put ov 'jupyter-execution-time time)
+           (overlay-put ov 'modification-hooks delete)
+           (overlay-put ov 'insert-in-front-hooks delete)
+           (overlay-put ov 'insert-behind-hooks delete))
+         (overlay-put
+          ov 'after-string
+          (concat " " (propertize
+                       (format "Execution time: %s"
+                               (jupyter-format-time time))
+                       'face 'bold-italic))))))))
+
+(defun jupyter-org-clear-execution-time ()
+  "Clear the execution time overlay for the source block at point."
+  (interactive)
+  (let ((el (org-element-at-point)))
+    (pcase (org-element-type el)
+      ((or `src-block `babel-call)
+       (dolist (ov (overlays-at (org-element-property :begin el)))
+         (when (overlay-get ov 'jupyter-execution-time)
+           (delete-overlay ov)))))))
+
 (cl-defmethod jupyter-handle-execute-reply ((_client jupyter-org-client) (req jupyter-org-request) msg)
+  (jupyter-org--display-execution-time req)
   (jupyter-with-message-content msg (status payload)
     (when payload
       (jupyter-org-with-point-at req
