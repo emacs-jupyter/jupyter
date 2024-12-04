@@ -980,8 +980,8 @@ first character.
 Otherwise, return VALUE formated as a fixed-width `org-element'."
   (cond
    ((stringp value)
-    (if (cl-loop with i = 0 for c across value if (eq c ?\n) do (cl-incf i)
-                 thereis (>= i org-babel-min-lines-for-block-output))
+    (if (>= (jupyter-org-count-lines value)
+            org-babel-min-lines-for-block-output)
         (jupyter-org-example-block value)
       (org-element-create 'fixed-width (list :value value))))
    ((and (listp value)
@@ -1337,6 +1337,14 @@ new \"scalar\" result with the result of calling
         (goto-char (jupyter-org-element-end-before-blanks element))
         (line-beginning-position 0))))
 
+(defun jupyter-org-count-lines (text)
+  "Return the number of lines in TEXT."
+  (let ((start -1)
+        (count 0))
+    (while (setq start (string-search "\n" text (1+ start)))
+      (cl-incf count))
+    count))
+
 (defun jupyter-org-delete-blank-line ()
   "If the current line is blank, delete it."
   (when (looking-at-p "^[\t ]*$")
@@ -1554,10 +1562,7 @@ of the fixed-width element and RESULT concatenated together."
              (>= (+ (count-lines
                      (jupyter-org-element-begin-after-affiliated context)
                      (jupyter-org-element-end-before-blanks context))
-                    (cl-loop
-                     with i = 0
-                     for c across text when (eq c ?\n) do (cl-incf i)
-                     finally return i))
+                    (jupyter-org-count-lines text))
                  org-babel-min-lines-for-block-output)))
         (if promote-to-block-p
             (jupyter-org--fixed-width-to-example-block context text keep-newline)
