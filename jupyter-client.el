@@ -1196,7 +1196,7 @@ called interactively."
 
 (cl-defgeneric jupyter-inspect (code &optional pos buffer detail)
   "Inspect CODE.
-Send an `:inspect-request' with the `jupyter-current-client' and
+Send an inspect_request with the `jupyter-current-client' and
 display the results in a BUFFER.
 
 CODE is the code to inspect and POS is your position in the CODE.
@@ -1274,9 +1274,9 @@ DETAIL is the detail level to use for the request and defaults to
 CODE is the required context for TYPE (either `inspect' or
 `completion') and POS is the relative position of `point' within
 CODE.  Depending on the current context such as the current
-`major-mode', CODE and POS will be used for `:complete-request's
-originating from `jupyter-completion-at-point' and
-`:inspect-request's from `jupyter-inspect-at-point'.
+`major-mode', CODE and POS will be used for a complete_request
+originating from `jupyter-completion-at-point' and an
+inspect_request from `jupyter-inspect-at-point'.
 
 The default methods return the `jupyter-line-or-region-context'.")
 
@@ -1700,17 +1700,18 @@ function `jupyter-kernel-language-mode-properties'.")
 (defun jupyter-kernel-info (client)
   "Return the kernel info plist of CLIENT.
 Return CLIENT's kernel-info slot if non-nil.  Otherwise send a
-`:kernel-info-request' to CLIENT's kernel, set CLIENT's
+kernel_info_request to CLIENT's kernel, set CLIENT's
 kernel-info slot to the plist retrieved from the kernel, and
 return it.
 
 If the kernel CLIENT is connected to does not respond to a
-`:kernel-info-request', raise an error.
+kernel_info_request, raise an error.
 
-Note, the value of the :name key in the :language_info property
-list is a symbol as opposed to a string for the purposes of
-method dispatching.  Also all instances of \" \" in the language
-name are changed to \"-\" and all uppercase characters lowered."
+Note, the value of the `:name' key in the `:language_info'
+property list is a symbol as opposed to a string for the purposes
+of method dispatching.  Also all instances of \" \" in the
+language name are changed to \"-\" and all uppercase characters
+lowered."
   (cl-check-type client jupyter-kernel-client)
   ;; TODO: This needs to be reset when a client is disconnected.  This
   ;; should be part of the connection process.
@@ -1718,8 +1719,9 @@ name are changed to \"-\" and all uppercase characters lowered."
       (progn
         (message "Requesting kernel info...")
         ;; Don't generate this request in an unknown buffer.  This is
-        ;; mainly so that the Org client's generate-request doesn't
-        ;; confuse it for an execute_request in the Org buffer.
+        ;; mainly so that the Org client's `jupyter-generate-request'
+        ;; doesn't confuse it for an execute_request in the Org
+        ;; buffer.
         (jupyter-with-client-buffer client
           (jupyter-run-with-client client
             (jupyter-mlet* ((msg (jupyter-reply

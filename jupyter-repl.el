@@ -135,8 +135,8 @@ position."
   "Allow RET to insert a newline when the kernel is busy.
 Normally when the kernel is busy, pressing RET at an input cell
 is disallowed.  This is because, when the kernel is busy, it does
-not respond to an `:is-complete-request' message and that message
-is used to avoid sending incomplete code to the kernel.
+not respond to an is_complete_request message and that message is
+used to avoid sending incomplete code to the kernel.
 
 If this variable is non-nil, RET is allowed to insert a newline.
 In this case, pressing RET on an empty line, i.e.  RET RET, will
