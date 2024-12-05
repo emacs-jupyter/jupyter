@@ -664,7 +664,7 @@ any Jupyter code block, [jupyter]."
   ;; e.g. folded subtrees.
   (unless (org-invisible-p)
     (jupyter-org-with-src-block-client
-     (let ((lang (jupyter-kernel-language jupyter-current-client)))
+     (let ((lang (jupyter-kernel-language)))
        (or (jupyter-org--key-def key `[,lang])
            (jupyter-org--key-def key [jupyter]))))))
 

@@ -1498,21 +1498,6 @@ value."
 
 ;;; Evaluation
 
-(cl-defmethod jupyter-read-expression (&context ((and
-                                                  jupyter-current-client
-                                                  (object-of-class-p
-                                                   jupyter-current-client
-                                                   'jupyter-repl-client)
-                                                  t)
-                                                 (eql t)))
-  (jupyter-with-repl-buffer jupyter-current-client
-    (jupyter-set jupyter-current-client 'jupyter-eval-expression-history
-                 (delq 'jupyter-repl-history
-                       (ring-elements jupyter-repl-history)))
-    (let ((ex (cl-call-next-method)))
-      (prog1 ex
-        (jupyter-repl-history-add ex)))))
-
 (cl-defmethod jupyter-eval-string (str &context (jupyter-current-client jupyter-repl-client)
                                        &optional insert beg end)
   (cond

@@ -687,10 +687,19 @@ particular language."
 
 ;;;;; Evaluation routines
 
-(defvar-local jupyter-eval-expression-history nil
-  "A client local variable to store the evaluation history.
-The evaluation history is used when reading code to evaluate from
-the minibuffer.")
+(defvar-local jupyter-expression-history nil
+  "A client local variable to store the expression history.
+The expression history is the history of expressions read from
+`jupyter-read-expression', typical for evaluation purposes, but
+also for things like inspection.")
+
+(defun jupyter--setup-minibuffer (client)
+  "Setup minibuffer for expression completion using CLIENT."
+  (setq jupyter-current-client client)
+  (add-hook 'completion-at-point-functions
+            #'jupyter-completion-at-point nil t)
+  (add-hook 'minibuffer-exit-hook
+            #'jupyter--teardown-minibuffer nil t))
 
 (defun jupyter--teardown-minibuffer ()
   "Remove Jupyter related variables and hooks from the minibuffer."
@@ -698,43 +707,44 @@ the minibuffer.")
   (remove-hook 'completion-at-point-functions 'jupyter-completion-at-point t)
   (remove-hook 'minibuffer-exit-hook 'jupyter--teardown-minibuffer t))
 
-;; This is needed since `read-from-minibuffer' expects the history variable to
-;; be a symbol whose value is `set' when adding a new history element.  Since
-;; `jupyter-eval-expression-history' is a buffer (client) local variable, it would be
-;; set in the minibuffer which we don't want.
-(defvar jupyter--read-expression-history nil
-  "A client's `jupyter-eval-expression-history' when reading an expression.
+;; This is needed since `read-from-minibuffer' expects the history
+;; variable to be a symbol whose value is `set' when adding a new
+;; history element.  Since `jupyter-expression-history' is a buffer
+;; (client) local variable, it would be set in the minibuffer which we
+;; don't want.
+(defvar jupyter--expression-history nil
+  "A client's `jupyter-expression-history' when reading an expression.
 This variable is used as the history symbol when reading an
 expression from the minibuffer.  After an expression is read, the
-`jupyter-eval-expression-history' of the client is updated to the
+`jupyter-expression-history' of the client is updated to the
 value of this variable.")
 
-(cl-defgeneric jupyter-read-expression ()
+(cl-defgeneric jupyter-read-expression (&optional prompt)
   "Read an expression using the `jupyter-current-client' for completion.
 The expression is read from the minibuffer and the expression
-history is obtained from the `jupyter-eval-expression-history'
-client local variable.
+history is obtained from the `jupyter-expression-history' client
+local variable, see `jupyter-get'.
+
+PROMPT is the prompt to use when reading the expression.  It
+defaults to \"Expression (LANG): \" where LANG is the
+`jupyter-kernel-language' of the client.
 
 Methods that extend this generic function should
 `cl-call-next-method' as a last step."
   (cl-check-type jupyter-current-client jupyter-kernel-client
                  "Need a client to read an expression")
   (let* ((client jupyter-current-client)
-         (jupyter--read-expression-history
-          (jupyter-get client 'jupyter-eval-expression-history)))
+         (jupyter--expression-history
+          (jupyter-get client 'jupyter-expression-history)))
     (minibuffer-with-setup-hook
-        (lambda ()
-          (setq jupyter-current-client client)
-          (add-hook 'completion-at-point-functions
-                    'jupyter-completion-at-point nil t)
-          (add-hook 'minibuffer-exit-hook
-                    'jupyter--teardown-minibuffer nil t))
+        (apply-partially #'jupyter--setup-minibuffer client)
       (prog1 (read-from-minibuffer
-              (format "Eval (%s): " (jupyter-kernel-language client))
+              (or prompt
+                  (format "Expression (%s): " (jupyter-kernel-language client)))
               nil read-expression-map
-              nil 'jupyter--read-expression-history)
-        (jupyter-set client 'jupyter-eval-expression-history
-                     jupyter--read-expression-history)))))
+              nil 'jupyter--expression-history)
+        (setf (jupyter-get client 'jupyter-expression-history)
+              jupyter--expression-history)))))
 
 (defun jupyter-eval (code &optional mime)
   "Send an execute request for CODE, wait for the execute result.
@@ -743,7 +753,10 @@ All client handlers are inhibited for the request.  In addition,
 the history of the request is not stored.  Return the MIME
 representation of the result.  If MIME is nil, return the
 text/plain representation."
-  (interactive (list (jupyter-read-expression) nil))
+  (interactive
+   (list (jupyter-read-expression
+          (format "Eval (%s): " (jupyter-kernel-language)))
+         nil))
   (jupyter-run-with-client jupyter-current-client
     (jupyter-mlet*
         ((res (jupyter-result
@@ -938,7 +951,9 @@ with `jupyter-eval-short-result-display-function'.
 
 If `jupyter-eval-use-overlays' is non-nil, evaluation results
 are displayed in the current buffer instead."
-  (interactive (list (jupyter-read-expression)))
+  (interactive (list
+                (jupyter-read-expression
+                 (format "Eval (%s): " (jupyter-kernel-language)))))
   (jupyter-eval-string str))
 
 (defun jupyter-eval-region (insert beg end)
@@ -1730,8 +1745,10 @@ purposes and SYNTAX-TABLE is the syntax table of MODE."
                  (prog1 item
                    (push item jupyter-kernel-language-mode-properties))))))))
 
-(defun jupyter-kernel-language (client)
-  "Return the language (as a symbol) of the kernel CLIENT is connected to."
+(defun jupyter-kernel-language (&optional client)
+  "Return the language (as a symbol) of the kernel CLIENT is connected to.
+CLIENT defaults to `jupyter-current-client'."
+  (or client (setq client jupyter-current-client))
   (cl-check-type client jupyter-kernel-client)
   (plist-get (plist-get (jupyter-kernel-info client) :language_info) :name))
 
