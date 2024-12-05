@@ -166,6 +166,16 @@ e.g. `org-babel-get-src-block-info'."
   (and (member (alist-get :async params) '("yes" nil))
        (not org-babel-jupyter-resolving-reference-p)))
 
+(defmacro jupyter-org-with-point-at (req &rest body)
+  "Move to the associated marker of REQ while evaluating BODY.
+If the marker points nowhere don't evaluate BODY, just do
+nothing and return nil."
+  (declare (indent 1))
+  `(pcase-let (((cl-struct jupyter-org-request marker) ,req))
+     (when (and (marker-buffer marker) (marker-position marker))
+       (org-with-point-at marker
+         ,@body))))
+
 ;;; `jupyter-kernel-client' interface
 
 ;;;; `jupyter-request' interface
@@ -303,7 +313,7 @@ line number could not be found."
 
 (defun jupyter-org--goto-error-string (req)
   (let* ((buffer (current-buffer))
-         (loc (org-with-point-at (jupyter-org-request-marker req)
+         (loc (jupyter-org-with-point-at req
                 (forward-line (or (with-current-buffer buffer
                                     (save-excursion
                                       (goto-char (point-min))
@@ -336,16 +346,14 @@ to."
   (jupyter-with-message-content msg (traceback)
     (setq traceback (org-element-normalize-string
                      (mapconcat #'identity traceback "\n")))
-    (pcase-let (((cl-struct jupyter-org-request
-                            marker inline-block-p silent-p)
-                 req))
+    (pcase-let (((cl-struct jupyter-org-request inline-block-p silent-p) req))
       (cond
        ((or inline-block-p silent-p)
         ;; Remove old inline results when an error happens since, if this was not
         ;; done, it would look like the code which caused the error produced the
         ;; old result.
         (when inline-block-p
-          (org-with-point-at marker
+          (jupyter-org-with-point-at req
             (org-babel-remove-inline-result)))
         (jupyter-with-display-buffer "traceback" 'reset
           (jupyter-insert-ansi-coded-text traceback)
@@ -417,7 +425,7 @@ to."
 (cl-defmethod jupyter-handle-execute-reply ((_client jupyter-org-client) (req jupyter-org-request) msg)
   (jupyter-with-message-content msg (status payload)
     (when payload
-      (org-with-point-at (jupyter-org-request-marker req)
+      (jupyter-org-with-point-at req
         (jupyter-handle-payload payload)))
     (jupyter-org--remove-overlay req)
     (if (equal status "ok")
@@ -425,7 +433,7 @@ to."
       (message "An error occurred when evaluating code block."))
     (when (jupyter-org-request-async-p req)
       (jupyter-org--clear-async-indicator req)
-      (org-with-point-at (jupyter-org-request-marker req)
+      (jupyter-org-with-point-at req
         (run-hooks 'org-babel-after-execute-hook)))))
 
 ;;; Queueing requests
@@ -1190,8 +1198,7 @@ those mime types instead."
       ;; we don't want `org-babel-insert-result' to handle it.
       (when (jupyter-org-request-file req)
         (push (cons :file (jupyter-org-request-file req)) params))
-      (or (org-with-point-at
-              (jupyter-org-request-marker req)
+      (or (jupyter-org-with-point-at req
             (jupyter-map-mime-bundle mime-types
                 (jupyter-normalize-data plist metadata)
               (lambda (mime content)
@@ -1300,7 +1307,7 @@ new \"scalar\" result with the result of calling
 (defun jupyter-org--clear-async-indicator (req)
   "Clear any async indicators of REQ in the buffer."
   (unless (jupyter-org-request-id-cleared-p req)
-    (org-with-point-at (jupyter-org-request-marker req)
+    (jupyter-org-with-point-at req
       (if (jupyter-org-request-inline-block-p req)
           (when-let* ((pos (org-babel-where-is-src-block-result)))
             (goto-char pos)
@@ -1703,10 +1710,10 @@ If INDENTATION is nil, it defaults to `current-indentation'."
   "Return a monadic value that inserts DATA and METADATA as an Org element."
   (jupyter-mlet* ((req (jupyter-get-state)))
     (pcase-let (((cl-struct jupyter-org-request
-                            marker inline-block-p block-params client)
+                            inline-block-p block-params client)
                  req))
       (let ((result (jupyter-org-result req data metadata)))
-        (org-with-point-at marker
+        (jupyter-org-with-point-at req
           (if inline-block-p
               (org-babel-insert-result
                (if (stringp result) result
