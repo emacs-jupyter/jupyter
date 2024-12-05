@@ -591,24 +591,26 @@ waiting."
 (defconst jupyter--client-handlers
   (cl-labels
       ((handler-alist
-        (&rest msg-types)
-        (cl-loop
-         for mt in msg-types
-         collect (cons mt (intern
-                           (format "jupyter-handle-%s"
-                                   (replace-regexp-in-string
-                                    "_" "-" mt)))))))
+         (&rest msg-types)
+         (cl-loop
+          for mt in msg-types
+          collect (cons mt (intern
+                            (format "jupyter-handle-%s"
+                                    (replace-regexp-in-string
+                                     "_" "-" mt)))))))
     `(("iopub" . ,(handler-alist
-                  "shutdown_reply" "stream" "comm_open" "comm_msg"
-                  "comm_close" "execute_input" "execute_result"
-                  "error" "status" "clear_output" "display_data"
-                  "update_display_data"))
+                   "shutdown_reply" "stream" "comm_open" "comm_msg"
+                   "comm_close" "execute_input" "execute_result"
+                   "error" "status" "clear_output" "display_data"
+                   "update_display_data"))
       ("shell" . ,(handler-alist
-                  "execute_reply" "shutdown_reply" "inspect_reply"
-                  "complete_reply" "history_reply" "is_complete_reply"
-                  "comm_info_reply" "kernel_info_reply"))
+                   "execute_reply" "shutdown_reply" "interrupt_reply" "inspect_reply"
+                   "complete_reply" "history_reply" "is_complete_reply"
+                   "comm_info_reply" "kernel_info_reply"))
+      ("control" . ,(handler-alist
+                     "shutdown_reply" "interrupt_reply"))
       ("stdin" . ,(handler-alist
-                  "input_reply" "input_request")))))
+                   "input_reply" "input_request")))))
 
 (defun jupyter--run-handler-maybe (client channel msg req)
   (when (and (jupyter--request-allows-handler-p req msg)

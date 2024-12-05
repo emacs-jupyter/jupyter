@@ -494,7 +494,7 @@ call the handler methods of those types."
   "Return the name of the channel that a request with TYPE is sent on."
   (pcase type
     ((or "input_reply" "input_request") "stdin")
-    ("interrupt_request" "control")
+    ((or "interrupt_request" "shutdown_request") "control")
     (_ "shell")))
 
 (declare-function jupyter-message-time "jupyter-messages")
