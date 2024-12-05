@@ -1924,8 +1924,10 @@ the return value for asynchronous Jupyter source blocks in
               (setcar h (jupyter-org-raw-string (buffer-string))))))
          procs))
       (setq head (cdr head)))
-    (while (cl-find-if #'process-live-p procs)
-      (accept-process-output nil 0.1))
+    (while procs
+      (while (process-live-p (car procs))
+        (accept-process-output nil 0.1))
+      (pop procs))
     results))
 
 (defun jupyter-org-sync-results (req)
