@@ -108,7 +108,7 @@ signs messages using `jupyter-hmac-sha256'."
        with key = (encode-coding-string
                    (jupyter-session-key session) 'utf-8 t)
        with parts = (encode-coding-string
-                     (cl-loop for part in parts concat part)
+                     (mapconcat #'identity parts)
                      'utf-8 t)
        for byte across (funcall signer parts key)
        concat (format "%02x" byte))
