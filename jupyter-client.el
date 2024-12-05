@@ -1552,16 +1552,16 @@ candidates can be used for PREFIX."
 (defun jupyter-completion-prefetch (fun)
   "Get completions for the current completion context.
 Run FUN when the completions are available."
-  (cl-destructuring-bind (code pos)
-      (jupyter-code-context 'completion)
-    (jupyter-run-with-client jupyter-current-client
-      (jupyter-sent
-       (jupyter-message-subscribed
-        (jupyter-complete-request
-         :code code
-         :pos pos
-         :handlers nil)
-        `(("complete_reply" ,fun)))))))
+  (pcase (jupyter-code-context 'completion)
+    (`(,code ,pos)
+     (jupyter-run-with-client jupyter-current-client
+       (jupyter-sent
+        (jupyter-message-subscribed
+         (jupyter-complete-request
+          :code code
+          :pos pos
+          :handlers nil)
+         `(("complete_reply" ,fun))))))))
 
 (defvar company-minimum-prefix-length)
 (defvar company-timer)
