@@ -1175,15 +1175,24 @@ SOURCE."
 ;;;; Inspection
 
 ;; TODO: How to add hover documentation support
-(defun jupyter-inspect-at-point (&optional buffer detail)
+(defun jupyter-inspect-at-point (&optional buffer detail interactive)
   "Inspect the code at point.
 Call `jupyter-inspect' for the `jupyter-code-context' at point.
+When called interactively with a non-nil prefix argument, read an
+expression to inspect from the minibuffer instead.
 
-BUFFER and DETAIL have the same meaning as in `jupyter-inspect'."
-  (interactive (list nil 0))
-  (cl-destructuring-bind (code pos)
-      (jupyter-code-context 'inspect)
-    (jupyter-inspect code pos buffer detail)))
+BUFFER and DETAIL have the same meaning as in `jupyter-inspect'.
+INTERACTIVE is an internal argument set when this function is
+called interactively."
+  (interactive (list nil 0 t))
+  (pcase
+      (if (and interactive current-prefix-arg)
+          (let ((code (jupyter-read-expression
+                       (format "Inspect (%s): " (jupyter-kernel-language)))))
+            (list code (length code)))
+          (jupyter-code-context 'inspect))
+    (`(,code ,pos)
+     (jupyter-inspect code pos buffer detail))))
 
 (cl-defgeneric jupyter-inspect (code &optional pos buffer detail)
   "Inspect CODE.
