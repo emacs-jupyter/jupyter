@@ -1425,6 +1425,11 @@ new \"scalar\" result with the result of calling
   "Delete an `org' ELEMENT from the buffer.
 Leave its affiliated keywords and preserve any blank lines that
 appear after the element."
+  ;; Force deferred property to compute the properties before deleting
+  ;; the element from the buffer, the ELEMENT is used elsewhere even
+  ;; after it has been removed from the buffer.  For Org >= 9.7.
+  (when (functionp 'org-element-properties-resolve)
+    (org-element-properties-resolve element t))
   (delete-region (jupyter-org-element-begin-after-affiliated element)
                  (jupyter-org-element-end-before-blanks element)))
 
@@ -1747,8 +1752,7 @@ If INDENTATION is nil, it defaults to `current-indentation'."
                          (eq (org-element-type context) 'drawer))
                      result
                    (jupyter-org-results-drawer result))))))))
-  (when (or (/= (point) (line-beginning-position))
-            (eq (org-element-type context) 'example-block))
+  (when (/= (point) (line-beginning-position))
     ;; Org objects such as file links do not have a newline added when
     ;; converting to their string representation by
     ;; `org-element-interpret-data' so insert one in these cases.

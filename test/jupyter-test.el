@@ -3010,6 +3010,38 @@ print(2)"
            (kill-buffer (org-babel-jupyter-initiate-session
                          (alist-get :session params) params))))))))
 
+(ert-deftest org-babel-jupyer-issue-565 ()
+  :tags '(org)
+  (jupyter-org-test-src-block
+   "\
+import logging
+import time
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
+for i in range(10):
+    log.info(\"here\")
+    time.sleep(0.1)
+
+{1: 2}"
+   "\
+:RESULTS:
+#+begin_example
+  INFO:__main__:here
+  INFO:__main__:here
+  INFO:__main__:here
+  INFO:__main__:here
+  INFO:__main__:here
+  INFO:__main__:here
+  INFO:__main__:here
+  INFO:__main__:here
+  INFO:__main__:here
+  INFO:__main__:here
+#+end_example
+| 1: | 2 |
+:END:
+"
+   :async "yes"))
+
 (ert-deftest org-babel-src-block-name-resolution ()
   :tags '(org)
   (let ((src (format "\
