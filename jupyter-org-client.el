@@ -1455,18 +1455,18 @@ appear after the element."
   (org-element-put-property element :post-blank nil))
 
 (defun jupyter-org--first-result-context-p (context)
-  (cl-case (org-element-type context)
-    (drawer (not (equal "RESULTS"
-                        (upcase (org-element-property :drawer-name context)))))
-    (t (not (or (jupyter-org-babel-result-p element)
-                (let ((type (org-element-type element)))
-                  (or (memq type '(latex-fragment latex-environment))
-                      ;; TODO: Figure out a better way.  I predict there will be more
-                      ;; situations where a comment would be useful to add.  That means
-                      ;; we would have to verify each one.
-                      (and (eq type 'comment)
-                           (equal jupyter-org--goto-error-string
-                                  (org-element-property :value element))))))))))
+  (not
+   (pcase (org-element-type context)
+     (`drawer (equal "RESULTS"
+                     (upcase (org-element-property :drawer-name context))))
+     (`,type (or (jupyter-org-babel-result-p context)
+                 (or (memq type '(latex-fragment latex-environment))
+                     ;; TODO: Figure out a better way.  I predict there will be more
+                     ;; situations where a comment would be useful to add.  That means
+                     ;; we would have to verify each one.
+                     (and (eq type 'comment)
+                          (equal jupyter-org--goto-error-string
+                                 (org-element-property :value context)))))))))
 
 ;;;; Stream results
 
