@@ -3137,6 +3137,5 @@ raise Exception(\"This is an error\")
 
 ;; Local Variables:
 ;; byte-compile-warnings: (unresolved obsolete lexical)
-;; eval: (and (functionp 'aggressive-indent-mode) (aggressive-indent-mode -1))
 ;; End:
 ;;; jupyter-test.el ends here
