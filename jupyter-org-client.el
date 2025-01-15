@@ -1225,7 +1225,7 @@ If a match is not found, return nil."
              (memq type org-element-all-objects)
              (memq type org-element-all-elements)))))
 
-(cl-defmethod jupyter-org-result ((req jupyter-org-request) plist &optional metadata)
+(defun jupyter-org-get-result (req plist &optional metadata)
   "For REQ, return a rendered form of a message PLIST.
 PLIST and METADATA have the same meaning as in
 `jupyter-normalize-data'.
@@ -1249,26 +1249,25 @@ If the source block parameters have a value for the :display
 header argument, like \"image/png html plain\", then loop over
 those mime types instead."
   (if (jupyter-org-element-p plist) plist
-    (let* ((mime-types (jupyter-org-display-mime-types req))
-           (params (jupyter-org-request-block-params req)))
-      (cl-assert plist json-plist)
-      ;; Push :file back into PARAMS if it was present in
-      ;; `org-babel-execute:jupyter'.  That function removes it because
-      ;; we don't want `org-babel-insert-result' to handle it.
-      (when (jupyter-org-request-file req)
-        (push (cons :file (jupyter-org-request-file req)) params))
-      (or (jupyter-org-with-point-at req
-            (jupyter-map-mime-bundle mime-types
-                (jupyter-normalize-data plist metadata)
-              (lambda (mime content)
-                (jupyter-org-result mime content params))))
-          (let ((warning
-                 (format
-                  "%s did not return requested mimetype(s): %s"
-                  (jupyter-message-type (jupyter-request-last-message req))
-                  mime-types)))
-            (display-warning 'jupyter warning)
-            nil)))))
+    (pcase-let (((cl-struct jupyter-org-request block-params file) req))
+      (let* ((mime-types (jupyter-org-display-mime-types req)))
+        ;; Push :file back into PARAMS if it was present in
+        ;; `org-babel-execute:jupyter'.  That function removes it because
+        ;; we don't want `org-babel-insert-result' to handle it.
+        (when file
+          (push (cons :file file) block-params))
+        (or (jupyter-org-with-point-at req
+              (jupyter-map-mime-bundle mime-types
+                  (jupyter-normalize-data plist metadata)
+                (lambda (mime content)
+                  (jupyter-org-result mime content block-params))))
+            (let ((warning
+                   (format
+                    "%s did not return requested mimetype(s): %s"
+                    (jupyter-message-type (jupyter-request-last-message req))
+                    mime-types)))
+              (display-warning 'jupyter warning)
+              nil))))))
 
 (cl-defmethod jupyter-org-result ((_mime (eql :application/vnd.jupyter.widget-view+json)) _content _params)
   ;; TODO: Clickable text to open up a browser
@@ -1775,7 +1774,7 @@ If INDENTATION is nil, it defaults to `current-indentation'."
     (pcase-let (((cl-struct jupyter-org-request
                             inline-block-p block-params client)
                  req))
-      (let ((result (jupyter-org-result req data metadata)))
+      (let ((result (jupyter-org-get-result req data metadata)))
         (jupyter-org-with-point-at req
           (if inline-block-p
               (org-babel-insert-result
@@ -1859,7 +1858,7 @@ EL is an Org element with the properties
       (cond
        (async-p
         (jupyter-org--clear-async-indicator req)
-        (if silent-p (jupyter-return (jupyter-org-result req data metadata))
+        (if silent-p (jupyter-return (jupyter-org-get-result req data metadata))
           (jupyter-org-inserted-result data metadata)))
        (t
         (jupyter-return
@@ -1959,7 +1958,7 @@ Meant to be used as the return value of
                              (jupyter-org-strip-last-newline r))
                           r))
                       (jupyter-org--process-pandoc-results
-                       (mapcar (apply-partially #'jupyter-org-result req)
+                       (mapcar (apply-partially #'jupyter-org-get-result req)
                           results))))
                   (result-params (alist-get :result-params block-params)))
         (org-element-interpret-data
