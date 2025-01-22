@@ -141,6 +141,11 @@ See also the docstring of `org-image-actual-width' for more details."
   :group 'ob-jupyter
   :type 'boolean)
 
+(defcustom jupyter-org-want-integration t
+  "Whether to enable `jupyter-org-interaction-mode' automatically on `org-mode' buffers."
+  :group 'ob-jupyter
+  :type 'boolean)
+
 (defconst jupyter-org-mime-types '(:text/org
                                    ;; Prioritize images over html
                                    :image/svg+xml :image/jpeg :image/png
@@ -945,7 +950,8 @@ C-x C-e         `jupyter-eval-line-or-region'"
         (lambda (x) (eq (car x) 'jupyter-org-font-lock-ansi-escapes))
         org-font-lock-keywords))))
 
-(add-hook 'org-mode-hook 'jupyter-org-interaction-mode)
+(when jupyter-org-want-integration
+  (add-hook 'org-mode-hook 'jupyter-org-interaction-mode))
 
 ;;; Constructing org syntax trees
 
