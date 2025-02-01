@@ -505,14 +505,30 @@ error with the data being the error received by `url-retrieve'."
 
 ;;;; Authenticators
 
+;; TODO Other instances where caching results of requests could be
+;; beneficial?  Currently it is only used here.
+(defvar jupyter-api--response-cache (make-hash-table))
+
+(defvar jupyter-api--response-cache-expiry 1
+  "Number of seconds of Emacs idle time before cache invalidation.")
+
 (cl-defmethod jupyter-api-server-accessible-p ((client jupyter-rest-client))
   "Return non-nil if CLIENT can access the Jupyter notebook server."
-  (ignore-errors
-    (prog1 t
-      (let ((jupyter-api-authentication-in-progress-p t)
-            jupyter-api-request-data
-            jupyter-api-request-headers)
-        (jupyter-api-get-kernelspec client)))))
+  (pcase (gethash client jupyter-api--response-cache 'check)
+    ('check
+     (puthash client
+              (ignore-errors
+                (prog1 t
+                  (let ((jupyter-api-authentication-in-progress-p t)
+                        jupyter-api-request-data
+                        jupyter-api-request-headers)
+                    ;; Hit an endpoint that requires authentication.
+                    (jupyter-api-get-kernelspec client))))
+              jupyter-api--response-cache)
+     (run-with-idle-timer
+      jupyter-api--response-cache-expiry
+      nil (lambda () (remhash client jupyter-api--response-cache))))
+    (cached cached)))
 
 (cl-defgeneric jupyter-api-authenticate (client &rest args)
   (declare (indent 1)))
