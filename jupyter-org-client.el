@@ -792,6 +792,7 @@ and they only take effect when the variable
 (jupyter-org-define-key (kbd "C-x C-e") #'jupyter-eval-line-or-region)
 (jupyter-org-define-key (kbd "C-M-x") #'jupyter-eval-defun)
 (jupyter-org-define-key (kbd "M-i") #'jupyter-inspect-at-point)
+(jupyter-org-define-key (kbd "C-c M-:") #'jupyter-eval-string-command)
 (jupyter-org-define-key (kbd "C-c C-r") #'jupyter-repl-restart-kernel)
 (jupyter-org-define-key (kbd "C-c C-i") #'jupyter-repl-interrupt-kernel)
 
