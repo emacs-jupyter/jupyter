@@ -752,6 +752,18 @@ the server."
 
 ;;;; Endpoints
 
+(cl-defmethod jupyter-api-server-version ((client jupyter-rest-client))
+  "Return the version of the server CLIENT is connected to."
+  (let (jupyter-api-request-data
+        jupyter-api-request-headers)
+    ;; This endpoint does not require authentication so it is OK to
+    ;; use `jupyter-api-http-request'.
+    ;;
+    ;; https://jupyter-server.readthedocs.io/en/latest/developers/rest-api.html#get--api-
+    (plist-get
+     (jupyter-api-http-request (oref client url) "api" "GET")
+     :version)))
+
 (cl-defgeneric jupyter-api/kernels (client method &rest plist)
   (declare (indent 2)))
 
