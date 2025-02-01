@@ -657,6 +657,20 @@ returned."
      (when (jupyter-org--same-src-block-p)
        ,@body)))
 
+(defun jupyter-org--with-src-block-client (thunk)
+  (jupyter-org-when-in-src-block
+   (let ((params (car jupyter-org--src-block-cache)))
+     (when (or jupyter-org-auto-connect
+               (org-babel-jupyter-session-initiated-p params 'noerror))
+       (let* ((buffer (org-babel-jupyter-initiate-session
+                        (alist-get :session params) params))
+              (jupyter-current-client
+               (buffer-local-value 'jupyter-current-client buffer))
+              (syntax (jupyter-kernel-language-syntax-table
+                       jupyter-current-client)))
+         (with-syntax-table syntax
+           (funcall thunk)))))))
+
 (defmacro jupyter-org-with-src-block-client (&rest body)
   "Evaluate BODY with `jupyter-current-client' set to the session's client.
 A client is initialized if needed when `jupyter-org-auto-connect'
@@ -670,21 +684,8 @@ when it is evaluated.
 In addition to evaluating BODY with an active Jupyter client set,
 the `syntax-table' will be set to that of the REPL buffer's."
   (declare (debug (body)))
-  (let ((params (make-symbol "params"))
-        (syntax (make-symbol "syntax"))
-        (buffer (make-symbol "buffer")))
-    `(jupyter-org-when-in-src-block
-      (let ((,params (car jupyter-org--src-block-cache)))
-        (when (or jupyter-org-auto-connect
-                  (org-babel-jupyter-session-initiated-p ,params))
-          (let* ((,buffer (org-babel-jupyter-initiate-session
-                           (alist-get :session ,params) ,params))
-                 (jupyter-current-client
-                  (buffer-local-value 'jupyter-current-client ,buffer))
-                 (,syntax (jupyter-kernel-language-syntax-table
-                           jupyter-current-client)))
-            (with-syntax-table ,syntax
-              ,@body)))))))
+  `(jupyter-org--with-src-block-client
+    (lambda () ,@body)))
 
 (cl-defmethod jupyter-code-context ((_type (eql inspect))
                                     &context (major-mode org-mode))
@@ -1737,10 +1738,12 @@ If INDENTATION is nil, it defaults to `current-indentation'."
 (defun jupyter-org--insert-nonstream (context result)
   (cond
    ((jupyter-org--first-result-context-p context)
-    (unless (jupyter-org-babel-result-p result)
-      ;; Wrap the result if it can't be removed by `org-babel'.
-      (setq result (jupyter-org-results-drawer result)))
-    (insert (org-element-interpret-data result)))
+    (insert (org-element-interpret-data
+             (if (jupyter-org-babel-result-p result)
+                 result
+               ;; Wrap the result if it can't be removed by
+               ;; `org-babel'.
+               (jupyter-org-results-drawer result)))))
    (t
     (let ((elems (jupyter-org--prepare-context context)))
       (insert (org-element-interpret-data

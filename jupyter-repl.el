@@ -1958,14 +1958,15 @@ Do so only if possible in the `current-buffer'."
 `*' means the kernel is busy, `-' means the kernel is idle and
 the REPL is connected, `x' means the REPL is disconnected
 from the kernel."
-  (and (cl-typep jupyter-current-client 'jupyter-repl-client)
-       (concat " JuPy["
-               (cond
-                ((not (jupyter-hb-beating-p jupyter-current-client)) "x")
-                ((equal (jupyter-execution-state jupyter-current-client) "busy")
-                 "*")
-                (t "-"))
-               "]")))
+  (pcase jupyter-current-client
+    ((and client (cl-type jupyter-repl-client))
+     (concat " JuPy["
+             (cond
+              ((not (jupyter-hb-beating-p client)) "x")
+              ((equal (jupyter-execution-state client) "busy")
+               "*")
+              (t "-"))
+             "]"))))
 
 (defun jupyter-repl-pop-to-buffer ()
   "Switch to the REPL buffer of the `jupyter-current-client'."
