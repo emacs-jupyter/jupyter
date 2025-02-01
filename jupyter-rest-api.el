@@ -584,7 +584,9 @@ attempt.  If CLIENT could not be authenticated raise an error."
                      jupyter-api-request-headers))
              (jupyter-api-request-data
               (concat "password=" (url-hexify-string (funcall passwd)))))
-         (jupyter-api-login client)))))
+         (unwind-protect
+             (jupyter-api-login client)
+           (clear-string jupyter-api-request-data))))))
   (oset client auth t))
 
 (cl-defmethod jupyter-api-authenticate ((client jupyter-rest-client) (_auth (eql token)))
