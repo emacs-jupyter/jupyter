@@ -894,24 +894,25 @@ available via CLIENT."
 
 ;;; Contents API
 
-;; TODO: Actually consider encoding/decoding
-;; https://jupyter-notebook.readthedocs.io/en/stable/extending/contents.html#filesystem-entities
-
-(defun jupyter-api--strip-slashes (path)
-  (thread-last path
-    (replace-regexp-in-string "^/+" "")
-    (replace-regexp-in-string "/+$" "")))
-
 (autoload 'tramp-drop-volume-letter "tramp")
 
-;; See https://jupyter-notebook.readthedocs.io/en/stable/extending/contents.html#api-paths
+(defun jupyter-api--sanitize-path (path)
+  (thread-last
+    path
+    (tramp-drop-volume-letter)
+    ;; Strip slashes
+    (replace-regexp-in-string "^/+" "")
+    (replace-regexp-in-string "/+$" "")
+    ;; Handle #
+    (string-replace "#" "%23")))
+
+;; See https://jupyter-server.readthedocs.io/en/latest/developers/contents.html#api-paths
 (defsubst jupyter-api-content-path (file)
   "Return a sanitized path for locating FILE on a Jupyter REST server.
 Note, if FILE is not an absolute file name, it is expanded into
 one as if the `default-directory' where /."
-  (jupyter-api--strip-slashes
-   (tramp-drop-volume-letter
-    (expand-file-name (file-local-name file) "/"))))
+  (jupyter-api--sanitize-path
+   (expand-file-name (file-local-name file) "/")))
 
 (defun jupyter-api-get-file-model (client file &optional no-content type)
   "Send a request using CLIENT to get a model of FILE.
