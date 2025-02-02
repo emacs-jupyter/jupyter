@@ -1485,51 +1485,54 @@ kernel, but the prefix used by `jupyter-completion-at-point'.  See
 MATCHES are the completion matches returned by the kernel,
 METADATA is any extra data associated with MATCHES that was
 supplied by the kernel."
-  (let* ((matches (append matches nil))
-         (tail matches)
-         ;; TODO Handle the :start, :end, and :signature fields
-         (types (append (plist-get metadata :_jupyter_types_experimental) nil))
-         (buf))
+  (let (buf)
     (save-current-buffer
       (unwind-protect
-          (while tail
-            (cond
-             ((string-match jupyter-completion-argument-regexp (car tail))
-              (let* ((str (car tail))
-                     (args-str (match-string 1 str))
-                     (end (match-end 1))
-                     (path (match-string 2 str))
-                     (line (string-to-number (match-string 3 str)))
-                     (snippet (progn
-                                (unless buf
-                                  (setq buf (generate-new-buffer " *temp*"))
-                                  (set-buffer buf))
-                                (insert args-str)
-                                (goto-char (point-min))
-                                (prog1 (jupyter-completion--make-arg-snippet
-                                        (jupyter-completion--arg-extract))
-                                  (erase-buffer)))))
-                (setcar tail (substring (car tail) 0 end))
-                (put-text-property 0 1 'snippet snippet (car tail))
-                (put-text-property 0 1 'location (cons path line) (car tail))
-                (put-text-property 0 1 'docsig (car tail) (car tail))))
-             ;; TODO: This is specific to the results that
-             ;; the python kernel returns, make a support
-             ;; function?
-             ((string-match-p "\\." (car tail))
-              (setcar tail (car (last (split-string (car tail) "\\."))))))
-            (setq tail (cdr tail)))
+          (cl-loop
+           for i from 0 below (length matches)
+           for match = (aref matches i)
+           do
+           (put-text-property 0 1 'docsig match match)
+           (cond
+            ((string-match jupyter-completion-argument-regexp match)
+             (let* ((str match)
+                    (args-str (match-string 1 str))
+                    (end (match-end 1))
+                    (path (match-string 2 str))
+                    (line (string-to-number (match-string 3 str)))
+                    (snippet (progn
+                               (unless buf
+                                 (setq buf (generate-new-buffer " *temp*"))
+                                 (set-buffer buf))
+                               (insert args-str)
+                               (goto-char (point-min))
+                               (prog1 (jupyter-completion--make-arg-snippet
+                                       (jupyter-completion--arg-extract))
+                                 (erase-buffer)))))
+               (setq match (aset matches i (substring match 0 end)))
+               (put-text-property 0 1 'snippet snippet match)
+               (put-text-property 0 1 'location (cons path line) match)))
+            ;; TODO: This is specific to the results that
+            ;; the python kernel returns, make a support
+            ;; function?
+            ((string-match-p "\\." match)
+             (aset matches i (car (last (split-string match "\\.")))))))
         (when buf (kill-buffer buf))))
     ;; When a type is supplied add it as an annotation
-    (when types
+    (when-let* ((types (plist-get metadata :_jupyter_types_experimental)))
       (let ((max-len (apply #'max (mapcar #'length matches))))
-        (cl-mapc
-         (lambda (match meta)
-           (let* ((prefix (make-string (1+ (- max-len (length match))) ? ))
-                  (annot (concat prefix (plist-get meta :type))))
-             (put-text-property 0 1 'annot annot match)))
-         matches types)))
-    matches))
+        (cl-loop
+         for i from 0 below (length matches)
+         for match = (aref matches i)
+         for meta = (aref types i)
+         do (let* ((prefix (make-string (1+ (- max-len (length match))) ?\s))
+                   (annot (concat prefix (plist-get meta :type)))
+                   (sig (plist-get meta :signature)))
+              (put-text-property
+               0 1 'docsig
+               (concat (get-text-property 0 'docsig match) sig) match)
+              (put-text-property 0 1 'annot annot match)))))
+    (append matches nil)))
 
 ;;;;; Completion at point interface
 
