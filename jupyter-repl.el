@@ -178,16 +178,24 @@ as is done when this variable is nil."
 
 (defcustom jupyter-repl-completion-at-point-hook-depth nil
   "The DEPTH of `jupyter-completion-at-point' in `completion-at-point-functions'.
+This will be set as the DEPTH argument to the `add-hook' call
+when adding Jupyter based completion functionality to
+`completion-at-point-functions'.  A value of nil means the
+default depth of 0, i.e. added as the first entry of
+`completion-at-point-functions'.  This might prevent other hooks
+like `lsp-completion-at-point' from running.
 
-`completion-at-point-functions' hooks are tried in order. A value of nil for
-this variable means `jupyter-completion-at-point' will be added to the head of
-the list, which means it will be tried first on completion attempts. This might
-prevent other hooks like `lsp-completion-at-point' from running.
+If you'd prefer to give `jupyter-completion-at-point' lower
+priority, set this variable to something like 1.  See `add-hook'."
+  :type '(choice (integer :tag "Hook depth")
+                 (const :tag "Default depth of 0" nil))
+  :group 'jupyter-repl)
 
-If you'd prefer to give `jupyter-completion-at-point' lower priority, set this
-variable to something like 1. Check `add-hook' documentation for more details
-about DEPTH."
-  :type 'integer
+(defcustom jupyter-repl-interaction-mode-line-format " JuPy[%s]"
+  "Format to use when producing the mode line.
+The format specifier %s is replaced with the status of the
+kernel."
+  :type 'string
   :group 'jupyter-repl)
 
 ;;; Implementation
@@ -1960,13 +1968,11 @@ the REPL is connected, `x' means the REPL is disconnected
 from the kernel."
   (pcase jupyter-current-client
     ((and client (cl-type jupyter-repl-client))
-     (concat " JuPy["
+     (format jupyter-repl-interaction-mode-line-format
              (cond
               ((not (jupyter-hb-beating-p client)) "x")
-              ((equal (jupyter-execution-state client) "busy")
-               "*")
-              (t "-"))
-             "]"))))
+              ((equal (jupyter-execution-state client) "busy") "*")
+              (t "-"))))))
 
 (defun jupyter-repl-pop-to-buffer ()
   "Switch to the REPL buffer of the `jupyter-current-client'."
