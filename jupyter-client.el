@@ -1519,10 +1519,16 @@ supplied by the kernel."
              (aset matches i (car (last (split-string match "\\.")))))))
         (when buf (kill-buffer buf))))
     ;; When a type is supplied add it as an annotation
-    (when-let* ((types (plist-get metadata :_jupyter_types_experimental)))
-      (let ((max-len (apply #'max (mapcar #'length matches))))
+    (when-let* ((types (plist-get metadata :_jupyter_types_experimental))
+                (lengths (mapcar #'length matches)))
+      (let ((max-len (apply #'max lengths)))
         (cl-loop
-         for i from 0 below (length matches)
+         for i from 0 below
+         ;; For safety, ensure the lengths are the same which is
+         ;; usually the case, but sometimes a kernel may not return
+         ;; lists of the same length.  Seen for example in IJulia.
+         (min (length matches) (length types))
+         ;; These are typically in the same order.
          for match = (aref matches i)
          for meta = (aref types i)
          do (let* ((prefix (make-string (1+ (- max-len (length match))) ?\s))
@@ -1532,6 +1538,9 @@ supplied by the kernel."
                0 1 'docsig
                (concat (get-text-property 0 'docsig match) sig) match)
               (put-text-property 0 1 'annot annot match)))))
+    ;; FIXME To get rid of this conversion use `json-array-type', be
+    ;; sure to change places where it is assumed that there are
+    ;; vectors.
     (append matches nil)))
 
 ;;;;; Completion at point interface
