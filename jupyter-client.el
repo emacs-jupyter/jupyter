@@ -237,9 +237,7 @@ passed as the argument has a language of LANG."
 ;;; Macros
 
 (defmacro jupyter-with-client (client &rest body)
-  "Set CLIENT as the `jupyter-current-client', evaluate BODY.
-In addition, set `jupyter-current-io' to the value of CLIENT's IO
-slot."
+  "Set CLIENT as the `jupyter-current-client', evaluate BODY."
   (declare (indent 1))
   `(let ((jupyter-current-client ,client))
      ,@body))
