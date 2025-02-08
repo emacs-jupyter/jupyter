@@ -1553,15 +1553,17 @@ extracted from MESSAGE and converted to the first form.")
   "Return non-nil if a prefetch for PREFIX should be performed.
 Looks at `jupyter-completion-cache' to determine if its
 candidates can be used for PREFIX."
-  (not (and jupyter-completion-cache
-            (if (eq (car jupyter-completion-cache) 'fetched)
-                (equal (nth 1 jupyter-completion-cache) prefix)
-              (or (equal (car jupyter-completion-cache) prefix)
-                  (and (not (string= (car jupyter-completion-cache) ""))
-                       (string-prefix-p (car jupyter-completion-cache) prefix))))
-            ;; Invalidate the cache when completing argument lists
-            (or (string= prefix "")
-                (not (eq (aref prefix (1- (length prefix))) ?\())))))
+  (or
+   ;; Invalidate the cache when completing argument lists
+   (and (not (string-empty-p prefix))
+        (eq (aref prefix (1- (length prefix))) ?\())
+   (pcase jupyter-completion-cache
+     ((or `(fetched ,cached-prefix ,_)
+          `(,cached-prefix . ,_))
+      ;; If the prefix is the same as the cached prefix, no prefetch
+      ;; needed.
+      (not (equal prefix cached-prefix)))
+     (_ t))))
 
 (defun jupyter-completion-prefetch (fun)
   "Get completions for the current completion context.
