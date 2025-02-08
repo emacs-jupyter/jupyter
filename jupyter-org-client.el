@@ -592,100 +592,137 @@ the request immediately instead of attempting to queue it."
             (oset client last-queued-request req)))
           (jupyter-return req))))))
 
-;;; Completion in code blocks
+;;; Caching the current source block's information
 
 (defvar jupyter-org--src-block-cache nil
-  "A list of three elements (SESSION BEG END).
-SESSION is the Jupyter session to use for completion requests for
-a code block between BEG and END.
+  "A list (PARAMS BEG END) of most recently visited source block.
+PARAMS is the source block parameters of the Jupyter source block
+between BEG and END.  BEG and END are markers.
 
-BEG and END are the bounds of the source block which made the
-most recent completion request.")
+Can also take the form (invalid PARAMS BEG END) which means that the
+cache may need to be recomputed.")
 
-(defsubst jupyter-org--src-block-beg ()
-  (nth 1 jupyter-org--src-block-cache))
+(defun jupyter-org--at-cached-src-block-p ()
+  (pcase jupyter-org--src-block-cache
+    (`(invalid . ,_) nil)
+    (`(,_ ,beg ,end)
+     (and
+      (marker-position beg)
+      (marker-position end)
+      (<= beg (point) end)))))
 
-(defsubst jupyter-org--src-block-end ()
-  (nth 2 jupyter-org--src-block-cache))
-
-(defun jupyter-org--same-src-block-p ()
-  (when jupyter-org--src-block-cache
-    (cl-destructuring-bind (_ beg end)
-        jupyter-org--src-block-cache
-      (and
-       (marker-position beg)
-       (marker-position end)
-       (<= beg (point) end)))))
-
-(defun jupyter-org--set-current-src-block ()
-  (unless (jupyter-org--same-src-block-p)
-    (let* ((el (org-element-at-point))
-           (lang (org-element-property :language el)))
-      (when (org-babel-jupyter-language-p lang)
-        (let* ((info (org-babel-get-src-block-info t el))
-               (params (nth 2 info))
-               (beg (save-excursion
-                      (goto-char (org-element-property :post-affiliated el))
-                      (line-beginning-position 2)))
-               (end (save-excursion
-                      (goto-char (org-element-property :end el))
-                      (skip-chars-backward "\r\n")
-                      (line-beginning-position))))
-          (unless jupyter-org--src-block-cache
-            (setq jupyter-org--src-block-cache
-                  (list nil (point-marker) (point-marker)))
-            ;; Move the end marker when text is inserted
-            (set-marker-insertion-type (nth 2 jupyter-org--src-block-cache) t))
-          (setf (nth 0 jupyter-org--src-block-cache) params)
-          (cl-callf move-marker (nth 1 jupyter-org--src-block-cache) beg)
-          (cl-callf move-marker (nth 2 jupyter-org--src-block-cache) end))))))
+(defun jupyter-org--set-src-block-cache ()
+  "Set the src-block cache.
+If set successfully or if `point' is already inside the cached
+source block, return non-nil.  Otherwise, when `point' is not
+inside a Jupyter src-block, return nil."
+  (unless jupyter-org--src-block-cache
+    (setq jupyter-org--src-block-cache
+          (list (list 'invalid nil (make-marker)
+                      (let ((end (make-marker)))
+                        ;; Move the end marker when text is inserted
+                        (set-marker-insertion-type end t)
+                        end)))))
+  (if (org-in-src-block-p 'inside)
+      (or (jupyter-org--at-cached-src-block-p)
+          (when-let* ((el (org-element-at-point))
+                      (info (and (eq (org-element-type el) 'src-block)
+                                 (org-babel-jupyter-language-p
+                                  (org-element-property :language el))
+                                 (org-babel-get-src-block-info t el)))
+                      (params (nth 2 info)))
+            (when (eq (car jupyter-org--src-block-cache) 'invalid)
+              (pop jupyter-org--src-block-cache))
+            (pcase-let (((and cache `(,_ ,beg ,end))
+                         jupyter-org--src-block-cache))
+              (setcar cache params)
+              (save-excursion
+                (goto-char (org-element-property :post-affiliated el))
+                (move-marker beg (line-beginning-position 2))
+                (goto-char (org-element-property :end el))
+                (skip-chars-backward "\r\n")
+                (move-marker end (line-beginning-position))))
+            t))
+    ;; Invalidate cache when going outside of a source block.  This
+    ;; way if the language of the block changes we don't end up using
+    ;; the cache since it is only used for Jupyter blocks.
+    (pcase jupyter-org--src-block-cache
+      ((and `(,x . ,_) (guard (not (eq x 'invalid))))
+       (push 'invalid jupyter-org--src-block-cache)))
+    nil))
 
 (defmacro jupyter-org-when-in-src-block (&rest body)
   "Evaluate BODY when inside a Jupyter source block.
 Return the result of BODY when it is evaluated, otherwise nil is
 returned."
   (declare (debug (body)))
-  `(if (not (org-in-src-block-p 'inside))
-       ;; Invalidate cache when going outside of a source block.  This way if
-       ;; the language of the block changes we don't end up using the cache
-       ;; since it is only used for Jupyter blocks.
-       (when jupyter-org--src-block-cache
-         (set-marker (nth 1 jupyter-org--src-block-cache) nil)
-         (set-marker (nth 2 jupyter-org--src-block-cache) nil)
-         (setq jupyter-org--src-block-cache nil))
-     (jupyter-org--set-current-src-block)
-     (when (jupyter-org--same-src-block-p)
-       ,@body)))
+  `(when (jupyter-org--set-src-block-cache)
+     ,@body))
+
+(defmacro jupyter-org-with-src-block-bounds (beg end &rest body)
+  "With BEG and END set to the bounds of the current src-block evaluate BODY.
+BODY is only evaluated when the current source block is a Jupyter
+source block and `point' is within its contents.  Returns the
+result of BODY or nil when it isn't evaluated."
+  (declare (indent 2) (debug (body)))
+  `(jupyter-org-when-in-src-block
+    (pcase-let ((`(,_ ,,beg ,,end) jupyter-org--src-block-cache))
+      ,@body)))
+
+(defun jupyter-org-src-block-params (&optional previous)
+  "Return the src-block parameters for the current Jupyter src-block.
+If PREVIOUS is non-nil and `point' is not in a Jupyter source
+block, return the parameters of the most recently visited source
+block, but only if it was in the same buffer.  Otherwise return
+nil."
+  (jupyter-org--set-src-block-cache)
+  (pcase jupyter-org--src-block-cache
+    ((and (and (guard (and previous
+                           (not (jupyter-org--at-cached-src-block-p)))))
+          `(invalid ,params ,beg . ,_)
+          (guard (eq (marker-buffer beg) (current-buffer))))
+     ;; NOTE There are probably cases where the parameters could no
+     ;; longer be valid, hence the invalid tag.  This is mainly for
+     ;; the purposes of creating a mode line according to
+     ;; `jupyter-org-interaction-mode-line-display-most-recent'.
+     params)
+    (`(invalid . ,_) nil)
+    (`(,params . ,_) params)))
 
 (defun jupyter-org--with-src-block-client (thunk)
-  (jupyter-org-when-in-src-block
-   (let ((params (car jupyter-org--src-block-cache)))
-     (when (or jupyter-org-auto-connect
-               (org-babel-jupyter-session-initiated-p params 'noerror))
-       (let* ((buffer (org-babel-jupyter-initiate-session
-                        (alist-get :session params) params))
-              (jupyter-current-client
-               (buffer-local-value 'jupyter-current-client buffer))
-              (syntax (jupyter-kernel-language-syntax-table
-                       jupyter-current-client)))
-         (with-syntax-table syntax
-           (funcall thunk)))))))
+  (when-let* ((params (jupyter-org-src-block-params))
+              (buffer
+               (and (or jupyter-org-auto-connect
+                        (org-babel-jupyter-session-initiated-p
+                         params 'noerror))
+                    (org-babel-jupyter-initiate-session
+                     (alist-get :session params) params)))
+              (client (or (buffer-local-value
+                           'jupyter-current-client buffer)
+                          (error "No client in session buffer!")))
+              (syntax (jupyter-kernel-language-syntax-table client)))
+    (let ((jupyter-current-client client))
+      (with-syntax-table syntax
+        (funcall thunk)))))
 
 (defmacro jupyter-org-with-src-block-client (&rest body)
   "Evaluate BODY with `jupyter-current-client' set to the session's client.
-A client is initialized if needed when `jupyter-org-auto-connect'
-is non-nil.  When that variable is nil and no client is present
-for the source block, don't evaluate BODY and return nil.
-
-If `point' is not inside the code of a Jupyter source block, BODY
-is not evaluated and nil is returned.  Return the result of BODY
-when it is evaluated.
+BODY is evaluate and its result returned only when the client
+associated with the source block is connected to its kernel and
+`point' is within the contents of the source block.  If no client
+exists for the session yet and `jupyter-org-auto-connect' is
+non-nil, a new client is initiated for the session before
+evaluating BODY.  When `jupyter-org-auto-connect' is nil and
+there is no client or when `point' is not in a Jupyter source
+block, don't evaluate BODY and return nil.
 
 In addition to evaluating BODY with an active Jupyter client set,
 the `syntax-table' will be set to that of the REPL buffer's."
   (declare (debug (body)))
   `(jupyter-org--with-src-block-client
     (lambda () ,@body)))
+
+;;; Completion in code blocks
 
 (cl-defmethod jupyter-code-context ((_type (eql inspect))
                                     &context (major-mode org-mode))
@@ -694,12 +731,9 @@ the `syntax-table' will be set to that of the REPL buffer's."
 
 (cl-defmethod jupyter-code-context ((_type (eql completion))
                                     &context (major-mode org-mode))
-  ;; Always called from within a valid code block.  See
-  ;; `jupyter-org-completion-at-point'.
-  (list (buffer-substring-no-properties
-         (jupyter-org--src-block-beg)
-         (jupyter-org--src-block-end))
-        (- (point) (jupyter-org--src-block-beg))))
+  (jupyter-org-with-src-block-bounds beg end
+    (list (buffer-substring-no-properties beg end)
+          (- (point) beg))))
 
 (defun jupyter-org-completion-at-point ()
   (jupyter-org-with-src-block-client
