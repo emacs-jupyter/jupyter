@@ -12,6 +12,7 @@ An interface to communicate with Jupyter kernels in Emacs.
   - [[#using-melpa][Using MELPA]]
   - [[#manual-installation][Manual installation]]
   - [[#building-the-widget-support-experimental][Building the widget support (EXPERIMENTAL)]]
+- [[#how-do-i-run-the-tests][How do I run the tests?]]
 - [[#related-packages][Related packages]]
   - [[#ob-ipython][=ob-ipython=]]
   - [[#emacs-ipython-notebook-ein][=emacs-ipython-notebook= (=ein=)]]
@@ -38,6 +39,9 @@ An interface to communicate with Jupyter kernels in Emacs.
   - Kernel requests for user input entered through the minibuffer.
 
   - You can search through REPL history using =isearch=.
+
+- Here is a demo of how an `emacs-jupyter` REPL might look in practice:
+  ![REPL workflow](assets/workflow1.gif)
 
 * How do I install this package?
 
