@@ -1484,38 +1484,33 @@ MATCHES are the completion matches returned by the kernel,
 METADATA is any extra data associated with MATCHES that was
 supplied by the kernel."
   (let (buf)
-    (save-current-buffer
-      (unwind-protect
-          (cl-loop
-           for i from 0 below (length matches)
-           for match = (aref matches i)
-           do
-           (put-text-property 0 1 'docsig match match)
-           (cond
-            ((string-match jupyter-completion-argument-regexp match)
-             (let* ((str match)
-                    (args-str (match-string 1 str))
-                    (end (match-end 1))
-                    (path (match-string 2 str))
-                    (line (string-to-number (match-string 3 str)))
-                    (snippet (progn
-                               (unless buf
-                                 (setq buf (generate-new-buffer " *temp*"))
-                                 (set-buffer buf))
-                               (insert args-str)
-                               (goto-char (point-min))
-                               (prog1 (jupyter-completion--make-arg-snippet
-                                       (jupyter-completion--arg-extract))
-                                 (erase-buffer)))))
-               (setq match (aset matches i (substring match 0 end)))
-               (put-text-property 0 1 'snippet snippet match)
-               (put-text-property 0 1 'location (cons path line) match)))
-            ;; TODO: This is specific to the results that
-            ;; the python kernel returns, make a support
-            ;; function?
-            ((string-match-p "\\." match)
-             (aset matches i (car (last (split-string match "\\.")))))))
-        (when buf (kill-buffer buf))))
+    (with-temp-buffer
+      (cl-loop
+       for i from 0 below (length matches)
+       for match = (aref matches i)
+       do
+       (put-text-property 0 1 'docsig match match)
+       (cond
+        ((string-match jupyter-completion-argument-regexp match)
+         (let* ((str match)
+                (args-str (match-string 1 str))
+                (end (match-end 1))
+                (path (match-string 2 str))
+                (line (string-to-number (match-string 3 str)))
+                (snippet (progn
+                           (erase-buffer)
+                           (insert args-str)
+                           (goto-char (point-min))
+                           (jupyter-completion--make-arg-snippet
+                            (jupyter-completion--arg-extract)))))
+           (setq match (aset matches i (substring match 0 end)))
+           (put-text-property 0 1 'snippet snippet match)
+           (put-text-property 0 1 'location (cons path line) match)))
+        ;; TODO: This is specific to the results that
+        ;; the python kernel returns, make a support
+        ;; function?
+        ((string-match-p "\\." match)
+         (aset matches i (car (last (split-string match "\\."))))))))
     ;; When a type is supplied add it as an annotation
     (when-let* ((types (plist-get metadata :_jupyter_types_experimental))
                 (lengths (mapcar #'length matches)))
