@@ -252,6 +252,9 @@ Call the next method if ARGS does not contain a :spec or
                      (jupyter-shutdown kernel)
                      (stop)
                      (setq shutdown t))
+                    ((and op (or 'connect 'disconnect))
+                     (if (eq op 'connect) (stop)
+                       (start)))
                     ('restart
                      (setq shutdown nil)
                      (jupyter-restart kernel)

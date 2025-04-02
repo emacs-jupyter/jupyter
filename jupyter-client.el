@@ -411,8 +411,19 @@ KERNEL is the name of the kernelspec as returned by the
 shell command."
   (jupyter-client (jupyter-get-kernelspec kernel) client-class))
 
+(cl-defmethod jupyter-connect ((client jupyter-kernel-client))
+  "Connect to the I/O of a CLIENT's kernel.
+If the I/O of the CLIENT to the kernel is disconnected, it means
+messages will no longer be received on the client side although
+messages from other client's could still be exchanged between the
+kernel and those others."
+  (jupyter-run-with-io (jupyter-kernel-action-subscriber client)
+    (jupyter-publish (list 'connect))))
+
 (cl-defmethod jupyter-disconnect ((client jupyter-kernel-client))
-  (slot-makeunbound client 'io))
+  "Disconnect from the I/O of a CLIENT's kernel."
+  (jupyter-run-with-io (jupyter-kernel-action-subscriber client)
+    (jupyter-publish (list 'disconnect))))
 
 (cl-defmethod jupyter-client ((spec jupyter-kernelspec) &optional client-class)
   "Return a client connected to kernel created from SPEC.
