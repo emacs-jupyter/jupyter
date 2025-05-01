@@ -180,7 +180,7 @@ The session can be used to write a connection file, see
         ;; Wait until the connection file is cleaned up before
         ;; forgetting about the process completely.
         (jupyter-with-timeout
-            (nil jupyter-default-timeout
+            (nil (if (file-remote-p conn-file) 0 jupyter-default-timeout)
                  (delete-file conn-file))
           (not (file-exists-p conn-file)))
         (delete-process process)
