@@ -284,11 +284,7 @@ method is called."
 (cl-defmethod initialize-instance ((client jupyter-kernel-client) &optional _slots)
   (cl-call-next-method)
   (let ((buffer (generate-new-buffer " *jupyter-kernel-client*")))
-    (oset client -buffer buffer)
-    (jupyter-add-finalizer client
-      (lambda ()
-        (when (buffer-live-p buffer)
-          (kill-buffer buffer))))))
+    (oset client -buffer buffer)))
 
 (cl-defmethod jupyter-kernel-alive-p ((client jupyter-kernel-client))
   "Return non-nil if the kernel CLIENT is connected to is alive."

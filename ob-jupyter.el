@@ -516,7 +516,17 @@ These parameters are handled internally."
                  ;; for the pending results.
                  (jupyter-org-pending-async-results req)))
               (t
-               (jupyter-idle-sync req)
+               (with-local-quit
+                 (jupyter-idle-sync req))
+               (when quit-flag
+                 (jupyter-repl-interrupt-kernel (jupyter-request-client req)))
+               ;; Wait to get the trace-backs.
+               ;; 
+               ;; TODO Do we really need to signal here?  There could
+               ;; be partial results that would be useful to see.
+               (let ((inhibit-quit t))
+                 (jupyter-run-with-client jupyter-current-client
+                   (jupyter-idle req)))
                (if (jupyter-org-request-inline-block-p req)
                    ;; When evaluating a source block synchronously, only the
                    ;; :execute-result will be in `jupyter-org-request-results' since
