@@ -151,6 +151,13 @@ A longer timeout is needed, for example, when retrieving the
 
 ;;; Macros
 
+(defmacro jupyter-run-soon (&rest body)
+  "Arrange to evaluate BODY the next time timers are evaluated.
+This is useful, for example, to postpone evaluation until around
+the beginning of the next command loop."
+  (declare (indent 0))
+  `(run-at-time 0 nil (lambda () ,@body)))
+
 (defmacro jupyter-with-timeout (spec &rest wait-forms)
   "Periodically evaluate WAIT-FORMS until timeout.
 Or until WAIT-FORMS evaluates to a non-nil value.
@@ -487,8 +494,34 @@ call the handler methods of those types."
   "Return the name of the channel that a request with TYPE is sent on."
   (pcase type
     ((or "input_reply" "input_request") "stdin")
-    ("interrupt_request" "control")
+    ((or "interrupt_request" "shutdown_request") "control")
     (_ "shell")))
+
+(declare-function jupyter-message-time "jupyter-messages")
+(declare-function jupyter-find-message "jupyter-monads")
+
+(defun jupyter-execution-time (req)
+  "Return an approximate value of the execution time of REQ.
+Return a time value in the same form as what is returned by
+`current-time' or nil when a value could not be computed,
+e.g. when REQ does not represent an execute_request or has not
+completed yet.
+
+Note this just returns the time difference between the
+execute_input message of the request and the execute_reply
+message.  The execute_input message is received when the kernel
+begins executing the contents of REQ and the execute_reply is
+received when the kernel has completed execution of REQ minus how
+long it actually takes for the request to generate all of its
+potential output.  So the returned time, in addition to the true
+execution time of the code, contains the time taken in preparing
+the request to be executed and other kernel specific tasks."
+  (when-let* ((msgs (jupyter-request-messages req))
+              (ex-input (jupyter-find-message "execute_input" msgs))
+              (ex-reply (jupyter-find-message "execute_reply" msgs)))
+    (time-subtract
+     (jupyter-message-time ex-reply)
+     (jupyter-message-time ex-input))))
 
 ;;; Connecting to a kernel's channels
 
@@ -760,6 +793,48 @@ TIME is assumed to have the same form as the return value of
                   (if past "" "in ")
                   minutes
                   (if past " ago" ""))))))))
+
+(defun jupyter-format-time (time)
+  "Return a description string describing TIME.
+TIME is a time value as returned by `current-time'.  Return
+strings like
+
+    \"1 day 5 min 10.330 s\", \"10 min 5.000 s\", \"30.200 s\"
+
+depending on the number of seconds contained in TIME.  If TIME is
+nil, return \"Never\"."
+  (if (null time) "Never"
+    (let* ((result "")
+           (s (float-time time))
+           (d (floor (/ s 86400.0))))
+      (unless (zerop d)
+        (cl-callf concat result
+          (format "%d day%s" d (if (= d 1) "" "s"))))
+      (let ((h (floor (- (/ s 3600.0) (* 24 d)))))
+        (unless (zerop h)
+          (cl-callf concat result
+            (format "%s%d hour%s"
+                    (if (zerop (length result)) "" " ")
+                    h
+                    (if (= h 1) "" "s"))))
+        (let ((m (floor (- (/ s 60.0)
+                           (+ (* 60 h)
+                              (* 1440 d))))))
+          (unless (zerop m)
+            (cl-callf concat result
+              (format "%s%d min%s"
+                      (if (zerop (length result)) "" " ")
+                      m
+                      (if (= m 1) "" "s"))))
+          (setq s (- s (+ (* 60 m)
+                          (* 3600 h)
+                          (* 86400 d))))
+          (unless (zerop s)
+            (cl-callf concat result
+              (format "%s%.3f s"
+                      (if (zerop (length result)) "" " ")
+                      s)))))
+      result)))
 
 ;;; Simple weak references
 ;; Thanks to Chris Wellon https://nullprogram.com/blog/2014/01/27/

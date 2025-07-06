@@ -505,14 +505,30 @@ error with the data being the error received by `url-retrieve'."
 
 ;;;; Authenticators
 
+;; TODO Other instances where caching results of requests could be
+;; beneficial?  Currently it is only used here.
+(defvar jupyter-api--response-cache (make-hash-table))
+
+(defvar jupyter-api--response-cache-expiry 1
+  "Number of seconds of Emacs idle time before cache invalidation.")
+
 (cl-defmethod jupyter-api-server-accessible-p ((client jupyter-rest-client))
   "Return non-nil if CLIENT can access the Jupyter notebook server."
-  (ignore-errors
-    (prog1 t
-      (let ((jupyter-api-authentication-in-progress-p t)
-            jupyter-api-request-data
-            jupyter-api-request-headers)
-        (jupyter-api-get-kernelspec client)))))
+  (pcase (gethash client jupyter-api--response-cache 'check)
+    ('check
+     (puthash client
+              (ignore-errors
+                (prog1 t
+                  (let ((jupyter-api-authentication-in-progress-p t)
+                        jupyter-api-request-data
+                        jupyter-api-request-headers)
+                    ;; Hit an endpoint that requires authentication.
+                    (jupyter-api-get-kernelspec client))))
+              jupyter-api--response-cache)
+     (run-with-idle-timer
+      jupyter-api--response-cache-expiry
+      nil (lambda () (remhash client jupyter-api--response-cache))))
+    (cached cached)))
 
 (cl-defgeneric jupyter-api-authenticate (client &rest args)
   (declare (indent 1)))
@@ -568,7 +584,9 @@ attempt.  If CLIENT could not be authenticated raise an error."
                      jupyter-api-request-headers))
              (jupyter-api-request-data
               (concat "password=" (url-hexify-string (funcall passwd)))))
-         (jupyter-api-login client)))))
+         (unwind-protect
+             (jupyter-api-login client)
+           (clear-string jupyter-api-request-data))))))
   (oset client auth t))
 
 (cl-defmethod jupyter-api-authenticate ((client jupyter-rest-client) (_auth (eql token)))
@@ -736,6 +754,18 @@ the server."
 
 ;;;; Endpoints
 
+(cl-defmethod jupyter-api-server-version ((client jupyter-rest-client))
+  "Return the version of the server CLIENT is connected to."
+  (let (jupyter-api-request-data
+        jupyter-api-request-headers)
+    ;; This endpoint does not require authentication so it is OK to
+    ;; use `jupyter-api-http-request'.
+    ;;
+    ;; https://jupyter-server.readthedocs.io/en/latest/developers/rest-api.html#get--api-
+    (plist-get
+     (jupyter-api-http-request (oref client url) "api" "GET")
+     :version)))
+
 (cl-defgeneric jupyter-api/kernels (client method &rest plist)
   (declare (indent 2)))
 
@@ -799,7 +829,11 @@ If NAME is not provided use the default kernelspec."
 
 (defun jupyter-api-shutdown-kernel (client id)
   "Send the HTTP request using CLIENT to shutdown a kernel with ID."
-  (jupyter-api/kernels client "DELETE" id))
+  (condition-case err
+      (jupyter-api/kernels client "DELETE" id)
+    (jupyter-api-http-error
+     (unless (= (nth 1 err) 404) ; Not Found
+       (signal (car err) (cdr err))))))
 
 (defun jupyter-api-restart-kernel (client id)
   "Send an HTTP request using CLIENT to restart a kernel with ID."
@@ -862,24 +896,25 @@ available via CLIENT."
 
 ;;; Contents API
 
-;; TODO: Actually consider encoding/decoding
-;; https://jupyter-notebook.readthedocs.io/en/stable/extending/contents.html#filesystem-entities
-
-(defun jupyter-api--strip-slashes (path)
-  (thread-last path
-    (replace-regexp-in-string "^/+" "")
-    (replace-regexp-in-string "/+$" "")))
-
 (autoload 'tramp-drop-volume-letter "tramp")
 
-;; See https://jupyter-notebook.readthedocs.io/en/stable/extending/contents.html#api-paths
+(defun jupyter-api--sanitize-path (path)
+  (thread-last
+    path
+    (tramp-drop-volume-letter)
+    ;; Strip slashes
+    (replace-regexp-in-string "^/+" "")
+    (replace-regexp-in-string "/+$" "")
+    ;; Handle #
+    (string-replace "#" "%23")))
+
+;; See https://jupyter-server.readthedocs.io/en/latest/developers/contents.html#api-paths
 (defsubst jupyter-api-content-path (file)
   "Return a sanitized path for locating FILE on a Jupyter REST server.
 Note, if FILE is not an absolute file name, it is expanded into
 one as if the `default-directory' where /."
-  (jupyter-api--strip-slashes
-   (tramp-drop-volume-letter
-    (expand-file-name (file-local-name file) "/"))))
+  (jupyter-api--sanitize-path
+   (expand-file-name (file-local-name file) "/")))
 
 (defun jupyter-api-get-file-model (client file &optional no-content type)
   "Send a request using CLIENT to get a model of FILE.

@@ -240,15 +240,12 @@ this case FN will be evaluated on KERNEL."
              (reauth-pub (or (gethash server jupyter--reauth-subscribers)
                              (setf (gethash server jupyter--reauth-subscribers)
                                    (jupyter-publisher))))
-             (shutdown nil)
              (kernel-io
               (jupyter-publisher
                 (lambda (event)
                   (pcase event
                     (`(message . ,rest) (jupyter-content rest))
                     (`(send ,channel ,msg-type ,content ,msg-id)
-                     (when shutdown
-                       (error "Attempting to send message to shutdown kernel"))
                      (let ((send
                             (lambda ()
                               (websocket-send-text
@@ -264,8 +261,6 @@ this case FN will be evaluated on KERNEL."
                           (setq ws (funcall make-websocket))
                           (funcall send)))))
                     ('start
-                     (when shutdown
-                       (error "Can't start I/O connection to shutdown kernel"))
                      (unless (websocket-openp ws)
                        (setq ws (funcall make-websocket))))
                     ('stop (websocket-close ws))))))
@@ -313,11 +308,18 @@ this case FN will be evaluated on KERNEL."
                 (pcase action
                   ('interrupt
                    (jupyter-interrupt kernel))
+                  ((and op (or 'connect 'disconnect))
+                   (if (eq op 'disconnect)
+                       (progn
+                         (or (null ws)
+                             (websocket-close ws))
+                         (setq ws (funcall make-websocket)))
+                     (websocket-close ws)
+                     (setq ws nil)))
                   ('shutdown
                    (jupyter-shutdown kernel)
-                   (setq shutdown t)
-                   (when (websocket-openp ws)
-                     (websocket-close ws)))
+                   (websocket-close ws)
+                   (setq ws nil))
                   ('restart
                    (jupyter-restart kernel))
                   (`(action ,fn)
