@@ -2141,7 +2141,7 @@ Image(filename='%s', width=300)" file)
   ;; `org-babel-python-table-or-string', this is more of a test for method
   ;; order.
   (cl-letf* ((py-method-called nil)
-             (req (jupyter-org-request))
+             (req (jupyter-org-request :marker (jupyter-org-test (point-marker))))
              ((symbol-function #'org-babel-python-table-or-string)
               (lambda (results)
                 (setq py-method-called t)
@@ -2152,7 +2152,7 @@ Image(filename='%s', width=300)" file)
     (should (equal (jupyter-kernel-language jupyter-current-client) 'python))
     ;; Bring in the python specific methods
     (jupyter-load-language-support jupyter-current-client)
-    (should (equal (jupyter-org-result req (list :text/plain "[1, 2, 3]"))
+    (should (equal (jupyter-org-get-result req (list :text/plain "[1, 2, 3]"))
                    "| 1 | 2 | 3 |\n"))
     (should py-method-called)))
 
