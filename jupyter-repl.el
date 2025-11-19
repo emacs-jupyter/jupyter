@@ -44,6 +44,7 @@
 ;;     C-c C-c `jupyter-eval-line-or-region'
 ;;     C-c C-l `jupyter-eval-file'
 ;;     M-i `jupyter-inspect-at-point'
+;;     C-c C-d `jupyter-describe'
 ;;     C-c C-r `jupyter-repl-restart-kernel'
 ;;     C-c C-i `jupyter-repl-interrupt-kernel'
 ;;     C-c C-z `jupyter-repl-pop-to-buffer'
@@ -1920,6 +1921,7 @@ the updated state."
     (define-key map (kbd "C-c C-l") #'jupyter-load-file)
     (define-key map (kbd "C-c M-:") #'jupyter-eval-string-command)
     (define-key map (kbd "M-i") #'jupyter-inspect-at-point)
+    (define-key map (kbd "C-c C-d") #'jupyter-describe)
     (define-key map (kbd "C-c C-r") #'jupyter-repl-restart-kernel)
     (define-key map (kbd "C-c C-i") #'jupyter-repl-interrupt-kernel)
     (define-key map (kbd "C-c C-z") #'jupyter-repl-pop-to-buffer)
