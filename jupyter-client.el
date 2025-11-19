@@ -237,9 +237,7 @@ passed as the argument has a language of LANG."
 ;;; Macros
 
 (defmacro jupyter-with-client (client &rest body)
-  "Set CLIENT as the `jupyter-current-client', evaluate BODY.
-In addition, set `jupyter-current-io' to the value of CLIENT's IO
-slot."
+  "Set CLIENT as the `jupyter-current-client', evaluate BODY."
   (declare (indent 1))
   `(let ((jupyter-current-client ,client))
      ,@body))
@@ -413,8 +411,19 @@ KERNEL is the name of the kernelspec as returned by the
 shell command."
   (jupyter-client (jupyter-get-kernelspec kernel) client-class))
 
+(cl-defmethod jupyter-connect ((client jupyter-kernel-client))
+  "Connect to the I/O of a CLIENT's kernel.
+If the I/O of the CLIENT to the kernel is disconnected, it means
+messages will no longer be received on the client side although
+messages from other client's could still be exchanged between the
+kernel and those others."
+  (jupyter-run-with-io (jupyter-kernel-action-subscriber client)
+    (jupyter-publish (list 'connect))))
+
 (cl-defmethod jupyter-disconnect ((client jupyter-kernel-client))
-  (slot-makeunbound client 'io))
+  "Disconnect from the I/O of a CLIENT's kernel."
+  (jupyter-run-with-io (jupyter-kernel-action-subscriber client)
+    (jupyter-publish (list 'disconnect))))
 
 (cl-defmethod jupyter-client ((spec jupyter-kernelspec) &optional client-class)
   "Return a client connected to kernel created from SPEC.
@@ -591,24 +600,26 @@ waiting."
 (defconst jupyter--client-handlers
   (cl-labels
       ((handler-alist
-        (&rest msg-types)
-        (cl-loop
-         for mt in msg-types
-         collect (cons mt (intern
-                           (format "jupyter-handle-%s"
-                                   (replace-regexp-in-string
-                                    "_" "-" mt)))))))
+         (&rest msg-types)
+         (cl-loop
+          for mt in msg-types
+          collect (cons mt (intern
+                            (format "jupyter-handle-%s"
+                                    (replace-regexp-in-string
+                                     "_" "-" mt)))))))
     `(("iopub" . ,(handler-alist
-                  "shutdown_reply" "stream" "comm_open" "comm_msg"
-                  "comm_close" "execute_input" "execute_result"
-                  "error" "status" "clear_output" "display_data"
-                  "update_display_data"))
+                   "shutdown_reply" "stream" "comm_open" "comm_msg"
+                   "comm_close" "execute_input" "execute_result"
+                   "error" "status" "clear_output" "display_data"
+                   "update_display_data"))
       ("shell" . ,(handler-alist
-                  "execute_reply" "shutdown_reply" "inspect_reply"
-                  "complete_reply" "history_reply" "is_complete_reply"
-                  "comm_info_reply" "kernel_info_reply"))
+                   "execute_reply" "shutdown_reply" "interrupt_reply" "inspect_reply"
+                   "complete_reply" "history_reply" "is_complete_reply"
+                   "comm_info_reply" "kernel_info_reply"))
+      ("control" . ,(handler-alist
+                     "shutdown_reply" "interrupt_reply"))
       ("stdin" . ,(handler-alist
-                  "input_reply" "input_request")))))
+                   "input_reply" "input_request")))))
 
 (defun jupyter--run-handler-maybe (client channel msg req)
   (when (and (jupyter--request-allows-handler-p req msg)
@@ -687,10 +698,19 @@ particular language."
 
 ;;;;; Evaluation routines
 
-(defvar-local jupyter-eval-expression-history nil
-  "A client local variable to store the evaluation history.
-The evaluation history is used when reading code to evaluate from
-the minibuffer.")
+(defvar-local jupyter-expression-history nil
+  "A client local variable to store the expression history.
+The expression history is the history of expressions read from
+`jupyter-read-expression', typical for evaluation purposes, but
+also for things like inspection.")
+
+(defun jupyter--setup-minibuffer (client)
+  "Setup minibuffer for expression completion using CLIENT."
+  (setq jupyter-current-client client)
+  (add-hook 'completion-at-point-functions
+            #'jupyter-completion-at-point nil t)
+  (add-hook 'minibuffer-exit-hook
+            #'jupyter--teardown-minibuffer nil t))
 
 (defun jupyter--teardown-minibuffer ()
   "Remove Jupyter related variables and hooks from the minibuffer."
@@ -698,43 +718,44 @@ the minibuffer.")
   (remove-hook 'completion-at-point-functions 'jupyter-completion-at-point t)
   (remove-hook 'minibuffer-exit-hook 'jupyter--teardown-minibuffer t))
 
-;; This is needed since `read-from-minibuffer' expects the history variable to
-;; be a symbol whose value is `set' when adding a new history element.  Since
-;; `jupyter-eval-expression-history' is a buffer (client) local variable, it would be
-;; set in the minibuffer which we don't want.
-(defvar jupyter--read-expression-history nil
-  "A client's `jupyter-eval-expression-history' when reading an expression.
+;; This is needed since `read-from-minibuffer' expects the history
+;; variable to be a symbol whose value is `set' when adding a new
+;; history element.  Since `jupyter-expression-history' is a buffer
+;; (client) local variable, it would be set in the minibuffer which we
+;; don't want.
+(defvar jupyter--expression-history nil
+  "A client's `jupyter-expression-history' when reading an expression.
 This variable is used as the history symbol when reading an
 expression from the minibuffer.  After an expression is read, the
-`jupyter-eval-expression-history' of the client is updated to the
+`jupyter-expression-history' of the client is updated to the
 value of this variable.")
 
-(cl-defgeneric jupyter-read-expression ()
+(cl-defgeneric jupyter-read-expression (&optional prompt)
   "Read an expression using the `jupyter-current-client' for completion.
 The expression is read from the minibuffer and the expression
-history is obtained from the `jupyter-eval-expression-history'
-client local variable.
+history is obtained from the `jupyter-expression-history' client
+local variable, see `jupyter-get'.
+
+PROMPT is the prompt to use when reading the expression.  It
+defaults to \"Expression (LANG): \" where LANG is the
+`jupyter-kernel-language' of the client.
 
 Methods that extend this generic function should
 `cl-call-next-method' as a last step."
   (cl-check-type jupyter-current-client jupyter-kernel-client
                  "Need a client to read an expression")
   (let* ((client jupyter-current-client)
-         (jupyter--read-expression-history
-          (jupyter-get client 'jupyter-eval-expression-history)))
+         (jupyter--expression-history
+          (jupyter-get client 'jupyter-expression-history)))
     (minibuffer-with-setup-hook
-        (lambda ()
-          (setq jupyter-current-client client)
-          (add-hook 'completion-at-point-functions
-                    'jupyter-completion-at-point nil t)
-          (add-hook 'minibuffer-exit-hook
-                    'jupyter--teardown-minibuffer nil t))
+        (apply-partially #'jupyter--setup-minibuffer client)
       (prog1 (read-from-minibuffer
-              (format "Eval (%s): " (jupyter-kernel-language client))
+              (or prompt
+                  (format "Expression (%s): " (jupyter-kernel-language client)))
               nil read-expression-map
-              nil 'jupyter--read-expression-history)
-        (jupyter-set client 'jupyter-eval-expression-history
-                     jupyter--read-expression-history)))))
+              nil 'jupyter--expression-history)
+        (setf (jupyter-get client 'jupyter-expression-history)
+              jupyter--expression-history)))))
 
 (defun jupyter-eval (code &optional mime)
   "Send an execute request for CODE, wait for the execute result.
@@ -743,7 +764,10 @@ All client handlers are inhibited for the request.  In addition,
 the history of the request is not stored.  Return the MIME
 representation of the result.  If MIME is nil, return the
 text/plain representation."
-  (interactive (list (jupyter-read-expression) nil))
+  (interactive
+   (list (jupyter-read-expression
+          (format "Eval (%s): " (jupyter-kernel-language)))
+         nil))
   (jupyter-run-with-client jupyter-current-client
     (jupyter-mlet*
         ((res (jupyter-result
@@ -938,7 +962,9 @@ with `jupyter-eval-short-result-display-function'.
 
 If `jupyter-eval-use-overlays' is non-nil, evaluation results
 are displayed in the current buffer instead."
-  (interactive (list (jupyter-read-expression)))
+  (interactive (list
+                (jupyter-read-expression
+                 (format "Eval (%s): " (jupyter-kernel-language)))))
   (jupyter-eval-string str))
 
 (defun jupyter-eval-region (insert beg end)
@@ -1160,19 +1186,28 @@ SOURCE."
 ;;;; Inspection
 
 ;; TODO: How to add hover documentation support
-(defun jupyter-inspect-at-point (&optional buffer detail)
+(defun jupyter-inspect-at-point (&optional buffer detail interactive)
   "Inspect the code at point.
 Call `jupyter-inspect' for the `jupyter-code-context' at point.
+When called interactively with a non-nil prefix argument, read an
+expression to inspect from the minibuffer instead.
 
-BUFFER and DETAIL have the same meaning as in `jupyter-inspect'."
-  (interactive (list nil 0))
-  (cl-destructuring-bind (code pos)
-      (jupyter-code-context 'inspect)
-    (jupyter-inspect code pos buffer detail)))
+BUFFER and DETAIL have the same meaning as in `jupyter-inspect'.
+INTERACTIVE is an internal argument set when this function is
+called interactively."
+  (interactive (list nil 0 t))
+  (pcase
+      (if (and interactive current-prefix-arg)
+          (let ((code (jupyter-read-expression
+                       (format "Inspect (%s): " (jupyter-kernel-language)))))
+            (list code (length code)))
+          (jupyter-code-context 'inspect))
+    (`(,code ,pos)
+     (jupyter-inspect code pos buffer detail))))
 
 (cl-defgeneric jupyter-inspect (code &optional pos buffer detail)
   "Inspect CODE.
-Send an `:inspect-request' with the `jupyter-current-client' and
+Send an inspect_request with the `jupyter-current-client' and
 display the results in a BUFFER.
 
 CODE is the code to inspect and POS is your position in the CODE.
@@ -1250,9 +1285,9 @@ DETAIL is the detail level to use for the request and defaults to
 CODE is the required context for TYPE (either `inspect' or
 `completion') and POS is the relative position of `point' within
 CODE.  Depending on the current context such as the current
-`major-mode', CODE and POS will be used for `:complete-request's
-originating from `jupyter-completion-at-point' and
-`:inspect-request's from `jupyter-inspect-at-point'.
+`major-mode', CODE and POS will be used for a complete_request
+originating from `jupyter-completion-at-point' and an
+inspect_request from `jupyter-inspect-at-point'.
 
 The default methods return the `jupyter-line-or-region-context'.")
 
@@ -1459,51 +1494,58 @@ kernel, but the prefix used by `jupyter-completion-at-point'.  See
 MATCHES are the completion matches returned by the kernel,
 METADATA is any extra data associated with MATCHES that was
 supplied by the kernel."
-  (let* ((matches (append matches nil))
-         (tail matches)
-         ;; TODO Handle the :start, :end, and :signature fields
-         (types (append (plist-get metadata :_jupyter_types_experimental) nil))
-         (buf))
-    (save-current-buffer
-      (unwind-protect
-          (while tail
-            (cond
-             ((string-match jupyter-completion-argument-regexp (car tail))
-              (let* ((str (car tail))
-                     (args-str (match-string 1 str))
-                     (end (match-end 1))
-                     (path (match-string 2 str))
-                     (line (string-to-number (match-string 3 str)))
-                     (snippet (progn
-                                (unless buf
-                                  (setq buf (generate-new-buffer " *temp*"))
-                                  (set-buffer buf))
-                                (insert args-str)
-                                (goto-char (point-min))
-                                (prog1 (jupyter-completion--make-arg-snippet
-                                        (jupyter-completion--arg-extract))
-                                  (erase-buffer)))))
-                (setcar tail (substring (car tail) 0 end))
-                (put-text-property 0 1 'snippet snippet (car tail))
-                (put-text-property 0 1 'location (cons path line) (car tail))
-                (put-text-property 0 1 'docsig (car tail) (car tail))))
-             ;; TODO: This is specific to the results that
-             ;; the python kernel returns, make a support
-             ;; function?
-             ((string-match-p "\\." (car tail))
-              (setcar tail (car (last (split-string (car tail) "\\."))))))
-            (setq tail (cdr tail)))
-        (when buf (kill-buffer buf))))
+  (let (buf)
+    (with-temp-buffer
+      (cl-loop
+       for i from 0 below (length matches)
+       for match = (aref matches i)
+       do
+       (put-text-property 0 1 'docsig match match)
+       (cond
+        ((string-match jupyter-completion-argument-regexp match)
+         (let* ((str match)
+                (args-str (match-string 1 str))
+                (end (match-end 1))
+                (path (match-string 2 str))
+                (line (string-to-number (match-string 3 str)))
+                (snippet (progn
+                           (erase-buffer)
+                           (insert args-str)
+                           (goto-char (point-min))
+                           (jupyter-completion--make-arg-snippet
+                            (jupyter-completion--arg-extract)))))
+           (setq match (aset matches i (substring match 0 end)))
+           (put-text-property 0 1 'snippet snippet match)
+           (put-text-property 0 1 'location (cons path line) match)))
+        ;; TODO: This is specific to the results that
+        ;; the python kernel returns, make a support
+        ;; function?
+        ((string-match-p "\\." match)
+         (aset matches i (car (last (split-string match "\\."))))))))
     ;; When a type is supplied add it as an annotation
-    (when types
-      (let ((max-len (apply #'max (mapcar #'length matches))))
-        (cl-mapc
-         (lambda (match meta)
-           (let* ((prefix (make-string (1+ (- max-len (length match))) ? ))
-                  (annot (concat prefix (plist-get meta :type))))
-             (put-text-property 0 1 'annot annot match)))
-         matches types)))
-    matches))
+    (when-let* ((types (plist-get metadata :_jupyter_types_experimental))
+                (lengths (mapcar #'length matches)))
+      (let ((max-len (apply #'max lengths)))
+        (cl-loop
+         for i from 0 below
+         ;; For safety, ensure the lengths are the same which is
+         ;; usually the case, but sometimes a kernel may not return
+         ;; lists of the same length.  Seen for example in IJulia.
+         (min (length matches) (length types))
+         ;; These are typically in the same order.
+         for match = (aref matches i)
+         for meta = (aref types i)
+         do (let* ((prefix (make-string (1+ (- max-len (length match))) ?\s))
+                   (annot (concat prefix (plist-get meta :type)))
+                   (sig (plist-get meta :signature)))
+              (put-text-property
+               0 1 'docsig
+               (concat (get-text-property 0 'docsig match) sig) match)
+              (put-text-property 0 1 'annot annot match)))))
+    ;; FIXME To get rid of this conversion use `json-array-type', be
+    ;; sure to change places where it is assumed that there are
+    ;; vectors.
+    (append matches nil)))
 
 ;;;;; Completion at point interface
 
@@ -1524,29 +1566,31 @@ extracted from MESSAGE and converted to the first form.")
   "Return non-nil if a prefetch for PREFIX should be performed.
 Looks at `jupyter-completion-cache' to determine if its
 candidates can be used for PREFIX."
-  (not (and jupyter-completion-cache
-            (if (eq (car jupyter-completion-cache) 'fetched)
-                (equal (nth 1 jupyter-completion-cache) prefix)
-              (or (equal (car jupyter-completion-cache) prefix)
-                  (and (not (string= (car jupyter-completion-cache) ""))
-                       (string-prefix-p (car jupyter-completion-cache) prefix))))
-            ;; Invalidate the cache when completing argument lists
-            (or (string= prefix "")
-                (not (eq (aref prefix (1- (length prefix))) ?\())))))
+  (or
+   ;; Invalidate the cache when completing argument lists
+   (and (not (string-empty-p prefix))
+        (eq (aref prefix (1- (length prefix))) ?\())
+   (pcase jupyter-completion-cache
+     ((or `(fetched ,cached-prefix ,_)
+          `(,cached-prefix . ,_))
+      ;; If the prefix is the same as the cached prefix, no prefetch
+      ;; needed.
+      (not (equal prefix cached-prefix)))
+     (_ t))))
 
 (defun jupyter-completion-prefetch (fun)
   "Get completions for the current completion context.
 Run FUN when the completions are available."
-  (cl-destructuring-bind (code pos)
-      (jupyter-code-context 'completion)
-    (jupyter-run-with-client jupyter-current-client
-      (jupyter-sent
-       (jupyter-message-subscribed
-        (jupyter-complete-request
-         :code code
-         :pos pos
-         :handlers nil)
-        `(("complete_reply" ,fun)))))))
+  (pcase (jupyter-code-context 'completion)
+    (`(,code ,pos)
+     (jupyter-run-with-client jupyter-current-client
+       (jupyter-sent
+        (jupyter-message-subscribed
+         (jupyter-complete-request
+          :code code
+          :pos pos
+          :handlers nil)
+         `(("complete_reply" ,fun))))))))
 
 (defvar company-minimum-prefix-length)
 (defvar company-timer)
@@ -1676,17 +1720,18 @@ function `jupyter-kernel-language-mode-properties'.")
 (defun jupyter-kernel-info (client)
   "Return the kernel info plist of CLIENT.
 Return CLIENT's kernel-info slot if non-nil.  Otherwise send a
-`:kernel-info-request' to CLIENT's kernel, set CLIENT's
+kernel_info_request to CLIENT's kernel, set CLIENT's
 kernel-info slot to the plist retrieved from the kernel, and
 return it.
 
 If the kernel CLIENT is connected to does not respond to a
-`:kernel-info-request', raise an error.
+kernel_info_request, raise an error.
 
-Note, the value of the :name key in the :language_info property
-list is a symbol as opposed to a string for the purposes of
-method dispatching.  Also all instances of \" \" in the language
-name are changed to \"-\" and all uppercase characters lowered."
+Note, the value of the `:name' key in the `:language_info'
+property list is a symbol as opposed to a string for the purposes
+of method dispatching.  Also all instances of \" \" in the
+language name are changed to \"-\" and all uppercase characters
+lowered."
   (cl-check-type client jupyter-kernel-client)
   ;; TODO: This needs to be reset when a client is disconnected.  This
   ;; should be part of the connection process.
@@ -1694,8 +1739,9 @@ name are changed to \"-\" and all uppercase characters lowered."
       (progn
         (message "Requesting kernel info...")
         ;; Don't generate this request in an unknown buffer.  This is
-        ;; mainly so that the Org client's generate-request doesn't
-        ;; confuse it for an execute_request in the Org buffer.
+        ;; mainly so that the Org client's `jupyter-generate-request'
+        ;; doesn't confuse it for an execute_request in the Org
+        ;; buffer.
         (jupyter-with-client-buffer client
           (jupyter-run-with-client client
             (jupyter-mlet* ((msg (jupyter-reply
@@ -1730,8 +1776,10 @@ purposes and SYNTAX-TABLE is the syntax table of MODE."
                  (prog1 item
                    (push item jupyter-kernel-language-mode-properties))))))))
 
-(defun jupyter-kernel-language (client)
-  "Return the language (as a symbol) of the kernel CLIENT is connected to."
+(defun jupyter-kernel-language (&optional client)
+  "Return the language (as a symbol) of the kernel CLIENT is connected to.
+CLIENT defaults to `jupyter-current-client'."
+  (or client (setq client jupyter-current-client))
   (cl-check-type client jupyter-kernel-client)
   (plist-get (plist-get (jupyter-kernel-info client) :language_info) :name))
 

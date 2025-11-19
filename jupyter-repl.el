@@ -55,12 +55,14 @@
   :group 'jupyter)
 
 (eval-when-compile (require 'subr-x))
-(eval-and-compile (require 'jupyter-client))
-(require 'jupyter-base)
+(eval-and-compile
+  (require 'jupyter-client)
+  (require 'jupyter-base))
 (require 'jupyter-mime)
 (require 'jupyter-kernelspec)
 (require 'jupyter-widget-client)
 (require 'ring)
+(require 'face-remap)
 
 (declare-function jupyter-notebook-process "jupyter-server")
 (declare-function jupyter-launch-notebook "jupyter-server")
@@ -133,12 +135,30 @@ position."
   "Allow RET to insert a newline when the kernel is busy.
 Normally when the kernel is busy, pressing RET at an input cell
 is disallowed.  This is because, when the kernel is busy, it does
-not respond to an `:is-complete-request' message and that message
-is used to avoid sending incomplete code to the kernel.
+not respond to an is_complete_request message and that message is
+used to avoid sending incomplete code to the kernel.
 
 If this variable is non-nil, RET is allowed to insert a newline.
 In this case, pressing RET on an empty line, i.e.  RET RET, will
 send the code to the kernel."
+  :type 'boolean
+  :group 'jupyter-repl)
+
+(defcustom jupyter-repl-without-is-complete nil
+  "Whether or not is_complete_request handling is done.
+If this variable is nil, an is_complete_request is usually sent
+to the kernel on every press of
+\\<jupyter-repl-mode-map>\\[jupyter-repl-ret] to determine if the
+code is syntactically correct before sending it to be executed.
+If the kernel responds to this message by saying that the code is
+correct, then the code is sent to be executed immediately.
+
+If this variable is non-nil,
+\\<jupyter-repl-mode-map>\\[jupyter-repl-ret] no longer sends
+is_complete_request messages nor does what is explained by
+`jupyter-repl-use-builtin-is-complete' and just inserts a newline
+and indents.  In order to send an execute_request in this case,
+you have to press \\<jupyter-repl-mode-map>\\[jupyter-repl-send]."
   :type 'boolean
   :group 'jupyter-repl)
 
@@ -158,16 +178,24 @@ as is done when this variable is nil."
 
 (defcustom jupyter-repl-completion-at-point-hook-depth nil
   "The DEPTH of `jupyter-completion-at-point' in `completion-at-point-functions'.
+This will be set as the DEPTH argument to the `add-hook' call
+when adding Jupyter based completion functionality to
+`completion-at-point-functions'.  A value of nil means the
+default depth of 0, i.e. added as the first entry of
+`completion-at-point-functions'.  This might prevent other hooks
+like `lsp-completion-at-point' from running.
 
-`completion-at-point-functions' hooks are tried in order. A value of nil for
-this variable means `jupyter-completion-at-point' will be added to the head of
-the list, which means it will be tried first on completion attempts. This might
-prevent other hooks like `lsp-completion-at-point' from running.
+If you'd prefer to give `jupyter-completion-at-point' lower
+priority, set this variable to something like 1.  See `add-hook'."
+  :type '(choice (integer :tag "Hook depth")
+                 (const :tag "Default depth of 0" nil))
+  :group 'jupyter-repl)
 
-If you'd prefer to give `jupyter-completion-at-point' lower priority, set this
-variable to something like 1. Check `add-hook' documentation for more details
-about DEPTH."
-  :type 'integer
+(defcustom jupyter-repl-interaction-mode-line-format " JuPy[%s]"
+  "Format to use when producing the mode line.
+The format specifier %s is replaced with the status of the
+kernel."
+  :type 'string
   :group 'jupyter-repl)
 
 ;;; Implementation
@@ -195,11 +223,18 @@ current output of the cell.  Set when the kernel sends a
   "The history of the current Jupyter REPL.")
 
 (defvar-local jupyter-repl-use-builtin-is-complete nil
-  "Whether or not to send `:is-complete-request's to a kernel.
+  "Whether or not to send an is_complete_request to a kernel.
 If a Jupyter kernel does not respond to an is_complete_request,
 the buffer local value of this variable is set to t and code in a
 cell is considered complete if the last line in a code cell is a
-blank line, i.e. if RET is pressed twice in a row.")
+blank line, i.e. if \\<jupyter-repl-mode-map>\\[jupyter-repl-ret]
+is pressed twice in a row.
+
+Note `jupyter-repl-without-is-complete' takes precedence over
+this variable so when `jupyter-repl-without-is-complete' is
+non-nil you have to press
+\\<jupyter-repl-mode-map>\\[jupyter-repl-send] to send the code
+regardless of the setting of this variable..")
 
 (cl-generic-define-context-rewriter jupyter-repl-mode (mode &rest modes)
   `(jupyter-repl-lang-mode (derived-mode ,mode ,@modes)))
@@ -341,18 +376,25 @@ MODE has the same meaning as in
 (defsubst jupyter-repl--prompt-face (ov)
   (nth 1 (overlay-get ov 'jupyter-prompt)))
 
-(defun jupyter-repl--prompt-margin-alignment (str)
-  (- jupyter-repl-prompt-margin-width (length str)))
+(defun jupyter-repl--prompt-scale-factor ()
+  (expt text-scale-mode-step
+        text-scale-mode-amount))
 
 (defun jupyter-repl--prompt-display-value (str face)
   "Return the margin display value for a prompt STR.
 FACE is the `font-lock-face' to use for STR."
   (list '(margin left-margin)
-        (propertize
-         (concat
-          (make-string (jupyter-repl--prompt-margin-alignment str) ?\s) str)
-         'fontified t
-         'font-lock-face face)))
+        (let ((s (concat
+                  (make-string
+                   (let ((width (floor
+                                 (- left-margin-width
+                                    (* (length str)
+                                       (jupyter-repl--prompt-scale-factor))
+                                    (expt 2 (jupyter-repl--prompt-scale-factor))))))
+                     (if (>= width 0) width 0))
+                   ?\s)
+                  str)))
+          (propertize s 'fontified t 'font-lock-face face))))
 
 (defun jupyter-repl--reset-prompt-display (ov)
   (when-let* ((prompt (jupyter-repl--prompt-string ov))
@@ -361,23 +403,30 @@ FACE is the `font-lock-face' to use for STR."
               (md (jupyter-repl--prompt-display-value prompt face)))
     (overlay-put ov 'after-string (propertize " " 'display md))))
 
-(defun jupyter-repl--reset-prompts ()
+(defun jupyter-repl--reset-prompts (&optional size-hint)
   "Re-calculate all prompt strings in the buffer.
 Also set the local value of `left-margin-width' to
 `jupyter-repl-prompt-margin-width'."
-  (setq-local left-margin-width jupyter-repl-prompt-margin-width)
-  (dolist (ov (overlays-in (point-min) (point-max)))
-    (jupyter-repl--reset-prompt-display ov)))
+  (let ((ovs (cl-remove-if-not
+              (lambda (ov) (overlay-get ov 'jupyter-prompt))
+              (overlays-in (point-min) (point-max))))
+        (max-width size-hint))
+    (dolist (ov ovs)
+      (cl-callf max max-width (length (jupyter-repl--prompt-string ov))))
+    (cl-callf * max-width (jupyter-repl--prompt-scale-factor))
+    (setq-local left-margin-width (ceiling max-width)
+                jupyter-repl-prompt-margin-width left-margin-width)
+    (dolist (ov ovs)
+      (jupyter-repl--reset-prompt-display ov))))
 
 (defun jupyter-repl--make-prompt (str face props)
   "Make a prompt overlay for the character before POS.
 STR is used as the prompt string and FACE is its
 `font-lock-face'.  Add PROPS as text properties to the character."
-  (when (< (jupyter-repl--prompt-margin-alignment str) 0)
-    (setq-local jupyter-repl-prompt-margin-width
-                (+ jupyter-repl-prompt-margin-width
-                   (abs (jupyter-repl--prompt-margin-alignment str))))
-    (jupyter-repl--reset-prompts))
+  (let ((size-hint (* (length str)
+                      (jupyter-repl--prompt-scale-factor))))
+    (when (> size-hint left-margin-width)
+      (jupyter-repl--reset-prompts size-hint)))
   (let ((ov (make-overlay (1- (point)) (point) nil t)))
     (overlay-put ov 'jupyter-prompt (list str face))
     (overlay-put ov 'evaporate t)
@@ -1116,21 +1165,24 @@ elements."
 (cl-defmethod jupyter-handle-is-complete-reply ((client jupyter-repl-client) _req msg)
   (jupyter-with-repl-buffer client
     (jupyter-with-message-content msg (status indent)
-      ;; `run-at-time' is used here so that the waiting done in
+      ;; `jupyter-run-soon' is used here so that the waiting done in
       ;; `jupyter-repl-ret' completes before a cell is executed.
       (pcase status
         ("complete"
-         (run-at-time 0 nil (lambda () (jupyter-repl-execute-cell client))))
+         (jupyter-run-soon
+           (jupyter-repl-execute-cell client)))
         ("incomplete"
          (insert "\n")
          (if (= (length indent) 0) (jupyter-repl-indent-line)
            (insert indent)))
         ("invalid"
          ;; Force an execute to produce a traceback
-         (run-at-time 0 nil (lambda () (jupyter-repl-execute-cell client))))
+         (jupyter-run-soon
+           (jupyter-repl-execute-cell client)))
         ("unknown"
          ;; Let the kernel decide if the code is complete
-         (run-at-time 0 nil (lambda () (jupyter-repl-execute-cell client))))))))
+         (jupyter-run-soon
+           (jupyter-repl-execute-cell client)))))))
 
 (defun jupyter-repl--insert-banner-and-prompt (client)
   (jupyter-with-repl-buffer client
@@ -1165,16 +1217,23 @@ elements."
            (when restart
              (jupyter-repl--insert-banner-and-prompt client))))))))
 
+(defun jupyter-repl-send ()
+  "Send the current cell code to the kernel.
+As opposed to `jupyter-repl-ret' this sends the code immediately
+without considering the syntactical correctness of the code."
+  (interactive)
+  (jupyter-repl-ret 'force))
+
 (defun jupyter-repl-ret (&optional force)
   "Send the current cell code to the kernel.
 If `point' is before the last cell in the REPL buffer move to
 `point-max', i.e. move to the last cell.  Otherwise if `point' is
 at some position within the last cell, either insert a newline or
 ask the kernel to execute the cell code depending on the kernel's
-response to an `:is-complete-request'.
+response to an is_complete_request.
 
 If a prefix argument is given, FORCE the kernel to execute the
-current cell code without sending an `:is-complete-request'.  See
+current cell code without sending an is_complete_request.  See
 `jupyter-repl-use-builtin-is-complete' for yet another way to
 execute the current cell."
   (interactive "P")
@@ -1186,27 +1245,33 @@ execute the current cell."
             (goto-char (point-max))
           (unless (jupyter-repl-connected-p)
             (error "Kernel not alive"))
-          ;; NOTE: kernels allow execution requests to queue up, but we prevent
-          ;; sending a request when the kernel is busy because of the
-          ;; is-complete request.  Some kernels don't respond to this request
-          ;; when the kernel is busy.
-          (when (and (jupyter-kernel-busy-p jupyter-current-client)
-                     (not jupyter-repl-allow-RET-when-busy))
-            (error "Kernel busy"))
+          (unless (eq this-command 'jupyter-repl-send)
+            ;; NOTE: kernels allow execution requests to queue up, but
+            ;; we prevent sending a request when the kernel is busy
+            ;; because of the is_complete_request.  Some kernels don't
+            ;; respond to this request when the kernel is busy.
+            (when (and (jupyter-kernel-busy-p jupyter-current-client)
+                       (not jupyter-repl-allow-RET-when-busy))
+              (error "Kernel busy")))
           (cond
            (force (jupyter-repl-execute-cell))
+           (jupyter-repl-without-is-complete
+            (newline)
+            (jupyter-repl-indent-line))
            ((or jupyter-repl-use-builtin-is-complete
                 (and jupyter-repl-allow-RET-when-busy
                      (jupyter-kernel-busy-p jupyter-current-client)))
-            (goto-char (point-max))
-            (let ((complete-p (equal (buffer-substring-no-properties
-                                      (line-beginning-position) (point))
-                                     "")))
-              (jupyter-handle-is-complete-reply
-               jupyter-current-client
-               nil `(:content
-                     (:status ,(if complete-p "complete" "incomplete")
-                              :indent "")))))
+            (if (save-excursion
+                  (goto-char (point-max))
+                  (string-empty-p
+                   (buffer-substring
+                    (line-beginning-position)
+                    (point))))
+                (let ((client jupyter-current-client))
+                  (jupyter-run-soon
+                    (jupyter-repl-execute-cell client)))
+              (newline)
+              (jupyter-repl-indent-line)))
            (t
             (condition-case nil
                 (jupyter-run-with-client jupyter-current-client
@@ -1217,7 +1282,7 @@ execute the current cell."
                    jupyter-repl-maximum-is-complete-timeout))
               (jupyter-timeout-before-idle
                (message "\
-Kernel did not respond to is-complete-request, using built-in is-complete.
+Kernel did not respond to is_complete_request, using built-in is_complete.
 Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
                (setq jupyter-repl-use-builtin-is-complete t)
                (jupyter-repl-ret force)))))))
@@ -1230,23 +1295,32 @@ Reset `jupyter-repl-use-builtin-is-complete' to nil if this is only temporary.")
 
 (defun jupyter-repl-indent-line ()
   "Indent the line according to the language of the REPL."
-  (when-let* ((pos (and (jupyter-repl-cell-line-p)
-                        (jupyter-repl-cell-code-position)))
-              (code (jupyter-repl-cell-code))
-              (replacement
-               (jupyter-with-repl-lang-buffer
-                 (insert code)
-                 (goto-char pos)
-                 (let ((tick (buffer-chars-modified-tick)))
-                   (jupyter-indent-line)
-                   (unless (eq tick (buffer-chars-modified-tick))
-                     (setq pos (point))
-                     (current-buffer))))))
-    ;; Don't modify the buffer when unnecessary, this allows
-    ;; `company-indent-or-complete-common' to work.
-    (when replacement
-      (jupyter-repl-replace-cell-code replacement)
-      (goto-char (+ pos (jupyter-repl-cell-code-beginning-position))))))
+  (let ((indent-tabs indent-tabs-mode))
+    (when-let* ((pos (and (jupyter-repl-cell-line-p)
+                          (jupyter-repl-cell-code-position)))
+                (code (jupyter-repl-cell-code))
+                (replacement
+                 (jupyter-with-repl-lang-buffer
+                   (if indent-tabs
+                       (unless indent-tabs-mode
+                         (indent-tabs-mode 1))
+                     (when indent-tabs-mode
+                       (indent-tabs-mode -1)))
+                   (insert code)
+                   (goto-char pos)
+                   (let ((tick (buffer-chars-modified-tick)))
+                     (jupyter-indent-line)
+                     (unless (eq tick (buffer-chars-modified-tick))
+                       ;; FIXME: Why the 1-.  It seems necessary for
+                       ;; the Python kernel.  Maybe to do with
+                       ;; prompts?
+                       (setq pos (1- (point)))
+                       (current-buffer))))))
+      ;; Don't modify the buffer when unnecessary, this allows
+      ;; `company-indent-or-complete-common' to work.
+      (when replacement
+        (jupyter-repl-replace-cell-code replacement)
+        (goto-char (+ pos (jupyter-repl-cell-code-beginning-position)))))))
 
 ;;; Buffer change functions
 
@@ -1431,21 +1505,6 @@ value."
        (cl-call-next-method)))
 
 ;;; Evaluation
-
-(cl-defmethod jupyter-read-expression (&context ((and
-                                                  jupyter-current-client
-                                                  (object-of-class-p
-                                                   jupyter-current-client
-                                                   'jupyter-repl-client)
-                                                  t)
-                                                 (eql t)))
-  (jupyter-with-repl-buffer jupyter-current-client
-    (jupyter-set jupyter-current-client 'jupyter-eval-expression-history
-                 (delq 'jupyter-repl-history
-                       (ring-elements jupyter-repl-history)))
-    (let ((ex (cl-call-next-method)))
-      (prog1 ex
-        (jupyter-repl-history-add ex)))))
 
 (cl-defmethod jupyter-eval-string (str &context (jupyter-current-client jupyter-repl-client)
                                        &optional insert beg end)
@@ -1654,6 +1713,9 @@ Return the buffer switched to."
     (define-key map [remap backward-sentence] #'jupyter-repl-backward-cell)
     (define-key map [remap forward-sentence] #'jupyter-repl-forward-cell)
     (define-key map (kbd "RET") #'jupyter-repl-ret)
+    (define-key map (kbd "S-RET") #'jupyter-repl-send)
+    (define-key map (kbd "<return>") #'jupyter-repl-ret)
+    (define-key map (kbd "S-<return>") #'jupyter-repl-send)
     (define-key map (kbd "M-n") #'jupyter-repl-history-next)
     (define-key map (kbd "M-p") #'jupyter-repl-history-previous)
     (define-key map (kbd "C-c C-o") #'jupyter-repl-clear-cells)
@@ -1711,8 +1773,9 @@ Return the buffer switched to."
     ;; Add local hooks
     (add-hook 'kill-buffer-query-functions #'jupyter-repl-kill-buffer-query-function nil t)
     (add-hook 'kill-buffer-hook #'jupyter-repl--deactivate-interaction-buffers nil t)
-    (add-hook 'after-change-functions 'jupyter-repl-do-after-change nil t)
-    (add-hook 'pre-redisplay-functions 'jupyter-repl-preserve-window-margins nil t)
+    (add-hook 'after-change-functions #'jupyter-repl-do-after-change nil t)
+    (add-hook 'pre-redisplay-functions #'jupyter-repl-preserve-window-margins nil t)
+    (add-hook 'text-scale-mode-hook #'jupyter-repl--reset-prompts nil t)
     ;; Initialize the REPL
     (jupyter-repl-initialize-fontification)
     (jupyter-repl-isearch-setup)
@@ -1903,14 +1966,13 @@ Do so only if possible in the `current-buffer'."
 `*' means the kernel is busy, `-' means the kernel is idle and
 the REPL is connected, `x' means the REPL is disconnected
 from the kernel."
-  (and (cl-typep jupyter-current-client 'jupyter-repl-client)
-       (concat " JuPy["
-               (cond
-                ((not (jupyter-hb-beating-p jupyter-current-client)) "x")
-                ((equal (jupyter-execution-state jupyter-current-client) "busy")
-                 "*")
-                (t "-"))
-               "]")))
+  (pcase jupyter-current-client
+    ((and client (cl-type jupyter-repl-client))
+     (format jupyter-repl-interaction-mode-line-format
+             (cond
+              ((not (jupyter-hb-beating-p client)) "x")
+              ((equal (jupyter-execution-state client) "busy") "*")
+              (t "-"))))))
 
 (defun jupyter-repl-pop-to-buffer ()
   "Switch to the REPL buffer of the `jupyter-current-client'."

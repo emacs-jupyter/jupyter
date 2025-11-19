@@ -61,12 +61,11 @@ Wider images are resized.  Special value 0 means no limit."
 (defvar-local jupyter-display-ids nil
   "A hash table of display IDs.
 Display IDs are implemented by setting the text property,
-`jupyter-display', to the display ID requested by a
-`:display-data' message.  When a display is updated from an
-`:update-display-data' message, the display ID from the initial
-`:display-data' message is retrieved from this table and used to
-find the display in the REPL buffer.  See
-`jupyter-update-display'.")
+`jupyter-display', to the display ID requested by a display_data
+message.  When a display is updated from an update_display_data
+message, the display ID from the initial display_data message is
+retrieved from this table and used to find the display in the
+REPL buffer.  See `jupyter-update-display'.")
 
 ;;; Macros
 
@@ -627,7 +626,7 @@ property."
 
 (cl-defmethod jupyter-update-display ((display-id string) data &optional metadata)
   "Update the display with DISPLAY-ID using DATA.
-DATA and METADATA have the same meaning as in a `:display-data'
+DATA and METADATA have the same meaning as in a display_data
 message."
   (let ((id (and jupyter-display-ids
                  (gethash display-id jupyter-display-ids))))

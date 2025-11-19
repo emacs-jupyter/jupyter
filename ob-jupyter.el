@@ -102,18 +102,22 @@ table for the source block at `point'.")
       (advice-member-p
        'ob-jupyter (intern (concat "org-babel-execute:" lang)))))
 
-(defun org-babel-jupyter-session-key (params)
+(defun org-babel-jupyter-session-key (params &optional noerror)
   "Return a string that is the concatenation of the :session and :kernel PARAMS.
 PARAMS is the arguments alist as returned by
 `org-babel-get-src-block-info'.  The returned string can then be
-used to identify unique Jupyter Org babel sessions."
+used to identify unique Jupyter Org babel sessions.
+
+If NOERROR is non-nil and PARAMS does not have valid information
+to identify a session return nil, otherwise raise an error."
   ;; Take into account a Lisp expression as a session name.
   (let ((session (org-babel-read (alist-get :session params)))
         (kernel (alist-get :kernel params)))
-    (unless (and session kernel
-                 (not (equal session "none")))
-      (error "Need a valid session and a kernel to form a key"))
-    (concat session "-" kernel)))
+    (if (and session kernel
+             (not (equal session "none")))
+        (concat session "-" kernel)
+      (unless noerror
+        (error "Need a valid session and a kernel to form a key")))))
 
 (defun org-babel-jupyter-src-block-session ()
   "Return the session key for the current Jupyter source block.
@@ -385,9 +389,13 @@ session."
             ;; TODO: Would we always want to do this?
             (jupyter-server-name-client-kernel client sname)))))))
 
-(defun org-babel-jupyter-session-initiated-p (params)
-  "Return non-nil if the session corresponding to PARAMS is initiated."
-  (let ((key (org-babel-jupyter-session-key params)))
+(defun org-babel-jupyter-session-initiated-p (params &optional noerror)
+  "Return non-nil if the session corresponding to PARAMS is initiated.
+If NOERROR is nil, raise an error if PARAMS doesn't contain valid
+information to identify a session, e.g. the `:session' key is
+\"none\".  Otherwise, for a non-nil NOERROR and when PARAMS
+doesn't contain valid information, return nil."
+  (when-let* ((key (org-babel-jupyter-session-key params noerror)))
     (gethash key org-babel-jupyter-session-clients)))
 
 (defun org-babel-jupyter-initiate-session-by-key (session params)

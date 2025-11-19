@@ -2227,44 +2227,6 @@ Image(filename='%s', width=300)" file)
      (forward-line)
      (should-not (jupyter-org-when-in-src-block t)))))
 
-(ert-deftest jupyter-org--stream-context-p ()
-  :tags '(org)
-  (with-temp-buffer
-    (org-mode)
-    (dolist
-        (res '(("\
-#+RESULTS:
-:RESULTS:
-: Foo
-:END:" . 27)
-               ("\
-#+RESULTS:
-: Foo
-" . 17)
-               ("\
-#+RESULTS:
-#+BEGIN_EXAMPLE
-Foo
-#+END_EXAMPLE
-" . 31)
-               ("\
-#+RESULTS:
-:RESULTS:
-#+BEGIN_EXAMPLE
-Foo
-#+END_EXAMPLE
-:END:
-" . 41)
-               ("\
-#+RESULTS:
-file:foo
-" . nil)))
-      (insert (car res))
-      (if (cdr res)
-          (should (= (jupyter-org--stream-context-p (org-element-at-point)) (cdr res)))
-        (should-not (jupyter-org--stream-context-p (org-element-at-point))))
-      (erase-buffer))))
-
 (ert-deftest jupyter-org--append-to-fixed-width ()
   :tags '(org)
   (with-temp-buffer
@@ -3048,6 +3010,38 @@ print(2)"
            (kill-buffer (org-babel-jupyter-initiate-session
                          (alist-get :session params) params))))))))
 
+(ert-deftest org-babel-jupyer-issue-565 ()
+  :tags '(org)
+  (jupyter-org-test-src-block
+   "\
+import logging
+import time
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
+for i in range(10):
+    log.info(\"here\")
+    time.sleep(0.1)
+
+{1: 2}"
+   "\
+:RESULTS:
+#+begin_example
+  INFO:__main__:here
+  INFO:__main__:here
+  INFO:__main__:here
+  INFO:__main__:here
+  INFO:__main__:here
+  INFO:__main__:here
+  INFO:__main__:here
+  INFO:__main__:here
+  INFO:__main__:here
+  INFO:__main__:here
+#+end_example
+| 1: | 2 |
+:END:
+"
+   :async "yes"))
+
 (ert-deftest org-babel-src-block-name-resolution ()
   :tags '(org)
   (let ((src (format "\
@@ -3143,6 +3137,5 @@ raise Exception(\"This is an error\")
 
 ;; Local Variables:
 ;; byte-compile-warnings: (unresolved obsolete lexical)
-;; eval: (and (functionp 'aggressive-indent-mode) (aggressive-indent-mode -1))
 ;; End:
 ;;; jupyter-test.el ends here

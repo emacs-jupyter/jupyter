@@ -232,6 +232,21 @@ A variable that determines whether to allow insertion of newlines in a
 REPL cell when a kernel is busy or not.  See the variable
 documentation for more details.
 
+*** =jupyter-repl-without-is-complete=
+
+A variable that determines whether or not an is_complete_request is
+sent to the kernel to determine the syntactical correctness, i.e. when
+it is safe to send it for evaluation.  When it is non-nil, no
+is_complete_request is used and the main way to send code to kernels
+for evaluation is a press of =S-RET=, =RET= would insert a newline and
+indent in this case.  When the variable is nil, =RET= sends an
+is_complete_request to determine if the code is valid to send for
+execution or not and sends it if it is or inserts a newline and
+indents if it isn't.
+
+See also =jupyter-repl-use-builtin-is-complete= for another method of
+sending code to kernels without the use of an is_complete_request.
+
 *** =jupyter-repl-echo-eval-p=
 
 A variable that determines whether code evaluated with

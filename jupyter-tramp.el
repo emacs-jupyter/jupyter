@@ -380,7 +380,7 @@ When NO-CONTENT is non-nil, return a model for file that excludes
 may or may not be present in this case.  If NO-CONTENT is nil,
 guarantee that we request FILE's content as well.
 
-See `jupyter-tramp-get-file-model' for details on what a file model is."
+See `jupyter-api-get-file-model' for details on what a file model is."
   (setq file (expand-file-name file))
   (jupyter-tramp-with-api-connection file
     (let ((value (or (tramp-get-file-property v localname "model" nil)
