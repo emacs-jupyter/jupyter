@@ -136,6 +136,16 @@ See also the docstring of `org-image-actual-width' for more details."
   :group 'ob-jupyter
   :type 'boolean)
 
+(defcustom jupyter-org-want-keybinding t
+  "Whether to enable contextual keybindings."
+  :group 'ob-jupyter
+  :type 'boolean)
+
+(defcustom jupyter-org-want-integration t
+  "Whether to enable `jupyter-org-interaction-mode' automatically on `org-mode' buffers."
+  :group 'ob-jupyter
+  :type 'boolean)
+
 (defconst jupyter-org-mime-types '(:text/org
                                    ;; Prioritize images over html
                                    :image/svg+xml :image/jpeg :image/png
@@ -823,12 +833,13 @@ and they only take effect when the variable
                     #'undefined
                   (jupyter-org--define-key-filter key))))))))
 
-(jupyter-org-define-key (kbd "C-x C-e") #'jupyter-eval-line-or-region)
-(jupyter-org-define-key (kbd "C-M-x") #'jupyter-eval-defun)
-(jupyter-org-define-key (kbd "M-i") #'jupyter-inspect-at-point)
-(jupyter-org-define-key (kbd "C-c M-:") #'jupyter-eval-string-command)
-(jupyter-org-define-key (kbd "C-c C-r") #'jupyter-repl-restart-kernel)
-(jupyter-org-define-key (kbd "C-c C-i") #'jupyter-repl-interrupt-kernel)
+(when jupyter-org-want-keybinding
+  (jupyter-org-define-key (kbd "C-x C-e") #'jupyter-eval-line-or-region)
+  (jupyter-org-define-key (kbd "C-M-x") #'jupyter-eval-defun)
+  (jupyter-org-define-key (kbd "M-i") #'jupyter-inspect-at-point)
+  (jupyter-org-define-key (kbd "C-c M-:") #'jupyter-eval-string-command)
+  (jupyter-org-define-key (kbd "C-c C-r") #'jupyter-repl-restart-kernel)
+  (jupyter-org-define-key (kbd "C-c C-i") #'jupyter-repl-interrupt-kernel))
 
 ;;; Handling ANSI escapes in kernel output
 
@@ -939,7 +950,8 @@ C-x C-e         `jupyter-eval-line-or-region'"
         (lambda (x) (eq (car x) 'jupyter-org-font-lock-ansi-escapes))
         org-font-lock-keywords))))
 
-(add-hook 'org-mode-hook 'jupyter-org-interaction-mode)
+(when jupyter-org-want-integration
+  (add-hook 'org-mode-hook 'jupyter-org-interaction-mode))
 
 ;;; Constructing org syntax trees
 
