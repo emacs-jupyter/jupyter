@@ -73,7 +73,7 @@ buffer."
        (t nil)))))
 
 (cl-defmethod jupyter-load-file-code (file &context (jupyter-lang python))
-  (concat "%run " file))
+  (concat "%run \"" file "\""))
 
 ;;; `jupyter-org'
 

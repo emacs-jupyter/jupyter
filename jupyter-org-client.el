@@ -618,11 +618,11 @@ source block, return non-nil.  Otherwise, when `point' is not
 inside a Jupyter src-block, return nil."
   (unless jupyter-org--src-block-cache
     (setq jupyter-org--src-block-cache
-          (list (list 'invalid nil (make-marker)
-                      (let ((end (make-marker)))
-                        ;; Move the end marker when text is inserted
-                        (set-marker-insertion-type end t)
-                        end)))))
+          (list 'invalid nil (make-marker)
+                (let ((end (make-marker)))
+                  ;; Move the end marker when text is inserted
+                  (set-marker-insertion-type end t)
+                  end))))
   (if (org-in-src-block-p 'inside)
       (or (jupyter-org--at-cached-src-block-p)
           (when-let* ((el (org-element-at-point))

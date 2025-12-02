@@ -522,7 +522,7 @@ These parameters are handled internally."
                    ;; :execute-result will be in `jupyter-org-request-results' since
                    ;; stream results and any displayed data will be placed in a separate
                    ;; buffer.
-                   (let ((el (jupyter-org-result
+                   (let ((el (jupyter-org-get-result
                               req (car (jupyter-org-request-results req)))))
                      (if (stringp el) el
                        (org-element-property :value el)))
