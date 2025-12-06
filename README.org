@@ -39,6 +39,11 @@ An interface to communicate with Jupyter kernels in Emacs.
 
   - You can search through REPL history using =isearch=.
 
+ - Here is a demo of how an =emacs-jupyter= REPL might look in practice:
+#+ATTR_HTML: :alt REPL workflow
+#+ATTR_ORG: :width 600
+[[file:assets/workflow1.gif]]
+
 * How do I install this package?
 
 ** Using MELPA
