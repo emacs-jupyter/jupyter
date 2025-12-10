@@ -1,6 +1,6 @@
 ;;; jupyter-base.el --- Core definitions for Jupyter -*- lexical-binding: t -*-
 
-;; Copyright (C) 2018-2024 Nathaniel Nicandro
+;; Copyright (C) 2018-2025 Nathaniel Nicandro
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 06 Jan 2018
@@ -32,6 +32,7 @@
 (require 'eieio)
 (require 'eieio-base)
 (require 'json)
+(require 'thunk)
 
 (declare-function tramp-dissect-file-name "tramp" (name &optional nodefault))
 (declare-function tramp-file-name-user "tramp")
@@ -464,6 +465,48 @@ fields:
        do (cl-assert port) and
        collect channel and collect (funcall addr port)))))
 
+;;; Stream
+
+(cl-defstruct (jupyter-stream
+               (:constructor nil)
+               (:constructor
+                jupyter-stream
+                (&key (-car nil)
+                      (-cdr nil))))
+  (-car nil :read-only t)
+  (-cdr nil :read-only t))
+
+(defmacro jupyter-stream-cons (car &rest body)
+  "Return a new stream.
+CAR is an expression that will be evaluated when
+`jupyter-stream-car' is called on the returned stream object to
+return the head element of the stream.  BODY is a list of
+expressions to be evaluated on a call to `jupyter-stream-cdr'
+whose return value must be a `jupyter-stream' object representing the rest of the elements of the stream."
+  (declare (indent 1) (debug (form body)))
+  `(jupyter-stream
+    :-car (thunk-delay ,car)
+    :-cdr (thunk-delay ,@body)))
+
+(defun jupyter-stream-car (s)
+  "Return the head element of S, a stream."
+  (thunk-force (jupyter-stream--car s)))
+
+(defun jupyter-stream-cdr (s)
+  "Return the rest of the stream elements of S."
+  (unless (thunk-evaluated-p (jupyter-stream--car s))
+    (thunk-force (jupyter-stream--car s)))
+  (thunk-force (jupyter-stream--cdr s)))
+
+(defvar jupyter-null-stream
+  (letrec ((s (jupyter-stream-cons nil s)))
+    s)
+  "The null stream.")
+
+(defun jupyter-null-stream-p (s)
+  "Return non-nil if S is the null stream."
+  (eq s jupyter-null-stream))
+
 ;;; Request object definition
 
 (cl-defstruct jupyter-request
@@ -488,7 +531,97 @@ call the handler methods of those types."
   (last-message nil)
   (messages nil)
   (message-publisher nil)
+  (-message-stream nil)
   (inhibited-handlers nil))
+
+(define-error 'jupyter-timeout-before-message
+              "Timeout before a message arrived")
+
+(defvar jupyter-empty-message)
+
+;; If someone is interacting with a Jupyter server across the
+;; country, obviously there would be delays between messages
+;; which could result in a threshold being breached and messages
+;; arriving after an idle message, such as iopub messages still
+;; streaming in so what to do in those situations?  What do I do
+;; currently to handle them?  I'm not sure anything is done or
+;; has been considered that deeply in the code base.
+(defun jupyter--stream-wait (req msgs)
+  "Wait for a message in MSGS to arrive.
+Return nil if a `quit' was signaled before one arrived, t if a
+message is ready, `idle-timeout' if REQ is idle and
+`jupyter-default-timeout' seconds elapsed since waiting, or
+`timeout' if `jupyter-long-timeout' seconds elapsed without one
+arriving."
+  (let ((inhibit-quit t)
+        (start (float-time)))
+    (catch 'timeout
+      (with-local-quit
+        (while (pcase msgs
+                 (`(messages ,_ . ,_) nil)
+                 (_
+                  ;; XXX A request's messages can be arbitrarily
+                  ;; delayed before it becomes idle, how to consider
+                  ;; this?  Also, when it does become idle how do the
+                  ;; iopub messages get received?  Is it that an idle
+                  ;; message indicates that all processing of the
+                  ;; request has ceased and its just output buffers
+                  ;; that are being sent until they are empty on the
+                  ;; kernel side?
+                  ;; 
+                  ;; Consider an input_request from the kernel which
+                  ;; requires user input so that suppose the stream
+                  ;; processing was doing something and then a prompt
+                  ;; was displayed to the user, these prompts would
+                  ;; happen before the stream processing since there
+                  ;; is an order to when subscribers are called.
+                  (let ((dt (- (float-time) start)))
+                    (cond
+                     ((and (jupyter-request-idle-p req)
+                           (>= dt jupyter-default-timeout))
+                      (throw 'timeout 'idle-timeout))
+                     ((>= dt jupyter-long-timeout)
+                      (throw 'timeout 'timeout))
+                     (t 'wait)))))
+          (accept-process-output nil 1))
+        t))))
+
+(defun jupyter--stream-next-message (req msgs &optional ntimeouts)
+  (pcase msgs
+    (`(messages ,next . ,_)
+     (pop (cdr msgs))
+     (if (eq next jupyter-empty-message)
+         jupyter-null-stream
+       (jupyter-stream-cons next
+         (jupyter--stream-next-message req msgs))))
+    (`(messages)
+     (pcase (jupyter--stream-wait req msgs)
+       (`t (jupyter--stream-next-message req msgs))
+       (`nil (signal 'quit nil))
+       (`timeout
+        (or ntimeouts (setq ntimeouts 0))
+        (if (> ntimeouts 3)
+            (signal 'jupyter-timeout-before-message req)
+          (let ((jupyter-long-timeout
+                 (* 1.5 jupyter-long-timeout)))
+            (jupyter--stream-next-message req msgs (1+ ntimeouts)))))
+       (`idle-timeout jupyter-null-stream)))
+    (_ jupyter-null-stream)))
+
+(defun jupyter-request-message-stream (req)
+  (or (jupyter-request--message-stream req)
+      (let ((msgs (cons 'messages
+                        (copy-sequence
+                         (jupyter-request-messages req)))))
+        (jupyter-run-with-state
+            (jupyter-request-message-publisher req)
+          (jupyter-subscribe
+            (jupyter-subscriber
+              (lambda (msg)
+                (when (jupyter-message-p msg)
+                  (nconc msgs (list msg)))))))
+        (setf (jupyter-request--message-stream req)
+              (jupyter--stream-next-message req msgs)))))
 
 (defun jupyter-channel-from-request-type (type)
   "Return the name of the channel that a request with TYPE is sent on."
