@@ -479,9 +479,8 @@ list, represents."
             (jupyter-subscribe
               (jupyter-subscriber
                 (lambda (msg)
-                  ;; Only handle what looks to be a Jupyter message.
-                  (when (jupyter-message-type msg)
-                    (let ((channel (plist-get msg :channel)))
+                  (when (jupyter-message-p msg)
+                    (let ((channel (jupyter-message-channel msg)))
                       (jupyter-handle-message client channel msg))))))))
         (cons req client)))))
 

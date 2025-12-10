@@ -636,6 +636,10 @@ return the value of KEY in MSG."
   "Get the session ID of MSG."
   (plist-get (jupyter-message-header msg) :session))
 
+(defsubst jupyter-message-channel (msg)
+  "Get the channel of MSG."
+  (plist-get msg :channel))
+
 (defsubst jupyter-message-parent-type (msg)
   "Get the type of MSG's parent message."
   (jupyter-message-type (jupyter-message-parent-header msg)))
@@ -650,6 +654,10 @@ The returned time has the same form as returned by
       (setcar (cdr date) (jupyter-decode-time (cadr date))))
     (cadr date)))
 
+(defun jupyter-message-p (obj)
+  "Return non-nil if OBJ looks like a Jupyter message."
+  (not (null (jupyter-message-type obj))))
+
 (defsubst jupyter-message-get (msg key)
   "Get the value in MSG's `jupyter-message-content' that corresponds to KEY."
   (plist-get (jupyter-message-content msg) key))
@@ -663,7 +671,7 @@ has a key corresponding to MIMETYPE, return the value.  Otherwise
 return nil."
   (plist-get (jupyter-message-get msg :data) mimetype))
 
-(defsubst jupyter-message-status-idle-p (msg)
+(defun jupyter-message-status-idle-p (msg)
   "Determine if MSG is a status: idle message."
   (and (string= (jupyter-message-type msg) "status")
        (string= (jupyter-message-get msg :execution_state) "idle")))
@@ -672,6 +680,14 @@ return nil."
   "Determine if MSG is a status: starting message."
   (and (string= (jupyter-message-type msg) "status")
        (string= (jupyter-message-get msg :execution_state) "starting")))
+
+(defun jupyter-message-reply-p (msg)
+  "Return non-nil if MSG is a reply message."
+  (string-suffix-p "_reply" (jupyter-message-type msg)))
+
+(defun jupyter-message-result-p (msg)
+  "Return non-nil if MSG is a result message."
+  (string-suffix-p "_result" (jupyter-message-type msg)))
 
 (provide 'jupyter-messages)
 
