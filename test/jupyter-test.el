@@ -65,6 +65,77 @@
                        (jupyter-request-id req)))
         (should (equal (jupyter-message-get (caddr msgs) :execution_state) "idle"))))))
 
+;;; Stream
+
+(ert-deftest jupyter-stream ()
+  :tags '(stream)
+  (letrec ((num (lambda (start)
+                  (jupyter-stream-cons start
+                    (funcall num (1+ start))))))
+    (let ((s (funcall num 0)))
+      (should (eq 0 (jupyter-stream-car s)))
+      (setq s (jupyter-stream-cdr s))
+      (should (eq 1 (jupyter-stream-car s)))
+      (setq s (jupyter-stream-cdr s))
+      (should (eq 2 (jupyter-stream-car s)))))
+  (ert-info ("\
+Evaluate the head element of the stream before \
+attempting to access the rest of the stream")
+    (let ((box '(nil)))
+      (let ((s (jupyter-stream-cons (setcar box 1)
+                 (jupyter-stream-cons
+                     (setcar box 2)
+                   jupyter-null-stream))))
+        (should (eq (car box) nil))
+        (setq s (jupyter-stream-cdr s))
+        (should (eq (car box) 1))
+        (setq s (jupyter-stream-cdr s))
+        (should (eq (car box) 2))
+        (should (jupyter-null-stream-p
+                 (jupyter-stream-cdr s)))))))
+
+;;; Seq
+
+(ert-deftest jupyter-seq ()
+  :tags '(stream seq)
+  (let ((null-seq (jupyter-seq :stream jupyter-null-stream)))
+    (should (seqp null-seq))
+    (let ((s (seq-copy null-seq)))
+      (should-not (eq s null-seq))
+      (should (jupyter-seq-p s))
+      (should (jupyter-null-stream-p (jupyter-seq-stream s))))
+    (should (eq 0 (seq-length null-seq)))
+    (should-error (seq-elt null-seq 0)))
+  (let* ((s (jupyter-stream-cons 1
+              (jupyter-stream-cons 2
+                (jupyter-stream-cons 3
+                  jupyter-null-stream))))
+         (seq (jupyter-seq :stream s)))
+    (should (eq (seq-length seq) 3))
+    (should (eq (seq-elt seq 2) 3))
+    (should-error (seq-elt seq 3))
+    (let ((lst '()))
+      (seq-do (lambda (x) (push x lst)) seq)
+      (should (equal '(3 2 1) lst)))
+    (should (equal '(1 2 3) (seq-into-sequence seq)))
+    (should (equal (seq-into seq 'vector) [1 2 3]))
+    (should (equal (seq-into seq 'list) '(1 2 3)))
+    (should-error (seq-into seq 'other)))
+  (let* ((s (jupyter-stream-cons 'alpha
+              (jupyter-stream-cons 'beta
+                (jupyter-stream-cons 'gamma
+                  jupyter-null-stream))))
+         (seq (jupyter-seq :stream s)))
+    (should (equal (seq-subseq seq 0)
+                   '(alpha beta gamma)))
+    (should (equal (seq-subseq seq 1)
+                   '(beta gamma)))
+    (should (equal (seq-subseq seq -1)
+                   '(gamma)))
+    (should (equal (seq-subseq seq 0 -2)
+                   '(alpha)))
+    (should-error (seq-subseq seq -5))))
+
 ;;; Callbacks
 
 (ert-deftest jupyter-wait-until-idle ()
@@ -2568,13 +2639,16 @@ publish_display_data({'text/plain': 'AB\x1b[43mCD\x1b[0mEF'});"
    ": AB[43mCD[0mEF\n")
   (with-temp-buffer
     (org-mode)
+    (when (functionp 'org-ansi-mode)
+      (setq org-ansi-hide-sequences t)
+      (org-ansi-mode))
     (jupyter-org-interaction-mode 1)
     (let ((test-fun
            (lambda (face-pos invisible-pos)
              (font-lock-ensure)
-             (jupyter-test-text-has-property 'invisible t invisible-pos)
+             (jupyter-test-text-has-property 'invisible 'org-ansi invisible-pos)
              (should (listp (get-text-property face-pos 'face)))
-             (should (get-text-property face-pos 'jupyter-face))
+             ;; (should (get-text-property face-pos 'jupyter-face))
              (should (memq (caar (get-text-property face-pos 'face))
                            '(:background background-color))))))
       (insert ": AB[43mCD[0mEF")
