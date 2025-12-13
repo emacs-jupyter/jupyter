@@ -542,7 +542,7 @@ the unboxed request contained in DREQ.
 If the variable `jupyter-org-queue-requests' is nil, just send
 the request immediately instead of attempting to queue it."
   (if (not jupyter-org-queue-requests)
-      (jupyter-sent dreq)
+      (jupyter-do dreq)
     (jupyter-mlet* ((client (jupyter-get-state))
                     (req dreq))
       (let* ((send

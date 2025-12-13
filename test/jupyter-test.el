@@ -999,13 +999,13 @@ attempting to access the rest of the stream")
   :tags '(client hook)
   (jupyter-test-with-python-client client
     (jupyter-run-with-client client
-      (jupyter-mlet* ((req (jupyter-sent (jupyter-execute-request :code "1 + 1"))))
+      (jupyter-mlet* ((req (jupyter-do (jupyter-execute-request :code "1 + 1"))))
         (should-not (jupyter-request-idle-p req))
         (jupyter-idle-sync req)
         (should (jupyter-request-idle-p req))
         (jupyter-return nil)))
     (jupyter-run-with-client client
-      (jupyter-mlet* ((req (jupyter-sent (jupyter-execute-request :code "1 + 1"))))
+      (jupyter-mlet* ((req (jupyter-do (jupyter-execute-request :code "1 + 1"))))
         (should (null jupyter-test-idle-sync-hook))
         (jupyter-add-idle-sync-hook 'jupyter-test-idle-sync-hook req)
         (should-not (null jupyter-test-idle-sync-hook))
@@ -1182,9 +1182,9 @@ attempting to access the rest of the stream")
     (unwind-protect
         (jupyter-run-with-client client
           (jupyter-mlet* ((_ (jupyter-do
-                               (jupyter-sent (jupyter-execute-request :code "1 + 1"))
-                               (jupyter-sent (jupyter-execute-request :code "1 + 1"))
-                               (jupyter-sent (jupyter-execute-request :code "1 + 1"))))
+                               (jupyter-do (jupyter-execute-request :code "1 + 1"))
+                               (jupyter-do (jupyter-execute-request :code "1 + 1"))
+                               (jupyter-do (jupyter-execute-request :code "1 + 1"))))
                           (res (jupyter-result
                                 (jupyter-execute-request :code "1 + 1"))))
             (should (equal (jupyter-message-data res :text/plain) "2"))

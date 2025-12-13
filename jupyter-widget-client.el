@@ -105,7 +105,7 @@ callbacks."
        (let* ((msg-type (jupyter-message-type msg))
               (content (jupyter-message-content msg)))
          (jupyter-run-with-client client
-           (jupyter-sent
+           (jupyter-do
             (jupyter-message-subscribed
              (let ((jupyter-inhibit-handlers
                     (if (member msg-type '("comm_info_request"))
