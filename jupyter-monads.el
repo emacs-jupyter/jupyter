@@ -291,16 +291,16 @@ Ex. Subscribe to a publisher and unsubscribe after receiving two
             (jupyter-publish x)))
       (reverse msgs)) ; => \='(1 2)"
   (declare (indent 0))
-  (lambda (io)
+  (jupyter-mlet* ((io (jupyter-get-state)))
     (funcall io (list 'subscribe sub))
-    (cons nil io)))
+    (jupyter-return nil)))
 
 (defun jupyter-publish (value)
   "Return an I/O action that submits VALUE to publish as content."
   (declare (indent 0))
-  (lambda (io)
+  (jupyter-mlet* ((io (jupyter-get-state)))
     (funcall io (jupyter-content value))
-    (cons nil io)))
+    (jupyter-return nil)))
 
 ;;; Working with requests
 
