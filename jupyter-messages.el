@@ -690,6 +690,11 @@ return nil."
   (and (string= (jupyter-message-type msg) "status")
        (string= (jupyter-message-get msg :execution_state) "idle")))
 
+(defun jupyter-message-status-busy-p (msg)
+  "Determine if MSG is a status: busy message."
+  (and (string= (jupyter-message-type msg) "status")
+       (string= (jupyter-message-get msg :execution_state) "busy")))
+
 (defun jupyter-message-status-starting-p (msg)
   "Determine if MSG is a status: starting message."
   (and (string= (jupyter-message-type msg) "status")
