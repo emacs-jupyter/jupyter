@@ -365,8 +365,6 @@ Ex. Subscribe to a publisher and unsubscribe after receiving two
 
 ;;; Working with requests
 
-(define-error 'jupyter-timeout-before-idle "Timeout before idle")
-
 (defun jupyter-sent (dreq)
   (jupyter-mlet* ((client (jupyter-get-state))
                   (req dreq))
