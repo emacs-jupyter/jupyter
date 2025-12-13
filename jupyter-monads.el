@@ -373,19 +373,7 @@ Ex. Subscribe to a publisher and unsubscribe after receiving two
 ;;; Working with requests
 
 (defun jupyter-sent (dreq)
-  (jupyter-mlet* ((client (jupyter-get-state))
-                  (req dreq))
-    (let ((type (jupyter-request-type req)))
-      (jupyter-run-with-io (jupyter-kernel-io client)
-        (jupyter-do
-          (jupyter-subscribe (jupyter-request-message-publisher req))
-          (jupyter-publish
-            (list 'send
-                  (jupyter-channel-from-request-type type)
-                  type
-                  (jupyter-request-content req)
-                  (jupyter-request-id req))))))
-    (jupyter-return req)))
+  (jupyter-do dreq))
 
 (defun jupyter-idle (dreq &optional timeout)
   "Wait until DREQ has become idle, return DREQ.
@@ -432,27 +420,34 @@ TIMEOUT has the same meaning as in `jupyter-idle'."
            (string-suffix-p "_result" type)))
        msgs))))
 
-(defun jupyter-message-subscribed (dreq cbs)
-  "Return an IO action that subscribes CBS to a request's message publisher.
-IO-REQ is an IO action that evaluates to a sent request.  CBS is
-an alist mapping message types to callback functions like
+(defun jupyter-add-subscriber (sub)
+  "Return an action that makes SUB a message handler for the next request.
+SUB is a function that takes a single argument, a message
+property list."
+  (jupyter-mlet* ((state (jupyter-get-state)))
+    (jupyter-put-state
+     (nconc
+      (if (listp state) (copy-sequence state) (list state))
+      (list (jupyter-subscriber sub))))))
+
+(defun jupyter-message-subscribed (req cbs)
+  "Return an action that subscribes CBS to a request's message publisher.
+REQ is an action that evaluates to a sent request.  CBS is an
+alist mapping message types to callback functions like
 
     `((\"execute_reply\" ,(lambda (msg) ...))
       ...)
 
-The returned IO action returns the sent request after subscribing
-the callbacks."
-  (jupyter-mlet* ((req dreq))
-    (jupyter-run-with-io
-        (jupyter-request-message-publisher req)
-      (jupyter-subscribe
-        (jupyter-subscriber
-          (lambda (msg)
-            (when-let*
-                ((msg-type (jupyter-message-type msg))
-                 (fn (car (alist-get msg-type cbs nil nil #'string=))))
-              (funcall fn msg))))))
-    (jupyter-return req)))
+The returned action returns the sent request, subscribing the
+callbacks before sending."
+  (jupyter-do
+    (jupyter-add-subscriber
+     (lambda (msg)
+       (when-let*
+           ((msg-type (jupyter-message-type msg))
+            (fn (car (alist-get msg-type cbs nil nil #'string=))))
+         (funcall fn msg))))
+    (jupyter-do req)))
 
 ;; When replaying messages, the request message publisher is already
 ;; unsubscribed from any upstream publishers.
@@ -514,40 +509,70 @@ the callbacks."
               (jupyter-content
                (cl-list* :parent-request req msg))))))))
 
+(defun jupyter-subscribe-client (client &optional server-p)
+  "Return an action to subscribe CLIENT to a publisher.
+If SERVER-P is non-nil and a received message is a status: busy
+message, set the client as the `jupyter-current-client' in the
+`server-buffer', see `jupyter-server-mode-set-client'.
+
+Note, if `jupyter--debug' is `message' then this is a no-op."
+  (if (not (eq jupyter--debug 'message))
+      (jupyter-subscribe
+        (jupyter-subscriber
+          (lambda (msg)
+            (when (jupyter-valid-message-p msg)
+              (when (and server-p (jupyter-message-status-busy-p msg))
+                (jupyter-server-mode-set-client client))
+              (let ((channel (jupyter-message-channel msg)))
+                (jupyter-handle-message client channel msg))))))
+    (jupyter-return nil)))
+
 (defvar jupyter-inhibit-handlers)
 
 (defun jupyter-request (type &rest content)
-  "Return an IO action that sends a `jupyter-request'.
+  "Return an action that sends a `jupyter-request'.
 TYPE is the message type of the message that CONTENT, a property
 list, represents."
   (declare (indent 1))
   (let ((ih jupyter-inhibit-handlers))
-    (lambda (client)
-      (let* ((req (jupyter-generate-request
+    (jupyter-mlet* ((client (jupyter-get-client)))
+      (let* ((channel (jupyter-channel-from-request-type type))
+             (req (jupyter-generate-request
                    client
                    :type type
                    :content content
                    :client client
                    ;; Anything sent to stdin is a reply not a request
                    ;; so consider the "request" completed.
-                   :idle-p (string= "stdin"
-                                    (jupyter-channel-from-request-type type))
+                   :idle-p (string= "stdin" channel)
                    :inhibited-handlers ih))
+             (id (jupyter-request-id req))
              (pub (jupyter-message-publisher req)))
         (setf (jupyter-request-message-publisher req) pub)
-        (if (eq jupyter--debug 'message)
-            (push (list client req) jupyter--debug-request-queue)
-          (when (string= (jupyter-request-type req)
-                         "execute_request")
-            (jupyter-server-mode-set-client client))
-          (jupyter-run-with-io pub
-            (jupyter-subscribe
-              (jupyter-subscriber
-                (lambda (msg)
-                  (when (jupyter-message-p msg)
-                    (let ((channel (jupyter-message-channel msg)))
-                      (jupyter-handle-message client channel msg))))))))
-        (cons req client)))))
+        ;; NOTE The state is assumed to be a list with a client as the
+        ;; first element and message subscribers as the rest of the
+        ;; elements or just a client.
+        (let ((subscribe
+               (jupyter-mlet* ((client (jupyter-pop))
+                               (subscribers (jupyter-get-state)))
+                 (jupyter-run-with-io pub
+                   (jupyter-subscribe-client
+                    client (string= type "execute_request")))
+                 (when subscribers
+                   (dolist (sub subscribers)
+                     (jupyter-run-with-io pub
+                       (jupyter-subscribe sub))))
+                 (jupyter-put-state client)))
+              (send
+               (jupyter-mlet* ((client (jupyter-get-client)))
+                 (jupyter-run-with-io (jupyter-kernel-io client)
+                   (jupyter-do
+                     (jupyter-subscribe pub)
+                     (jupyter-publish (list 'send channel type content id))))
+                 (when (eq jupyter--debug 'message)
+                   (push (list client req) jupyter--debug-request-queue))
+                 (jupyter-return req))))
+          (jupyter-do subscribe send))))))
 
 (provide 'jupyter-monads)
 
