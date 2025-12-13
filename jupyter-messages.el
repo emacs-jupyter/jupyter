@@ -654,9 +654,23 @@ The returned time has the same form as returned by
       (setcar (cdr date) (jupyter-decode-time (cadr date))))
     (cadr date)))
 
+(defconst jupyter-empty-message (list :msg_type "")
+  "An empty message.
+All possible properties of it return nil except for
+`jupyter-message-type' which returns the empty string.  It passes
+`jupyter-message-p', but not `jupyter-valid-message-p'.")
+
 (defun jupyter-message-p (obj)
-  "Return non-nil if OBJ looks like a Jupyter message."
+  "Return non-nil if OBJ looks like a Jupyter message.
+Note that `jupyter-empty-message' is a message but it is not a
+valid message, see `jupyter-valid-message-p'."
   (not (null (jupyter-message-type obj))))
+
+(defun jupyter-valid-message-p (obj)
+  "Return non-nil if OBJ looks like a Jupyter message.
+And is not the `jupyter-empty-message'."
+  (and (jupyter-message-p obj)
+       (not (eq jupyter-empty-message obj))))
 
 (defsubst jupyter-message-get (msg key)
   "Get the value in MSG's `jupyter-message-content' that corresponds to KEY."
