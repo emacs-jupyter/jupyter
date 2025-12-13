@@ -539,7 +539,9 @@ display for reporting progress to the user while waiting."
         (when timeout-spec
           (with-timeout-unsuspend timeout-spec))))))
 
-(defun jupyter-wait-until-idle (req &optional timeout progress-msg)
+(define-error 'jupyter-timeout-before-idle "Timeout before idle")
+
+(defun jupyter-wait-until-idle (req &optional timeout progress-msg signal)
   "Wait until a status: idle message is received for a request.
 REQ is a `jupyter-request'.  If an idle message for REQ is
 received within TIMEOUT seconds, return the message.  Otherwise
@@ -552,7 +554,9 @@ reporting progress to the user while waiting."
   (or (jupyter-request-idle-p req)
       (jupyter-with-timeout
           (progress-msg (or timeout jupyter-default-timeout))
-        (jupyter-request-idle-p req))))
+        (jupyter-request-idle-p req))
+      (if signal
+          (signal 'jupyter-timeout-before-idle req))))
 
 (defun jupyter-idle-sync (req)
   "Return only when REQ has received a status: idle message."
