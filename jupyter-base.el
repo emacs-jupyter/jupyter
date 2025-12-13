@@ -126,8 +126,8 @@ from a backing notebook server."
 
 (defvar jupyter--debug nil
   "When non-nil, some parts of Jupyter will emit debug statements.
-If the symbol \='message, messages received by a kernel will only
-be handled by clients when the function
+If the symbol \\='message, messages received from a kernel will
+only be handled by clients when the function
 `jupyter--debug-replay-requests' is called manually.  This allows
 for stepping through the code with Edebug.")
 
@@ -819,8 +819,9 @@ following in your Emacs configuration
 before starting any Jupyter kernels.  The kernel also has to know
 that it should use EDITOR to open files."
   (when (bound-and-true-p server-mode)
-    ;; After switching to a server buffer, keep the client alive in `server-buffer'
-    ;; to account for multiple files being opened by the server.
+    ;; After switching to a server buffer, keep the client alive in
+    ;; `server-buffer' to account for multiple files being opened by
+    ;; the server.
     (unless (and (boundp 'server-switch-hook)
                  (memq #'jupyter-server-mode--unset-client-soon
                        server-switch-hook))
