@@ -98,14 +98,13 @@ BODY should be another monadic value."
 The actions are evaluated in the order given.  The result of the
 returned action is the result of the last action in ACTIONS."
   (declare (indent 0) (debug (body)))
-  (if (zerop (length actions)) 'jupyter--return-nil
-    (let ((result (make-symbol "result")))
-      `(jupyter-mlet*
-           ,(cl-loop
-             for action being the elements of actions using (index i)
-             for sym = (if (= i (1- (length actions))) result '_)
-             collect `(,sym ,action))
-         (jupyter-return ,result)))))
+  (cond
+   ((zerop (length actions)) 'jupyter--return-nil)
+   ((= 1 (length actions))
+    (car actions))
+   (t
+    `(jupyter-mlet* ((_ ,(car actions)))
+       (jupyter-do ,@(cdr actions))))))
 
 (defun jupyter-run-with-state (state mvalue)
   "Pass STATE as the state to MVALUE, return the resulting value."
