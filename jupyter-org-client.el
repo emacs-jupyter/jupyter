@@ -1482,9 +1482,12 @@ appear after the element."
            ;; `jupyter-org-scalar'.
            (get-text-property 0 'org-table result))
       (memq (org-element-type result)
-            '(example-block
-              export-block fixed-width item
-              link plain-list src-block table))))
+            '(link
+              ;; Taken from `org-babel-result-end', excludes table.
+              ;; XXX Why exclude table?
+              drawer example-block export-block fixed-width
+              special-block src-block item plain-list
+              latex-environment))))
 
 (defun jupyter-org--strip-properties (element)
   "Strip away properties which may interfere with insertion of ELEM."
