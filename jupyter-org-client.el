@@ -689,20 +689,31 @@ nil."
     (`(invalid . ,_) nil)
     (`(,params . ,_) params)))
 
+(defun jupyter-org-src-block-client (&optional previous initiate params)
+  "Return the `jupyter-kernel-client' for the current source block.
+nil is returned when `point' doesn't lie in a Jupyter source
+block.  If PREVIOUS is non-nil, return the client for the
+previously visited source block in the `current-buffer'.  If
+INITIATE is non-nil, initialize a client first if one doesn't
+already exist and return it, otherwise nil is returned.
+
+If PARAMS is non-nil, it should be the pre-calculated
+`jupyter-org-src-block-params' for the source block whose client
+is being retrieved."
+  (when-let* ((params (or params (jupyter-org-src-block-params previous)))
+              (buffer (and (or initiate
+                               (org-babel-jupyter-session-initiated-p
+                                params 'noerror))
+                           (org-babel-jupyter-initiate-session
+                            (alist-get :session params) params))))
+    (buffer-local-value 'jupyter-current-client buffer)))
+
 (defun jupyter-org--with-src-block-client (thunk)
-  (when-let* ((params (jupyter-org-src-block-params))
-              (buffer
-               (and (or jupyter-org-auto-connect
-                        (org-babel-jupyter-session-initiated-p
-                         params 'noerror))
-                    (org-babel-jupyter-initiate-session
-                     (alist-get :session params) params)))
-              (client (or (buffer-local-value
-                           'jupyter-current-client buffer)
-                          (error "No client in session buffer!")))
-              (syntax (jupyter-kernel-language-syntax-table client)))
+  (when-let* ((client (jupyter-org-src-block-client
+                       nil jupyter-org-auto-connect)))
     (let ((jupyter-current-client client))
-      (with-syntax-table syntax
+      (with-syntax-table
+          (jupyter-kernel-language-syntax-table client)
         (funcall thunk)))))
 
 (defmacro jupyter-org-with-src-block-client (&rest body)
