@@ -494,7 +494,7 @@ longer connected to a kernel."
                              :interrupt_mode)))))
     (if (equal interrupt-mode "message")
         (jupyter-run-with-client client
-          (jupyter-sent (jupyter-interrupt-request)))
+          (jupyter-do (jupyter-interrupt-request)))
       (let ((kaction-sub (jupyter-kernel-action-subscriber client)))
         (jupyter-run-with-io kaction-sub
           (jupyter-publish 'interrupt))))))
@@ -682,7 +682,7 @@ user.  Otherwise `read-from-minibuffer' is used."
                    (quit ""))))
       (unwind-protect
           (jupyter-run-with-client client
-            (jupyter-sent (jupyter-input-reply :value value)))
+            (jupyter-do (jupyter-input-reply :value value)))
         (when (eq password t)
           (clear-string value)))
       value)))
@@ -945,7 +945,7 @@ current buffer that STR was extracted from.")
   (cl-check-type jupyter-current-client jupyter-kernel-client
                  "Not a valid client")
   (jupyter-run-with-client jupyter-current-client
-    (jupyter-sent
+    (jupyter-do
      (jupyter-message-subscribed
       (jupyter-execute-request
        :code str
@@ -1584,7 +1584,7 @@ Run FUN when the completions are available."
   (pcase (jupyter-code-context 'completion)
     (`(,code ,pos)
      (jupyter-run-with-client jupyter-current-client
-       (jupyter-sent
+       (jupyter-do
         (jupyter-message-subscribed
          (jupyter-complete-request
           :code code

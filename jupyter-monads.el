@@ -379,7 +379,7 @@ Ex. Subscribe to a publisher and unsubscribe after receiving two
   "Wait until DREQ has become idle, return DREQ.
 Signal a `jupyter-timeout-before-idle' error if TIMEOUT seconds
 elapses and the request has not become idle yet."
-  (jupyter-mlet* ((req (jupyter-sent dreq)))
+ (jupyter-mlet* ((req (jupyter-do dreq)))
     (or (jupyter-wait-until-idle req timeout)
         (signal 'jupyter-timeout-before-idle (list req)))
     (jupyter-return req)))

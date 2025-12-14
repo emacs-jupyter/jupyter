@@ -884,11 +884,12 @@ Return the `jupyter-request' representing the executed code."
       (run-hooks 'jupyter-repl-cell-pre-send-hook))
     (let ((code (string-trim (jupyter-repl-cell-code) "[\r\n]+")))
       (jupyter-run-with-client client
-        (jupyter-mlet* ((req (jupyter-execute-request
-                              :code code
-                              ;; Handle empty code cells as just an update
-                              ;; of the prompt number
-                              :silent (and (= (length code) 0) t))))
+        (jupyter-mlet* ((req (jupyter-do
+                               (jupyter-execute-request
+                                :code code
+                                ;; Handle empty code cells as just an update
+                                ;; of the prompt number
+                                :silent (and (= (length code) 0) t)))))
           (jupyter-repl-without-continuation-prompts
            (jupyter-repl-cell-mark-busy)
            (jupyter-repl-finalize-cell req)
@@ -898,7 +899,7 @@ Return the `jupyter-request' representing the executed code."
           (save-excursion
             (jupyter-repl-backward-cell)
             (run-hooks 'jupyter-repl-cell-post-send-hook))
-          (jupyter-sent (jupyter-return req)))))))
+          (jupyter-return req))))))
 
 (cl-defmethod jupyter-handle-payload ((_source (eql set_next_input)) pl
                                       &context (major-mode jupyter-repl-mode))
@@ -1516,26 +1517,26 @@ value."
           (jupyter-repl-replace-cell-code code)))))
    (t
     (jupyter-run-with-client jupyter-current-client
-      (jupyter-sent
-       (let ((req
-              (jupyter-execute-request
-               :code str
-               :store-history jupyter-repl-echo-eval-p
-               :handlers '("input_request"))))
-         (if (and jupyter-repl-echo-eval-p
-                  (get-buffer-window
-                   (oref jupyter-current-client buffer)
-                   'visible))
-             req
-           ;; Add callbacks to display evaluation output in pop-up
-           ;; buffers either when we aren't copying the input to a
-           ;; REPL cell or, if we are, when the REPL buffer isn't
-           ;; visible.
-           ;;
-           ;; Make sure we do this in the original buffer where
-           ;; STR originated from when BEG and END are non-nil.
-           (jupyter-message-subscribed
-            req (jupyter-eval-callbacks insert beg end)))))))))
+      (jupyter-do
+        (let ((req
+               (jupyter-execute-request
+                :code str
+                :store-history jupyter-repl-echo-eval-p
+                :handlers '("input_request"))))
+          (if (and jupyter-repl-echo-eval-p
+                   (get-buffer-window
+                    (oref jupyter-current-client buffer)
+                    'visible))
+              req
+            ;; Add callbacks to display evaluation output in pop-up
+            ;; buffers either when we aren't copying the input to a
+            ;; REPL cell or, if we are, when the REPL buffer isn't
+            ;; visible.
+            ;;
+            ;; Make sure we do this in the original buffer where
+            ;; STR originated from when BEG and END are non-nil.
+            (jupyter-message-subscribed
+             req (jupyter-eval-callbacks insert beg end)))))))))
 
 ;;; Kernel management
 
@@ -1761,12 +1762,12 @@ Return the buffer switched to."
     ;; ring.
     (ring-insert jupyter-repl-history 'jupyter-repl-history)
     (jupyter-run-with-client jupyter-current-client
-      (jupyter-sent
-       (jupyter-history-request
-        :n jupyter-repl-history-maximum-length
-        :raw t
-        :unique t
-        :handlers '(not "status"))))
+      (jupyter-do
+        (jupyter-history-request
+         :n jupyter-repl-history-maximum-length
+         :raw t
+         :unique t
+         :handlers '(not "status"))))
     (erase-buffer)
     ;; Add local hooks
     (add-hook 'kill-buffer-query-functions #'jupyter-repl-kill-buffer-query-function nil t)
