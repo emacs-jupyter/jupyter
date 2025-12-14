@@ -1373,7 +1373,7 @@ new \"scalar\" result with the result of calling
      (cond
       ((and (stringp result)
             ;; Don't assume non-empty string, see #144
-            (not (zerop (length result)))
+            (not (string-empty-p result))
             ;; Don't attempt to create a table when we just want scalar results
             ;; FIXME: `jupyter-org-scalar' also considers a table a scalar, but
             ;; `org-mode' doesn't.
