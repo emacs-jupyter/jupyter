@@ -907,6 +907,63 @@ property."
 
 (defvar org-font-lock-keywords)
 
+(defcustom jupyter-org-interaction-mode-line-format " JuPy:%5s(.)[%s]"
+  "Format to use when producing the mode line in Org mode.
+The format specifier %s is replaced with the status of the
+kernel.  A format specifier like %Ms, where M is any positive
+integer will be replaced with the session name of the current
+source block client truncated to M characters.  If the specifier
+looks like %Ms(g), then g will be used as the truncation
+indicator.  See `truncate-string-to-width'."
+  :group 'ob-jupter
+  :type 'string)
+
+(defcustom jupyter-org-interaction-mode-line-display-most-recent t
+  "Whether or not to display status outside of a source block.
+If this variable is non-nil, then the mode line will display the
+status of the most recent Jupyter source block that `point' was
+in whenever `point' leaves the source block.  This is only for
+the `current-buffer'.
+
+When `point' is inside a Jupyter source block that doesn't yet
+have a client associated with it, \"JuPy:-\" is displayed so as
+to not confuse the user."
+  :group 'ob-jupyter
+  :type 'boolean)
+
+(defun jupyter-org-interaction-mode-line ()
+  "Return the status of the current source block's kernel.
+If no source block exists at point, just indicate that
+`jupyter-org-interaction-mode' is enabled.  See
+`jupyter-repl-interaction-mode' for the possible statuses."
+  (let ((mode-line-string
+         (lambda (&optional params)
+           (when-let* ((params params)
+                       (session (alist-get :session params))
+                       (jupyter-repl-interaction-mode-line-format
+                        (replace-regexp-in-string
+                         "%\\([0-9]*[1-9]\\)s\\(?:(\\([^)]*\\))\\)?"
+                         (lambda (s)
+                           (truncate-string-to-width
+                            (file-local-name session)
+                            (string-to-number (match-string 1 s))
+                            nil nil (or (match-string 2 s) "")))
+                         jupyter-org-interaction-mode-line-format)))
+             (jupyter-repl-interaction-mode-line)))))
+    (let* ((params (jupyter-org-src-block-params))
+           (client (jupyter-org-src-block-client nil nil params))
+           (client-able params))
+      (when (and (null client)
+                 jupyter-org-interaction-mode-line-display-most-recent)
+        (setq params (jupyter-org-src-block-params 'previous)
+              client (jupyter-org-src-block-client 'previous nil params)))
+      (or (when client
+            (jupyter-with-client client
+              (funcall mode-line-string params)))
+          (if client-able
+              " JuPy:-"
+            " JuPy")))))
+
 (define-minor-mode jupyter-org-interaction-mode
   "Minor mode for interacting with a Jupyter REPL from an `org-mode' buffer.
 When this minor mode is enabled, some of the keybindings
@@ -930,6 +987,7 @@ C-c C-r         `jupyter-repl-restart-kernel'
 
 C-x C-e         `jupyter-eval-line-or-region'"
   :group 'ob-jupyter
+  :lighter (:eval (jupyter-org-interaction-mode-line))
   :init-value nil
   (cond
    (jupyter-org-interaction-mode
