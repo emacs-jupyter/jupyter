@@ -1388,7 +1388,13 @@ new \"scalar\" result with the result of calling
                                (?\{ ?\})
                                (?\( ?\)))))
               (eq end (aref result (1- (length result))))))
-       (org-babel-script-escape result))
+       (if-let* ((escaped (org-babel-script-escape result)))
+           escaped
+         ;; Just return result when it looks like "()" which
+         ;; `org-babel-script-escape' turns into nil, otherwise
+         ;; `jupyter-org-scalar' will consider it as
+         ;; (jupyter-org-table-string "\n")
+         result))
       (t result)))))
 
 (cl-defmethod jupyter-org-result ((_mime (eql :text/plain)) content _params)
