@@ -434,11 +434,11 @@
                 (should (not (null session)))
               (jupyter-test-kill-buffer session)))))))
   (ert-info ("Test parsing session paths")
-    (let ((session (org-babel-jupyter-parse-session "/jpy::foo/bar.json")))
+    (let ((session (org-babel-jupyter-parse-session "/jupy::foo/bar.json")))
       (should (org-babel-jupyter-server-session-p session))
-      (should (equal (org-babel-jupyter-session-name session) "/jpy::foo/bar.json")))
-    (let ((session (org-babel-jupyter-parse-session "/jpy::foo/bar")))
+      (should (equal (org-babel-jupyter-session-name session) "/jupy::foo/bar.json")))
+    (let ((session (org-babel-jupyter-parse-session "/jupy::foo/bar")))
       (should (org-babel-jupyter-server-session-p session))
-      (should (equal (org-babel-jupyter-session-name session) "/jpy::foo/bar")))))
+      (should (equal (org-babel-jupyter-session-name session) "/jupy::foo/bar")))))
 
 ;;; jupyter-server-test.el ends here

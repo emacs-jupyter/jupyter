@@ -148,7 +148,7 @@ If the `current-buffer' is not a REPL, this is identical to
          (temporary-file-directory jupyter-test-temporary-directory)
          (tramp-cache-data (make-hash-table :test #'equal)))
      (let ((port (jupyter-test-ensure-notebook-server)))
-       (dolist (method '("jpys" "jpy"))
+       (dolist (method '("jupys" "jupy"))
          (setf
           (alist-get 'tramp-default-port
                      (alist-get method tramp-methods nil nil #'equal))
