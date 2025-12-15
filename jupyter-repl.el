@@ -1884,27 +1884,28 @@ it."
   "Synchronize the `jupyter-current-client's kernel state.
 Also update the cell count of the current REPL input prompt using
 the updated state."
-  (jupyter-run-with-client jupyter-current-client
-    (jupyter-mlet* ((_msg (jupyter-reply
-                          (jupyter-execute-request
-                           :code ""
-                           :silent t
-                           :handlers nil)
-                          ;; Waiting longer here to account for initial
-                          ;; startup of the Jupyter kernel.  Sometimes
-                          ;; the idle message won't be received if
-                          ;; another long running execute request is
-                          ;; sent right after.
-                          jupyter-long-timeout))
-                    (client (jupyter-get-state)))
-      (unless (equal (jupyter-execution-state client) "busy")
-        ;; Set the cell count and update the prompt
-        (jupyter-with-repl-buffer client
-          (save-excursion
-            (goto-char (point-max))
-            (jupyter-repl-update-cell-count
-             (oref client execution-count)))))
-      (jupyter-return nil))))
+  (let ((sync
+         (jupyter-idle
+          (jupyter-execute-request
+           :code ""
+           :silent t
+           :handlers nil)
+          ;; Waiting longer here to account for initial startup of the
+          ;; Jupyter kernel.  Sometimes the idle message won't be
+          ;; received if another long running execute request is sent
+          ;; right after.
+          jupyter-long-timeout))
+        (update-cell-count
+         (jupyter-mlet* ((client (jupyter-get-client)))
+           (unless (equal (jupyter-execution-state client) "busy")
+             (jupyter-with-repl-buffer client
+               (save-excursion
+                 (goto-char (point-max))
+                 (jupyter-repl-update-cell-count
+                  (oref client execution-count)))))
+           (jupyter-return nil))))
+    (jupyter-run-with-client jupyter-current-client
+      (jupyter-do sync update-cell-count))))
 
 ;;; `jupyter-repl-interaction-mode'
 
