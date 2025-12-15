@@ -776,7 +776,7 @@ POS defaults to `point'."
     (error "Not in code of cell"))
   (1+ (- (point) (jupyter-repl-cell-code-beginning-position))))
 
-(defun jupyter-repl-finalize-cell (req)
+(defun jupyter-repl-finalize-cell (&optional req)
   "Finalize the current input cell.
 REQ is the `jupyter-request' to associate with the current cell.
 Place `point' at `point-max'."
@@ -1200,12 +1200,11 @@ elements."
     (jupyter-repl-without-continuation-prompts
      (goto-char (point-max))
      (let ((shutdown-handled-p (jupyter-repl-cell-finalized-p)))
-       (unless (jupyter-repl-cell-finalized-p)
-         (jupyter-repl-finalize-cell nil))
        ;; Only run the following once.  The Python kernel sends a shutdown-reply
        ;; on both the shell and iopub which is mainly the reason why this is
        ;; needed.
        (unless shutdown-handled-p
+         (jupyter-repl-finalize-cell)
          (jupyter-repl-newline)
          (jupyter-repl-newline)
          (jupyter-with-message-content msg (restart)
