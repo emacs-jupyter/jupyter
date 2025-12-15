@@ -1098,10 +1098,8 @@ Otherwise, return VALUE formated as a fixed-width `org-element'."
             org-babel-min-lines-for-block-output)
         (jupyter-org-example-block value)
       (org-element-create 'fixed-width (list :value value))))
-   ((and (listp value)
-         (or (memq (car value) org-element-all-objects)
-             (memq (car value) org-element-all-elements)))
-    value)
+   ;; plain-text handled by above.
+   ((jupyter-org-element-p value) value)
    ((and (listp value)
          (jupyter-org-tabulablep value))
     (jupyter-org-table-string (jupyter-org-table-to-orgtbl value)))
