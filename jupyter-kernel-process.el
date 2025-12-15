@@ -274,11 +274,12 @@ Call the next method if ARGS does not contain a :spec or
   (setq jupyter--kernel-processes
         (cl-loop for (p conn-file) in jupyter--kernel-processes
                  if (process-live-p p) collect (list p conn-file)
-                 else do (delete-process p)
+                 else do
+                 (delete-process p)
                  (when (file-exists-p conn-file)
                    (delete-file conn-file))
-                 and when (buffer-live-p (process-buffer p))
-                 do (kill-buffer (process-buffer p)))))
+                 (when (buffer-live-p (process-buffer p))
+                   (kill-buffer (process-buffer p))))))
 
 (defun jupyter-delete-connection-files ()
   "Delete all connection files created by Emacs."
