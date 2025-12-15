@@ -680,13 +680,17 @@ block, but only if it was in the same buffer.  Otherwise return
 nil."
   (jupyter-org--set-src-block-cache)
   (pcase jupyter-org--src-block-cache
-    ((and (and (guard (and previous
-                           (not (jupyter-org--at-cached-src-block-p)))))
+    ;; Getting the previous source block information, when we are not
+    ;; at a cached source block.  The previous source block info must
+    ;; have been invalidated because point was moved outside its
+    ;; bounds.
+    ((and (guard (and previous
+                      (not (jupyter-org--at-cached-src-block-p))))
           `(invalid ,params ,beg . ,_)
           (guard (eq (marker-buffer beg) (current-buffer))))
-     ;; NOTE There are probably cases where the parameters could no
-     ;; longer be valid, hence the invalid tag.  This is mainly for
-     ;; the purposes of creating a mode line according to
+     ;; NOTE There are cases where the parameters could no longer be
+     ;; valid, hence the invalid tag.  This is mainly for the purposes
+     ;; of creating a mode line according to
      ;; `jupyter-org-interaction-mode-line-display-most-recent'.
      params)
     (`(invalid . ,_) nil)
