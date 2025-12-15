@@ -985,7 +985,7 @@ are displayed in the current buffer instead."
    (buffer-substring-no-properties beg end)
    insert beg end))
 
-(defun jupyter-eval-line-or-region (insert)
+(defun jupyter-eval-line-or-region (&optional insert)
   "Evaluate the current line or region with the `jupyter-current-client'.
 If the current region is active send it using
 `jupyter-eval-region', otherwise send the current line.
