@@ -32,6 +32,7 @@
 
 (eval-when-compile (require 'subr-x))
 (require 'jupyter-base)
+(require 'jupyter-seq)
 (require 'jupyter-mime)
 (require 'jupyter-messages)
 (require 'jupyter-kernel)
@@ -556,7 +557,9 @@ reporting progress to the user while waiting."
 
 (defun jupyter-idle-sync (req)
   "Return only when REQ has received a status: idle message."
-  (while (null (jupyter-wait-until-idle req jupyter-long-timeout))))
+  (seq-find
+   #'jupyter-message-status-idle-p
+   (jupyter-message-seq req)))
 
 (defun jupyter-add-idle-sync-hook (hook req &optional depth)
   "Add a function to HOOK that waits until REQ receives a status: idle message.

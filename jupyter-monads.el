@@ -40,6 +40,7 @@
 ;;; Code:
 
 (require 'jupyter-base)
+(require 'jupyter-seq)
 
 (declare-function jupyter-handle-message "jupyter-client")
 (declare-function jupyter-kernel-io "jupyter-client")
@@ -375,50 +376,49 @@ Ex. Subscribe to a publisher and unsubscribe after receiving two
 (defun jupyter-sent (dreq)
   (jupyter-do dreq))
 
-(defun jupyter-idle (dreq &optional timeout)
-  "Wait until DREQ has become idle, return DREQ.
-Signal a `jupyter-timeout-before-idle' error if TIMEOUT seconds
-elapses and the request has not become idle yet."
- (jupyter-mlet* ((req (jupyter-do dreq)))
-    (or (jupyter-wait-until-idle req timeout)
-        (signal 'jupyter-timeout-before-idle (list req)))
+(defun jupyter-messages (req)
+  "Return a sequence of the messages of REQ.
+A value is returned that returns a sequence (see `seqp')."
+  (jupyter-mlet* ((req req))
+    (jupyter-return
+      (jupyter-message-seq req))))
+
+(defun jupyter-idle (req &optional timeout)
+  "Return a value that waits until REQ becomes idle.
+Returns the idled request.
+
+TIMEOUT seconds may elapse before a
+`jupyter-timeout-before-message' error is raised and no idle
+message has arrived."
+  (jupyter-mlet* ((req req))
+    (let ((jupyter-long-timeout timeout))
+      (seq-find
+       #'jupyter-message-status-idle-p
+       (jupyter-message-seq req)))
     (jupyter-return req)))
 
-(defun jupyter-messages (dreq &optional timeout)
-  "Return all the messages of REQ.
-TIMEOUT has the same meaning as in `jupyter-idle'."
-  (jupyter-mlet* ((req (jupyter-idle dreq timeout)))
-    (jupyter-return (jupyter-request-messages req))))
+(defun jupyter-find-message (req pred &optional timeout)
+  "Return the first message passing PRED in REQ's messages.
+Nil is returned if none were found.
 
-(defun jupyter-find-message (msg-type msgs)
-  "Return a message whose type is MSG-TYPE in MSGS."
-  (cl-find-if
-   (lambda (msg)
-     (let ((type (jupyter-message-type msg)))
-       (string= type msg-type)))
-   msgs))
+TIMEOUT seconds may elapse before a
+`jupyter-timeout-before-message' error is raised and no idle
+message has arrived."
+  (declare (indent 1))
+  (jupyter-mlet* ((seq (jupyter-messages req)))
+    (jupyter-return
+      (let ((jupyter-long-timeout timeout))
+        (seq-find pred seq)))))
 
-(defun jupyter-reply (dreq &optional timeout)
+(defun jupyter-reply (req &optional timeout)
   "Return the reply message of REQ.
 TIMEOUT has the same meaning as in `jupyter-idle'."
-  (jupyter-mlet* ((msgs (jupyter-messages dreq timeout)))
-    (jupyter-return
-      (cl-find-if
-       (lambda (msg)
-         (let ((type (jupyter-message-type msg)))
-           (string-suffix-p "_reply" type)))
-       msgs))))
+  (jupyter-find-message req #'jupyter-message-reply-p timeout))
 
-(defun jupyter-result (dreq &optional timeout)
+(defun jupyter-result (req &optional timeout)
   "Return the result message of REQ.
 TIMEOUT has the same meaning as in `jupyter-idle'."
-  (jupyter-mlet* ((msgs (jupyter-messages dreq timeout)))
-    (jupyter-return
-      (cl-find-if
-       (lambda (msg)
-         (let ((type (jupyter-message-type msg)))
-           (string-suffix-p "_result" type)))
-       msgs))))
+  (jupyter-find-message req #'jupyter-message-result-p timeout))
 
 (defun jupyter-add-subscriber (sub)
   "Return an action that makes SUB a message handler for the next request.
