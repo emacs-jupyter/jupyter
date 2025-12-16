@@ -216,6 +216,11 @@ nothing and return nil."
   (when (overlayp (jupyter-org-request-overlay req))
     (delete-overlay (jupyter-org-request-overlay req))))
 
+(defun jupyter-org-inline-block-p (&optional context)
+  (or context (setq context (org-element-context)))
+  (memq (org-element-type context)
+        '(inline-babel-call inline-src-block)))
+
 (cl-defmethod jupyter-generate-request ((_client jupyter-org-client) &rest slots)
   "Return a `jupyter-org-request' for the current source code block."
   (if (and org-babel-current-src-block-location
@@ -239,9 +244,7 @@ nothing and return nil."
                        (append
                         (list
                          :marker (copy-marker org-babel-current-src-block-location)
-                         :inline-block-p (and (memq (org-element-type context)
-                                                    '(inline-babel-call inline-src-block))
-                                              t)
+                         :inline-block-p (jupyter-org-inline-block-p context)
                          :result-type (alist-get :result-type block-params)
                          :file (alist-get :file block-params)
                          :block-params block-params
