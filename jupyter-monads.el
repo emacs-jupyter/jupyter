@@ -175,6 +175,19 @@ generated."
              (jupyter-run-with-state state
                ,action)))))))
 
+(defmacro jupyter-with-temporary-state (state &rest body)
+  (declare (indent 1))
+  (let ((new-state (make-symbol "state"))
+        (saved-state (make-symbol "saved-state")))
+    `(let ((,new-state ,state))
+       (jupyter-mlet* ((,saved-state (jupyter-get-state)))
+         (jupyter-do
+           (jupyter-put-state ,new-state)
+           (jupyter-mlet* ((value (progn ,@body)))
+             (jupyter-do
+               (jupyter-put-state ,saved-state)
+               (jupyter-return value))))))))
+
 (defun jupyter-run-with-state (state mvalue)
   "Pass STATE as the state to MVALUE, return the resulting value."
   (declare (indent 1))
