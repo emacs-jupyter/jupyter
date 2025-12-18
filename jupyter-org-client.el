@@ -212,55 +212,55 @@ nothing and return nil."
   (memq (org-element-type context)
         '(inline-babel-call inline-src-block)))
 
+(defun jupyter-org--request (&rest slots)
+  (let* ((block-params org-babel-jupyter-current-src-block-params)
+         (result-params (alist-get :result-params block-params))
+         (context (org-element-context))
+         (req (apply #'jupyter-org-request
+                     (append
+                      (list
+                       :marker (copy-marker org-babel-current-src-block-location)
+                       :inline-block-p (jupyter-org-inline-block-p context)
+                       :result-type (alist-get :result-type block-params)
+                       :file (alist-get :file block-params)
+                       :block-params block-params
+                       :async-p (jupyter-org-execute-async-p block-params)
+                       :silent-p (car (or (member "none" result-params)
+                                          (member "silent" result-params))))
+                      slots))))
+    (put-text-property (point) (1+ (point)) 'jupyter-request req)
+    (setf (jupyter-org-request-overlay req)
+          (pcase (org-element-type context)
+            (`src-block
+             (jupyter-org--make-overlay
+              (save-excursion
+                (goto-char (jupyter-org-element-begin-after-affiliated context))
+                (line-beginning-position 2))
+              (jupyter-org-element-contents-end context)))
+            ((and type (or `inline-src-block `babel-call `inline-babel-call))
+             (jupyter-org--make-overlay
+              (jupyter-org-element-begin-after-affiliated context)
+              (jupyter-org-element-end-before-blanks context)
+              (memq type '(inline-src-block babel-call inline-babel-call))))))
+    req))
+
 (cl-defmethod jupyter-generate-request ((_client jupyter-org-client) &rest slots)
   "Return a `jupyter-org-request' for the current source code block."
   (if (and org-babel-current-src-block-location
            org-babel-jupyter-current-src-block-params
            (provided-mode-derived-p
             (buffer-local-value
-             ;; Handle indirect buffers used by packages like polymode, see #171.
+             ;; Handle indirect buffers used by packages like
+             ;; polymode, see #171.
              'major-mode (or (buffer-base-buffer) (current-buffer)))
             'org-mode))
-      ;; Only use a `jupyter-org-request' when executing code blocks, setting
-      ;; the `major-mode' context isn't enough, consider when a client is
-      ;; started due to sending a completion request.
+      ;; Only use a `jupyter-org-request' when executing code blocks,
+      ;; setting the `major-mode' context isn't enough, consider when
+      ;; a client is started due to sending a completion request.
       (save-excursion
         (goto-char org-babel-current-src-block-location)
         (jupyter-org-clear-execution-time)
-        (let* ((context (org-element-context))
-               (block-params org-babel-jupyter-current-src-block-params)
-               (result-params (alist-get :result-params block-params))
-               (req
-                (apply #'jupyter-org-request
-                       (append
-                        (list
-                         :marker (copy-marker org-babel-current-src-block-location)
-                         :inline-block-p (jupyter-org-inline-block-p context)
-                         :result-type (alist-get :result-type block-params)
-                         :file (alist-get :file block-params)
-                         :block-params block-params
-                         :async-p (jupyter-org-execute-async-p block-params)
-                         :silent-p (car (or (member "none" result-params)
-                                            (member "silent" result-params))))
-                        slots))))
-          (put-text-property
-           org-babel-current-src-block-location
-           (1+ org-babel-current-src-block-location)
-           'jupyter-request req)
-          (setf (jupyter-org-request-overlay req)
-                (pcase (org-element-type context)
-                  (`src-block
-                   (jupyter-org--make-overlay
-                    (save-excursion
-                      (goto-char (jupyter-org-element-begin-after-affiliated context))
-                      (line-beginning-position 2))
-                    (jupyter-org-element-contents-end context)))
-                  ((and type (or `inline-src-block `babel-call `inline-babel-call))
-                   (jupyter-org--make-overlay
-                    (jupyter-org-element-begin-after-affiliated context)
-                    (jupyter-org-element-end-before-blanks context)
-                    (memq type '(inline-src-block babel-call inline-babel-call))))))
-          req))
+        (apply #'jupyter-org--request slots))
     (cl-call-next-method)))
 
 (defun jupyter-org-request-at-point ()
