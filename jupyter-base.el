@@ -39,6 +39,10 @@
 (declare-function tramp-file-name-host "tramp")
 (declare-function jupyter-message-content "jupyter-messages" (msg))
 (declare-function jupyter-new-uuid "jupyter-messages")
+(declare-function jupyter-message-p "jupyter-messages" (msg))
+(declare-function jupyter-subscribe "jupyter-monads")
+(declare-function jupyter-subscriber "jupyter-monads")
+(declare-function jupyter-run-with-state "jupyter-monads")
 
 (cl-deftype json-plist () '(satisfies json-plist-p))
 
@@ -482,7 +486,8 @@ CAR is an expression that will be evaluated when
 `jupyter-stream-car' is called on the returned stream object to
 return the head element of the stream.  BODY is a list of
 expressions to be evaluated on a call to `jupyter-stream-cdr'
-whose return value must be a `jupyter-stream' object representing the rest of the elements of the stream."
+whose return value must be a `jupyter-stream' object representing
+the rest of the elements of the stream."
   (declare (indent 1) (debug (form body)))
   `(jupyter-stream
     :-car (thunk-delay ,car)
