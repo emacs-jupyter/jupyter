@@ -292,6 +292,7 @@ this case FN will be evaluated on KERNEL."
                         (jupyter-run-with-io status-pub
                           (jupyter-publish
                             (list 'error (websocket-frame-opcode frame)))))))))))
+             (shutdown nil)
              (ws (prog1 (funcall make-websocket)
                    (jupyter-run-with-io reauth-pub
                      (jupyter-subscribe
@@ -304,26 +305,31 @@ this case FN will be evaluated on KERNEL."
                                  (jupyter-publish 'start)))))))))))
       (list kernel-io
             (jupyter-subscriber
-              (lambda (action)
-                (pcase action
-                  ('interrupt
-                   (jupyter-interrupt kernel))
-                  ((and op (or 'connect 'disconnect))
-                   (if (eq op 'disconnect)
-                       (progn
-                         (or (null ws)
-                             (websocket-close ws))
-                         (setq ws (funcall make-websocket)))
-                     (websocket-close ws)
-                     (setq ws nil)))
-                  ('shutdown
-                   (jupyter-shutdown kernel)
-                   (websocket-close ws)
-                   (setq ws nil))
-                  ('restart
-                   (jupyter-restart kernel))
-                  (`(action ,fn)
-                   (funcall fn kernel)))))))))
+              (cl-macrolet ((close-ws ()
+                              `(progn (or (null ws)
+                                          (websocket-close ws))
+                                      (setq ws nil)))
+                            (open-ws ()
+                              `(setq ws (funcall make-websocket))))
+                (lambda (action)
+                  (pcase action
+                    ('interrupt
+                     (jupyter-interrupt kernel))
+                    ((and op (or 'connect 'disconnect))
+                     (if (eq op 'disconnect)
+                         (progn
+                           (close-ws)
+                           (open-ws))
+                       (close-ws)))
+                    ('shutdown
+                     (unwind-protect
+                         (jupyter-shutdown kernel)
+                       (close-ws)
+                       (setq shutdown t)))
+                    ('restart
+                     (jupyter-restart kernel))
+                    (`(action ,fn)
+                     (funcall fn kernel))))))))))
 
 (cl-defmethod jupyter-io ((kernel jupyter-server-kernel))
   (jupyter-websocket-io kernel))
