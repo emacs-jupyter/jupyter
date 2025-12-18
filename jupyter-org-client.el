@@ -1368,7 +1368,7 @@ will be inserted by calling `org-element-interpret-data' first.
 The returned result should be a representation of a MIME type's
 CONTENT. CONTENT is a property list like
 
-    \='(:data DATA :metadata METADATA)
+    \\='(:data DATA :metadata METADATA)
 
 that contains the DATA/METADATA of the mime type.  As an example,
 if MIME is `:text/markdown', then DATA should be the markdown
@@ -2146,14 +2146,11 @@ Meant to be used as the return value of
                           inline-block-p block-params)
                req))
     (if inline-block-p
-        ;; When evaluating a source block
-        ;; synchronously, only the
-        ;; :execute-result will be in
-        ;; `jupyter-org-request-results'
-        ;; since stream results and any
-        ;; displayed data will be placed
+        ;; When evaluating a source block synchronously, only the
+        ;; :execute-result will be in `jupyter-org-request-results'
+        ;; since stream results and any displayed data will be placed
         ;; in a separate buffer.
-        (let ((el (jupyter-org-result
+        (let ((el (jupyter-org-get-result
                    req (car results))))
           (if (stringp el) el
             (org-element-property :value el)))
