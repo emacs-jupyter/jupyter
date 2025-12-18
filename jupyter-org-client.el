@@ -33,7 +33,7 @@
 (declare-function org-babel-python-table-or-string "ob-python" (results))
 (declare-function org-babel-jupyter-initiate-session "ob-jupyter" (&optional session params))
 (declare-function org-babel-jupyter-src-block-session "ob-jupyter" ())
-(declare-function org-babel-jupyter-session-initiated-p "ob-jupyter" (params))
+(declare-function org-babel-jupyter-session-initiated-p "ob-jupyter" (params &optional noerror))
 (declare-function org-babel-jupyter-language-p "ob-jupyter" (lang))
 (declare-function org-element-context "org-element" (&optional element))
 (declare-function org-element-create "org-element" (type &optional props &rest children))
