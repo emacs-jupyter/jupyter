@@ -72,12 +72,76 @@
 The unwrapped value is nil."
   (lambda (_state) (cons nil value)))
 
+(defun jupyter-get-client ()
+  "Return a monadic value that returns the client."
+  (jupyter-mlet* ((state (jupyter-get-state)))
+    (let ((client (if (listp state)
+                      (car state)
+                    state)))
+      (cl-check-type client jupyter-kernel-client)
+      (jupyter-return client))))
+
+(defun jupyter-push (s)
+  (jupyter-mlet* ((state (jupyter-get-state)))
+    (jupyter-put-state
+     (cons s (if (listp state) state (list state))))))
+
+(defun jupyter-pop ()
+  (jupyter-mlet* ((state (jupyter-get-state)))
+    (let ((value (if (listp state)
+                     (pop state)
+                   (prog1 state
+                     (setq state nil)))))
+      (jupyter-do
+        (jupyter-put-state state)
+        (jupyter-return value)))))
+
+(defun jupyter-set-client (client)
+  "Return a monadic value that sets the client."
+  (cl-check-type client jupyter-kernel-client)
+  (jupyter-mlet* ((state (jupyter-get-state)))
+    (jupyter-put-state
+     (if (listp state)
+         (cons client (cdr state))
+       client))))
+
+(defun jupyter-at-point (action)
+  "Return a value evaluating ACTION at `point'."
+  (let ((marker (point-marker)))
+    (jupyter-mlet* ((state (jupyter-get-state)))
+      (when (and (marker-buffer marker) (marker-position marker))
+        (unwind-protect
+            (with-current-buffer (marker-buffer marker)
+              (save-excursion
+                (save-restriction
+                  (widen)
+                  (goto-char (marker-position marker))
+                  (jupyter-return
+                    (jupyter-run-with-state state
+                      action)))))
+          (move-marker marker nil))))))
+
 (defun jupyter-bind (mvalue mfn)
   "Bind MVALUE to MFN."
   (declare (indent 1))
   (lambda (state)
     (pcase-let* ((`(,value . ,state) (funcall mvalue state)))
       (funcall (funcall mfn value) state))))
+
+(defmacro jupyter-with-bindings* (varlist action)
+  "Return a monadic value that evaluates ACTION with bound variables.
+VARLIST is a list of variable names, return a monadic value that
+evaluates ACTION with those names bound to their value in the
+context of the evaluation environment where the returned value is
+generated."
+  (declare (indent 1))
+  (let ((syms (mapcar (lambda (_) (gensym)) varlist)))
+    `(let* ,(cl-mapcar (lambda (s v) (list s v)) syms varlist)
+       (jupyter-mlet* ((state (jupyter-get-state)))
+         (let* ,(cl-mapcar (lambda (s v) (list v s)) syms varlist)
+           (jupyter-return
+             (jupyter-run-with-state state
+               ,action)))))))
 
 (defmacro jupyter-mlet* (varlist &rest body)
   "Bind the monadic values in VARLIST, evaluate BODY.
