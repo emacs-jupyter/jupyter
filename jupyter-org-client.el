@@ -531,69 +531,115 @@ should also be aborted."
       (jupyter-publish 'abort)))
   (jupyter-unsubscribe))
 
-(defun jupyter-org-maybe-queued (dreq)
-  "Return a monadic value that either sends or continues to delay DREQ.
-DREQ is an already delayed request, as returned by
-`jupyter-request' and friends.  When the value is bound to a
-client, using e.g. `jupyter-run-with-client', send DREQ if there
-are no queued requests otherwise queue DREQ.  The value returns
-the unboxed request contained in DREQ.
 
-If the variable `jupyter-org-queue-requests' is nil, just send
-the request immediately instead of attempting to queue it."
-  (if (not jupyter-org-queue-requests)
-      (jupyter-do dreq)
-    (jupyter-mlet* ((client (jupyter-get-state))
-                    (req dreq))
-      (let* ((send
-              (lambda (req)
-                (jupyter-run-with-client client
-                  (jupyter-mlet* ((req (jupyter-sent
-                                        (jupyter-return req))))
-                    (oset client most-recent-request req)
-                    (jupyter-run-with-io
-                        (jupyter-request-message-publisher req)
-                      (jupyter-subscribe
-                        (jupyter-subscriber
-                          (lambda (msg)
-                            (when (or (eq msg 'abort)
-                                      (equal (jupyter-message-type msg) "execute_reply"))
-                              (when (eq (oref client most-recent-request) req)
-                                (oset client most-recent-request nil))
-                              (jupyter-unsubscribe))))))
-                    (when (eq (oref client last-queued-request) req)
-                      (oset client last-queued-request nil))
-                    (jupyter-return req)))))
-             (queue
-              ;; Subscribe REQ to the message publisher of QREQ such that
-              ;; REQ is sent or aborted when QREQ receives an
-              ;; execute_reply.
-              (lambda (qreq req)
-                (let ((pub (jupyter-request-message-publisher qreq)))
-                  (jupyter-run-with-io pub
-                    (jupyter-subscribe
-                      (jupyter-subscriber
-                        (lambda (msg)
-                          (if (eq msg 'abort)
-                              (jupyter-org-abort req)
-                            (pcase (jupyter-message-type msg)
-                              ("execute_reply"
-                               (jupyter-with-message-content msg (status)
-                                 (if (equal status "ok")
-                                     (funcall send req)
-                                   (jupyter-org-abort req)))
-                               (jupyter-unsubscribe))))))))))))
-        (let ((mreq (oref client most-recent-request)) qreq)
-          (cond
-           ((null mreq)
-            (funcall send req))
-           ((setq qreq (oref client last-queued-request))
-            (funcall queue qreq req)
-            (oset client last-queued-request req))
-           (t
-            (funcall queue mreq req)
-            (oset client last-queued-request req)))
-          (jupyter-return req))))))
+(defvar jupyter-org-request-queue (make-hash-table))
+
+(defun jupyter-org-on-reply (fn)
+  (lambda (msg)
+    (when (string-suffix-p
+           "_reply" (jupyter-message-type msg))
+      (jupyter-with-message-content msg (status)
+        ;; TODO Be robust to errors here by catching them and making a
+        ;; convention be that `jupyter-unsubscribe' can be passed some
+        ;; expression, like the error.
+        (funcall fn (equal status "ok")))
+      (jupyter-unsubscribe))))
+
+(defun jupyter-org-dequeue (client)
+  (when-let* ((queue (gethash client jupyter-org-request-queue)))
+    (pcase (length queue)
+      ((or 0 (and 1 (let pop-p t)))
+       (prog1 (when pop-p (pop queue))
+         (remhash client jupyter-org-request-queue)))
+      (_ (pcase-let* (((and l `(,_ ,next))
+                       (last queue 2)))
+           (setcdr l nil)
+           next)))))
+
+(defun jupyter-org-dequeue-on-reply (client)
+  (jupyter-org-on-reply
+   (lambda (ok)
+     (if ok
+         (pcase (jupyter-org-dequeue client)
+           (`(,action ,_)
+             (jupyter-run-with-state client
+               action)))
+       (let ((queue (gethash client jupyter-org-request-queue)))
+         (remhash client jupyter-org-request-queue)
+         (pcase-dolist (`(,_ ,on-abort) queue)
+           (funcall on-abort)))))))
+
+(defun jupyter-org-dequeue-after (req)
+  (jupyter-mlet* ((client (jupyter-get-client)))
+    (jupyter-do
+      (jupyter-add-subscriber (jupyter-org-dequeue-on-reply client))
+      (jupyter-do req))))
+
+(defun jupyter-org--send (req on-busy on-reply)
+  (let ((rreq nil))
+    (jupyter-do
+      (jupyter-add-subscriber
+       (lambda (msg)
+         (let ((type (jupyter-message-type msg)))
+           (cond
+            ((string-suffix-p "_reply" type)
+             (funcall on-reply rreq))
+            ((jupyter-message-status-busy-p msg)
+             (funcall on-busy rreq))))))
+      (jupyter-mlet* ((sreq (jupyter-do req)))
+        (jupyter-return
+          (setq rreq sreq))))))
+
+(defun jupyter-org--enqueue (req on-busy on-reply on-abort)
+  (let ((client jupyter-current-client))
+    (let ((action (jupyter-mlet* ((state (jupyter-get-state)))
+                    (jupyter-do
+                      (jupyter-put-state client)
+                      (jupyter-mlet* ((req (jupyter-org--send
+                                            (jupyter-org-dequeue-after
+                                             req)
+                                            on-busy
+                                            on-reply)))
+                        (jupyter-do
+                          (jupyter-put-state state)
+                          (jupyter-return req)))))))
+      (push (list action on-abort)
+            (gethash client jupyter-org-request-queue))
+      (jupyter-return nil))))
+
+(defun jupyter-org-run-queue (client)
+  (when-let* ((action (jupyter-org-dequeue client)))
+    (jupyter-run-with-state nil action)))
+
+(defun jupyter-org-maybe-queued (req on-busy on-reply &optional on-abort)
+  "Queue REQ with some message handlers.
+ON-BUSY and ON-REPLY are functions taking a single argument, a
+message, when a status: busy and a reply message are received,
+respectively, for the REQ.  ON-ABORT is a function taking no
+arguments and is called only when REQ is evaluated due to some
+other queued request raising an error during evaluation.
+
+REQ is only queued if `jupyter-org-queue-requests' is non-nil, in
+that case the value returned queues the request and returns nil.
+When `jupyter-org-queue-requests' is nil, return a value that
+sends the request immediately and returns the request."
+  (if jupyter-org-queue-requests
+      (jupyter-with-bindings*
+          (jupyter-current-client)
+        (jupyter-org--enqueue
+         req on-busy on-reply (or on-abort #'ignore)))
+    (jupyter-org--send
+     req on-busy on-reply)))
+
+(defvar jupyter-org-queue-timer nil)
+
+(defun jupyter-org-schedule-queue ()
+  (when jupyter-org-queue-requests
+    (when jupyter-org-queue-timer
+      (cancel-timer jupyter-org-queue-timer))
+    (setq jupyter-org-queue-timer
+          (run-at-time 0 nil
+                       #'jupyter-org-run-queue))))
 
 ;;; Caching the current source block's information
 
