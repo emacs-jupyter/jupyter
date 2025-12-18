@@ -1497,58 +1497,54 @@ kernel, but the prefix used by `jupyter-completion-at-point'.  See
 MATCHES are the completion matches returned by the kernel,
 METADATA is any extra data associated with MATCHES that was
 supplied by the kernel."
-  (let (buf)
-    (with-temp-buffer
+  (with-temp-buffer
+    (cl-loop
+     for i from 0 below (length matches)
+     for match = (aref matches i)
+     do
+     (put-text-property 0 1 'docsig match match)
+     (cond
+      ((string-match jupyter-completion-argument-regexp match)
+       (let* ((str match)
+              (args-str (match-string 1 str))
+              (end (match-end 1))
+              (path (match-string 2 str))
+              (line (string-to-number (match-string 3 str)))
+              (snippet (progn
+                         (erase-buffer)
+                         (insert args-str)
+                         (goto-char (point-min))
+                         (jupyter-completion--make-arg-snippet
+                          (jupyter-completion--arg-extract)))))
+         (setq match (aset matches i (substring match 0 end)))
+         (put-text-property 0 1 'snippet snippet match)
+         (put-text-property 0 1 'location (cons path line) match)))
+      ;; TODO: This is specific to the results that
+      ;; the python kernel returns, make a support
+      ;; function?
+      ((string-match-p "\\." match)
+       (aset matches i (car (last (split-string match "\\."))))))))
+  ;; When a type is supplied add it as an annotation
+  (when-let* ((types (plist-get metadata :_jupyter_types_experimental))
+              (lengths (mapcar #'length matches)))
+    (let ((max-len (apply #'max lengths)))
       (cl-loop
-       for i from 0 below (length matches)
+       for i from 0 below
+       ;; For safety, ensure the lengths are the same which is
+       ;; usually the case, but sometimes a kernel may not return
+       ;; lists of the same length.  Seen for example in IJulia.
+       (min (length matches) (length types))
+       ;; These are typically in the same order.
        for match = (aref matches i)
-       do
-       (put-text-property 0 1 'docsig match match)
-       (cond
-        ((string-match jupyter-completion-argument-regexp match)
-         (let* ((str match)
-                (args-str (match-string 1 str))
-                (end (match-end 1))
-                (path (match-string 2 str))
-                (line (string-to-number (match-string 3 str)))
-                (snippet (progn
-                           (erase-buffer)
-                           (insert args-str)
-                           (goto-char (point-min))
-                           (jupyter-completion--make-arg-snippet
-                            (jupyter-completion--arg-extract)))))
-           (setq match (aset matches i (substring match 0 end)))
-           (put-text-property 0 1 'snippet snippet match)
-           (put-text-property 0 1 'location (cons path line) match)))
-        ;; TODO: This is specific to the results that
-        ;; the python kernel returns, make a support
-        ;; function?
-        ((string-match-p "\\." match)
-         (aset matches i (car (last (split-string match "\\."))))))))
-    ;; When a type is supplied add it as an annotation
-    (when-let* ((types (plist-get metadata :_jupyter_types_experimental))
-                (lengths (mapcar #'length matches)))
-      (let ((max-len (apply #'max lengths)))
-        (cl-loop
-         for i from 0 below
-         ;; For safety, ensure the lengths are the same which is
-         ;; usually the case, but sometimes a kernel may not return
-         ;; lists of the same length.  Seen for example in IJulia.
-         (min (length matches) (length types))
-         ;; These are typically in the same order.
-         for match = (aref matches i)
-         for meta = (aref types i)
-         do (let* ((prefix (make-string (1+ (- max-len (length match))) ?\s))
-                   (annot (concat prefix (plist-get meta :type)))
-                   (sig (plist-get meta :signature)))
-              (put-text-property
-               0 1 'docsig
-               (concat (get-text-property 0 'docsig match) sig) match)
-              (put-text-property 0 1 'annot annot match)))))
-    ;; FIXME To get rid of this conversion use `json-array-type', be
-    ;; sure to change places where it is assumed that there are
-    ;; vectors.
-    (append matches nil)))
+       for meta = (aref types i)
+       do (let* ((prefix (make-string (1+ (- max-len (length match))) ?\s))
+                 (annot (concat prefix (plist-get meta :type)))
+                 (sig (plist-get meta :signature)))
+            (put-text-property
+             0 1 'docsig
+             (concat (get-text-property 0 'docsig match) sig) match)
+            (put-text-property 0 1 'annot annot match)))))
+  (append matches nil))
 
 ;;;;; Completion at point interface
 
