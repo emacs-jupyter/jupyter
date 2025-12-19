@@ -154,6 +154,15 @@ kernel.")
 (put 'jupyter-current-client 'permanent-local t)
 (make-variable-buffer-local 'jupyter-current-client)
 
+(defvar jupyter--current-request nil)
+
+(defun jupyter-current-request ()
+  "Return the current request.
+Useful, for example, in message callback functions.  See
+`jupyter-message-subscribed'."
+  (cl-check-type jupyter--current-request jupyter-request)
+  jupyter--current-request)
+
 (defvar jupyter-inhibit-handlers nil
   "Whether or not new requests inhibit client handlers.
 If set to t, prevent new requests from running any of the client
@@ -164,7 +173,7 @@ types.
 For example to prevent a client from calling its \"execute_reply\"
 handler:
 
-    (let ((jupyter-inhibit-handlers \='(\"execute_reply\")))
+    (let ((jupyter-inhibit-handlers \\='(\"execute_reply\")))
       (jupyter-send client \"execute_request\" ...)))
 
 In addition, if the first element of the list is the symbol
@@ -580,13 +589,16 @@ waiting."
 
 ;;; Client handlers
 
-(defsubst jupyter--request-allows-handler-p (req msg)
-  "Return non-nil if REQ doesn't inhibit the handler for MSG."
-  (let* ((ihandlers (and req (jupyter-request-inhibited-handlers req)))
-         (type (and (listp ihandlers)
-                    (member (jupyter-message-type msg) ihandlers))))
-    (not (or (eq ihandlers t)
-             (if (eq (car ihandlers) 'not) (not type) type)))))
+(defun jupyter-allow-handler-p (msg)
+  "Return non-nil if a handler for MSG should run."
+  (cond
+   ((eq jupyter-inhibit-handlers t) nil)
+   ((null jupyter-inhibit-handlers))
+   (t
+    (let ((type (member (jupyter-message-type msg) jupyter-inhibit-handlers)))
+      (if (eq (car jupyter-inhibit-handlers) 'not)
+          type
+        (not type))))))
 
 (defsubst jupyter--channel-hook-allows-handler-p (client channel msg)
   (jupyter-with-client-buffer client
@@ -624,8 +636,8 @@ waiting."
       ("stdin" . ,(handler-alist
                    "input_reply" "input_request")))))
 
-(defun jupyter--run-handler-maybe (client channel msg req)
-  (when (and (jupyter--request-allows-handler-p req msg)
+(defun jupyter--run-handler-maybe (client channel msg)
+  (when (and (jupyter-allow-handler-p msg)
              (jupyter--channel-hook-allows-handler-p client channel msg))
     (let* ((msg-type (jupyter-message-type msg))
            (channel-handlers
@@ -633,15 +645,14 @@ waiting."
                 (error "Unhandled channel: %s" channel)))
            (handler (or (alist-get msg-type channel-handlers nil nil #'string=)
                         (error "Unhandled message type: %s" msg-type))))
-      (funcall handler client req msg))))
+      (funcall handler client (jupyter-current-request) msg))))
 
-(defsubst jupyter--update-execution-state (client msg req)
+(defsubst jupyter--update-execution-state (client msg)
   (pcase (jupyter-message-type msg)
     ("status"
      (oset client execution-state
            (jupyter-message-get msg :execution_state)))
-    ((or "execute_input"
-         (and (guard req) "execute_reply"))
+    ((or "execute_input" "execute_reply")
      (oset client execution-count
            (1+ (jupyter-message-get msg :execution_count))))))
 
@@ -655,15 +666,15 @@ message being handled."
       (jupyter-debug "Got MSG: %s %S"
                      (jupyter-message-type msg)
                      (jupyter-message-content msg)))
-    (let ((jupyter-current-client client)
-          (req (plist-get msg :parent-request)))
-      (jupyter--update-execution-state client msg req)
+    (let ((jupyter-current-client client))
+      (jupyter--update-execution-state client msg)
       (cond
-       (req (jupyter--run-handler-maybe client channel msg req))
+       (jupyter--current-request
+        (jupyter--run-handler-maybe client channel msg))
        ((or (jupyter-get client 'jupyter-include-other-output)
             ;; Always handle a startup message
             (jupyter-message-status-starting-p msg))
-        (jupyter--run-handler-maybe client channel msg req))))))
+        (jupyter--run-handler-maybe client channel msg))))))
 
 ;;; STDIN handlers
 
@@ -890,7 +901,7 @@ and END or in pop-up buffers/frames.  See
             (jupyter-with-message-content msg (data metadata)
               (setq had-result t)
               (jupyter-with-display-buffer "display"
-                  (plist-get msg :parent-request)
+                  (jupyter-current-request)
                 (jupyter-insert data metadata)
                 ;; Don't pop-up the display when it's empty (e.g. jupyter-R
                 ;; will open some HTML results in an external browser)
@@ -929,9 +940,7 @@ See `jupyter-eval-short-result-max-lines' and
           (jupyter-with-display-buffer (pcase name
                                          ("stderr" "error")
                                          (_ "output"))
-              ;; TODO: Is there a better solution than just having the
-              ;; request be a part of the message property list?
-              (plist-get msg :parent-request)
+              (jupyter-current-request)
             (jupyter-insert-ansi-coded-text text)
             (when-let* ((window (jupyter-display-current-buffer-guess-where :stream)))
               (set-window-point window (point-max))))))))))

@@ -443,24 +443,32 @@ property list."
       (if (listp state) (copy-sequence state) (list state))
       (list (jupyter-subscriber sub))))))
 
+;; Defined in jupyter-client.el
+(defvar jupyter--current-request)
+(defvar jupyter-inhibit-handlers)
+
 (defun jupyter-message-subscribed (req cbs)
-  "Return an action that subscribes CBS to a request's message publisher.
-REQ is an action that evaluates to a sent request.  CBS is an
+  "Return value that subscribes CBS to a request's message publisher.
+REQ is value that evaluates to a `jupyter-request'.  CBS is an
 alist mapping message types to callback functions like
 
     `((\"execute_reply\" ,(lambda (msg) ...))
       ...)
 
-The returned action returns the sent request, subscribing the
+The returned value returns the sent request, subscribing the
 callbacks before sending."
-  (jupyter-do
-    (jupyter-add-subscriber
-     (lambda (msg)
-       (when-let*
-           ((msg-type (jupyter-message-type msg))
-            (fn (car (alist-get msg-type cbs nil nil #'string=))))
-         (funcall fn msg))))
-    (jupyter-do req)))
+  (let (rreq)
+    (jupyter-do
+      (jupyter-add-subscriber
+       (lambda (msg)
+         (when-let*
+             ((msg-type (jupyter-message-type msg))
+              (fn (car (alist-get msg-type cbs nil nil #'string=)))
+              (jupyter--current-request rreq))
+           (funcall fn msg))))
+      (jupyter-mlet* ((sreq req))
+        (jupyter-return
+          (setq rreq sreq))))))
 
 ;; When replaying messages, the request message publisher is already
 ;; unsubscribed from any upstream publishers.
@@ -471,9 +479,7 @@ callbacks before sending."
       (cl-loop
        for msg in (jupyter-request-messages req)
        do (condition-case nil
-              (jupyter-handle-message
-               client (plist-get msg :channel)
-               (cl-list* :parent-request req msg))
+              (jupyter-handle-message client (plist-get msg :channel) msg)
             (error (setq jupyter--debug-request-queue
                          (nreverse jupyter--debug-request-queue))))))))
 
@@ -520,38 +526,35 @@ non-messages are passed to subscribers as is.  The
                           ;; idle message in this case.
                           (string= type "shutdown_reply"))
                   (setf (jupyter-request-idle-p req) t))
-                (jupyter-content
-                 ;; FIXME Get rid of the :parent-request property
-                 ;; here since we already have access to the
-                 ;; request's properties.
-                 (cl-list* :parent-request req msg)))))))))))
+                (jupyter-content msg))))))))))
 
-(defun jupyter-subscribe-client (client &optional server-p)
+(defun jupyter-subscribe-client (client req &optional
+                                        inhibited-handlers server-p)
   "Return an action to subscribe CLIENT to a publisher.
 If SERVER-P is non-nil and a received message is a status: busy
 message, set the client as the `jupyter-current-client' in the
 `server-buffer', see `jupyter-server-mode-set-client'.
 
 Note, if `jupyter--debug' is `message' then this is a no-op."
-  (if (not (eq jupyter--debug 'message))
-      (jupyter-subscribe
-        (jupyter-subscriber
-          (lambda (msg)
-            (when (jupyter-valid-message-p msg)
-              (when (and server-p (jupyter-message-status-busy-p msg))
-                (jupyter-server-mode-set-client client))
-              (let ((channel (jupyter-message-channel msg)))
-                (jupyter-handle-message client channel msg))))))
-    (jupyter-return nil)))
-
-(defvar jupyter-inhibit-handlers)
+  (if (eq jupyter--debug 'message)
+      (jupyter-return nil)
+    (jupyter-subscribe
+      (jupyter-subscriber
+        (lambda (msg)
+          (when (jupyter-valid-message-p msg)
+            (when (and server-p (jupyter-message-status-busy-p msg))
+              (jupyter-server-mode-set-client client))
+            (let ((channel (jupyter-message-channel msg))
+                  (jupyter-inhibit-handlers inhibited-handlers)
+                  (jupyter--current-request req))
+              (jupyter-handle-message client channel msg))))))))
 
 (defun jupyter-request (type &rest content)
   "Return an action that sends a `jupyter-request'.
 TYPE is the message type of the message that CONTENT, a property
 list, represents."
   (declare (indent 1))
-  (let ((ih jupyter-inhibit-handlers))
+  (let ((inhibited-handlers jupyter-inhibit-handlers))
     (jupyter-mlet* ((client (jupyter-get-client)))
       (let* ((channel (jupyter-channel-from-request-type type))
              (req (jupyter-generate-request
@@ -562,7 +565,7 @@ list, represents."
                    ;; Anything sent to stdin is a reply not a request
                    ;; so consider the "request" completed.
                    :idle-p (string= "stdin" channel)
-                   :inhibited-handlers ih))
+                   :inhibited-handlers inhibited-handlers))
              (id (jupyter-request-id req))
              (pub (jupyter-message-publisher req)))
         (setf (jupyter-request-message-publisher req) pub)
@@ -574,7 +577,8 @@ list, represents."
                                (subscribers (jupyter-get-state)))
                  (jupyter-run-with-io pub
                    (jupyter-subscribe-client
-                    client (string= type "execute_request")))
+                    client req inhibited-handlers
+                    (string= type "execute_request")))
                  (when subscribers
                    (dolist (sub subscribers)
                      (jupyter-run-with-io pub
