@@ -121,6 +121,19 @@ message."
   :type 'hook)
 (put 'jupyter-shell-message-hook 'permanent-local t)
 
+(defcustom jupyter-control-message-hook nil
+  "Hook run when a message is received on the CONTROL channel.
+The hook is called with two arguments, the Jupyter client and the
+message it received.
+
+Do not add to this hook variable directly, use
+`jupyter-add-hook'.  If any of the message hooks return a non-nil
+value, the client handlers will be prevented from running for the
+message."
+  :group 'jupyter
+  :type 'hook)
+(put 'jupyter-control-message-hook 'permanent-local t)
+
 (defcustom jupyter-stdin-message-hook nil
   "Hook run when a message is received on the STDIN channel.
 The hook is called with two arguments, the Jupyter client and the
@@ -605,6 +618,7 @@ waiting."
     (let ((hook (pcase channel
                   ("iopub" 'jupyter-iopub-message-hook)
                   ("shell" 'jupyter-shell-message-hook)
+                  ("control" 'jupyter-control-message-hook)
                   ("stdin" 'jupyter-stdin-message-hook)
                   (_ (error "Unhandled channel: %s" channel)))))
       (jupyter-debug "RUN-HOOK: %s" hook)
