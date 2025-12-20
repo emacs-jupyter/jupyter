@@ -2165,22 +2165,23 @@ Meant to be used as the return value of
                 result))
             results
             "\n"))
-        (when-let* ((results
-                     (mapcar (lambda (r)
-                          (if (jupyter-org--stream-result-p r)
-                              (jupyter-org-scalar
-                               (jupyter-org-strip-last-newline r))
-                            r))
-                        (jupyter-org--process-pandoc-results
-                         (mapcar (apply-partially #'jupyter-org-get-result req)
-                            results))))
-                    (result-params (alist-get :result-params block-params)))
-          (org-element-interpret-data
-           (if (or (and (= (length results) 1)
-                        (jupyter-org-babel-result-p (car results)))
-                   (member "raw" result-params))
-               (car results)
-             (apply #'jupyter-org-results-drawer results))))))))
+        (if-let* ((results
+                   (mapcar (lambda (r)
+                        (if (jupyter-org--stream-result-p r)
+                            (jupyter-org-scalar
+                             (jupyter-org-strip-last-newline r))
+                          r))
+                      (jupyter-org--process-pandoc-results
+                       (mapcar (apply-partially #'jupyter-org-get-result req)
+                          results))))
+                  (result-params (alist-get :result-params block-params)))
+            (org-element-interpret-data
+             (if (or (and (= (length results) 1)
+                          (jupyter-org-babel-result-p (car results)))
+                     (member "raw" result-params))
+                 (car results)
+               (apply #'jupyter-org-results-drawer results)))
+          "")))))
 
 (provide 'jupyter-org-client)
 
