@@ -580,7 +580,7 @@ results instead of an equality match."
       (save-window-excursion
         (org-babel-execute-src-block nil info)
         (when (equal (plist-get args :async) "yes")
-          (when-let* ((req (jupyter-org-request-at-point)))
+          (when-let* ((req (jupyter-org-request-at-point t)))
             (jupyter-idle-sync req)))
         (goto-char (or (org-babel-where-is-src-block-result) (point)))
         (when (plist-get args :pandoc)

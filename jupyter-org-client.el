@@ -263,20 +263,32 @@ nothing and return nil."
         (apply #'jupyter-org--request slots))
     (cl-call-next-method)))
 
-(defun jupyter-org-request-at-point ()
+(defun jupyter-org--request-at-point (force)
+  (pcase (get-text-property (point) 'jupyter-request)
+    (`pending
+     (if (not force) t
+       (while (eq (get-text-property (point) 'jupyter-request) 'pending)
+         (accept-process-output nil 1))
+       (jupyter-org--request-at-point)))
+    (`nil nil)
+    (req
+     (cl-check-type req jupyter-org-request)
+     (unless (jupyter-request-idle-p req) req))))
+
+(defun jupyter-org-request-at-point (&optional force)
   "Return the `jupyter-org-request' associated with `point'.
 Nil is returned if there is no request or if it is already idle.
 If the request has not been sent yet, e.g. it is still pending
-due to being queued, return t."
-  (when-let* ((context (org-element-context))
-              (babel-p (memq (org-element-type context)
-                             '(src-block babel-call
-                                         inline-babel-call inline-src-block)))
-              (pos (jupyter-org-element-begin-after-affiliated context)))
-    (pcase (get-text-property pos 'jupyter-request)
-      (`pending t)
-      (`nil nil)
-      (req (unless (jupyter-request-idle-p req) req)))))
+due to being queued, return t.  If FORCE is non-nil and the
+request is pending, wait until it has been realized and return
+it."
+  (let ((context (org-element-context)))
+    (when (memq (org-element-type context)
+                '(src-block babel-call
+                            inline-babel-call inline-src-block))
+      (org-with-point-at
+          (jupyter-org-element-begin-after-affiliated context)
+        (jupyter-org--request-at-point force)))))
 
 ;;;; Stream
 
