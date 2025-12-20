@@ -333,17 +333,31 @@
     (should (eq count2 1))
     (should (eq count3 2))))
 
-;; - `seq-elt'
-;; - `seq-length'
-;; - `seq-do'
-;; - `seqp'
-;; - `seq-subseq'
-;; - `seq-into-sequence'
-;; - `seq-copy'
-;; - `seq-into'
-(ert-deftest jupyter-seq-interface ()
+(ert-deftest jupyter-monad-seq ()
   :tags '(monad seq)
-
-  )
+  (jupyter-test-with-python-client client
+    (jupyter-run-with-client client
+      (jupyter-do
+        (jupyter-mlet* ((seq (jupyter-messages
+                              (jupyter-execute-request
+                               :code "1 + 1"))))
+          (should (jupyter-seq-p seq))
+          (should (seq-find #'jupyter-message-status-busy-p seq))
+          (should (seq-find #'jupyter-message-status-idle-p seq))
+          (should (seq-find #'jupyter-message-reply-p seq))
+          (let ((res (seq-find #'jupyter-message-result-p seq)))
+            (should res)
+            (should (equal (jupyter-message-data res :text/plain) "2")))
+          (jupyter-return nil))
+        (jupyter-mlet* ((res (jupyter-result
+                              (jupyter-execute-request
+                               :code "1 + 1"))))
+          (should (equal (jupyter-message-type res) "execute_result"))
+          (jupyter-return nil))
+        (jupyter-mlet* ((rep (jupyter-reply
+                              (jupyter-execute-request
+                               :code "1 + 1"))))
+          (should (equal (jupyter-message-type rep) "execute_reply"))
+          (jupyter-return nil))))))
 
 ;;; jupyter-monad-test.el ends here
