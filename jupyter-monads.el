@@ -434,14 +434,16 @@ TIMEOUT has the same meaning as in `jupyter-idle'."
   (jupyter-find-message req #'jupyter-message-result-p timeout))
 
 (defun jupyter-add-subscriber (sub)
-  "Return an action that makes SUB a message handler for the next request.
+  "Return an action that makes SUB a message subscriber for the next request.
 SUB is a function that takes a single argument, a message
 property list."
   (jupyter-mlet* ((state (jupyter-get-state)))
-    (jupyter-put-state
-     (nconc
-      (if (listp state) (copy-sequence state) (list state))
-      (list (jupyter-subscriber sub))))))
+    (if (null state)
+        (push (jupyter-subscriber sub) state)
+      (unless (listp state)
+        (setq state (list state)))
+      (push (jupyter-subscriber sub) (cdr state)))
+    (jupyter-put-state state)))
 
 ;; Defined in jupyter-client.el
 (defvar jupyter--current-request)
@@ -574,14 +576,18 @@ list, represents."
         (let ((subscribe
                (jupyter-mlet* ((client (jupyter-pop))
                                (subscribers (jupyter-get-state)))
-                 (jupyter-run-with-io pub
-                   (jupyter-subscribe-client
-                    client req inhibited-handlers
-                    (string= type "execute_request")))
+                 ;; Enforce an order that the client's subscriber
+                 ;; gets evaluated before all other subscribers, the
+                 ;; order for the other subscribers being earlier
+                 ;; subscriptions get called before later.
                  (when subscribers
                    (dolist (sub subscribers)
                      (jupyter-run-with-io pub
                        (jupyter-subscribe sub))))
+                 (jupyter-run-with-io pub
+                   (jupyter-subscribe-client
+                    client req inhibited-handlers
+                    (string= type "execute_request")))
                  (jupyter-put-state client)))
               (send
                (jupyter-mlet* ((client (jupyter-get-client)))
