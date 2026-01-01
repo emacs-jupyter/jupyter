@@ -1576,13 +1576,9 @@ supplied by the kernel."
 A list that can take the following forms
 
     (PREFIX . CANDIDATES)
-    (fetched PREFIX MESSAGE)
 
-The first form states that the list of CANDIDATES is for the
-prefix, PREFIX.
-
-The second form signifies that the CANDIDATES for PREFIX must be
-extracted from MESSAGE and converted to the first form.")
+Which states that the list of CANDIDATES is for the prefix,
+PREFIX.")
 
 (defun jupyter-completion-prefetch-p (prefix)
   "Return non-nil if a prefetch for PREFIX should be performed.
@@ -1593,26 +1589,33 @@ candidates can be used for PREFIX."
    (and (not (string-empty-p prefix))
         (eq (aref prefix (1- (length prefix))) ?\())
    (pcase jupyter-completion-cache
-     ((or `(fetched ,cached-prefix ,_)
-          `(,cached-prefix . ,_))
-      ;; If the prefix is the same as the cached prefix, no prefetch
-      ;; needed.
+     (`(,cached-prefix . ,_)
       (not (equal prefix cached-prefix)))
      (_ t))))
 
 (defun jupyter-completion-prefetch (fun)
   "Get completions for the current completion context.
-Run FUN when the completions are available."
+Run FUN when the completions are available.  FUN is a function of
+three arguments, (OK MATCHES METADATA), OK is non-nil if the
+complete request was completed successfully, in which case
+MATCHES and METADATA contain the completion information.  It is
+unspecified what they contain when OK is nil."
   (pcase (jupyter-code-context 'completion)
     (`(,code ,pos)
      (jupyter-run (:client current)
        (jupyter-do
-        (jupyter-message-subscribed
-         (jupyter-complete-request
-          :code code
-          :pos pos
-          :handlers nil)
-         `(("complete_reply" ,fun))))))))
+         (jupyter-message-subscribed
+          (jupyter-complete-request
+           :code code
+           :pos pos
+           :handlers nil)
+          (list
+           (list
+            "complete_reply"
+            (jupyter-message-lambda
+              (status matches metadata)
+              (funcall fun (equal status "ok")
+                       matches metadata))))))))))
 
 (defvar company-minimum-prefix-length)
 (defvar company-timer)
@@ -1652,22 +1655,18 @@ Run FUN when the completions are available."
       (when (jupyter-completion-prefetch-p prefix)
         (setq jupyter-completion-cache nil)
         (jupyter-completion-prefetch
-         (lambda (msg) (setq jupyter-completion-cache
-                        (list 'fetched prefix msg)))))
+         (lambda (ok matches metadata)
+           (setq jupyter-completion-cache
+                 (cons prefix
+                       (when ok
+                         (jupyter-completion-construct-candidates
+                          matches metadata)))))))
       (list
        (- (point) (length prefix)) (point)
        (completion-table-dynamic
         (lambda (_)
           (when (null jupyter-completion-cache)
             (sit-for 0.1))
-          (when (eq (car jupyter-completion-cache) 'fetched)
-            (jupyter-with-message-content (nth 2 jupyter-completion-cache)
-                (status matches metadata)
-              (setq jupyter-completion-cache
-                    (cons (nth 1 jupyter-completion-cache)
-                          (when (equal status "ok")
-                            (jupyter-completion-construct-candidates
-                             matches metadata))))))
           (cdr jupyter-completion-cache)))
        :exit-function
        (let ((client jupyter-current-client))
