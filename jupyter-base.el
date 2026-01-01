@@ -38,6 +38,7 @@
 (declare-function tramp-file-name-user "tramp")
 (declare-function tramp-file-name-host "tramp")
 (declare-function jupyter-message-content "jupyter-messages" (msg))
+(declare-function jupyter-message-time "jupyter-messages" (msg))
 (declare-function jupyter-new-uuid "jupyter-messages")
 (declare-function jupyter-message-p "jupyter-messages" (msg))
 (declare-function jupyter-subscribe "jupyter-monads")
@@ -634,9 +635,6 @@ arriving."
     ((or "interrupt_request" "shutdown_request") "control")
     (_ "shell")))
 
-(declare-function jupyter-message-time "jupyter-messages")
-(declare-function jupyter-find-message "jupyter-monads")
-
 (defun jupyter-execution-time (req)
   "Return an approximate value of the execution time of REQ.
 Return a time value in the same form as what is returned by
@@ -653,12 +651,16 @@ long it actually takes for the request to generate all of its
 potential output.  So the returned time, in addition to the true
 execution time of the code, contains the time taken in preparing
 the request to be executed and other kernel specific tasks."
-  (when-let* ((msgs (jupyter-request-messages req))
-              (ex-input (jupyter-find-message "execute_input" msgs))
-              (ex-reply (jupyter-find-message "execute_reply" msgs)))
-    (time-subtract
-     (jupyter-message-time ex-reply)
-     (jupyter-message-time ex-input))))
+  (let ((find (lambda (type)
+                (cl-find-if
+                 (lambda (msg)
+                   (equal (jupyter-message-type msg) type))
+                 (jupyter-request-messages req)))))
+    (when-let* ((ex-input (funcall find "execute_input"))
+                (ex-reply (funcall find "execute_reply")))
+      (time-subtract
+       (jupyter-message-time ex-reply)
+       (jupyter-message-time ex-input)))))
 
 ;;; Connecting to a kernel's channels
 
