@@ -1752,19 +1752,19 @@ Return the buffer switched to."
   ;; Initialize a buffer using the major-mode correponding to the kernel's
   ;; language.  This will be used for indentation and to capture font lock
   ;; properties.
-  (let* ((info (jupyter-kernel-info jupyter-current-client))
+  (let* ((info (jupyter-kernel-info))
          (language (plist-get (plist-get info :language_info) :name)))
-    (jupyter-load-language-support jupyter-current-client)
-    (cl-destructuring-bind (mode syntax)
-        (jupyter-kernel-language-mode-properties jupyter-current-client)
-      (setq jupyter-repl-lang-mode mode)
-      (setq jupyter-repl-lang-buffer
-            (get-buffer-create
-             (format " *jupyter-repl-lang-%s*" language)))
-      (set-syntax-table syntax)
-      (jupyter-with-repl-lang-buffer
-        (unless (eq major-mode mode)
-          (funcall mode))))
+    (jupyter-load-language-support)
+    (pcase (jupyter-kernel-language-mode-properties)
+      (`(,mode ,syntax)
+       (setq jupyter-repl-lang-mode mode)
+       (setq jupyter-repl-lang-buffer
+             (get-buffer-create
+              (format " *jupyter-repl-lang-%s*" language)))
+       (set-syntax-table syntax)
+       (jupyter-with-repl-lang-buffer
+         (unless (eq major-mode mode)
+           (funcall mode)))))
     ;; Get history from kernel
     (setq jupyter-repl-history
           (make-ring (1+ jupyter-repl-history-maximum-length)))
@@ -1969,7 +1969,7 @@ Do so only if possible in the `current-buffer'."
   (when (and (not jupyter-repl-interaction-mode)
              (cl-typep jupyter-current-client 'jupyter-repl-client)
              (eq major-mode
-                 (jupyter-kernel-language-mode jupyter-current-client)))
+                 (jupyter-kernel-language-mode)))
     (jupyter-repl-interaction-mode)))
 
 (defun jupyter-repl-interaction-mode-line ()
@@ -2058,7 +2058,7 @@ of that variable."
              (buffer-live-p buffer)
              (null (buffer-local-value 'jupyter-repl-interaction-mode buffer))
              (eq (buffer-local-value 'major-mode buffer)
-                 (jupyter-kernel-language-mode jupyter-current-client)))
+                 (jupyter-kernel-language-mode)))
     (let ((client jupyter-current-client))
       (with-current-buffer buffer
         (jupyter-repl-associate-buffer client)))))

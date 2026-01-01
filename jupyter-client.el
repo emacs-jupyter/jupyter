@@ -722,7 +722,7 @@ user.  Otherwise `read-from-minibuffer' is used."
 Use the jupyter-lang method specializer to add a method for a
 particular language."
   (error "Kernel language (%s) not supported yet"
-         (jupyter-kernel-language jupyter-current-client)))
+         (jupyter-kernel-language)))
 
 ;;;;; Evaluation routines
 
@@ -1741,12 +1741,12 @@ snippet text property, if any, and if `yasnippet' is available."
 The lists contain the cached information returned by the
 function `jupyter-kernel-language-mode-properties'.")
 
-(defun jupyter-kernel-info (client)
+(defun jupyter-kernel-info (&optional client)
   "Return the kernel info plist of CLIENT.
-Return CLIENT's kernel-info slot if non-nil.  Otherwise send a
-kernel_info_request to CLIENT's kernel, set CLIENT's
-kernel-info slot to the plist retrieved from the kernel, and
-return it.
+CLIENT defaults to `jupyter-current-client'.  Return CLIENT's
+kernel-info slot if non-nil.  Otherwise send a
+kernel_info_request to CLIENT's kernel, set CLIENT's kernel-info
+slot to the plist retrieved from the kernel, and return it.
 
 If the kernel CLIENT is connected to does not respond to a
 kernel_info_request, raise an error.
@@ -1756,6 +1756,7 @@ property list is a symbol as opposed to a string for the purposes
 of method dispatching.  Also all instances of \" \" in the
 language name are changed to \"-\" and all uppercase characters
 lowered."
+  (or client (setq client jupyter-current-client))
   (cl-check-type client jupyter-kernel-client)
   ;; TODO: This needs to be reset when a client is disconnected.  This
   ;; should be part of the connection process.
@@ -1780,14 +1781,17 @@ lowered."
                 (plist-put info :name (intern name)))
               (jupyter-return (oref client kernel-info))))))))
 
-(defun jupyter-kernel-language-mode-properties (client)
+(defun jupyter-kernel-language-mode-properties (&optional client)
   "Get the `major-mode' info of CLIENT's kernel language.
 Return a list
 
      (MODE SYNTAX-TABLE)
 
 Where MODE is the `major-mode' to use for syntax highlighting
-purposes and SYNTAX-TABLE is the syntax table of MODE."
+purposes and SYNTAX-TABLE is the syntax table of MODE.
+
+CLIENT defaults to `jupyter-current-client'."
+  (or client (setq client jupyter-current-client))
   (cl-check-type client jupyter-kernel-client)
   (cl-destructuring-bind (&key name file_extension &allow-other-keys)
       (plist-get (jupyter-kernel-info client) :language_info)
@@ -1807,19 +1811,25 @@ CLIENT defaults to `jupyter-current-client'."
   (cl-check-type client jupyter-kernel-client)
   (plist-get (plist-get (jupyter-kernel-info client) :language_info) :name))
 
-(defun jupyter-kernel-language-mode (client)
-  "Return the `major-mode' used for CLIENT's kernel language."
+(defun jupyter-kernel-language-mode (&optional client)
+  "Return the `major-mode' used for CLIENT's kernel language.
+CLIENT defaults to `jupyter-current-client'."
+  (or client (setq client jupyter-current-client))
   (cl-check-type client jupyter-kernel-client)
   (nth 0 (jupyter-kernel-language-mode-properties client)))
 
-(defun jupyter-kernel-language-syntax-table (client)
-  "Return the `syntax-table' used for CLIENT's kernel language."
+(defun jupyter-kernel-language-syntax-table (&optional client)
+  "Return the `syntax-table' used for CLIENT's kernel language.
+CLIENT defaults to `jupyter-current-client'."
+  (or client (setq client jupyter-current-client))
   (cl-check-type client jupyter-kernel-client)
   (nth 1 (jupyter-kernel-language-mode-properties client)))
 
-(defun jupyter-load-language-support (client)
+(defun jupyter-load-language-support (&optional client)
   "Load language support definitions for CLIENT.
-CLIENT is a kernel client."
+CLIENT is a kernel client and defaults to
+`jupyter-current-client'."
+  (or client (setq client jupyter-current-client))
   (cl-check-type client jupyter-kernel-client)
   (let* ((lang (jupyter-kernel-language client))
          (support (intern (format "jupyter-%s" lang))))
