@@ -1682,16 +1682,25 @@ in the appropriate direction, to the saved element."
 
 ;;; `jupyter-repl-mode'
 
+(defun jupyter-repl-derived-buffer-name (client name)
+  (let* ((repl (buffer-name (oref client buffer)))
+         (derived (replace-regexp-in-string
+                   "^*jupyter-repl"
+                   (concat "*jupyter-" name)
+                   repl)))
+    (if (equal derived repl)
+        (error "Not a REPL buffer name")
+      derived)))
+
 (defun jupyter-repl-scratch-buffer ()
   "Switch to a scratch buffer connected to the current REPL in another window.
 Return the buffer switched to."
   (interactive)
   (if (jupyter-repl-connected-p)
       (let* ((client jupyter-current-client)
-             (name (replace-regexp-in-string "^*jupyter-repl"
-					     "*jupyter-scratch"
-					     (buffer-name) (oref client buffer))))
-        (unless (get-buffer name)
+             (name (jupyter-repl-derived-buffer-name client "scratch"))
+             (buffer (get-buffer name)))
+        (unless buffer
           (with-current-buffer (get-buffer-create name)
             (funcall (jupyter-kernel-language-mode client))
             (jupyter-repl-associate-buffer client)
@@ -1702,8 +1711,10 @@ Return the buffer switched to."
 \\[jupyter-eval-buffer] to evaluate the whole buffer.
 \\[jupyter-repl-pop-to-buffer] to show the REPL buffer."))
             (comment-region (point-min) (point-max))
-            (insert "\n\n")))
-        (switch-to-buffer-other-window name))
+            (insert "\n\n")
+            (setq buffer (current-buffer))
+            (switch-to-buffer-other-window name)))
+        buffer)
     (error "Not in a valid REPL buffer")))
 
 (defvar jupyter-repl-mode-map
