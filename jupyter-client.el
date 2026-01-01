@@ -1045,8 +1045,9 @@ representation of the results in the current buffer."
   "Evaluate the function at `point'."
   (interactive)
   (when-let* ((bounds (bounds-of-thing-at-point 'defun)))
-    (cl-destructuring-bind (beg . end) bounds
-      (jupyter-eval-region nil beg end))))
+    (pcase bounds
+      (`(,beg . ,end)
+       (jupyter-eval-region nil beg end)))))
 
 ;;;;;; Evaluation overlays
 
@@ -1113,26 +1114,26 @@ representation of the results in the current buffer."
         (overlay-put ov 'after-string (jupyter-eval-ov--propertize text))))))
 
 (defun jupyter-eval-ov--expand (ov)
-  (when-let* ((eval-props (overlay-get ov 'jupyter-eval)))
-    (cl-destructuring-bind (fold text) eval-props
-      (when (eq fold 'folded)
-        (setf (car (overlay-get ov 'jupyter-eval)) 'expanded)
-        (when (jupyter-eval-ov--fold-boundary text)
-          (setf (overlay-get ov 'after-string)
-                (jupyter-eval-ov--propertize
-                 ;; Newline added so that background extends across entire line
-                 ;; of the last line in TEXT.
-                 (concat (jupyter-eval-ov--expand-string text) "\n")
-                 t)))))))
+  (pcase (overlay-get ov 'jupyter-eval)
+    (`(,fold ,text)
+     (when (eq fold 'folded)
+       (setf (car (overlay-get ov 'jupyter-eval)) 'expanded)
+       (when (jupyter-eval-ov--fold-boundary text)
+         (setf (overlay-get ov 'after-string)
+               (jupyter-eval-ov--propertize
+                ;; Newline added so that background extends across entire line
+                ;; of the last line in TEXT.
+                (concat (jupyter-eval-ov--expand-string text) "\n")
+                t)))))))
 
 (defun jupyter-eval-ov--fold (ov)
-  (when-let* ((eval-props (overlay-get ov 'jupyter-eval)))
-    (cl-destructuring-bind (fold text) eval-props
-      (when (eq fold 'expanded)
-        (setf (car (overlay-get ov 'jupyter-eval)) 'folded)
-        (jupyter-eval-ov--fold-string text)
-        (setf (overlay-get ov 'after-string)
-              (jupyter-eval-ov--propertize text))))))
+  (pcase (overlay-get ov 'jupyter-eval)
+    (`(,fold ,text)
+     (when (eq fold 'expanded)
+       (setf (car (overlay-get ov 'jupyter-eval)) 'folded)
+       (jupyter-eval-ov--fold-string text)
+       (setf (overlay-get ov 'after-string)
+             (jupyter-eval-ov--propertize text))))))
 
 (defun jupyter-eval-toggle-overlay ()
   "Expand or contract the display of evaluation results around `point'."
@@ -1144,11 +1145,11 @@ representation of the results in the current buffer."
                           (< (overlay-end ov) (overlay-end nearest))))
                  (overlay-get ov 'jupyter-eval))
         (setq nearest ov)))
-    (when-let* ((props (and nearest (overlay-get nearest 'jupyter-eval))))
-      (cl-destructuring-bind (fold _) props
-        (if (eq fold 'folded)
-            (jupyter-eval-ov--expand nearest)
-          (jupyter-eval-ov--fold nearest))))))
+    (pcase (and nearest (overlay-get nearest 'jupyter-eval))
+      (`(,fold ,_)
+       (if (eq fold 'folded)
+           (jupyter-eval-ov--expand nearest)
+         (jupyter-eval-ov--fold nearest))))))
 
 (defun jupyter-eval-remove-overlays ()
   "Remove all evaluation result overlays in the buffer."
