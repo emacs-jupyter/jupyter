@@ -1271,7 +1271,7 @@ execute the current cell."
               (jupyter-repl-indent-line)))
            (t
             (condition-case nil
-                (jupyter-run-with-client jupyter-current-client
+                (jupyter-run (:client current)
                   (jupyter-idle
                    (jupyter-is-complete-request
                     :code (jupyter-repl-cell-code)
@@ -1513,7 +1513,7 @@ value."
         (prog1 (jupyter-repl-execute-cell)
           (jupyter-repl-replace-cell-code code)))))
    (t
-    (jupyter-run-with-client jupyter-current-client
+    (jupyter-run (:client current)
       (jupyter-do
         (let ((req
                (jupyter-execute-request
@@ -1758,7 +1758,7 @@ Return the buffer switched to."
     ;; history since next/previous navigation is implemented by rotations on the
     ;; ring.
     (ring-insert jupyter-repl-history 'jupyter-repl-history)
-    (jupyter-run-with-client jupyter-current-client
+    (jupyter-run (:client current)
       (jupyter-do
         (jupyter-history-request
          :n jupyter-repl-history-maximum-length
@@ -1907,7 +1907,7 @@ the updated state."
                  (jupyter-repl-update-cell-count
                   (oref client execution-count)))))
            (jupyter-return nil))))
-    (jupyter-run-with-client jupyter-current-client
+    (jupyter-run (:client current)
       (jupyter-do sync update-cell-count))))
 
 ;;; `jupyter-repl-interaction-mode'

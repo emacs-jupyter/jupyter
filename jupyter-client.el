@@ -796,7 +796,7 @@ text/plain representation."
    (list (jupyter-read-expression
           (format "Eval (%s): " (jupyter-kernel-language)))
          nil))
-  (jupyter-run-with-client jupyter-current-client
+  (jupyter-run (:client current)
     (jupyter-mlet*
         ((res (jupyter-result
                (jupyter-message-subscribed
@@ -971,7 +971,7 @@ current buffer that STR was extracted from.")
   "Evaluate STR using the `jupyter-current-client'."
   (cl-check-type jupyter-current-client jupyter-kernel-client
                  "Not a valid client")
-  (jupyter-run-with-client jupyter-current-client
+  (jupyter-run (:client current)
     (jupyter-do
      (jupyter-message-subscribed
       (jupyter-execute-request
@@ -1620,7 +1620,7 @@ MATCHES and METADATA contain the completion information.  It is
 unspecified what they contain when OK is nil."
   (pcase (jupyter-code-context 'completion)
     (`(,code ,pos)
-     (jupyter-run-with-client jupyter-current-client
+     (jupyter-run (:client current)
        (jupyter-do
          (jupyter-message-subscribed
           (jupyter-complete-request

@@ -122,7 +122,7 @@ Make the character after `point' invisible."
 If the Pkg prompt can't be retrieved from the kernel, return
 nil."
   (let ((prompt-code "import Pkg; Pkg.REPLMode.promptf()"))
-    (jupyter-run-with-client jupyter-current-client
+    (jupyter-run (:client current)
       (jupyter-mlet* ((msg
                        (jupyter-reply
                         (jupyter-execute-request
