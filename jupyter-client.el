@@ -1670,7 +1670,10 @@ Run FUN when the completions are available."
                              matches metadata))))))
           (cdr jupyter-completion-cache)))
        :exit-function
-       #'jupyter-completion--post-completion
+       (let ((client jupyter-current-client))
+         (lambda (arg status)
+           (let ((jupyter-current-client client))
+             (jupyter-completion--post-completion arg status))))
        :company-location
        (lambda (arg) (get-text-property 0 'location arg))
        :annotation-function
