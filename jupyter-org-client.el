@@ -1462,8 +1462,7 @@ those mime types instead."
                   (jupyter-org-result mime content block-params))))
             (let ((warning
                    (format
-                    "%s did not return requested mimetype(s): %s"
-                    (jupyter-message-type (jupyter-request-last-message req))
+                    "No valid mimetype found from one of: %s"
                     mime-types)))
               (display-warning 'jupyter warning)
               nil))))))
