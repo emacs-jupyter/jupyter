@@ -71,14 +71,14 @@
 (cl-defmethod jupyter-completion-post-completion (candidate
                                                   &context (jupyter-lang julia))
   "Insert the unicode representation of a LaTeX completion."
-  (if (eq (aref candidate 0) ?\\)
-      (when (get-text-property 0 'annot candidate)
-        (search-backward candidate)
-        (delete-region (point) (match-end 0))
-        ;; Alternatively use `julia-latexsub-or-indent', but I have found
-        ;; problems with that.
-        (insert (string-trim (get-text-property 0 'annot candidate))))
-    (cl-call-next-method)))
+  (if (not (and (eq (aref candidate 0) ?\\)
+                (get-text-property 0 'annot candidate)))
+      (cl-call-next-method)
+    (search-backward candidate)
+    (delete-region (point) (match-end 0))
+    ;; Alternatively use `julia-latexsub-or-indent', but I have found
+    ;; problems with that.
+    (insert (string-trim (get-text-property 0 'annot candidate)))))
 
 ;;; `markdown-mode'
 
