@@ -454,7 +454,7 @@ to."
                    (let time (jupyter-execution-time req)))
               (and (pred numberp) secs
                    (let time (jupyter-execution-time req))
-                   (guard (> time secs))))
+                   (guard (> (float-time time) secs))))
           (let (cl-struct jupyter-org-request inline-block-p) req)
           (guard (not inline-block-p)))
      (jupyter-org-with-point-at req
