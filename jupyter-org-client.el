@@ -540,8 +540,7 @@ should also be aborted."
 
 (defun jupyter-org-on-reply (fn)
   (lambda (msg)
-    (when (string-suffix-p
-           "_reply" (jupyter-message-type msg))
+    (when (jupyter-message-reply-p msg)
       (jupyter-with-message-content msg (status)
         ;; TODO Be robust to errors here by catching them and making a
         ;; convention be that `jupyter-unsubscribe' can be passed some
@@ -584,13 +583,12 @@ should also be aborted."
     (jupyter-do
       (jupyter-add-subscriber
        (lambda (msg)
-         (let ((type (jupyter-message-type msg)))
-           (cond
-            ((string-suffix-p "_reply" type)
-             (jupyter-with-message-content msg (status)
-               (funcall on-reply (equal status "ok") rreq)))
-            ((jupyter-message-status-busy-p msg)
-             (funcall on-busy rreq))))))
+         (cond
+          ((jupyter-message-reply-p msg)
+           (jupyter-with-message-content msg (status)
+             (funcall on-reply (equal status "ok") rreq)))
+          ((jupyter-message-status-busy-p msg)
+           (funcall on-busy rreq)))))
       (jupyter-mlet* ((sreq (jupyter-do
                               (if callbacks
                                   (jupyter-message-subscribed
