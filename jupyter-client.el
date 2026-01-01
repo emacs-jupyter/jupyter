@@ -1643,7 +1643,7 @@ Run FUN when the completions are available."
            ;; when the kernel is busy, at least the Julia kernel doesn't.
            ;;
            ;; FIXME: Maybe this is kernel dependent
-           (not (jupyter-kernel-busy-p jupyter-current-client)))
+           (not (jupyter-kernel-busy-p)))
       (when (consp prefix)
         (setq prefix (car prefix))
         (when (and (bound-and-true-p company-mode)
@@ -1860,14 +1860,17 @@ CLIENT is a kernel client."
 
 (define-jupyter-client-handler error)
 
-(defun jupyter-execution-state (client)
-  "Return the execution state of CLIENT's kernel."
+(defun jupyter-execution-state (&optional client)
+  "Return the execution state of CLIENT's kernel.
+CLIENT defaults to the `jupyter-current-client'."
+  (or client (setq client jupyter-current-client))
   (cl-check-type client jupyter-kernel-client)
   (oref client execution-state))
 
-(defun jupyter-kernel-busy-p (client)
-  "Return non-nil if the kernel CLIENT is connected to is busy."
-  (cl-check-type client jupyter-kernel-client)
+(defun jupyter-kernel-busy-p (&optional client)
+  "Return non-nil if the kernel CLIENT is connected to is busy.
+CLIENT defaults to the `jupyter-current-client'."
+  (or client (setq client jupyter-current-client))
   (equal (jupyter-execution-state client) "busy"))
 
 (define-jupyter-client-handler status)

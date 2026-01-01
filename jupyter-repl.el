@@ -1250,7 +1250,7 @@ execute the current cell."
             ;; we prevent sending a request when the kernel is busy
             ;; because of the is_complete_request.  Some kernels don't
             ;; respond to this request when the kernel is busy.
-            (when (and (jupyter-kernel-busy-p jupyter-current-client)
+            (when (and (jupyter-kernel-busy-p)
                        (not jupyter-repl-allow-RET-when-busy))
               (error "Kernel busy")))
           (cond
@@ -1260,7 +1260,7 @@ execute the current cell."
             (jupyter-repl-indent-line))
            ((or jupyter-repl-use-builtin-is-complete
                 (and jupyter-repl-allow-RET-when-busy
-                     (jupyter-kernel-busy-p jupyter-current-client)))
+                     (jupyter-kernel-busy-p)))
             (if (save-excursion
                   (goto-char (point-max))
                   (string-empty-p
