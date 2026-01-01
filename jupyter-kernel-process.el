@@ -389,7 +389,7 @@ See also https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-spe
                 ('signal
                  (let ((kernel (process-get process :kernel)))
                    (when kernel
-                     (warn "Kernel died unexpectedly")
+                     (display-warning 'jupyter "Kernel died unexpectedly")
                      (jupyter-shutdown kernel)))))))))
   (cl-call-next-method))
 
