@@ -206,6 +206,35 @@ The initial state given to the monadic value is CLIENT."
   (declare (indent 1) (debug (form body)))
   `(jupyter-run-with-state ,client (progn ,@body)))
 
+(defmacro jupyter-run (spec action)
+  "Convenience macro to run ACTION with particular initial state.
+SPEC is a property list which currently can take on the following
+values:
+
+    \\='(:client current)
+
+which means to run ACTION with the state being the
+`jupyter-current-client'."
+  (declare (indent 1))
+  (let ((form action))
+    (while spec
+      (let ((arg (pop spec)))
+        (pcase arg
+          ((and `:client
+                (guard (and (not (keywordp (car spec)))
+                            (eq (pop spec) 'current))))
+           (setq form
+                 `(jupyter-run-with-client
+                      jupyter-current-client
+                    ,form)))
+          ((and `:io (let io (pop spec)))
+           (setq form
+                 `(jupyter-run-with-io ,io
+                    ,form)))
+          (_
+           (error "Unhandled keyword: %s" arg)))))
+    form))
+
 (defmacro jupyter-with-io (io &rest body)
   "Return an I/O action evaluating BODY in IO's context.
 The result of the returned action is the result of the I/O action
