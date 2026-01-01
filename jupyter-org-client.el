@@ -1086,23 +1086,25 @@ C-x C-e         `jupyter-eval-line-or-region'"
    (jupyter-org-interaction-mode
     (add-hook 'completion-at-point-functions 'jupyter-org-completion-at-point nil t)
     (add-hook 'after-revert-hook 'jupyter-org-interaction-mode nil t)
-    (setq-local char-property-alias-alist
-                (copy-tree char-property-alias-alist))
-    (cl-callf append (alist-get 'invisible char-property-alias-alist)
-      '(jupyter-invisible))
-    (unless (cl-find-if
-             (lambda (x) (eq (car x) 'jupyter-org-font-lock-ansi-escapes))
-             org-font-lock-keywords)
-      (cl-callf append org-font-lock-keywords
-        '((jupyter-org-font-lock-ansi-escapes)))))
+    (unless (functionp 'org-fontify-ansi-sequences)
+      (setq-local char-property-alias-alist
+                  (copy-tree char-property-alias-alist))
+      (cl-callf append (alist-get 'invisible char-property-alias-alist)
+        '(jupyter-invisible))
+      (unless (cl-find-if
+               (lambda (x) (eq (car x) 'jupyter-org-font-lock-ansi-escapes))
+               org-font-lock-keywords)
+        (cl-callf append org-font-lock-keywords
+          '((jupyter-org-font-lock-ansi-escapes))))))
    (t
     (remove-hook 'completion-at-point-functions 'jupyter-org-completion-at-point t)
     (remove-hook 'after-revert-hook 'jupyter-org-interaction-mode t)
-    (cl-callf2 delq 'jupyter-invisible
-               (alist-get 'invisible char-property-alias-alist))
-    (cl-callf2 cl-remove-if
-        (lambda (x) (eq (car x) 'jupyter-org-font-lock-ansi-escapes))
-        org-font-lock-keywords))))
+    (unless (functionp 'org-fontify-ansi-sequences)
+      (cl-callf2 delq 'jupyter-invisible
+                 (alist-get 'invisible char-property-alias-alist))
+      (cl-callf2 cl-remove-if
+          (lambda (x) (eq (car x) 'jupyter-org-font-lock-ansi-escapes))
+          org-font-lock-keywords)))))
 
 (add-hook 'org-mode-hook 'jupyter-org-interaction-mode)
 
