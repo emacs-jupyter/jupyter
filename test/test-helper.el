@@ -538,12 +538,24 @@ then the source code block will begin like
 
     #+BEGIN_SRC jupyter-python :results raw ...
 
-Note if ARGS contains a key, regexp, then if regexp is non-nil,
-EXPECTED-RESULT is a regular expression to match against the
-results instead of an equality match."
-  `(jupyter-org-test
-    (jupyter-org-test-src-block-1
-     ,block ,expected-result ,@args)))
+Note if ARGS contains a key, :regexp, then if its value is
+non-nil, EXPECTED-RESULT is a regular expression to match against
+the results instead of an equality match.
+
+If ARGS contains the key, :bindings, then its value is a variable
+list which to bind during the evaluation of the test, note the
+bindings occur from within the test buffer."
+  (let (bindings)
+    (setq args
+          (cl-loop
+           for (key value) on args by #'cddr
+           if (eq key :bindings) do (setq bindings value)
+           else collect key and collect value))
+    (let ((form `(jupyter-org-test-src-block-1
+                  ,block ,expected-result ,@args)))
+      (when bindings
+        (setq form `(let* ,bindings ,form)))
+      `(jupyter-org-test ,form))))
 
 (defun jupyter-org-test-make-block (code args)
   (let ((arg-str

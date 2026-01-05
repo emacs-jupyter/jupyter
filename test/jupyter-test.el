@@ -2933,11 +2933,11 @@ os.path.abspath(os.getcwd())"
           ;; See #302
           (let* ((temporary-file-directory jupyter-test-temporary-directory)
                  (dir (make-temp-file "dir-header-arg" t)))
-            ;; FIXME: Don't use an internal function here.
-            (jupyter-org-test
-             (let ((default-directory (file-name-directory dir)))
-               (jupyter-org-test-src-block-1
-                "print(\"hi\")" ": hi\n" :dir (file-name-base dir))))))))))
+            (jupyter-org-test-src-block
+             "print(\"hi\")"
+             ": hi\n"
+             :dir (file-name-base dir)
+             :bindings ((default-directory (file-name-directory dir))))))))))
 
 (ert-deftest jupyter-org--find-mime-types ()
   :tags '(org mime)
