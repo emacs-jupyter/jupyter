@@ -665,8 +665,8 @@ sends the request immediately and returns the request."
   (setq callbacks
         (cl-loop
          for (type cb) on callbacks by #'cddr
-         for type = (substring (symbol-name type) 1)
-         collect (list type cb)))
+         for ty = (substring (symbol-name type) 1)
+         collect (list ty cb)))
   (if jupyter-org-queue-requests
       (jupyter-org--enqueue
        req on-busy on-reply (or on-abort #'ignore)
