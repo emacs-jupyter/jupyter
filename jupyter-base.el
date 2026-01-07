@@ -39,6 +39,7 @@
 (declare-function tramp-file-name-host "tramp")
 (declare-function jupyter-message-content "jupyter-messages" (msg))
 (declare-function jupyter-message-time "jupyter-messages" (msg))
+(declare-function jupyter-message-type "jupyter-messages" (msg))
 (declare-function jupyter-new-uuid "jupyter-messages")
 (declare-function jupyter-message-p "jupyter-messages" (msg))
 (declare-function jupyter-subscribe "jupyter-monads")
