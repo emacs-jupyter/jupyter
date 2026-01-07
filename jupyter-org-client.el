@@ -269,7 +269,7 @@ nothing and return nil."
      (if (not force) t
        (while (eq (get-text-property (point) 'jupyter-request) 'pending)
          (accept-process-output nil 1))
-       (jupyter-org--request-at-point)))
+       (jupyter-org--request-at-point force)))
     (`nil nil)
     (req
      (cl-check-type req jupyter-org-request)
