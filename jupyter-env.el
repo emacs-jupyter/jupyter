@@ -85,8 +85,9 @@ As a side effect, the variable `jupyter-runtime-directory' is set
 to the local runtime directory if it is nil."
   (unless jupyter-runtime-directory
     (setq jupyter-runtime-directory
-          (let ((default-directory (expand-file-name "~" user-emacs-directory)))
-            (file-name-as-directory (jupyter-command "--runtime-dir")))))
+          (let* ((default-directory (expand-file-name "~" user-emacs-directory)))
+            (when-let* ((dir (ignore-errors (jupyter-command "--runtime-dir"))))
+              (file-name-as-directory dir)))))
   (let ((dir (if (file-remote-p default-directory)
                  (jupyter-command "--runtime-dir")
                jupyter-runtime-directory)))
