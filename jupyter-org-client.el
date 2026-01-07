@@ -2093,26 +2093,6 @@ EL is an Org element with the properties
 ;;; org-babel functions
 ;; These are meant to be called by `org-babel-execute:jupyter'
 
-(defun jupyter-org-pending-async-results (req)
-  "Finish up bookkeeping for an asynchronous source block REQ.
-Setup `org-babel-after-execute-hook' to insert the ID of REQ as
-the result of the associated source block, to signify that the
-results of REQ are pending, and run any other hook functions that
-were present before this function was called.
-
-This function always returns nil and is intended to be used as
-the return value for asynchronous Jupyter source blocks in
-`org-babel-execute:jupyter'."
-  (prog1 nil
-    (let ((log-max message-log-max)
-          (hook org-babel-after-execute-hook))
-      (setq message-log-max nil)
-      (setq org-babel-after-execute-hook
-            (list (lambda ()
-                    (setq message-log-max log-max)
-                    (setq org-babel-after-execute-hook hook)
-                    (run-hooks 'org-babel-after-execute-hook)))))))
-
 (defun jupyter-org--coalesce-stream-results (results)
   "Return RESULTS with all contiguous stream results concatenated."
   (let (lst str)
