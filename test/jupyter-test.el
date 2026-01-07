@@ -3151,7 +3151,8 @@ print(2)"
   (jupyter-org-test
    :document ((src-block
                (code "\"hello\"")
-               (session (concat "/ssh:test:"
+               (session (concat (format "/ssh:test@%s:"
+                                        (getenv "SSH_HOST"))
                                 (make-temp-name "ob-jupyter-test")))))
    (goto-char (point-min))
    (org-ctrl-c-ctrl-c)
