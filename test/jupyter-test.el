@@ -65,6 +65,111 @@
                        (jupyter-request-id req)))
         (should (equal (jupyter-message-get (caddr msgs) :execution_state) "idle"))))))
 
+;;; Org test
+
+(ert-deftest jupyter-org-test ()
+  :tags '(org mock)
+  (with-temp-buffer
+    (let ((jupyter-org-test-buffer (current-buffer))
+          (jupyter-org-test-session "sess"))
+      (jupyter-org-test
+       :document (("Tree"
+                   (properties
+                    (one (expand-file-name "foo" "/tmp"))
+                    (two "two"))
+                   (src-block
+                    (code "1 + 1"))
+                   ("Tree2"
+                    (properties
+                     (one "bar")
+                     (two "baz"))
+                    (src-block
+                     (code "return \"str\"")))))
+       (should (equal (buffer-string)
+                      "\
+* Tree
+:PROPERTIES:
+:one: /tmp/foo
+:two: two
+:END:
+
+#+begin_src jupyter-python :session sess
+1 + 1
+#+end_src
+
+** Tree2
+:PROPERTIES:
+:one: bar
+:two: baz
+:END:
+
+#+begin_src jupyter-python :session sess
+return \"str\"
+#+end_src
+")))
+      (ert-info ("Default session can be overridden")
+        (jupyter-org-test
+         :document ((src-block
+                     (session "another-sess")
+                     (code "1 + 1")))
+         (should (equal (buffer-string) "\
+#+begin_src jupyter-python :session another-sess
+1 + 1
+#+end_src
+"))))
+      (ert-info ("Paragraph")
+        (jupyter-org-test
+         :document (("Tree"
+                     (paragraph "one")
+                     (src-block (code "1 + 1"))
+                     (paragraph "two")))
+         (should (equal (buffer-string) "\
+* Tree
+one
+
+#+begin_src jupyter-python :session sess
+1 + 1
+#+end_src
+
+two
+"))))
+      (ert-info ("Plain list")
+        (jupyter-org-test
+         :document (("Tree"
+                     (plain-list
+                      (paragraph "one")
+                      (src-block
+                       (code "1 + 1"))
+                      (plain-list
+                       (paragraph "tree\nfour\nfive")))
+                     (paragraph "two")))
+         (should (equal (buffer-string) "\
+* Tree
+- one
+  
+  #+begin_src jupyter-python :session sess
+  1 + 1
+  #+end_src
+  
+  - tree
+    four
+    five
+    
+two
+"))))
+      (ert-info ("Source block")
+        (jupyter-org-test
+         :document ((src-block
+                     (header-args ":async yes")
+                     (language "julia")
+                     (code "1 + 1")))
+         (should (equal (buffer-string) "\
+#+HEADER: :async yes
+#+begin_src jupyter-julia :session sess
+1 + 1
+#+end_src
+")))))))
+
 ;;; Stream
 
 (ert-deftest jupyter-stream ()
@@ -2017,12 +2122,11 @@ next(x"))))))
 
 (ert-deftest org-babel-jupyter-initiate-session-by-key ()
   :tags '(org)
-  (jupyter-org-test
-   (let ((session (make-temp-name "jupyter")))
-     (save-excursion
-       (insert
-        (format "#+begin_src jupyter-python :session %s\n1+1\n#+end_src\n"
-                session)))
+  (let ((session (make-temp-name "jupyter")))
+    (jupyter-org-test
+     :document ((src-block
+                 (session session)
+                 (code "1 + 1")))
      (let* ((params (nth 2 (org-babel-get-src-block-info)))
             (key (org-babel-jupyter-session-key params)))
        (should-not (gethash key org-babel-jupyter-session-clients))
@@ -2194,11 +2298,9 @@ Image(filename='%s', width=300)" file)
 (ert-deftest jupyter-org-request-at-point ()
   :tags '(org)
   (jupyter-org-test
-   (insert (format "\
-#+begin_src jupyter-python :session %s :async yes
-1 + 1;
-#+end_src" jupyter-org-test-session))
-   (goto-char (point-min))
+   :document ((src-block
+               (header-args ":async yes")
+               (code "1 + 1")))
    (org-babel-execute-src-block)
    (let ((req (jupyter-org-request-at-point)))
      (should req)
@@ -2231,10 +2333,9 @@ Image(filename='%s', width=300)" file)
   :tags '(org)
   (let (jupyter-org--src-block-cache)
     (jupyter-org-test
-     (insert
-      "#+BEGIN_SRC jupyter-python :session " jupyter-org-test-session "\n"
-      "imp\n"
-      "#+END_SRC\n\n\n#+RESULTS:")
+     :document ((src-block
+                 (code "imp")))
+     (insert "#+RESULTS:")
      ;; Needed for the text properties
      (font-lock-ensure)
      (goto-char (point-min))
@@ -2267,10 +2368,9 @@ Image(filename='%s', width=300)" file)
   :tags '(org)
   (ert-info ("In Jupyter blocks")
     (jupyter-org-test
-     (insert
-      "#+BEGIN_SRC jupyter-python :session " jupyter-org-test-session "\n"
-      "1 + 1\n"
-      "#+END_SRC\nfoo")
+     :document ((src-block
+                 (code "1 + 1")))
+     (insert "foo")
      ;; Needed for the text properties
      (font-lock-ensure)
      (goto-char (point-min))
@@ -2283,10 +2383,9 @@ Image(filename='%s', width=300)" file)
      (should-not (jupyter-org-when-in-src-block t))))
   (ert-info ("Not in Jupyter block")
     (jupyter-org-test
-     (insert
-      "#+BEGIN_SRC python :session " jupyter-org-test-session "\n"
-      "1 + 1\n"
-      "#+END_SRC\nfoo")
+     :document ((src-block
+                 (code "1 + 1")))
+     (insert "foo")
      ;; Needed for the text properties
      (font-lock-ensure)
      (goto-char (point-min))
@@ -2603,15 +2702,13 @@ print(\"foo\", flush=True)
 (ert-deftest jupyter-org-issue-126 ()
   :tags '(org)
   (jupyter-org-test
-   (insert (format "\
-* H1
-  - list1
-    #+begin_src jupyter-python :session %s :async yes
-      print(\"Hello\")
-    #+end_src
-
-* H2
-" jupyter-org-test-session))
+   :document (("H1"
+               (plain-list
+                (paragraph "list1")
+                (src-block
+                 (header-args ":async yes")
+                 (code "print(\"Hello\")"))))
+              ("H2"))
    (org-babel-previous-src-block)
    (org-babel-execute-src-block)
    (with-current-buffer (org-babel-initiate-session)
@@ -2681,17 +2778,14 @@ AB[43mCD[0mEF
 (ert-deftest jupyter-org-closest-jupyter-language ()
   :tags '(org)
   (jupyter-org-test
-   (insert "\
-#+BEGIN_SRC jupyter-foo
-#+END_SRC
-
-x
-
-#+BEGIN_SRC jupyter-bar
-#+END_SRC
-
-#+BEGIN_SRC baz
-#+END_SRC
+   :document ((src-block
+               (language "foo"))
+              (paragraph "\nx\n")
+              (src-block
+               (language "bar")))
+   (insert "
+#+begin_src baz
+#+end_src
 ")
    (re-search-backward "x")
    (should (equal (jupyter-org-closest-jupyter-language)
@@ -2712,11 +2806,9 @@ x
 (ert-deftest jupyter-org-define-key ()
   :tags '(org)
   (jupyter-org-test
-   (save-excursion
-     (insert (format "\
-#+begin_src jupyter-python :session %s
-1 + 1
-#+end_src" jupyter-org-test-session)))
+   :document ((src-block
+               (code "1 + 1")))
+   (goto-char (point-min))
    ;; Needed for the text properties
    (font-lock-ensure)
    (forward-line)
@@ -2967,15 +3059,11 @@ publish_display_data({'text/plain': \"foo\", 'text/latex': \"$\\alpha$\"});"
 (ert-deftest org-babel-jupyter-babel-call ()
   :tags '(org babel)
   (jupyter-org-test
-   (insert (format "\
-#+NAME: foo
-#+begin_src jupyter-python :async yes :session %s
-1 + 1
-#+end_src
-
-" jupyter-org-test-session))
-   (insert "
-#+CALL: foo()")
+   :document ((src-block
+               (name "foo")
+               (header-args ":async yes")
+               (code "1 + 1")))
+   (insert "#+CALL: foo()")
    (org-ctrl-c-ctrl-c)
    (beginning-of-line)
    (jupyter-wait-until-idle (jupyter-org-request-at-point))
@@ -2987,27 +3075,28 @@ publish_display_data({'text/plain': \"foo\", 'text/latex': \"$\\alpha$\"});"
   :tags '(org)
   (ert-info ("Treat inline and non-inline results similarly")
     ;; #204
-    (let ((src (format "\
-#+NAME: hello_jupyter
-#+BEGIN_SRC jupyter-python :results value :display plain :session %s
-\"hello\"
-#+END_SRC
-
-" jupyter-org-test-session)))
-      (jupyter-org-test
-       (insert src)
-       (insert "call_hello_jupyter()")
-       (let ((pos (point)))
-         (beginning-of-line)
-         (org-ctrl-c-ctrl-c)
-         (goto-char pos)
-         (should (looking-at-p " {{{results(=hello=)}}}"))))
-      (jupyter-org-test
-       (save-excursion (insert src))
+    (jupyter-org-test
+     :document ((src-block
+                 (name "hello_jupyter")
+                 (header-args ":results value :display plain")
+                 (code "\"hello\"")))
+     (insert "call_hello_jupyter()")
+     (let ((pos (point)))
+       (beginning-of-line)
        (org-ctrl-c-ctrl-c)
-       (goto-char (org-babel-where-is-src-block-result))
-       (forward-line)
-       (should (looking-at-p ": hello"))))))
+       (goto-char pos)
+       (should (looking-at-p " {{{results(=hello=)}}}"))))
+    (jupyter-org-test
+     :document ((src-block
+                 (name "hello_jupyter")
+                 (header-args ":results value :display plain")
+                 (code "\"hello\"")))
+     (goto-char (point-min))
+     (org-next-block 1)
+     (org-ctrl-c-ctrl-c)
+     (goto-char (org-babel-where-is-src-block-result))
+     (forward-line)
+     (should (looking-at-p ": hello")))))
 
 (ert-deftest org-babel-jupyter-pandoc-output-order ()
   :tags '(org pandoc)
@@ -3059,30 +3148,24 @@ print(2)"
 (ert-deftest org-babel-jupyter-ssh-connections ()
   :tags '(org ssh)
   (skip-unless (getenv "SSH_HOST"))
-  (let* ((session (make-temp-name "ob-jupyter-test"))
-         (src (format "\
-#+BEGIN_SRC jupyter-python :session /ssh:test:%s
-\"hello\"
-#+END_SRC
-
-" session)))
-    (jupyter-org-test
-     (save-excursion (insert src))
-     (org-ctrl-c-ctrl-c)
-     (goto-char (org-babel-where-is-src-block-result))
-     (forward-line)
-     (unwind-protect
-         (should (looking-at-p ": hello"))
-       (let ((params (nth 2
-                          (progn
-                            (org-previous-block 1)
-                            (org-babel-get-src-block-info)))))
-         (cl-letf (((symbol-function 'yes-or-no-p)
-                    (lambda (_prompt) t))
-                   ((symbol-function 'y-or-n-p)
-                    (lambda (_prompt) t)))
-           (kill-buffer (org-babel-jupyter-initiate-session
-                         (alist-get :session params) params))))))))
+  (jupyter-org-test
+   :document ((src-block
+               (code "\"hello\"")
+               (session (concat "/ssh:test:"
+                                (make-temp-name "ob-jupyter-test")))))
+   (goto-char (point-min))
+   (org-ctrl-c-ctrl-c)
+   (goto-char (org-babel-where-is-src-block-result))
+   (forward-line)
+   (unwind-protect
+       (should (looking-at-p ": hello"))
+     (let ((params (nth 2
+                        (progn
+                          (org-previous-block 1)
+                          (org-babel-get-src-block-info)))))
+       (jupyter-test-kill-buffer
+        (org-babel-jupyter-initiate-session
+         (alist-get :session params) params))))))
 
 (ert-deftest org-babel-jupyer-issue-565 ()
   :tags '(org)
@@ -3117,62 +3200,35 @@ for i in range(10):
    :async "yes"))
 
 (ert-deftest org-babel-src-block-name-resolution ()
-  :tags '(org)
-  (let ((src (format "\
-#+NAME: x
-#+BEGIN_SRC jupyter-python :session %s :async yes
-2
-#+END_SRC
-
-#+BEGIN_SRC jupyter-python :session %s :noweb yes
-3*<<x()>>
-#+END_SRC
-"
-                     jupyter-org-test-session
-                     jupyter-org-test-session)))
-    (jupyter-org-test
-     (insert src)
-     (org-backward-element)
-     (org-ctrl-c-ctrl-c)
-     (let ((pos (org-babel-where-is-src-block-result)))
-       (should pos)
-       (goto-char pos)
-       (forward-line)
-       (should (looking-at-p ": 6"))))))
+  :tags '(org ref)
+  (jupyter-org-test
+   :document ((src-block
+               (name "x")
+               (code "2")
+               (header-args ":async yes"))
+              (src-block
+               (code "3*<<x()>>")
+               (header-args ":noweb yes")))
+   (org-backward-element)
+   (org-ctrl-c-ctrl-c)
+   (let ((pos (org-babel-where-is-src-block-result)))
+     (should pos)
+     (goto-char pos)
+     (forward-line)
+     (should (looking-at-p ": 6")))))
 
 (ert-deftest org-babel-src-block-queuing  ()
-  :tags '(org)
-  (let ((jupyter-org-queue-requests t)
-        (src (apply #'format "\
-* Tree
-
-#+BEGIN_SRC jupyter-python :session %s :async yes
-1
-#+END_SRC
-
-#+BEGIN_SRC jupyter-python :session %s :async yes
-raise Exception(\"This is an error\")
-#+END_SRC
-
-#+BEGIN_SRC jupyter-python :session %s :async yes
-3
-#+END_SRC
-
-#+BEGIN_SRC jupyter-python :session %s :async yes
-4
-#+END_SRC
-
-#+BEGIN_SRC jupyter-python :session %s :async yes
-5
-#+END_SRC
-
-#+BEGIN_SRC jupyter-python :session %s :async yes
-6
-#+END_SRC
-"
-                    (cl-loop repeat 6 collect jupyter-org-test-session))))
+  :tags '(org q)
+  (let ((jupyter-org-queue-requests t))
     (jupyter-org-test
-     (insert src)
+     :document (("Tree"
+                 (properties (header-args ":async yes"))
+                 (src-block (code "1"))
+                 (src-block (code "raise Exception(\"This is an error\")"))
+                 (src-block (code "3"))
+                 (src-block (code "4"))
+                 (src-block (code "5"))
+                 (src-block (code "6"))))
      (let ((check-result
             (lambda (result)
               (let ((pos (org-babel-where-is-src-block-result)))
@@ -3195,19 +3251,15 @@ raise Exception(\"This is an error\")
        (funcall check-result ": 6")))))
 
 (ert-deftest org-babel-prevent-multiple-executions  ()
-  :tags '(org q)
-  (let ((src (format "\
-#+BEGIN_SRC jupyter-python :session %s :async yes
-1
-#+END_SRC
-"
-                    jupyter-org-test-session)))
-    (jupyter-org-test
-     (insert src)
-     (org-previous-block 1)
-     (org-babel-execute-src-block)
-     (should (jupyter-org-request-at-point))
-     (should-error (org-babel-execute-src-block)))))
+  :tags '(org)
+  (jupyter-org-test
+   :document ((src-block
+               (code "1")
+               (header-args ":async yes")))
+   (org-previous-block 1)
+   (org-babel-execute-src-block)
+   (should (jupyter-org-request-at-point))
+   (should-error (org-babel-execute-src-block))))
 
 ;; Local Variables:
 ;; byte-compile-warnings: (unresolved obsolete lexical)

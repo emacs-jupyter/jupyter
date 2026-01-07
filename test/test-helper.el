@@ -522,12 +522,76 @@ should have PROP with VAL."
     (insert (jupyter-org-test-block lang ""))
     (jupyter-org-test-client-from-info (org-babel-get-src-block-info))))
 
+(defun jupyter-org-test--plain-list (text)
+  (if-let* ((pos (string-search "\n" text)))
+      (let ((rest (substring text (1+ pos))))
+        (concat "- " (substring text 0 pos)
+                "\n  " (mapconcat #'identity
+                                (split-string rest "\n")
+                                "\n  ")))
+    (concat "- " text)))
+
+(defun jupyter-org-test-make-document (spec &optional depth)
+  (let ((properties
+         (let ((props (assq 'properties spec)))
+           (when props
+             (setq spec (delq props spec))
+             `(concat ":PROPERTIES:\n"
+                      ,@(cl-loop
+                         for (name value) in (cdr props)
+                         collect `(format ":%s: %s\n" ',name ,value))
+                      ":END:\n"))))
+        (doc
+         (cl-loop
+          for (type . args) in spec collect
+          (pcase type
+            ((guard (stringp type))
+             `(concat
+               ,(format "%s %s\n" (make-string (or depth 1) ?*) type)
+               ,(jupyter-org-test-make-document args (1+ (or depth 1)))))
+            (`src-block
+             (let ((name (cadr (assq 'name args)))
+                   (header-args (cadr (assq 'header-args args)))
+                   (code (cadr (assq 'code args)))
+                   (language (cadr (assq 'language args)))
+                   (session (cadr (assq 'session args))))
+               `(concat
+                 ,@(when name `((concat "#+NAME: " ,name "\n")))
+                 ,@(when header-args
+                     `((concat "#+HEADER: " ,header-args "\n")))
+                 (format "#+begin_src jupyter-%s :session %s\n"
+                         ,(if language `,language "python")
+                         ,(if session `,session
+                            'jupyter-org-test-session))
+                 (let ((c ,code))
+                   (if c
+                       (concat (string-trim-right c) "\n")))
+                 "#+end_src\n")))
+            (`paragraph `(concat ,(car args) "\n"))
+            (`plain-list
+             `(jupyter-org-test--plain-list
+               ,(jupyter-org-test-make-document args depth)))
+            (_
+             (error "Unrecognize type"))))))
+    (push 'list doc)
+    (if properties
+        `(concat ,properties "\n"
+                 (mapconcat #'identity ,doc "\n"))
+      `(mapconcat #'identity ,doc "\n"))))
+
 (defmacro jupyter-org-test (&rest body)
   (declare (debug (body)))
-  `(progn
-     (jupyter-org-test-setup)
-     (with-current-buffer jupyter-org-test-buffer
-       ,@body)))
+  (let (spec)
+    (while (keywordp (car body))
+      (push (pop body) spec)
+      (push (pop body) spec))
+    (setq spec (nreverse spec))
+    `(progn
+       (jupyter-org-test-setup)
+       (with-current-buffer jupyter-org-test-buffer
+         ,@(when-let* ((spec (plist-get spec :document)))
+             (list `(insert ,(jupyter-org-test-make-document spec))))
+         ,@body))))
 
 (defmacro jupyter-org-test-src-block (block expected-result &rest args)
   "Test source code BLOCK.
