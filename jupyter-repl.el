@@ -420,7 +420,7 @@ Also set the local value of `left-margin-width' to
       (jupyter-repl--reset-prompt-display ov))))
 
 (defun jupyter-repl--make-prompt (str face props)
-  "Make a prompt overlay for the character before POS.
+  "Make a prompt overlay for the character before `point'.
 STR is used as the prompt string and FACE is its
 `font-lock-face'.  Add PROPS as text properties to the character."
   (let ((size-hint (* (length str)
@@ -562,9 +562,6 @@ should be a face that the prompt will use and defaults to
 
 (defun jupyter-repl-cell-beginning-position ()
   "Return the cell beginning position of the current cell.
-If `point' is already at the beginning of the current cell,
-return `point'.
-
 If the end of a cell is found before the beginning of one, i.e.
 when `point' is somewhere inside the output of a cell, raise an
 error.
@@ -1809,22 +1806,26 @@ would look like
 (defun jupyter-repl-font-lock-fontify-region (fontify-fun beg end &optional verbose)
   "Use FONTIFY-FUN to fontify input cells between BEG and END.
 VERBOSE has the same meaning as in
-`font-lock-fontify-region-function'."
+`font-lock-fontify-region-function'.
+
+Output cells are unfontified."
   (jupyter-repl-map-cells beg end
-    ;; Ensure that the buffer is narrowed to the actual cell code before calling
-    ;; the REPL language's `major-mode' specific fontification functions since
-    ;; those functions don't know anything about input cells or output cells and
-    ;; may traverse cell boundaries.
+    ;; Ensure that the buffer is narrowed to the actual cell code
+    ;; before calling the REPL language's `major-mode' specific
+    ;; fontification functions since those functions don't know
+    ;; anything about input cells or output cells and may traverse
+    ;; cell boundaries.
     ;;
-    ;; It is OK that we do not update BEG and END using the return value of this
-    ;; function as long as the default value of
-    ;; `font-lock-extend-region-functions' is used since an input cell always
-    ;; starts at the beginning of a line and ends at the end of a line and does
-    ;; not use the font-lock-multiline property (2018-12-20).
+    ;; It is OK that we do not update BEG and END using the return
+    ;; value of this function as long as the default value of
+    ;; `font-lock-extend-region-functions' is used since an input cell
+    ;; always starts at the beginning of a line and ends at the end of
+    ;; a line and does not use the font-lock-multiline property
+    ;; (2018-12-20).
     (lambda ()  (funcall fontify-fun (point-min) (point-max) verbose))
-    ;; Unfontify the region mainly to remove the font-lock-multiline property in
-    ;; the output, e.g. added by markdown.  These regions will get highlighted
-    ;; syntactically in some scenarios.
+    ;; Unfontify the region mainly to remove the font-lock-multiline
+    ;; property in the output, e.g. added by markdown.  These regions
+    ;; will get highlighted syntactically in some scenarios.
     (lambda () (font-lock-unfontify-region (point-min) (point-max))))
   `(jit-lock-bounds ,beg . ,end))
 

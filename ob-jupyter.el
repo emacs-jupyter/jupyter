@@ -511,11 +511,10 @@ These parameters are handled internally."
          (lang (jupyter-kernel-language client))
          (vars (org-babel-variable-assignments:jupyter params lang)))
     (when-let* ((dir (alist-get :dir params)))
-      ;; `default-directory' is already set according
-      ;; to :dir when executing a source block.  Set
-      ;; :dir to the absolute path so that
-      ;; `org-babel-expand-body:jupyter' does not try
-      ;; to re-expand the path. See #302.
+      ;; `default-directory' is already set according to :dir when
+      ;; executing a source block.  Set :dir to the absolute path so
+      ;; that `org-babel-expand-body:jupyter' does not try to
+      ;; re-expand the path. See #302.
       (setf (alist-get :dir params) default-directory))
     (list client (org-babel-expand-body:jupyter body params vars lang))))
 

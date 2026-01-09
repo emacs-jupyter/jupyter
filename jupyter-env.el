@@ -99,13 +99,13 @@ to the local runtime directory if it is nil."
 
 (defun jupyter-locate-python ()
   "Return the path to the python executable in use by Jupyter.
+Specifically, the `file-local-name' of the path.
+
 If the `default-directory' is a remote directory, search on that
 remote.  Raise an error if the executable could not be found.
 
 The paths examined are the data paths of \"jupyter --paths\" in
-the order specified.
-
-This function always returns the `file-local-name' of the path."
+the order specified."
   (let* ((remote (file-remote-p default-directory))
          (paths (mapcar (lambda (x) (concat remote x))
                    (or (plist-get

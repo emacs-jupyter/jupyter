@@ -374,9 +374,9 @@ to."
     (pcase-let (((cl-struct jupyter-org-request inline-block-p silent-p) req))
       (cond
        ((or inline-block-p silent-p)
-        ;; Remove old inline results when an error happens since, if this was not
-        ;; done, it would look like the code which caused the error produced the
-        ;; old result.
+        ;; Remove old inline results when an error happens since, if
+        ;; this was not done, it would look like the code which caused
+        ;; the error produced the old result.
         (when inline-block-p
           (jupyter-org-with-point-at req
             (org-babel-remove-inline-result)))
@@ -388,8 +388,8 @@ to."
           (jupyter-display-current-buffer-reuse-window)))
        (t
         ;; The keymap property in the string returned by
-        ;; `jupyter-org--goto-error-string' gets removed by font-lock so ensure it
-        ;; is re-added.
+        ;; `jupyter-org--goto-error-string' gets removed by font-lock
+        ;; so ensure it is re-added.
         (unless (memq 'jupyter-org-add-error-keymap org-font-lock-hook)
           (add-hook 'org-font-lock-hook 'jupyter-org-add-error-keymap nil t))
         (jupyter-org--add-result
@@ -644,12 +644,14 @@ should also be aborted."
 (defun jupyter-org-maybe-queued (req on-busy on-reply &optional on-abort
                                      &rest callbacks)
   "Queue REQ with some message handlers.
-ON-BUSY and ON-REPLY are functions taking a single argument, a
-message, when a status: busy and a reply message are received,
-respectively, for the REQ.  ON-ABORT is a function taking no
-arguments and is called only when REQ is evaluated due to some
-other queued request raising an error during evaluation.  The
-rest of the arguments form the CALLBACKS, a property list like
+ON-BUSY is a function taking a single argument, a request, when a
+status: busy message is received for REQ.  ON-REPLY is a function
+taking two arguments an OK indicator and a request, the indicator
+is non-nil when the request did not error.  ON-ABORT is a
+function taking no arguments and is called only when REQ is
+prevented from being evaluated due to some other queued request
+raising an error during its evaluation.  The rest of the
+arguments form the CALLBACKS, a property list like
 
     \\='(:status ... :execute_result ...)
 
