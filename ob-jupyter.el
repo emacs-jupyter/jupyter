@@ -516,7 +516,11 @@ These parameters are handled internally."
       ;; that `org-babel-expand-body:jupyter' does not try to
       ;; re-expand the path. See #302.
       (setf (alist-get :dir params) default-directory))
-    (list client (org-babel-expand-body:jupyter body params vars lang))))
+    (list client
+          (let ((jupyter-current-client client))
+            ;; Let bind `jupyter-current-client' to allow method
+            ;; specializers like jupyter-lang to work.
+            (org-babel-expand-body:jupyter body params vars lang)))))
 
 (defun org-babel-jupyter--insert-result (result)
   (cl-letf (((symbol-function #'message) #'ignore))
