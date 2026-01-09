@@ -3148,25 +3148,32 @@ print(2)"
 (ert-deftest org-babel-jupyter-ssh-connections ()
   :tags '(org ssh)
   (skip-unless (getenv "SSH_HOST"))
-  (jupyter-org-test
-   :document ((src-block
-               (code "\"hello\"")
-               (session (concat (format "/ssh:test@%s:"
-                                        (getenv "SSH_HOST"))
-                                (make-temp-name "ob-jupyter-test")))))
-   (goto-char (point-min))
-   (org-ctrl-c-ctrl-c)
-   (goto-char (org-babel-where-is-src-block-result))
-   (forward-line)
-   (unwind-protect
-       (should (looking-at-p ": hello"))
-     (let ((params (nth 2
-                        (progn
-                          (org-previous-block 1)
-                          (org-babel-get-src-block-info)))))
-       (jupyter-test-kill-buffer
-        (org-babel-jupyter-initiate-session
-         (alist-get :session params) params))))))
+  (let ((jupyter-use-zmq t))
+    (jupyter-org-test
+     :document ((src-block
+                 (code "\"hello\"")
+                 (session (concat (format "/ssh:test@%s:"
+                                          (getenv "SSH_HOST"))
+                                  (make-temp-name "ob-jupyter-test")))))
+     ;; FIXME How to do this when no jupyter binary exists on the machine
+     ;; that Emacs is running on?  The specs need to be had from
+     ;; somewhere and all that is known is that there is a machine that
+     ;; we can ssh into.
+     (let ((default-directory (format "/ssh:test@%s:" (getenv "SSH_HOST"))))
+       (org-babel-jupyter-aliases-from-kernelspecs))
+     (goto-char (point-min))
+     (org-ctrl-c-ctrl-c)
+     (goto-char (org-babel-where-is-src-block-result))
+     (forward-line)
+     (unwind-protect
+         (should (looking-at-p ": hello"))
+       (let ((params (nth 2
+                          (progn
+                            (org-previous-block 1)
+                            (org-babel-get-src-block-info)))))
+         (jupyter-test-kill-buffer
+          (org-babel-jupyter-initiate-session
+           (alist-get :session params) params)))))))
 
 (ert-deftest org-babel-jupyer-issue-565 ()
   :tags '(org)
