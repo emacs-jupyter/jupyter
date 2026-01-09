@@ -1036,17 +1036,23 @@ attempting to access the rest of the stream")
 		 for alive-p = (jupyter-alive-p client channel)
 		 do (should-not alive-p))))))
 
+(defvar jupyter-inhibit-handlers)
+
 (ert-deftest jupyter-inhibited-handlers ()
   :tags '(client handlers)
   (jupyter-test-with-python-client client
     (jupyter-run-with-client client
       (jupyter-mlet* ((req (jupyter-kernel-info-request
                             :handlers '(not "stream"))))
+        ;; FIXME Remove this slot as `jupyter-inhibit-handlers' is now
+        ;; let bound when processing messages.
         (should (equal (jupyter-request-inhibited-handlers req)
                        '("stream")))
-        (should-not (jupyter--request-allows-handler-p
-                     req (jupyter-test-message
-                          req "stream" (list :name "stdout" :text "foo"))))
+        (let ((jupyter-inhibit-handlers
+               (jupyter-request-inhibited-handlers req)))
+          (should-not (jupyter-allow-handler-p
+                       (jupyter-test-message
+                        req "stream" (list :name "stdout" :text "foo")))))
         (should-error (jupyter-kernel-info-request
                        :handlers '(not "foo")))
         (jupyter-return nil)))))
@@ -2300,7 +2306,7 @@ Image(filename='%s', width=300)" file)
                (header-args ":async yes")
                (code "1 + 1")))
    (org-babel-execute-src-block)
-   (let ((req (jupyter-org-request-at-point)))
+   (let ((req (jupyter-org-request-at-point t)))
      (should req)
      (should (jupyter-org-request-p req))
      (jupyter-wait-until-idle req)
@@ -2322,7 +2328,7 @@ Image(filename='%s', width=300)" file)
           (list :language_info (list :name 'python)))
     (should (equal (jupyter-kernel-language jupyter-current-client) 'python))
     ;; Bring in the python specific methods
-    (jupyter-load-language-support jupyter-current-client)
+    (jupyter-load-language-support)
     (should (equal (jupyter-org-get-result req (list :text/plain "[1, 2, 3]"))
                    "| 1 | 2 | 3 |\n"))
     (should py-method-called)))
@@ -3249,7 +3255,7 @@ for i in range(10):
        (org-babel-execute-subtree)
        (while (jupyter-org-request-at-point)
          (sleep-for 0.1))
-       (funcall check-result "")
+       (funcall check-result ": Aborted!")
        (org-previous-block 1)
        (org-babel-execute-src-block)
        (while (jupyter-org-request-at-point)
