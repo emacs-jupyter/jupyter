@@ -374,9 +374,9 @@ to."
     (pcase-let (((cl-struct jupyter-org-request inline-block-p silent-p) req))
       (cond
        ((or inline-block-p silent-p)
-        ;; Remove old inline results when an error happens since, if this was not
-        ;; done, it would look like the code which caused the error produced the
-        ;; old result.
+        ;; Remove old inline results when an error happens since, if
+        ;; this was not done, it would look like the code which caused
+        ;; the error produced the old result.
         (when inline-block-p
           (jupyter-org-with-point-at req
             (org-babel-remove-inline-result)))
@@ -388,8 +388,8 @@ to."
           (jupyter-display-current-buffer-reuse-window)))
        (t
         ;; The keymap property in the string returned by
-        ;; `jupyter-org--goto-error-string' gets removed by font-lock so ensure it
-        ;; is re-added.
+        ;; `jupyter-org--goto-error-string' gets removed by font-lock
+        ;; so ensure it is re-added.
         (unless (memq 'jupyter-org-add-error-keymap org-font-lock-hook)
           (add-hook 'org-font-lock-hook 'jupyter-org-add-error-keymap nil t))
         (jupyter-org--add-result
