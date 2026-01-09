@@ -316,7 +316,7 @@ this case FN will be evaluated on KERNEL."
                     ('interrupt
                      (jupyter-interrupt kernel))
                     ((and op (or 'connect 'disconnect))
-                     (if (eq op 'disconnect)
+                     (if (eq op 'connect)
                          (progn
                            (close-ws)
                            (open-ws))
