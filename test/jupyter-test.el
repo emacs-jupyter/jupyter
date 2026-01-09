@@ -585,15 +585,13 @@ attempting to access the rest of the stream")
       (cl-letf (((symbol-function 'read-from-minibuffer)
                  (lambda (_prompt &rest _args) "foo")))
         (jupyter-run-with-client client
-          (jupyter-mlet* ((msgs (jupyter-messages
-                                 (jupyter-execute-request :code "input('')")
-                                 jupyter-long-timeout)))
-            (let ((res (jupyter-find-message "execute_result" msgs)))
-              (should-not (null res))
-              (should (json-plist-p res))
-              (should (string= (jupyter-message-type res) "execute_result"))
-              (should (equal (jupyter-message-data res :text/plain) "'foo'"))
-              (jupyter-return nil))))))
+          (jupyter-mlet* ((res (jupyter-result
+                                (jupyter-execute-request :code "input('')"))))
+            (should-not (null res))
+            (should (json-plist-p res))
+            (should (string= (jupyter-message-type res) "execute_result"))
+            (should (equal (jupyter-message-data res :text/plain) "'foo'"))
+            (jupyter-return nil)))))
     (ert-info ("Inspect")
       (jupyter-run-with-client client
         (jupyter-mlet* ((res (jupyter-reply
