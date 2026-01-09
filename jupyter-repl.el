@@ -978,9 +978,7 @@ Return the `jupyter-request' representing the executed code."
       (jupyter-repl-clear-last-cell-output client)))))
 
 (cl-defmethod jupyter-handle-status ((client jupyter-repl-client) req msg)
-  (when (equal "idle"
-               (jupyter-with-message-content msg (execution_state)
-                 execution_state))
+  (when (jupyter-message-status-idle-p msg)
     (jupyter-with-repl-buffer client
       (save-excursion
         (when (ignore-errors
