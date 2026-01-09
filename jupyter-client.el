@@ -491,7 +491,7 @@ FN takes a single argument which will be the kernel object."
                 (setq res (funcall fn kernel))))))
     res))
 
-;;; Shutdown and interrupt a kernel
+;;; Shutdown, restart, interrupt, launch a kernel
 
 (cl-defmethod jupyter-shutdown-kernel ((client jupyter-kernel-client))
   "Shutdown the kernel CLIENT is connected to.
@@ -522,6 +522,9 @@ longer connected to a kernel."
         (jupyter-run-with-io kaction-sub
           (jupyter-publish 'interrupt))))))
 
+(cl-defmethod jupyter-launch-kernel ((client jupyter-kernel-client))
+  "Launch the kernel CLIENT is connected to."
+  (jupyter-kernel-action client #'jupyter-launch))
 
 ;;; Waiting for messages
 

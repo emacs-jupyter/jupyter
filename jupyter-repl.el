@@ -1583,7 +1583,7 @@ CLIENT defaults to `jupyter-current-client'."
   (if (jupyter-kernel-alive-p client)
       (jupyter-restart-kernel client)
     (message "Starting dead kernel...")
-    (jupyter-kernel-action client #'jupyter-launch))
+    (jupyter-launch-kernel client))
   (jupyter-repl--insert-banner-and-prompt client)
   (jupyter-hb-unpause client))
 
