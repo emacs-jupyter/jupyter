@@ -2972,64 +2972,64 @@ AB[43mCD[0mEF
 
 (ert-deftest org-babel-jupyter-:dir-header-arg ()
   :tags '(org)
-  (let ((convert-path
-         (lambda (s)
-           ;; Convert forward slashes to backslashes on Windows
-           (if (memq system-type '(windows-nt cygwin ms-dos))
-               (replace-regexp-in-string "/" "\\\\" s)
-             ;; Account for symlinked directories like /var being
-             ;; linked to /private/var on OSX.
-             (file-truename s))))
-        (temporary-file-directory jupyter-test-temporary-directory))
-    (let ((dir (make-temp-file "dir" t))
-          (pwd
-           (substring
-            (jupyter-org-test
-             (let ((jupyter-current-client
-                    (jupyter-org-test-session-client "python")))
-               (jupyter-eval "import os; os.getcwd()")))
-            1 -1)))
-      (ert-info ("Python")
-        (jupyter-org-test-src-block
+  (jupyter-test-at-temporary-directory
+   (let ((convert-path
+          (lambda (s)
+            ;; Convert forward slashes to backslashes on Windows
+            (if (memq system-type '(windows-nt cygwin ms-dos))
+                (replace-regexp-in-string "/" "\\\\" s)
+              ;; Account for symlinked directories like /var being
+              ;; linked to /private/var on OSX.
+              (file-truename s)))))
+     (let ((dir (make-temp-file "dir" t))
+           (pwd
+            (substring
+             (jupyter-org-test
+              (let ((jupyter-current-client
+                     (jupyter-org-test-session-client "python")))
+                (jupyter-eval "import os; os.getcwd()")))
+             1 -1)))
+       (ert-info ("Python")
+         (jupyter-org-test-src-block
           "\
 os.path.abspath(os.getcwd())"
           (concat ": " (funcall convert-path dir) "\n")
           :dir dir)
-        (ert-info ("Directory restored")
-          (jupyter-org-test-src-block
-           "\
+         (ert-info ("Directory restored")
+           (jupyter-org-test-src-block
+            "\
 os.path.abspath(os.getcwd())"
-           (concat ": "
-                   (funcall convert-path
-                            (expand-file-name (directory-file-name pwd)))
-                   "\n")))
-        (ert-info ("Transformed code and backslashes")
-          ;; See #302
-          (jupyter-org-test-src-block
-           "print(r\"\\r\")"
-           ": \\r\n")
-          ;; See #561
-          (jupyter-org-test-src-block
-           "\"\"\"foo\"\"\""
-           ": foo\n"
-           :dir dir)
-          (jupyter-org-test-src-block
-           "\"test\""
-           ": test\n"
-           :dir dir))
-        (jupyter-org-test-src-block
-         "\"test\\\"\""
-         ": test\"\n"
-         :dir dir)
-        (ert-info ("Relative directory")
-          ;; See #302
-          (let* ((temporary-file-directory jupyter-test-temporary-directory)
-                 (dir (make-temp-file "dir-header-arg" t)))
-            (jupyter-org-test-src-block
-             "print(\"hi\")"
-             ": hi\n"
-             :dir (file-name-base dir)
-             :bindings ((default-directory (file-name-directory dir))))))))))
+            (concat ": "
+                    (funcall convert-path
+                             (expand-file-name (directory-file-name pwd)))
+                    "\n")))
+         (ert-info ("Transformed code and backslashes")
+           ;; See #302
+           (jupyter-org-test-src-block
+            "print(r\"\\r\")"
+            ": \\r\n")
+           ;; See #561
+           (jupyter-org-test-src-block
+            "\"\"\"foo\"\"\""
+            ": foo\n"
+            :dir dir)
+           (jupyter-org-test-src-block
+            "\"test\""
+            ": test\n"
+            :dir dir))
+         (jupyter-org-test-src-block
+          "\"test\\\"\""
+          ": test\"\n"
+          :dir dir)
+         (ert-info ("Relative directory")
+           ;; See #302
+           (let* ((temporary-file-directory jupyter-test-temporary-directory)
+                  (dir (make-temp-file "dir-header-arg" t)))
+             (jupyter-org-test-src-block
+              "print(\"hi\")"
+              ": hi\n"
+              :dir (file-name-base dir)
+              :bindings ((default-directory (file-name-directory dir)))))))))))
 
 (ert-deftest jupyter-org--find-mime-types ()
   :tags '(org mime)
