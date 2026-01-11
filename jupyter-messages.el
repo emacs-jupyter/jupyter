@@ -169,20 +169,17 @@ return the result."
        'utf-8 t))))
 
 (defun jupyter--json-encode (original object)
-  (let (msg-type)
-    (cond
-     ((eq (car-safe object) 'message-part)
-      (cl-destructuring-bind (_ encoded-rep decoded-rep) object
-        (or encoded-rep (setf (nth 1 object)
-                              (jupyter--json-encode original decoded-rep)))))
-     ((and (keywordp object)
-           (setf msg-type (plist-get jupyter-message-types object)))
-      (json-encode msg-type))
-     ((and (listp object)
-           (= (length object) 4)
-           (cl-every #'integerp object))
-      (jupyter-encode-time object))
-     (t (funcall original object)))))
+  (cond
+   ((eq (car-safe object) 'message-part)
+    (pcase object
+      (`(,_ ,encoded-rep ,decoded-rep)
+       (or encoded-rep (setf (nth 1 object)
+                             (jupyter--json-encode original decoded-rep))))))
+   ((and (listp object)
+         (= (length object) 4)
+         (cl-every #'integerp object))
+    (jupyter-encode-time object))
+   (t (funcall original object))))
 
 (defun jupyter--decode (part)
   "Decode a message PART.
