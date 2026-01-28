@@ -287,6 +287,11 @@ this will cause errors in the URL library."
            ,(funcall setter `(encode-coding-string ,old 'us-ascii))
          ,old))))
 
+(defun jupyter-api-write-cookie-file ()
+  "Write cookies to file."
+  (setq url-cookies-changed-since-last-save t)
+  (url-cookie-write-file))
+
 ;; For more info on the XSRF header see
 ;; https://blog.jupyter.org/security-release-jupyter-notebook-4-3-1-808e1f3bb5e2
 ;; and
@@ -340,7 +345,6 @@ see RFC 6265."
               (port (url-port-if-non-default url))
               (host-port (format "%s:%s" host port))
               (cookies (jupyter-api-url-cookies url)))
-    (setq url-cookies-changed-since-last-save t)
     (cl-loop
      for cookie in cookies
      do (pcase-let (((cl-struct url-cookie name value expires
@@ -394,8 +398,7 @@ associated with HOST:PORT are deleted as well."
       (cl-loop
        for cookie in (jupyter-api-url-cookies u)
        do (jupyter-api--delete-cookie cookie)))
-    (setq url-cookies-changed-since-last-save t)
-    (url-cookie-write-file)))
+    (jupyter-api-write-cookie-file)))
 
 (defun jupyter-api-add-websocket-headers (plist)
   "Destructively modify PLIST to add a `:custom-header-alist' key.
@@ -501,7 +504,7 @@ error with the data being the error received by `url-retrieve'."
         (signal 'jupyter-api-login-failed err)))
     ;; Handle cookies.
     (jupyter-api-copy-cookies-for-websocket (oref client url))
-    (url-cookie-write-file)))
+    (jupyter-api-write-cookie-file)))
 
 ;;;; Authenticators
 
