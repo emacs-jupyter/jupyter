@@ -909,16 +909,18 @@ available via CLIENT."
     path
     (tramp-drop-volume-letter)
     ;; Strip slashes
-    (replace-regexp-in-string "^/+" "")
-    (replace-regexp-in-string "/+$" "")
-    ;; Handle #
-    (string-replace "#" "%23")))
+    (replace-regexp-in-string "/+" "/")
+    (replace-regexp-in-string "^/" "")
+    (replace-regexp-in-string "/$" "")
+    ((lambda (x)
+       (url-hexify-string
+        x (cons ?/ url-unreserved-chars))))))
 
 ;; See https://jupyter-server.readthedocs.io/en/latest/developers/contents.html#api-paths
 (defsubst jupyter-api-content-path (file)
-  "Return a sanitized path for locating FILE on a Jupyter REST server.
-Note, if FILE is not an absolute file name, it is expanded into
-one as if the `default-directory' where /."
+  "Return a sanitized path for locating FILE on a Jupyter server.
+If FILE is not an absolute file name, it is expanded into one as if the
+`default-directory' where /."
   (jupyter-api--sanitize-path
    (expand-file-name (file-local-name file) "/")))
 
