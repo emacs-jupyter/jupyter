@@ -773,7 +773,17 @@ ports remapped to the local ports."
 (defvar jupyter-io-cache (make-hash-table :weakness 'key))
 
 (cl-defgeneric jupyter-io (thing)
-  "Return the I/O object of THING.")
+  "Return the I/O object of THING.
+The returned value must be a list of the form
+
+    \(IO SUB)
+
+where IO is the I/O publisher which can be subscribed to in order to
+receive the messages which THING publishes and to which requests can be
+published to send on the underlying communication layer, e.g. a ZMQ
+socket or a WebSocket.  SUB is an action subscriber which can be
+published to in order to perform actions on THING, e.g. modifying the
+internal state of THING.")
 
 (cl-defmethod jupyter-io :around (thing)
   "Cache the I/O object of THING in `jupyter-io-cache'."
