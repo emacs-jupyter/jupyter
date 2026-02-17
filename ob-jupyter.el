@@ -799,26 +799,26 @@ Similarly, associate the same value for LANG in
 
 (defun org-babel-jupyter-aliases-from-kernelspecs (&optional refresh specs)
   "Make language aliases based on the available kernelspecs.
-For all kernel SPECS, make a language alias for the kernel
-language if one does not already exist.  The alias is created with
+For all kernel SPECS, make a language alias for the kernel language if
+one does not already exist.  The alias is created with
 `org-babel-jupyter-make-language-alias'.
 
 SPECS defaults to those associated with the `default-directory'.
 Optional argument REFRESH has the same meaning as in
 `jupyter-kernelspecs'.
 
-Note, spaces in the kernel language name are converted into
-dashes in the language alias, e.g.
+Note, spaces in the kernel language name are converted into dashes in
+the language alias, e.g.
 
     Wolfram Language -> jupyter-Wolfram-Language
 
-For convenience, after creating a language alias for a kernel
-language LANG, set the :kernel default header argument if not
-present in `org-babel-default-header-args:jupyter-LANG', see
-`org-babel-header-args:jupyter'.  This allows users to set that
-variable in their configurations without having to also set the
-:kernel header argument since it is common for only one per
-language to exist on someone's system."
+For convenience, after creating a language alias for a kernel language
+LANG, set the :kernel default header argument if not present in
+`org-babel-default-header-args:jupyter-LANG', see
+`org-babel-header-args:jupyter'.  This allows users to set that variable
+in their configurations without having to also set the :kernel header
+argument since it is common for only one per language to exist on a
+system."
   (cl-loop
    for spec in (or specs
                    (with-demoted-errors "Error retrieving kernelspecs: %S"

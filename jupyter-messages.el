@@ -53,7 +53,7 @@
   :group 'jupyter)
 
 (defconst jupyter-message-delimiter "<IDS|MSG>"
-  "The message delimiter required in the jupyter messaging protocol.")
+  "The message delimiter required in the Jupyter messaging protocol.")
 
 (defconst jupyter--false :json-false
   "The symbol used to disambiguate nil from boolean false.")
@@ -675,11 +675,10 @@ And is not the `jupyter-empty-message'."
 
 (defsubst jupyter-message-data (msg mimetype)
   "Get the message data for a specific mimetype.
-MSG should be a message with a `:data' field in its contents.
-MIMETYPE is should be a standard media mimetype
-keyword (`:text/plain', `:image/png', ...).  If the messages data
-has a key corresponding to MIMETYPE, return the value.  Otherwise
-return nil."
+MSG should be a message with a `:data' field in its contents.  MIMETYPE
+is a standard media mimetype keyword (`:text/plain', `:image/png', ...).
+If the messages data has a key corresponding to MIMETYPE, return the
+value.  Otherwise return nil."
   (plist-get (jupyter-message-get msg :data) mimetype))
 
 (defun jupyter-message-status-idle-p (msg)

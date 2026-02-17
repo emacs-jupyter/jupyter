@@ -1115,8 +1115,8 @@ otherwise nil."
   "Return non-nil if MODEL corresponds to Jupyter notebook JSON."
   (equal (plist-get model :type) "notebook"))
 
-;; TODO: Replace the :content key with the buffer? It is redundant to have both
-;; a string and a buffer holding the contents.
+;; TODO: Replace the :content key with the buffer?  It is redundant to
+;; have both a string and a buffer holding the contents.
 (defun jupyter-api-content-buffer (model)
   "Return a buffer holding MODEL's content.
 If MODEL's content is binary, the returned buffer will hold the

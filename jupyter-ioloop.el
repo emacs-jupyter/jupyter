@@ -376,7 +376,7 @@ nothing."
 The returned function is suitable to send to a ZMQ subprocess for
 evaluation using `zmq-start-process'.
 
-If PORT is non-nil the returned function will create a ZMQ PULL
+If PORT is non-nil the returned function will create a ZMQ PAIR
 socket to receive events from the parent process on the PORT of
 the local host, otherwise events are expected to be received on
 STDIN.  This is useful on Windows systems which don't allow

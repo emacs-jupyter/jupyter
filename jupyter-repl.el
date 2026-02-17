@@ -1537,8 +1537,8 @@ value."
 
 (defun jupyter-repl--get-client ()
   (or jupyter-current-client
-      ;; Also allow this command to be called from an Org mode buffer by
-      ;; selecting a client based on the REPL buffer.
+      ;; TODO: Also allow this command to be called from an Org mode
+      ;; buffer by selecting a client based on the REPL buffer.
       (buffer-local-value
        'jupyter-current-client
        (or (jupyter-repl-completing-read-repl-buffer)
@@ -1830,16 +1830,18 @@ Output cells are unfontified."
 (defun jupyter-repl-syntax-propertize-function (propertize-fun beg end)
   "Use PROPERTIZE-FUN to syntax propertize text between BEG and END."
   (jupyter-repl-map-cells beg end
-    ;; See note in `jupyter-repl-font-lock-fontify-region' on why the buffer
-    ;; should be narrowed to the input cell before calling this function.
+    ;; See note in `jupyter-repl-font-lock-fontify-region' on why the
+    ;; buffer should be narrowed to the input cell before calling this
+    ;; function.
     (lambda () (funcall propertize-fun (point-min) (point-max)))
-    ;; Treat parenthesis and string characters as punctuation when parsing the
-    ;; syntax of the output.  Although we don't fontify output regions,
-    ;; `syntax-ppss' still looks at the whole contents of the buffer.  If there
-    ;; are unmatched parenthesis or string delimiters in the output, it will
-    ;; interfere with `syntax-ppss'.  Note, this requires
-    ;; `parse-sexp-lookup-properties' to be non-nil so that `syntax-ppss' will
-    ;; look at the `syntax-table' property.
+    ;; Treat parenthesis and string characters as punctuation when
+    ;; parsing the syntax of the output.  Although we don't fontify
+    ;; output regions, `syntax-ppss' still looks at the whole contents
+    ;; of the buffer.  If there are unmatched parenthesis or string
+    ;; delimiters in the output, it will interfere with `syntax-ppss'.
+    ;; Note, this requires `parse-sexp-lookup-properties' to be
+    ;; non-nil so that `syntax-ppss' will look at the `syntax-table'
+    ;; property.
     (lambda ()
       (goto-char (point-min))
       (skip-syntax-forward "^()\"")
@@ -2021,9 +2023,9 @@ If the `major-mode' of the `current-buffer' is the
 `jupyter-repl-lang-mode' of CLIENT, call the function
 `jupyter-repl-interaction-mode' to enable the corresponding mode.
 
-CLIENT should be the symbol `jupyter-repl-client' or the symbol
-of a subclass.  If CLIENT is a buffer or the name of a buffer, use
-the `jupyter-current-client' local to the buffer."
+CLIENT should be a `jupyter-repl-client' or a subclass thereof.  If
+CLIENT is a buffer or the name of a buffer, use the
+`jupyter-current-client' local to the buffer."
   (interactive
    (list
     (when-let* ((buffer (jupyter-repl-completing-read-repl-buffer major-mode)))
