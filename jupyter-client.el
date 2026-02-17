@@ -169,12 +169,21 @@ kernel.")
 
 (defvar jupyter--current-request nil)
 
-(defun jupyter-current-request ()
+(define-error 'jupyter-no-request "No current request.")
+
+(defun jupyter-current-request (&optional noerror)
   "Return the current request.
+If there is no current request raise an `jupyter-no-request' error
+unless NOERROR is non-nil in which case, return nil.
+
 Useful, for example, in message callback functions.  See
 `jupyter-message-subscribed'."
-  (cl-check-type jupyter--current-request jupyter-request)
-  jupyter--current-request)
+  (unless noerror
+    (when (null jupyter--current-request)
+      (signal 'jupyter-no-request nil)))
+  (if (null jupyter--current-request) nil
+    (cl-check-type jupyter--current-request jupyter-request)
+    jupyter--current-request))
 
 (defvar jupyter-inhibit-handlers nil
   "Whether or not new requests inhibit client handlers.
@@ -662,7 +671,7 @@ waiting."
                 (error "Unhandled channel: %s" channel)))
            (handler (or (alist-get msg-type channel-handlers nil nil #'string=)
                         (error "Unhandled message type: %s" msg-type))))
-      (funcall handler client (jupyter-current-request) msg))))
+      (funcall handler client (jupyter-current-request t) msg))))
 
 (defsubst jupyter--update-execution-state (client msg)
   (pcase (jupyter-message-type msg)
@@ -685,13 +694,11 @@ message being handled."
                      (jupyter-message-content msg)))
     (let ((jupyter-current-client client))
       (jupyter--update-execution-state client msg)
-      (cond
-       (jupyter--current-request
-        (jupyter--run-handler-maybe client channel msg))
-       ((or (jupyter-get client 'jupyter-include-other-output)
-            ;; Always handle a startup message
-            (jupyter-message-status-starting-p msg))
-        (jupyter--run-handler-maybe client channel msg))))))
+      (when (or jupyter--current-request
+                (jupyter-get client 'jupyter-include-other-output)
+                ;; Always handle a startup message
+                (jupyter-message-status-starting-p msg))
+        (jupyter--run-handler-maybe client channel msg)))))
 
 ;;; STDIN handlers
 
