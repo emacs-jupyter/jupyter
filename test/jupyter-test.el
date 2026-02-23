@@ -1124,6 +1124,91 @@ attempting to access the rest of the stream")
         (should (null jupyter-test-idle-sync-hook))
         (jupyter-return nil)))))
 
+(ert-deftest jupyter-io-connect ()
+  :tags '(client connect)
+  (let* ((jupyter-test-with-new-client t)
+         (N 10)
+         (sleep-max 1.0)
+
+         (did-disconnect nil)
+         (continue nil)
+         (err nil)
+         (total N))
+    (jupyter-test-with-python-client client
+      (cl-letf (((symbol-function 'read-from-minibuffer)
+                 (lambda (_prompt &rest _args)
+                   (sleep-for (* (+ (/ (random 10) 10.0) 0.1) sleep-max))
+                   (jupyter-new-uuid))))
+        (cl-labels
+            ((add-stream-counter
+               ()
+               (jupyter-add-subscriber
+                (lambda (msg)
+                  (pcase (jupyter-message-type msg)
+                    ("stream"
+                     (cl-decf total))
+                    ;; This is received after reconnecting.
+                    ("error"
+                     (jupyter-with-message-content msg (ename)
+                       (setq err ename)))))))
+             (add-disconnecter
+               (pred on-disconnect)
+               (jupyter-add-subscriber
+                (lambda (msg)
+                  (when (funcall pred msg)
+                    (jupyter-disconnect client)
+                    (setq did-disconnect (not (jupyter-connected-p client)))
+                    (jupyter-run-soon (funcall on-disconnect))
+                    (jupyter-unsubscribe))))))
+          (jupyter-run-with-client client
+            (jupyter-do
+              (add-stream-counter)
+              (add-disconnecter
+               (let ((count 0)
+                     (max (floor (/ N 2))))
+                 (lambda (msg)
+                   (and (equal (jupyter-message-type msg) "stream")
+                        (let ((text
+                               (string-trim
+                                (jupyter-message-get msg :text))))
+                          (pcase (split-string text)
+                            (`(,(and type
+                                     (guard (equal type "msg")))
+                               ,uuid)
+                             (and (stringp uuid)
+                                  (not (string-empty-p uuid))))))
+                        (cl-incf count)
+                        (>= count max))))
+               (lambda ()
+                 (sleep-for (* 1.2 sleep-max))
+                 (jupyter-connect client)
+                 ;; Allow any pending input('') to bail.  We are
+                 ;; simulating a disconnect and reconnect on the
+                 ;; client side to the kernel which the idling ensures
+                 ;; that a message can be sent after reconnecting, but
+                 ;; it needs to be processed on the kernel side and
+                 ;; the input('') would block the handling.
+                 (jupyter-interrupt-kernel client)
+                 (jupyter-run-with-client client
+                   (jupyter-idle))
+                 (setq continue t)))
+              (jupyter-execute-request
+               :code (format "\
+def uuid():
+    return input('')
+
+for i in range(%s):
+    print(\"msg \" + uuid())
+" N))))
+          (jupyter-with-timeout
+              ("Waiting" (* 5 sleep-max)
+               (error "Timed out"))
+            continue)
+          (should did-disconnect)
+          (should (> N total 0))
+          (should (equal err "KeyboardInterrupt"))
+          (should (jupyter-connected-p client)))))))
+
 ;;; IOloop
 
 (ert-deftest jupyter-ioloop-lifetime ()
