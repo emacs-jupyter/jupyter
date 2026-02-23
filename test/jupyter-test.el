@@ -1124,6 +1124,74 @@ attempting to access the rest of the stream")
         (should (null jupyter-test-idle-sync-hook))
         (jupyter-return nil)))))
 
+(ert-deftest jupyter-io-connect ()
+  :tags '(client connect)
+  (let ((jupyter-test-with-new-client t)
+        (jupyter--debug t)
+        (disconnected 0)
+        (continue nil)
+        (total 0))
+    (jupyter-test-with-python-client client
+      (cl-letf (((symbol-function 'read-from-minibuffer)
+                 (lambda (_prompt &rest _args)
+                   (sleep-for (/ (random 10) 10.0))
+                   (jupyter-new-uuid))))
+        (cl-labels ((add-counter
+                      ()
+                      (jupyter-add-subscriber
+                       (lambda (msg)
+                         (when (equal (jupyter-message-type msg) "stream")
+                           (cl-incf total)))))
+                    (add-disconnecter
+                      (signal)
+                      (let ((max 5)
+                            (count 0))
+                        (jupyter-add-subscriber
+                         (lambda (msg)
+                           (when (and (equal (jupyter-message-type msg) "stream")
+                                      (let ((text
+                                             (string-trim
+                                              (jupyter-message-get msg :text))))
+                                        (pcase (split-string text)
+                                          (`(,(and type
+                                                   (guard (equal type "msg")))
+                                             ,uuid)
+                                           (not (string-empty-p uuid)))))) 
+                             (cl-incf count))
+                           (when (>= count max)
+                             (cl-incf disconnected)
+                             (jupyter-disconnect client)
+                             (jupyter-run-soon (funcall signal))
+                             (jupyter-unsubscribe)))))))
+          (jupyter-run-with-client client
+            (jupyter-do
+              (add-counter)
+              (add-disconnecter
+               (lambda ()
+                 (sleep-for 5)
+                 (jupyter-connect client)
+                 (jupyter-run-with-client client
+                   (jupyter-idle nil 15))
+                 (setq continue t)))
+              (jupyter-execute-request
+               :code "\
+import time
+
+def uuid():
+    return input('')
+
+for i in range(10):
+    time.sleep(0.1)
+    print(\"msg \" + uuid())
+")))
+          (jupyter-with-timeout ("Waiting" 30
+                                 (error "Timed out"))
+            continue)
+          (should (< total 10))
+          (should (> total 0))
+          (should (= disconnected 1))
+          (should (jupyter-connected-p client)))))))
+
 ;;; IOloop
 
 (ert-deftest jupyter-ioloop-lifetime ()
