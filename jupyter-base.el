@@ -205,7 +205,11 @@ The END marker will advance if BODYFORM inserts text in the
 current buffer.  Thus after BODYFORM is evaluated, AFTERFORMS will
 have access to the bounds of the text inserted by BODYFORM in the
 variables BEG and END.  The result of evaluating BODYFORM is
-returned."
+returned.
+
+Note this only handles the simple case that BODYFORM inserts text at
+`point' and not, for example, in non-contiguous regions before or after
+`point'."
   (declare (indent 3) (debug (symbolp symbolp form body)))
   `(let ((,beg (point-marker))
          (,end (point-marker)))
