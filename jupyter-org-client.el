@@ -1949,32 +1949,32 @@ If INDENTATION is nil, it defaults to `current-indentation'."
           (goto-char (match-beginning 0)))
       (put-text-property (1- (point)) (point) 'jupyter-stream-newline t))))
 
-(defun jupyter-org--insert-nonstream (context result)
+(defun jupyter-org--insert-display-element (context element)
   (cond
    ((jupyter-org--first-result-context-p context)
     (insert (org-element-interpret-data
-             (if (jupyter-org-babel-result-p result)
-                 result
-               ;; Wrap the result if it can't be removed by
+             (if (jupyter-org-babel-result-p element)
+                 element
+               ;; Wrap the element if it can't be removed by
                ;; `org-babel'.
-               (jupyter-org-results-drawer result)))))
+               (jupyter-org-results-drawer element)))))
    (t
     (let ((elems (jupyter-org--prepare-context context)))
       (insert (org-element-interpret-data
                (if elems
                    (apply #'jupyter-org-results-drawer
-                          (append elems (list result)))
-                 (if (or (jupyter-org-babel-result-p result)
+                          (append elems (list element)))
+                 (if (or (jupyter-org-babel-result-p element)
                          (eq (org-element-type context) 'drawer))
-                     result
-                   (jupyter-org-results-drawer result))))))))
+                     element
+                   (jupyter-org-results-drawer element))))))))
   (when (/= (point) (line-beginning-position))
     ;; Org objects such as file links do not have a newline added when
     ;; converting to their string representation by
     ;; `org-element-interpret-data' so insert one in these cases.
     (insert "\n"))
   (when (and jupyter-org-toggle-latex
-             (memq (org-element-type result)
+             (memq (org-element-type element)
                    '(latex-fragment latex-environment)))
     (save-excursion
       ;; Go to a position contained in the fragment
@@ -2014,7 +2014,7 @@ If INDENTATION is nil, it defaults to `current-indentation'."
                   (jupyter-org--insert-stream context result)
                 (when (eq (org-element-type result) 'pandoc)
                   (setq result (jupyter-org-pandoc-placeholder-element req result)))
-                (jupyter-org--insert-nonstream context result)))))))))
+                (jupyter-org--insert-display-element context result)))))))))
 
 (defun jupyter-org-inserted-result (data &optional metadata)
   "Return a value that inserts DATA and METADATA as an Org element.
