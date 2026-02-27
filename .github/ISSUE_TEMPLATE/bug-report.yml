@@ -1,0 +1,63 @@
+name: Bug Report
+description: File a bug report.
+title: "[BUG] "
+labels: ["bug", "triage"]
+type: bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: The Emacs/Jupyter environment
+      placeholder: |
+        M-: system-configuration RET
+        M-x emacs-version RET
+        M-x shell-command RET jupyter --version RET
+        M-: jupyter-version
+
+        Was Emacs run under `emacs -Q`?  This can be done conveniently
+        with Emacs-Jupyter already pre-loaded, if you have Eldev
+        (https://github.com/emacs-eldev/eldev) installed, by executing
+
+            eldev emacs
+
+        in the directory of this package's source.
+      validations:
+        required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Actual behavior
+      placeholder: |
+        What happened?  List the steps taken which triggered the bug.
+        Be as clear as possible about what actually happened in your
+        Emacs environment before the bug was triggered.  Recall that
+        an `emacs -Q` session rules out any issues with how you've
+        configured your Emacs and tends to imply the bug being in
+        Emacs-Jupyter.
+      render: markdown
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Bug reproduction steps
+      placeholder: |
+        What steps reproduce the bug?  List the combination of
+        commands or key presses invoked, variables that need to be set
+        to particular values, etc.  Most useful would be a script, in
+        Emacs-Lisp or otherwise, that can be called to trigger the
+        bug.
+    validations:
+      required: false
