@@ -211,6 +211,15 @@ Note this only handles the simple case that BODYFORM inserts text at
 `point' and not, for example, in non-contiguous regions before or after
 `point'."
   (declare (indent 3) (debug (symbolp symbolp form body)))
+  ;; (let* ((bounds nil)
+  ;;        (after-change-functions
+  ;;         (cons (lambda (beg end change)
+  ;;                 (setq bounds (cons beg end)))
+  ;;               after-change-functions)))
+  ;;   (combine-after-change-calls ,bodyform)
+  ;;   (pcase bounds
+  ;;     (`(,,beg . ,,end)
+  ;;      ,@afterforms)))
   `(let ((,beg (point-marker))
          (,end (point-marker)))
      (set-marker-insertion-type ,end t)
@@ -218,6 +227,14 @@ Note this only handles the simple case that BODYFORM inserts text at
          (prog1 ,bodyform ,@afterforms)
        (set-marker ,beg nil)
        (set-marker ,end nil))))
+
+;; (with-temp-buffer
+;;   (let ((after-change-functions
+;;          (cons (lambda (beg end change)
+;;                  (setq bounds (cons beg end)))
+;;                after-change-functions)))
+    
+;;     ))
 
 (defun jupyter-map-mime-bundle (mime-types content fun)
   "For each mime-type in MIME-TYPES, call FUN with its data in CONTENT.
