@@ -26,8 +26,8 @@ body:
             eldev emacs
 
         in the directory of this package's source.
-      validations:
-        required: true
+    validations:
+      required: true
   - type: textarea
     id: what-happened
     attributes:
