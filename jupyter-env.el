@@ -174,16 +174,10 @@ The session can be used to write a connection file, see
                           (file-remote-p default-directory))
                         (match-string 1)))
             (conn-info (jupyter-read-connection conn-file)))
-        ;; Tell the `jupyter kernel` process to shutdown itself and
-        ;; the launched kernel.
-        (interrupt-process process)
-        ;; Wait until the connection file is cleaned up before
-        ;; forgetting about the process completely.
-        (jupyter-with-timeout
-            (nil (if (file-remote-p conn-file) 0 jupyter-default-timeout)
-                 (delete-file conn-file))
-          (not (file-exists-p conn-file)))
-        (delete-process process)
+        (signal-process process 'SIGTERM)
+        (jupyter-with-timeout (nil jupyter-default-timeout
+                                   (delete-process process))
+          (not (process-live-p process)))
         (let ((new-key (jupyter-new-uuid)))
           (plist-put conn-info :key new-key)
           (jupyter-session
