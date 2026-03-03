@@ -73,7 +73,13 @@
                  (jupyter-bind (jupyter-return 2)
                    (lambda (a)
                      (jupyter-bind (jupyter-return (* a 3))
-                       (lambda (b) (progn b))))))))
+                       (lambda (b) (progn b)))))))
+  (let (result)
+    (jupyter-run-with-state nil
+      (jupyter-mlet* ((`(,a ,_) (jupyter-return (list 1 2))))
+        (setq result a)
+        (jupyter-return nil)))
+    (should (equal result 1))))
 
 (ert-deftest jupyter-publisher/subscriber ()
   :tags '(monad)
