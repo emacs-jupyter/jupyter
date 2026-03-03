@@ -144,16 +144,7 @@ See also the docstring of `org-image-actual-width' for more details."
   "MIME types handled by Jupyter Org.")
 
 (defclass jupyter-org-client (jupyter-repl-client)
-  ((most-recent-request
-    :type (or jupyter-request null)
-    :initform nil
-    :initarg :most-recent-request
-    :documentation "The most recently sent request.")
-   (last-queued-request
-    :type (or jupyter-request null)
-    :initform nil
-    :initarg :last-queued-request
-    :documentation "The last queued request.")))
+  ())
 
 (cl-defstruct (jupyter-org-request
                (:include jupyter-request)
@@ -273,15 +264,19 @@ nothing and return nil."
     (cl-call-next-method)))
 
 (defun jupyter-org-request-at-point ()
-  "Return the `jupyter-org-request' associated with `point' or nil."
+  "Return the `jupyter-org-request' associated with `point'.
+Nil is returned if there is no request or if it is already idle.
+If the request has not been sent yet, e.g. it is still pending
+due to being queued, return t."
   (when-let* ((context (org-element-context))
               (babel-p (memq (org-element-type context)
                              '(src-block babel-call
-                               inline-babel-call inline-src-block)))
-              (pos (jupyter-org-element-begin-after-affiliated context))
-              (req (get-text-property pos 'jupyter-request)))
-    (and (not (jupyter-request-idle-p req))
-         req)))
+                                         inline-babel-call inline-src-block)))
+              (pos (jupyter-org-element-begin-after-affiliated context)))
+    (pcase (get-text-property pos 'jupyter-request)
+      (`pending t)
+      (`nil nil)
+      (req (unless (jupyter-request-idle-p req) req)))))
 
 ;;;; Stream
 
@@ -515,9 +510,6 @@ message down the chain of subscribers to the REQ's message
 publisher to indicate that any subsequent, queued, requests
 should also be aborted."
   (setf (jupyter-request-idle-p req) t)
-  (let ((client (jupyter-request-client req)))
-    (when (eq (oref client last-queued-request) req)
-      (oset client last-queued-request nil)))
   (jupyter-org--remove-overlay req)
   (jupyter-org--clear-async-indicator req)
   (let ((marker (jupyter-org-request-marker req)))
@@ -575,7 +567,7 @@ should also be aborted."
       (jupyter-add-subscriber (jupyter-org-dequeue-on-reply client))
       (jupyter-do req))))
 
-(defun jupyter-org--send (req on-busy on-reply)
+(defun jupyter-org--send (req on-busy on-reply &optional callbacks)
   (let ((rreq nil))
     (jupyter-do
       (jupyter-add-subscriber
@@ -583,53 +575,94 @@ should also be aborted."
          (let ((type (jupyter-message-type msg)))
            (cond
             ((string-suffix-p "_reply" type)
-             (funcall on-reply rreq))
+             (jupyter-with-message-content msg (status)
+               (funcall on-reply (equal status "ok") rreq)))
             ((jupyter-message-status-busy-p msg)
              (funcall on-busy rreq))))))
-      (jupyter-mlet* ((sreq (jupyter-do req)))
+      (jupyter-mlet* ((sreq (jupyter-do
+                              (if callbacks
+                                  (jupyter-message-subscribed
+                                   req callbacks)
+                                req))))
         (jupyter-return
           (setq rreq sreq))))))
 
-(defun jupyter-org--enqueue (req on-busy on-reply on-abort)
-  (let ((client jupyter-current-client))
-    (let ((action (jupyter-mlet* ((state (jupyter-get-state)))
-                    (jupyter-do
-                      (jupyter-put-state client)
-                      (jupyter-mlet* ((req (jupyter-org--send
-                                            (jupyter-org-dequeue-after
-                                             req)
-                                            on-busy
-                                            on-reply)))
-                        (jupyter-do
-                          (jupyter-put-state state)
-                          (jupyter-return req)))))))
-      (push (list action on-abort)
-            (gethash client jupyter-org-request-queue))
-      (jupyter-return nil))))
+(defun jupyter-org--enqueue (req on-busy on-reply on-abort callbacks)
+  (let* ((client jupyter-current-client)
+         (marker (copy-marker org-babel-current-src-block-location))
+         (org-babel-current-src-block-location marker))
+    (cl-check-type client jupyter-kernel-client)
+    ;; FIXME This gets overridden in `jupyter-generate-request' when
+    ;; it is called, but we need it here for
+    ;; `jupyter-org-request-at-point' to return a non-nil value for a
+    ;; pending request.
+    (put-text-property marker (1+ marker) 'jupyter-request 'pending)
+    (let ((on-abort
+           (lambda ()
+             (remove-text-properties marker (1+ marker) '(jupyter-request))
+             (set-marker marker nil)
+             (funcall on-abort)))
+          (req (jupyter-with-bindings*
+                   (org-babel-current-src-block-location
+                    org-babel-jupyter-current-src-block-params)
+                 (org-with-point-at
+                     org-babel-current-src-block-location
+                   (jupyter-at-point req)))))
+      (let ((action (jupyter-mlet* ((state (jupyter-get-state)))
+                      (jupyter-do
+                        (jupyter-put-state client)
+                        (jupyter-mlet* ((req (jupyter-org--send
+                                              (jupyter-org-dequeue-after
+                                               req)
+                                              on-busy
+                                              on-reply
+                                              callbacks)))
+                          (jupyter-do
+                            (jupyter-put-state state)
+                            (jupyter-return req)))))))
+        (push (list action on-abort)
+              (gethash client jupyter-org-request-queue))
+        (jupyter-return nil)))))
 
-(defun jupyter-org-run-queue (client)
-  (when-let* ((action (jupyter-org-dequeue client)))
-    (jupyter-run-with-state nil action)))
+(defun jupyter-org-run-queue ()
+  (maphash (lambda (client _)
+             (pcase (jupyter-org-dequeue client)
+               (`(,action ,_)
+                (jupyter-run-with-state client action))))
+           jupyter-org-request-queue))
 
-(defun jupyter-org-maybe-queued (req on-busy on-reply &optional on-abort)
+(defun jupyter-org-maybe-queued (req on-busy on-reply &optional on-abort
+                                     &rest callbacks)
   "Queue REQ with some message handlers.
 ON-BUSY and ON-REPLY are functions taking a single argument, a
 message, when a status: busy and a reply message are received,
 respectively, for the REQ.  ON-ABORT is a function taking no
 arguments and is called only when REQ is evaluated due to some
-other queued request raising an error during evaluation.
+other queued request raising an error during evaluation.  The
+rest of the arguments form the CALLBACKS, a property list like
+
+    \\='(:status ... :execute_result ...)
+
+where the keys are message types and the values are callback
+functions that a message as argument.  Note, the current request
+which generated the message can be accessed through
+`jupyter-current-request'.
 
 REQ is only queued if `jupyter-org-queue-requests' is non-nil, in
 that case the value returned queues the request and returns nil.
 When `jupyter-org-queue-requests' is nil, return a value that
 sends the request immediately and returns the request."
+  (setq callbacks
+        (cl-loop
+         for (type cb) on callbacks by #'cddr
+         for type = (substring (symbol-name type) 1)
+         collect (list type cb)))
   (if jupyter-org-queue-requests
-      (jupyter-with-bindings*
-          (jupyter-current-client)
-        (jupyter-org--enqueue
-         req on-busy on-reply (or on-abort #'ignore)))
+      (jupyter-org--enqueue
+       req on-busy on-reply (or on-abort #'ignore)
+       callbacks)
     (jupyter-org--send
-     req on-busy on-reply)))
+     req on-busy on-reply callbacks)))
 
 (defvar jupyter-org-queue-timer nil)
 
@@ -2062,11 +2095,8 @@ the return value for asynchronous Jupyter source blocks in
       (setq org-babel-after-execute-hook
             (list (lambda ()
                     (setq message-log-max log-max)
-                    (unwind-protect
-                        (jupyter-org--add-result
-                         req (list :text/plain (jupyter-org-request-id req)))
-                      (setq org-babel-after-execute-hook hook)
-                      (run-hooks 'org-babel-after-execute-hook))))))))
+                    (setq org-babel-after-execute-hook hook)
+                    (run-hooks 'org-babel-after-execute-hook)))))))
 
 (defun jupyter-org--coalesce-stream-results (results)
   "Return RESULTS with all contiguous stream results concatenated."
@@ -2108,35 +2138,48 @@ the return value for asynchronous Jupyter source blocks in
 Meant to be used as the return value of
 `org-babel-execute:jupyter'."
   (pcase-let (((cl-struct jupyter-org-request block-params
-                          results silent-p block-params)
+                          results silent-p
+                          inline-block-p block-params)
                req))
-    (setq results (jupyter-org--coalesce-stream-results (nreverse results)))
-    (if silent-p
-        (org-babel-script-escape
-         (mapconcat
-          (lambda (result)
-            (if (consp result)
-                (or (jupyter-mime-value result :text/plain) "")
-              (cl-check-type result string)
-              result))
-          results
-          "\n"))
-      (when-let* ((results
-                   (mapcar (lambda (r)
-                        (if (jupyter-org--stream-result-p r)
-                            (jupyter-org-scalar
-                             (jupyter-org-strip-last-newline r))
-                          r))
-                      (jupyter-org--process-pandoc-results
-                       (mapcar (apply-partially #'jupyter-org-get-result req)
-                          results))))
-                  (result-params (alist-get :result-params block-params)))
-        (org-element-interpret-data
-         (if (or (and (= (length results) 1)
-                      (jupyter-org-babel-result-p (car results)))
-                 (member "raw" result-params))
-             (car results)
-           (apply #'jupyter-org-results-drawer results)))))))
+    (if inline-block-p
+        ;; When evaluating a source block
+        ;; synchronously, only the
+        ;; :execute-result will be in
+        ;; `jupyter-org-request-results'
+        ;; since stream results and any
+        ;; displayed data will be placed
+        ;; in a separate buffer.
+        (let ((el (jupyter-org-result
+                   req (car results))))
+          (if (stringp el) el
+            (org-element-property :value el)))
+      (setq results (jupyter-org--coalesce-stream-results (nreverse results)))
+      (if silent-p
+          (org-babel-script-escape
+           (mapconcat
+            (lambda (result)
+              (if (consp result)
+                  (or (jupyter-mime-value result :text/plain) "")
+                (cl-check-type result string)
+                result))
+            results
+            "\n"))
+        (when-let* ((results
+                     (mapcar (lambda (r)
+                          (if (jupyter-org--stream-result-p r)
+                              (jupyter-org-scalar
+                               (jupyter-org-strip-last-newline r))
+                            r))
+                        (jupyter-org--process-pandoc-results
+                         (mapcar (apply-partially #'jupyter-org-get-result req)
+                            results))))
+                    (result-params (alist-get :result-params block-params)))
+          (org-element-interpret-data
+           (if (or (and (= (length results) 1)
+                        (jupyter-org-babel-result-p (car results)))
+                   (member "raw" result-params))
+               (car results)
+             (apply #'jupyter-org-results-drawer results))))))))
 
 (provide 'jupyter-org-client)
 
