@@ -24,18 +24,6 @@
 
 ;; TODO: Generalize `jupyter-with-io' and `jupyter-do' for any monad,
 ;; not just the I/O one.
-;;
-;; TODO: Allow pcase patterns in mlet*
-;;
-;;     (jupyter-mlet* ((value (jupyter-server-kernel-io kernel)))
-;;       (pcase-let ((`(,kernel-sub ,event-pub) value))
-;;         ...))
-;;
-;;     into
-;;
-;;     (jupyter-mlet* ((`(,kernel-sub ,event-pub)
-;;                      (jupyter-server-kernel-io kernel)))
-;;       ...)
 
 ;;; Code:
 
@@ -78,16 +66,25 @@
 (defmacro jupyter-mlet* (varlist &rest body)
   "Bind the monadic values in VARLIST, evaluate BODY.
 Return the result of evaluating BODY.  The result of evaluating
-BODY should be another monadic value."
+BODY should be another monadic value.
+
+Note that VARLIST has the same meaning as in `let' with the addition
+that there is support for destructuring using `pcase' patterns."
   (declare (indent 1) (debug ((&rest (symbolp form)) body)))
   (if (null varlist)
       (if (zerop (length body)) '(jupyter-return nil)
         `(progn ,@body))
-    (pcase-let ((`(,name ,mvalue) (car varlist)))
+    (pcase-let ((`(,pat ,mvalue) (car varlist)))
       `(jupyter-bind ,mvalue
-         (lambda (,name)
-           (jupyter-mlet* ,(cdr varlist)
-             ,@body))))))
+         ,(if (symbolp pat)
+              `(lambda (,pat)
+                 (jupyter-mlet* ,(cdr varlist)
+                   ,@body))
+            (let ((arg (make-symbol "arg")))
+              `(lambda (,arg)
+                 (pcase-let ((,pat ,arg))
+                   (jupyter-mlet* ,(cdr varlist)
+                     ,@body)))))))))
 
 (defmacro jupyter-do (&rest actions)
   "Return a monadic value that performs all actions in ACTIONS.
