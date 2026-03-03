@@ -102,7 +102,7 @@ table for the source block at `point'.")
       (advice-member-p
        'ob-jupyter (intern (concat "org-babel-execute:" lang)))))
 
-(defun org-babel-jupyter-session-key (params &optional noerror)
+(defun org-babel-jupyter--session-key (params &optional noerror)
   "Return a string that is the concatenation of the :session and :kernel PARAMS.
 PARAMS is the arguments alist as returned by
 `org-babel-get-src-block-info'.  The returned string can then be
@@ -117,7 +117,7 @@ to identify a session return nil, otherwise raise an error."
              (not (equal session "none")))
         (concat session "-" kernel)
       (unless noerror
-        (error "Need a valid session and a kernel to form a key")))))
+        (error "A key needs a valid :session and :kernel argument")))))
 
 (defun org-babel-jupyter-src-block-session ()
   "Return the session key for the current Jupyter source block.
@@ -129,7 +129,7 @@ if there is no source block at point."
     (when info
       (cl-destructuring-bind (lang _ params . rest) info
         (when (org-babel-jupyter-language-p lang)
-          (org-babel-jupyter-session-key params))))))
+          (org-babel-jupyter--session-key params))))))
 
 ;;; `ob' integration
 
@@ -395,7 +395,7 @@ If NOERROR is nil, raise an error if PARAMS doesn't contain valid
 information to identify a session, e.g. the `:session' key is
 \"none\".  Otherwise, for a non-nil NOERROR and when PARAMS
 doesn't contain valid information, return nil."
-  (when-let* ((key (org-babel-jupyter-session-key params noerror)))
+  (when-let* ((key (org-babel-jupyter--session-key params noerror)))
     (gethash key org-babel-jupyter-session-clients)))
 
 (defun org-babel-jupyter-initiate-session-by-key (session params)
@@ -415,7 +415,7 @@ kernel starts on the remote host /ssh:ec2: with a session name of
 jl.  The remote host must have jupyter installed since the
 \"jupyter kernel\" command will be used to start the kernel on
 the host."
-  (let* ((key (org-babel-jupyter-session-key params))
+  (let* ((key (org-babel-jupyter--session-key params))
          (client (gethash key org-babel-jupyter-session-clients)))
     (unless client
       (setq client (org-babel-jupyter-initiate-client

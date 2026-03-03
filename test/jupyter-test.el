@@ -2200,7 +2200,7 @@ next(x"))))))
                  (session session)
                  (code "1 + 1")))
      (let* ((params (nth 2 (org-babel-get-src-block-info)))
-            (key (org-babel-jupyter-session-key params)))
+            (key (org-babel-jupyter--session-key params)))
        (should-not (gethash key org-babel-jupyter-session-clients))
        (let ((buffer (org-babel-jupyter-initiate-session-by-key
                       session params))
@@ -2929,7 +2929,7 @@ AB[43mCD[0mEF
 #+END_SRC")
    (goto-char (point-min))
    (should (equal (org-babel-jupyter-src-block-session)
-                  (org-babel-jupyter-session-key
+                  (org-babel-jupyter--session-key
                    (nth 2 (org-babel-get-src-block-info 'light)))))
    (erase-buffer)
 
@@ -2940,7 +2940,7 @@ AB[43mCD[0mEF
 
 #+CALL: foo()")
    (should (equal (org-babel-jupyter-src-block-session)
-                  (org-babel-jupyter-session-key
+                  (org-babel-jupyter--session-key
                    (nth 2 (org-babel-lob-get-info)))))))
 
 (ert-deftest org-babel-jupyter-override-src-block ()
