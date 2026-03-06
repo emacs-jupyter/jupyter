@@ -1806,41 +1806,44 @@ If INDENTATION is nil, it defaults to `current-indentation'."
                             'org-latex-overlay))
           (org-latex-preview))))))
 
+(defun jupyter-org-insert-result (req result)
+  (pcase-let (((cl-struct jupyter-org-request
+                          inline-block-p block-params client)
+               req))
+    (jupyter-org-with-point-at req
+      (if inline-block-p
+          (org-babel-insert-result
+           (if (stringp result) result
+             (or (org-element-property :value result) ""))
+           (alist-get :result-params block-params)
+           nil nil (jupyter-kernel-language client))
+        (let ((res-begin (org-babel-where-is-src-block-result 'insert)))
+          (goto-char res-begin)
+          (let ((context (org-element-context))
+                (indent (current-indentation)))
+            ;; Handle file links which are org element objects and are contained
+            ;; within paragraph contexts.
+            (when (eq (org-element-type context) 'paragraph)
+              (save-excursion
+                (goto-char (jupyter-org-element-begin-after-affiliated context))
+                (when (looking-at-p (format "^[ \t]*%s[ \t]*$" org-link-bracket-re))
+                  (setq context (org-element-context)))))
+            ;; Skip past the #+RESULTS line
+            (forward-line 1)
+            (unless (bolp) (insert "\n"))
+            (jupyter-org-indent-inserted-region indent
+              (if (jupyter-org--stream-result-p result)
+                  (jupyter-org--insert-stream context result)
+                (when (eq (org-element-type result) 'pandoc)
+                  (setq result (jupyter-org-pandoc-placeholder-element req result)))
+                (jupyter-org--insert-nonstream context result)))))))))
+
 (defun jupyter-org-inserted-result (data &optional metadata)
   "Return a monadic value that inserts DATA and METADATA as an Org element."
   (jupyter-mlet* ((req (jupyter-get-state)))
-    (pcase-let (((cl-struct jupyter-org-request
-                            inline-block-p block-params client)
-                 req))
-      (let ((result (jupyter-org-get-result req data metadata)))
-        (jupyter-org-with-point-at req
-          (if inline-block-p
-              (org-babel-insert-result
-               (if (stringp result) result
-                 (or (org-element-property :value result) ""))
-               (alist-get :result-params block-params)
-               nil nil (jupyter-kernel-language client))
-            (let ((res-begin (org-babel-where-is-src-block-result 'insert)))
-              (goto-char res-begin)
-              (let ((context (org-element-context))
-                    (indent (current-indentation)))
-                ;; Handle file links which are org element objects and are contained
-                ;; within paragraph contexts.
-                (when (eq (org-element-type context) 'paragraph)
-                  (save-excursion
-                    (goto-char (jupyter-org-element-begin-after-affiliated context))
-                    (when (looking-at-p (format "^[ \t]*%s[ \t]*$" org-link-bracket-re))
-                      (setq context (org-element-context)))))
-                ;; Skip past the #+RESULTS line
-                (forward-line 1)
-                (unless (bolp) (insert "\n"))
-                (jupyter-org-indent-inserted-region indent
-                  (if (jupyter-org--stream-result-p result)
-                      (jupyter-org--insert-stream context result)
-                    (when (eq (org-element-type result) 'pandoc)
-                      (setq result (jupyter-org-pandoc-placeholder-element req result)))
-                    (jupyter-org--insert-nonstream context result)))))))
-        (jupyter-return result)))))
+    (let ((result (jupyter-org-get-result req data metadata)))
+      (jupyter-org-insert-result req result)
+      (jupyter-return result))))
 
 (defun jupyter-org--start-pandoc-conversion (el cb)
   (jupyter-pandoc-convert
