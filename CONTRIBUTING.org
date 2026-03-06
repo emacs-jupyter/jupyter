@@ -1,0 +1,53 @@
+#+TITLE: Emacs-Jupyter contributing guidelines
+#+AUTHOR: Nathaniel Nicandro
+
+* Introduction
+
+Welcome.  If you would like to contribute to Emacs-Jupyter please read
+the relevant sections of this document based on the type of
+contribution you would like to make.  There are plenty of ways to
+contribute even if your not that experienced with Emacs-Lisp, e.g. you
+can update the documentation, request and discuss new features or try
+to reproduce bugs.
+
+* Pull requests
+
+When submitting a pull request, the [[https://www.gnu.org/prep/standards/html_node/Style-of-Change-Logs.html][GNU style of change log entries]] is
+preferred in commit messages for non-trivial changes.  This is not a
+hard rule and it is OK to have commit messages be simply one-liners or
+include a small description of why the change was made without having
+to follow that style.
+
+If the pull request corresponds to a new feature, please open an issue
+first discussing the feature request before submitting a pull request
+so it can be discussed.
+
+** Coding standards
+
+There are no strict coding standards followed by this project other
+than the implicit styles that grew organically from its maintenance
+and the mere fact that it is an extension of the core facilities of
+Emacs with their conventions.  A style guide that has useful standards
+which are in-line with the project can be found [[https://github.com/bbatsov/emacs-lisp-style-guide][here]].
+
+** Testing
+
+If the change alters some behavior, an associated test should be
+included in the pull request.  If the pull request is solving a bug,
+then this can simply be the reproduction of the bug.  For a new
+feature, please ensure that each part of the feature has appropriate
+tests.
+
+* Bug reports
+
+A bug-report GitHub template is available when creating a new issue,
+refer to that when you'd like to report a bug.
+
+* Ideas/feature requests
+
+If you have a feature request please open up a new issue with the
+prefix, [FR], in the title and include in the issue what exactly the
+feature would be and justification as to why it should be included in
+Emacs-Jupyter.  For general ideas, open up a new discussion in the
+Ideas category.
+
