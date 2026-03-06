@@ -184,7 +184,7 @@ e.g. `org-babel-get-src-block-info'."
   "Move to the associated marker of REQ while evaluating BODY.
 If the marker points nowhere don't evaluate BODY, just do
 nothing and return nil."
-  (declare (indent 1))
+  (declare (indent 1) (debug (form body)))
   `(pcase-let (((cl-struct jupyter-org-request marker) ,req))
      (when (and (marker-buffer marker) (marker-position marker))
        (org-with-point-at marker
