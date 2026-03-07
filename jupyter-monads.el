@@ -561,7 +561,6 @@ list, represents."
                    client
                    :type type
                    :content content
-                   :client client
                    ;; Anything sent to stdin is a reply not a request
                    ;; so consider the "request" completed.
                    :idle-p (string= "stdin" channel)
