@@ -2141,7 +2141,7 @@ the return value for asynchronous Jupyter source blocks in
   "Return the result string in org syntax for the results of REQ.
 Meant to be used as the return value of
 `org-babel-execute:jupyter'."
-  (pcase-let (((cl-struct jupyter-org-request block-params
+  (pcase-let (((cl-struct jupyter-org-request
                           results silent-p
                           inline-block-p block-params)
                req))
