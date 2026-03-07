@@ -2001,11 +2001,15 @@ If INDENTATION is nil, it defaults to `current-indentation'."
                 (jupyter-org--insert-nonstream context result)))))))))
 
 (defun jupyter-org-inserted-result (data &optional metadata)
-  "Return a monadic value that inserts DATA and METADATA as an Org element."
+  "Return a value that inserts DATA and METADATA as an Org element.
+It returns the result inserted, if a result could not be
+obtained, it returns nil."
   (jupyter-mlet* ((req (jupyter-get-state)))
-    (let ((result (jupyter-org-get-result req data metadata)))
-      (jupyter-org-insert-result req result)
-      (jupyter-return result))))
+    (if-let* ((result (jupyter-org-get-result req data metadata)))
+        (progn
+          (jupyter-org-insert-result req result)
+          (jupyter-return result))
+      (jupyter-return nil))))
 
 (defun jupyter-org--start-pandoc-conversion (el cb)
   (jupyter-pandoc-convert
