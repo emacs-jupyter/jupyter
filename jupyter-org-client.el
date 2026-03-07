@@ -1506,6 +1506,14 @@ appear after the element."
   ;; Ensure that a #+RESULTS: line is not prepended to context when calling
   ;; `org-element-interpret-data'.
   (org-element-put-property element :results nil)
+  ;; Strip affiliated keywords that are already preserved in the buffer
+  ;; by `jupyter-org-delete-element' (which deletes from :post-affiliated).
+  ;; Without this, `org-element-interpret-data' re-emits #+NAME: and
+  ;; #+CAPTION: inside the :RESULTS: drawer, duplicating the keywords
+  ;; that sit above #+RESULTS: in the buffer.
+  ;; See https://github.com/emacs-jupyter/jupyter/issues/610
+  (org-element-put-property element :name nil)
+  (org-element-put-property element :caption nil)
   ;; Ensure there is no post-blank since `org-element-interpret-data'
   ;; already normalizes the string.
   (org-element-put-property element :post-blank nil))
