@@ -2237,8 +2237,7 @@ like the symbol `jupyter-repl-client', which is the default. "
   (jupyter-bootstrap-repl
    (jupyter-client
     (jupyter-kernel
-     :conn-info file
-     :connect-p t)
+     :conn-info file)
     client-class)
    repl-name associate-buffer display))
 

@@ -60,7 +60,7 @@ exist are deleted.")
 
 (cl-defstruct (jupyter-kernel-process
                (:include jupyter-kernel))
-  connect-p)
+  -connect-only-p)
 
 (cl-defmethod jupyter-process ((kernel jupyter-kernel-process))
   "Return the process of KERNEL.
@@ -95,8 +95,7 @@ Call the next method if ARGS does not contain a :spec or
 :conn-info key."
   (if (plist-get args :server) (cl-call-next-method)
     (let ((spec (plist-get args :spec))
-          (conn-info (plist-get args :conn-info))
-          (connect-p (plist-get args :connect-p)))
+          (conn-info (plist-get args :conn-info)))
       (cond
        ((and spec (not conn-info))
         (when (stringp spec)
@@ -106,23 +105,19 @@ Call the next method if ARGS does not contain a :spec or
         (cl-check-type (plist-get args :spec) jupyter-kernelspec)
         (apply #'jupyter-kernel-process args))
        (conn-info
-        (when connect-p
-          ;; No need for a kernelspec if connecting to a kernel, in
-          ;; this case kernel information can be had from the
-          ;; "kernel_info_request".
-          (cl-assert (null spec))
-          ;; Interrupting a kernel with a message is the only way to
-          ;; interrupt kernels connected to using a connection file
-          ;; since there is no way of telling what kind of kernel it
-          ;; is that is being connected to using this method.  See
-          ;; `jupyter-interrupt-kernel'.
-          (plist-put args :spec
-                     (make-jupyter-kernelspec
-                      :plist '(:interrupt_mode "message"))))
+        ;; No need for a kernelspec when connecting to a kernel.  We
+        ;; set interrupt_mode whether or not a kernel responds to an
+        ;; interrupt_message on the control channel since there would
+        ;; be no other way to interrupt a kernel not managed by Emacs
+        ;; using ZMQ sockets.
+        (plist-put args :spec
+                   (make-jupyter-kernelspec
+                    :plist '(:interrupt_mode "message")))
         (apply #'jupyter-kernel-process
                :session (if (stringp conn-info)
                             (jupyter-connection-file-to-session conn-info)
                           conn-info)
+               :-connect-only-p t
                (cl-loop
                 for (k v) on args by #'cddr
                 unless (eq k :conn-info) collect k and collect v)))
@@ -132,7 +127,7 @@ Call the next method if ARGS does not contain a :spec or
 ;;; Client connection
 
 (cl-defmethod jupyter-zmq-io ((kernel jupyter-kernel-process))
-  (unless (jupyter-kernel-process-connect-p kernel)
+  (unless (jupyter-kernel-process--connect-only-p kernel)
     (jupyter-launch kernel))
   (let ((channels '(:shell :iopub :stdin :control))
         session ch-group hb kernel-io ioloop shutdown)
