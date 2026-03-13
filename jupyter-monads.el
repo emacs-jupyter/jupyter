@@ -46,16 +46,12 @@
 (declare-function jupyter-generate-request "jupyter-client")
 (declare-function jupyter-wait-until-idle "jupyter-client" (req &optional timeout progress-msg))
 
-(defconst jupyter--return-nil (lambda (state) (cons nil state)))
-
 (defun jupyter-return (value)
   "Return a monadic value wrapping VALUE."
   (declare (indent 0)
            (compiler-macro
             (lambda (exp)
               (cond
-               ((null value)
-                'jupyter--return-nil)
                ((if (atom value)
                     (not (symbolp value))
                   (eq (car value) 'quote))
@@ -78,7 +74,7 @@ Return the result of evaluating BODY.  The result of evaluating
 BODY should be another monadic value."
   (declare (indent 1) (debug ((&rest (symbolp form)) body)))
   (if (null varlist)
-      (if (zerop (length body)) 'jupyter--return-nil
+      (if (zerop (length body)) '(jupyter-return nil)
         `(progn ,@body))
     (pcase-let ((`(,name ,mvalue) (car varlist)))
       `(jupyter-bind ,mvalue
