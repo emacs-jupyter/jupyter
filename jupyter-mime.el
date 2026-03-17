@@ -424,6 +424,16 @@ aligns on the current line."
 (defvar org-format-latex-options)
 (defvar org-preview-latex-default-process)
 
+(defcustom jupyter-preview-latex-default-process nil
+  "The default process to convert LaTeX fragments to image files.
+
+If nil, use `org-preview-latex-default-process'
+
+All available processes and theirs documents can be found in
+`org-preview-latex-process-alist', which see."
+  :type 'symbol
+  :group 'jupyter-repl)
+
 (defun jupyter-insert-latex (tex)
   "Generate and insert a LaTeX image based on TEX.
 
@@ -449,8 +459,9 @@ image."
       (org-format-latex
        "ltximg" beg end jupyter-org-resource-directory
        'overlays nil 'forbuffer
-       ;; Use the default method for creating image files
-       org-preview-latex-default-process)
+       ;; Use jupyter-specific method for creating image if defined.
+       (or jupyter-preview-latex-default-process
+           org-preview-latex-default-process)))
       ;; Avoid deleting the image overlays due to text property changes
       (dolist (o (overlays-in beg end))
         (when (eq (overlay-get o 'org-overlay-type)
