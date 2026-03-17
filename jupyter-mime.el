@@ -46,6 +46,7 @@
 
 (declare-function jupyter-message-content "jupyter-messages" (msg))
 (declare-function org-format-latex "org" (prefix &optional beg end dir overlays msg forbuffer processing-type))
+(declare-function org-combine-plists "org-macs" (&rest PLISTS))
 (declare-function markdown-link-at-pos "ext:markdown-mode" (pos))
 (declare-function markdown-follow-link-at-point "ext:markdown-mode")
 
@@ -434,6 +435,11 @@ All available processes and theirs documents can be found in
   :type 'symbol
   :group 'jupyter-repl)
 
+(defcustom jupyter-format-latex-extra-options '(:scale 2.0)
+  "Jupyter-specific options for `org-format-latex-options'"
+  :type 'plist
+  :group 'jupyter-repl)
+
 (defun jupyter-insert-latex (tex)
   "Generate and insert a LaTeX image based on TEX.
 
@@ -447,11 +453,9 @@ image."
   (let ((kill-buffer-query-functions nil)
         ;; This is added to in `org-babel-jupyter-initiate-session-by-key'
         (kill-buffer-hook nil)
-        (org-format-latex-options
-         `(:foreground
-           default
-           :background default :scale 2.0
-           :matchers ,(plist-get org-format-latex-options :matchers))))
+        (org-format-latex-options (org-combine-plists
+                                   org-format-latex-options
+                                   jupyter-format-latex-extra-options)))
     (jupyter-with-insertion-bounds
         beg end (insert tex)
       ;; FIXME: Best way to cleanup these files? Just delete them by reading
