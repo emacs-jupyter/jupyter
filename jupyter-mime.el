@@ -460,12 +460,13 @@ image."
         beg end (insert tex)
       ;; FIXME: Best way to cleanup these files? Just delete them by reading
       ;; the image data and using that for the image instead?
-      (org-format-latex
-       "ltximg" beg end jupyter-org-resource-directory
-       'overlays nil 'forbuffer
-       ;; Use jupyter-specific method for creating image if defined.
-       (or jupyter-preview-latex-default-process
-           org-preview-latex-default-process)))
+      (let ((major-mode 'org-mode))  ;; suppresses warnings from org-element
+        (org-format-latex
+         "ltximg" beg end jupyter-org-resource-directory
+         'overlays nil 'forbuffer
+         ;; Use jupyter-specific method for creating image if defined.
+         (or jupyter-preview-latex-default-process
+             org-preview-latex-default-process))))
       ;; Avoid deleting the image overlays due to text property changes
       (dolist (o (overlays-in beg end))
         (when (eq (overlay-get o 'org-overlay-type)
