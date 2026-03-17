@@ -40,6 +40,7 @@
 ;;; Code:
 
 (require 'jupyter-base)
+(require 'jupyter-org-client)
 (require 'shr)
 (require 'ansi-color)
 
@@ -421,8 +422,6 @@ aligns on the current line."
 ;;; LaTeX
 
 (defvar org-format-latex-options)
-(defvar org-preview-latex-image-directory)
-(defvar org-babel-jupyter-resource-directory)
 (defvar org-preview-latex-default-process)
 
 (defun jupyter-insert-latex (tex)
@@ -448,7 +447,7 @@ image."
       ;; FIXME: Best way to cleanup these files? Just delete them by reading
       ;; the image data and using that for the image instead?
       (org-format-latex
-       "ltximg" beg end org-babel-jupyter-resource-directory
+       "ltximg" beg end jupyter-org-resource-directory
        'overlays nil 'forbuffer
        ;; Use the default method for creating image files
        org-preview-latex-default-process)
