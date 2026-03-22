@@ -45,3 +45,7 @@ clean-eldev:
 .PHONY: compile
 compile:
 	$(ELDEV) compile
+
+.PHONY: doc
+doc:
+	$(ELDEV) emacs --batch --eval "(progn (find-file \"doc/jupyter.org\") (org-texinfo-export-to-info))"
