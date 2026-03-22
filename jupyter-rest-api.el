@@ -821,11 +821,14 @@ requested changes."
 If ID is nil, return models for all kernels accessible via CLIENT."
   (jupyter-api/kernels client "GET" id))
 
-(defun jupyter-api-start-kernel (client &optional name)
+(defun jupyter-api-launch-kernel (client &optional name)
   "Send an HTTP request using CLIENT to start a kernel with kernelspec NAME.
 If NAME is not provided use the default kernelspec."
   (apply #'jupyter-api/kernels client "POST"
          (when name (list :name name))))
+
+(define-obsolete-function-alias
+  'jupyter-api-start-kernel 'jupyter-api-launch-kernel "1.1")
 
 (defun jupyter-api-shutdown-kernel (client id)
   "Send the HTTP request using CLIENT to shutdown a kernel with ID."

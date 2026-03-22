@@ -184,7 +184,7 @@
   :tags '(rest server)
   (jupyter-test-rest-api-with-notebook client
     (cl-destructuring-bind (&key id &allow-other-keys)
-        (jupyter-api-start-kernel client)
+        (jupyter-api-launch-kernel client)
       (unwind-protect
           (let ((kernel-id id)
                 (ws (jupyter-api-kernel-websocket client id)))
@@ -302,7 +302,7 @@
 (ert-deftest jupyter-connect-server-repl ()
   :tags '(server)
   (jupyter-test-with-notebook server
-    (let ((id (plist-get (jupyter-api-start-kernel server) :id)))
+    (let ((id (plist-get (jupyter-api-launch-kernel server) :id)))
       (sleep-for 1)
       (with-current-buffer
           (oref (jupyter-connect-server-repl server id) buffer)
@@ -423,7 +423,7 @@
         (ert-info ("Non-existent kernel")
           (should-error (funcall initiate-session (concat remote "py") ":kernel foo")))
         (ert-info ("Connect to an existing kernel")
-          (let* ((id (plist-get (jupyter-api-start-kernel server) :id))
+          (let* ((id (plist-get (jupyter-api-launch-kernel server) :id))
                  (session (funcall initiate-session (concat remote id))))
             (unwind-protect
                 (should (not (null session)))
