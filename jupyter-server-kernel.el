@@ -336,7 +336,7 @@ this case FN will be evaluated on KERNEL."
   (cl-check-type kernel string)
   (let* ((spec (jupyter-guess-kernelspec
                 kernel (jupyter-kernelspecs server)))
-         (plist (jupyter-api-start-kernel
+         (plist (jupyter-api-launch-kernel
                  server (jupyter-kernelspec-name spec))))
     (jupyter-kernel :server server :id (plist-get plist :id) :spec spec)))
 
@@ -349,25 +349,26 @@ using its SPEC."
 	(unless session
 	  (and id (setq id (or (jupyter-server-kernel-id-from-name server id) id)))
 	  (if id
-          ;; When KERNEL already has an ID before it has a session,
-          ;; assume we are connecting to an already launched kernel.  In
-          ;; this case, make sure the KERNEL's SPEC is the same as the
-          ;; one being connected to.
-          ;;
-          ;; Note, this also has the side effect of raising an error
-          ;; when the ID does not match one on the server.
-		  (unless spec
-			(let ((model (jupyter-api-get-kernel server id)))
-			  (setf (jupyter-kernel-spec kernel)
-					(jupyter-guess-kernelspec
-					 (plist-get model :name)
-					 (jupyter-kernelspecs server)))))
-		(let ((plist (jupyter-api-start-kernel
-					  server (jupyter-kernelspec-name spec))))
-          (setf (jupyter-server-kernel-id kernel) (plist-get plist :id))
-		  (sit-for 1)))
-      ;; TODO: Replace with the real session object
-	  (setf (jupyter-kernel-session kernel) (jupyter-session))))
+              ;; When KERNEL already has an ID before it has a
+              ;; session, assume we are connecting to an already
+              ;; launched kernel.  In this case, make sure the
+              ;; KERNEL's SPEC is the same as the one being connected
+              ;; to.
+              ;;
+              ;; Note, this also has the side effect of raising an
+              ;; error when the ID does not match one on the server.
+              (unless spec
+                (let ((model (jupyter-api-get-kernel server id)))
+                  (setf (jupyter-kernel-spec kernel)
+                        (jupyter-guess-kernelspec
+                         (plist-get model :name)
+                         (jupyter-kernelspecs server)))))
+            (let ((plist (jupyter-api-launch-kernel
+                          server (jupyter-kernelspec-name spec))))
+              (setf (jupyter-server-kernel-id kernel) (plist-get plist :id))
+              (sit-for 1)))
+          ;; TODO: Replace with the real session object
+          (setf (jupyter-kernel-session kernel) (jupyter-session))))
   (cl-call-next-method))
 
 (cl-defmethod jupyter-shutdown ((kernel jupyter-server-kernel))

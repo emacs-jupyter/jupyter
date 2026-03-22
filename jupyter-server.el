@@ -325,7 +325,7 @@ is used as determined by `jupyter-current-server'."
   (interactive (list (jupyter-current-server current-prefix-arg)))
   (let* ((specs (jupyter-kernelspecs server))
          (spec (jupyter-completing-read-kernelspec specs)))
-    (jupyter-api-start-kernel server (jupyter-kernelspec-name spec))))
+    (jupyter-api-launch-kernel server (jupyter-kernelspec-name spec))))
 
 ;;; REPL
 
