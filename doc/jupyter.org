@@ -1,0 +1,1591 @@
+#+title: Emacs-Jupyter
+#+language: en
+
+#+TEXINFO_DIR_CATEGORY: Emacs
+#+TEXINFO_DIR_NAME: Emacs-Jupyter
+#+TEXINFO_DIR_DESC: An interface to connect to Jupyter kernels
+
+#+macro: kbd (eval (org-texinfo-kbd-macro $1))
+
+* Introduction
+:PROPERTIES:
+:DESCRIPTION: Getting started.
+:END:
+#+cindex: introduction
+
+The Jupyter project (https://jupyter.org/) has a protocol for
+communicating with interactive processes called kernels which power
+their products, most notably the Jupyter notebook which offers a web
+interface for authoring digital documents which combine prose and
+executable code much like an Org document with its Babel source
+blocks.  Essentially Emacs-Jupyter implements the client side of that
+protocol to interface either purely with the kernel processes or
+through the REST API interface that a Jupyter server exposes to
+interact with the kernels that it manages.  It attempts to integrate
+minimally with Emacs in what it would mean for Emacs to be a client to
+a kernel or in general to a Jupyter server, exposing a programmable
+interface to allow users to come up with their own client interfaces
+to kernels.
+
+Out of the box there are two clients a REPL and an Org mode source
+block client.
+
+* REPL
+:PROPERTIES:
+:DESCRIPTION: How to use the REPL.
+:END:
+
+To get started interacting with a kernel, the easiest way is to launch
+a REPL.  This can be done with {{{kbd(M-x jupyter-run-repl RET)}}}.
+The REPL's input prompt is a normal input code cell in Jupyter's
+terminology so any code that a kernel recognizes can be input.
+
+Once a REPL has been established it can be associated to source code
+buffers to enable completion, inspection, and evaluation
+([[#associating-REPL][Associating a REPL with a source code buffer]]).
+
+** Connection method to kernels
+
+#+vindex: jupyter-use-zmq
+The variable ~jupyter-use-zmq~ controls whether or not ZMQ
+(https://zeromq.org/) sockets are used or WebSocket based connections
+via the Jupyter REST API.  In the latter case, when ~jupyter-use-zmq~ is
+nil, a local notebook process is made and used to launch kernels when
+using some of the commands to create a REPL.
+
+The ZMQ based connection method directly launches kernel processes
+which communicate with Emacs via ZMQ sockets whereas the notebook or
+WebSocket based method uses a WebSocket provided by the notebook
+server as a middle-man between Emacs and a kernel.
+
+** Launching a REPL
+
+#+findex: jupyter-run-repl
+To launch a kernel and connect a REPL the command ~jupyter-run-repl~ is
+used.
+
+#+findex: jupyter-connect-repl
+On the other hand, if a kernel has already been launched in some other
+way and you would like to connect to it, use the
+command ~jupyter-connect-repl~.  This requires the user provide a
+connection file
+(https://jupyter-client.readthedocs.io/en/stable/kernels.html#connection-files)
+for the kernel.  See
+also
+https://docs.jupyter.org/en/latest/use/jupyter-directories.html#runtime-files.
+
+** Navigating the REPL buffer
+
+#+kindex: M-a
+#+findex: jupyter-repl-backward-cell
+Navigating from one input cell to the previous one is done
+by {{{kbd(M-a)}}} or whatever ~backward-sentence~ is bound to.
+
+#+kindex: M-e
+#+findex: jupyter-repl-forward-cell
+Similarly, to move to the next input cell {{{kbd(M-e)}}} (or
+what ~forward-sentence~ is bound to) can be used.
+
+#+kindex: M-p
+#+findex: jupyter-repl-history-previous
+{{{kbd(M-p)}}} (~jupyter-repl-history-previous~) moves backward in the
+history of input cells and replaces the current input cell with the
+contents of those previous cells.
+
+#+kindex: M-n
+#+findex: jupyter-repl-history-next
+{{{kbd(M-n)}}} (~jupyter-repl-history-next~) moves forward in the
+history of input cells to the next one after moving backward in the
+history, replacing the current input cell with those history elements.
+
+In order to search for previous input cells that contain some search
+string, you can use {{{kbd(M-r)}}} or whatever ~isearch-backward~ is
+bound to.  While searching, the current input cell is replaced with
+history items that contain the search string.
+
+#+kindex: RET
+#+vindex: jupyter-repl-without-is-complete
+#+vindex: jupyter-repl-allow-RET-when-busy
+#+vindex: jupyter-use-builtin-is-complete
+#+findex: jupyter-repl-ret
+To send the input cell to the kernel, {{{kbd(RET)}}} which
+calls ~jupyter-repl-ret~ can be used.  Typically, {{{kbd(RET)}}}
+determines whether or not the code is syntactically correct before it
+is actually sent and, if not, a newline is inserted instead.  If the
+customizable variable ~jupyter-repl-without-is-complete~ is non-nil then
+this syntactic check is not performed and you can send the code either
+by giving a prefix argument or instead calling the
+command ~jupyter-repl-send~, which
+see.  ~jupyter-repl-use-builtin-is-complete~ (which disables the
+syntactic check completely) gives yet another method to send the code;
+if {{{kbd(RET)}}} is pressed on an empty line then the code is sent.
+Note that ~jupyter-repl-use-builtin-is-complete~ is incompatible
+with ~jupyter-repl-without-is-complete~.
+If ~jupyter-repl-without-is-complete~ is non-nil, it
+overrides ~jupyter-repl-use-builtin-is-complete~ if it is also.  In a
+similar vein, ~jupyter-repl-allow-RET-when-busy~ will, when the kernel
+is busy, allow sending of the cell in the same way
+as ~jupyter-repl-use-builtin-is-complete~.  Usually, when the kernel is
+busy, sending of the cell is disallowed since kernels process requests
+sequentially.
+
+#+kindex: S-RET
+#+findex: jupyter-repl-send
+To send the input cell immediately to the kernel {{{kbd(S-RET)}}} can
+be used which calls ~jupyter-repl-send~.
+
+#+kindex: C-c C-o
+#+findex: jupyter-repl-clear-cells
+{{{kbd(C-c C-o)}}} calls ~jupyter-repl-clear-cells~ which clears all of
+the input and output cells in the REPL buffer.
+
+#+kindex: C-c C-u
+#+findex: jupyter-repl-clear-input
+{{{kbd(C-c C-u)}}} calls ~jupyter-repl-clear-input~ which clears the
+contents of the current input cell.
+
+** Rich kernel output
+
+Jupyter kernels provide rich kernel output or results, i.e. for each
+executed input cell the kernel provides a bundle of mime-types which
+the client can use to display the most appropriate one depending on
+the context of the execution request.
+
+Below is a table of the supported output mime-types and their
+dependencies.  If a dependency is not available for a particular
+mime-type, a mime-type of lower priority gets displayed instead.
+
+| Mimetype              | Dependencies              |
+|-----------------------+---------------------------|
+| =text/html=             | Emacs built with libxml2  |
+| =text/markdown=         | [[https://jblevins.org/projects/markdown-mode/][markdown-mode]]             |
+| =text/latex=            | [[https://orgmode.org/][org-mode]]                  |
+| =image/svg+xml=         | Emacs built with librsvg2 |
+| =image/png=, =image/jpeg= | none                      |
+| =text/plain=            | none                      |
+
+** Associating a REPL with a source code buffer
+:PROPERTIES:
+:CUSTOM_ID: associating-REPL
+:END:
+
+#+findex: jupyter-repl-associate-buffer
+#+findex: jupyter-repl-interaction-mode
+#+findex: jupyter-repl-persistent-mode
+The command ~jupyter-repl-associate-buffer~ associates a REPL buffer
+with a source code buffer whose ~major-mode~ corresponds to the kernel's
+language and in so doing enables the ~jupyter-repl-interaction-mode~, a
+minor mode (also enabled in the REPL buffer by default) used to
+execute code directly from the source code buffer as well as provide
+auto-completion and the ability to inspect
+code.  ~jupyter-repl-persistent-mode~ is a global minor mode that
+propagates the ~jupyter-current-client~ of the ~current-buffer~ to any
+buffer switched to that has the same ~major-mode~ as the client's kernel
+language and is enabled by default.
+
+#+kindex: C-c C-z
+#+findex: jupyter-repl-pop-to-buffer
+From a source code buffer, you can get back to the connected REPL
+buffer by calling ~jupyter-repl-pop-to-buffer~ (bound
+to {{{kbd(C-c C-z)}}}).
+
+#+kindex: C-x C-e
+#+kindex: C-c C-c
+#+findex: jupyter-eval-line-or-region
+#+vindex: jupyter-eval-short-result-max-lines
+#+vindex: jupyter-eval-short-result-display-function
+~jupyter-eval-line-or-region~, bound to {{{kbd(C-x C-e)}}}
+or {{{kbd(C-c C-c)}}}, sends the current line or selected region to
+the kernel for execution and displays results to the user, either
+through the minibuffer if the number of lines of the result is less
+than ~jupyter-eval-short-result-max-lines~ or in a display buffer
+otherwise.  In the former
+case, ~jupyter-eval-short-result-display-function~ is used to display
+the short result.
+
+#+kindex: C-M-x
+#+findex: jupyter-eval-defun
+To evaluate a function definition, {{{kbd(C-M-x)}}}
+calls ~jupyter-eval-defun~.
+
+#+vindex: jupyter-eval-use-overlays
+If the variable ~jupyter-eval-use-overlays~ is non-nil, then, when
+evaluating code with the above commands, an overlay displaying the
+results is added to to the end of the evaluated code which is removed
+when the code is modified.
+
+#+kindex: C-c C-o
+#+findex: jupyter-eval-remove-overlays
+If you would like to clear all current evaluation overlays, the
+command ~jupyter-eval-remove-overlays~ (bound to {{{kbd(C-c C-o)}}}) can
+be used.
+
+#+kindex: C-c C-b
+#+findex: jupyter-eval-buffer
+Similarly, to evaluate the whole buffer {{{kbd(C-c C-b)}}}
+calls ~jupyter-eval-buffer~.
+
+#+kindex: C-c M-:
+#+findex: jupyter-eval-string-command
+To prompt for a string to evaluate, as done
+by ~eval-expression~, ~jupyter-eval-string-command~ ({{{kbd(C-c M-:)}}})
+can be used.
+
+#+kindex: C-c C-l
+#+findex: jupyter-load-file
+To send a file to the kernel for evaluation use ~jupyter-load-file~
+({{{kbd(C-c C-l)}}}).
+
+#+kindex: C-c C-s
+#+findex: jupyter-repl-scratch-buffer
+To pop-up a scratch buffer already associated to the REPL you can
+use ~jupyter-repl-scratch-buffer~ (bound to {{{kbd(C-c C-s)}}}).
+
+#+kindex: M-i
+#+findex: jupyter-inspect-at-point
+Inspecting code, asking the kernel to describe the symbol at point for
+example, can be done by pressing {{{kbd(M-i)}}} which
+calls ~jupyter-inspect-at-point~.
+
+#+kindex: C-c C-r
+#+findex: jupyter-repl-restart-kernel
+Restart the kernel the REPL is connected to with {{{kbd(C-c C-r)}}}
+(~jupyter-repl-restart-kernel~).
+
+#+kindex: C-c C-i
+#+findex: jupyter-repl-interrupt-kernel
+You can interrupt the kernel with {{{kbd(C-c C-i)}}}
+(~jupyter-repl-interrupt-kernel~).
+
+*** Result overlays
+
+#+vindex: jupyter-eval-use-overlays
+#+vindex: jupyter-eval-overlay-prefix
+#+vindex: jupyter-eval-overlay
+When ~jupyter-eval-use-overlays~ is non-nil, the =text/plain=
+representation of evaluation results are displayed inline at the end
+of the evaluated code in a source code buffer (evaluated
+by ~jupyter-repl-eval-line-or-region~, for example,
+when ~jupyter-rep-interaction-mode~ is active).  You can control the
+appearance of the overlay using =jupyter-eval-overlay-prefix= and
+the =jupyter-eval-overlay= face.
+
+To clear all overlays from the buffer,
+bind =jupyter-eval-remove-overlays= to some key.  It's bound
+to {{{kbd(C-c C-o)}}} when =jupyter-repl-interaction-mode= is enabled.
+Individual overlays are removed whenever the text in the region that
+was evaluated is modified.
+
+#+kindex: S-RET
+#+findex: jupyter-eval-toggle-overlay
+For multi-line overlays you can fold/unfold the overlay by
+pressing {{{kbd(S-RET)}}} when =point= is inside the region of code that
+caused the overlay to be created.
+
+*** Integration with =emacsclient=
+
+When =emacsclient= is used as the =EDITOR= and =server-mode= is active, any
+file opened by =emacsclient= in a short time after sending the execute
+request which has the same =major-mode= as the kernel's language will
+automatically have ~jupyter-repl-interaction-mode~ enabled and connected
+to the kernel client which sent the request.
+
+** Mirroring evaluated code in the REPL
+
+#+vindex: jupyter-repl-echo-eval-p
+Some users may like to have the code evaluated via commands available
+when ~jupyter-repl-interaction-mode~ is active to be mirrored to the
+REPL buffer.  This can be done by setting the customizable
+variable ~jupyter-repl-echo-eval-p~ to a non-nil value.
+
+** Auto-completion
+
+Auto-completion is fully supported, and varies depending on the
+functionality of the kernel.  It uses the
+built-in ~completion-at-point-functions~ interface.  It also integrates
+with some of ~company-mode~'s features if ~company-mode~ is used as the
+frontend for completion.
+
+In addition, if ~yasnippet~ is available and completions have an
+associated snippet, e.g. snippets to complete argument lists or
+Unicode expansions based on LaTeX, those snippets are expanded upon
+completion.
+
+** Limiting the size of the REPL buffer
+
+#+vindex: jupyter-repl-maximum-size
+To truncate the REPL buffer after it reaches a certain size, set the
+variable ~jupyter-repl-maximum-size~ to an appropriate value.  Once the
+number of lines of the REPL exceeds ~jupyter-repl-maximum-size~, the
+REPL is truncated to hold the largest number of cells that have a
+total number of lines less than that variable.
+
+* Source blocks in Org mode
+:PROPERTIES:
+:DESCRIPTION: Kernels as source block backends.
+:END:
+
+Documents written in Org mode have syntax which delineates sections of
+code called source blocks, lines starting and ending with =#+begin_src=
+and =#+end_src= lines.  Once =ob-jupyter= has been loaded, as explained
+below, and your system has a working Jupyter installation, source
+blocks named =jupyter-LANG= will become available for all kernel
+languages, =LANG=, that your Jupyter installation has a kernel
+specification for.
+
+So if the output of the shell command =jupyter kernelspec list= is
+something like
+
+#+begin_example
+Available kernels:
+  python3                 /path/to/jupyter/kernels/python3
+  py-data-analysis        /path/to/jupyter/kernels/py-data-analysis
+#+end_example
+
+and supposing that the language of the kernel corresponding to both
+kernel specifications is =python3= then you will have available a source
+block named =jupyter-python3=.
+
+#+begin_src org
+,#+begin_src jupyter-python3 :session ...
+...
+,#+end_src
+#+end_src
+
+where the particular kernel can be specified as such
+
+#+begin_src org
+,#+begin_src jupyter-python3 :session ... :kernel py-data-analysis
+...
+,#+end_src
+#+end_src
+
+Note that every Jupyter source block needs to have a
+corresponding =:session,= [[#session-header-arg][The =:session= header argument]]
+
+** Loading =ob-jupyter=
+
+To enable support for Jupyter source blocks, add =jupyter=
+to =org-babel-load-languages= in your Org configuration.  It should be
+added /after/ all languages that you expect to use a Jupyter kernel for
+since Emacs-Jupyter needs to know the values of certain variables and
+functions loaded by the Babel support of a kernel's language.
+
+#+begin_src elisp
+(org-babel-do-load-languages
+ 'org-babel-load-languages
+ '(...
+   (python . t)
+   (jupyter . t)))
+#+end_src
+
+After loading, blocks named ~jupyter-LANG~ (where ~LANG~ is, e.g. ~python~)
+are aliased to their respective ~LANG~ block in the sense that
+the ~major-mode~ used for ~LANG~ blocks is the same as that
+for ~jupyter-LANG~ blocks and variables and functions such
+as ~org-babel-default-header-args:jupyter-LANG~
+and ~org-babel-execute:jupyter-LANG~ are set appropriately.
+
+Some kernel specifications use spaces in the kernel language's name.
+In those cases the spaces get replaced by dashes in the source block's
+language, e.g. ~jupyter-Emacs-Lisp~ would become the name of a source
+block if the specification's language was ~Emacs Lisp~.
+
+*** Overriding source block languages
+
+#+findex: org-babel-jupyter-override-src-block
+Instead of having to specify =jupyter-LANG= as a source block name, you
+can have =LANG= source blocks use the Jupyter machinery.  To do so,
+place a call to =org-babel-jupyter-override-src-block= somewhere in your
+config (after the call to =org-babel-do-load-languages=).
+
+#+BEGIN_SRC elisp
+(org-babel-jupyter-override-src-block "python")
+#+END_SRC
+
+#+findex: org-babel-jupyter-restore-src-block
+After calling the above function, all =python= source blocks are
+effectively aliases of =jupyter-python= source blocks and the
+appropriate Babel variables and functions will be overridden to ensure
+that =python= source blocks use the Jupyter backend.  The original
+behavior can be completely restored by
+calling =org-babel-jupyter-restore-src-block=.
+
+#+BEGIN_SRC elisp
+(org-babel-jupyter-restore-src-block "python")
+#+END_SRC
+
+*** Note on synchronizing Babel support with kernelspecs
+
+#+findex: org-babel-jupyter-aliases-from-kernelspecs
+The function ~org-babel-jupyter-aliases-from-kernelspecs~ allows you to
+manually create =jupyter-LANG= source block aliases based on the kernel
+specifications of the ~default-directory~.  If the ~default-directory~ is
+local to your system, then the local Jupyter installation is used to
+obtain the kernel specifications.  If pointing to a directory on a
+remote system, the Jupyter installation on the remote will be used.
+Note, this currently doesn't work =/jpy:= style remote files.  To create
+aliases for kernel specifications behind a Jupyter server, you would
+have to do
+
+#+begin_src elisp
+(org-babel-jupyter-aliases-from-kernelspecs
+ nil (jupyter-kernelspecs
+      (jupyter-server
+       :url "http://localhost:8888")))
+#+end_src
+
+** The =:session= header argument
+:PROPERTIES:
+:CUSTOM_ID: session-header-arg
+:END:
+
+The =:session= header argument is required for the usage of Jupyter
+based source blocks and can be set to a variety of values which imply
+certain connection methods to the kernel.
+
+*** Connection file based connections
+
+If the =:session= argument is a file with a =.json= suffix it is assumed
+to be the path of a [[https://jupyter-client.readthedocs.io/en/stable/kernels.html#connection-files][connection file]].  This method connects to a kernel
+using ZMQ sockets so the customizable variable ~jupyter-use-zmq~ must be
+non-nil.
+
+The connection file can also exist on a remote computer connectable
+through SSH, i.e. if =:session= is a [[https://www.gnu.org/software/emacs/manual/html_node/emacs/Remote-Files.html][remote file name]]
+like =/ssh:host:kernel-....json= then local =ssh= tunnels are created to
+the remote ports listed in the connection file.
+
+**** Password handling for remote connections
+
+Currently there is no password handling, so if your =ssh= connection
+requires a password I suggest you instead
+use [[https://www.ssh.com/ssh/keygen/][key-based authentication]].  Or if you are connecting to a server
+using a =pem= file add something like
+
+#+BEGIN_SRC conf
+Host ec2
+    User <user>
+    HostName <host>
+    IdentityFile <identity>.pem
+#+END_SRC
+
+to your =~/.ssh/config= file.
+
+*** SSH based remote sessions
+
+If =:session= is a remote file name that doesn't end in =.json=,
+e.g.  =/ssh:ec2:jl=, then a kernel on the remote host =/ssh:ec2:= is
+started using the =jupyter kernel= command on the host.  The local part
+of the session name serves to distinguish different remote sessions on
+the same host.
+
+*** Jupyter server based connections
+
+If =:session= is a remote file name like =/jpy:localhost#8888:NAME= it is
+interpreted as corresponding to a connection to a kernel through a
+Jupyter notebook server located at =http://localhost:8888=.  To connect
+to a kernel behind an =HTTPS= connection, use a remote file name
+like =/jpys:...= instead.  The default host and port is =localhost:8888=
+when the remote file name is specified like =/jpy::NAME= and can be
+changed by changing the appropriate values in ~tramp-default-host-alist~
+and ~tramp-methods~.
+
+If =NAME= is a kernel ID corresponding to an existing kernel on a
+server, e.g. =/jpy::161b2318-180c-497a-b4bf-de76176061d9=, then a
+connection to an existing kernel with the corresponding ID will be
+made.  Otherwise, a new kernel will be launched on the server and =NAME=
+will be used as an identifier for the session.  So
+specifying =/jpy::one= while launch a new kernel and associate its ID
+with the name =one=.  =jupyter-server-kernel-names= keeps a list of the
+associations between kernel IDs and associated labels.
+
+*** Disabling automatic connections to a session
+
+#+vindex: jupyter-org-auto-connect
+By default, under certain conditions, e.g. when typing in the region
+of a Jupyter source block, an attempt at connecting to the source
+block's session is made if not already connected.  This happens due
+to, for example, the client requesting completion results.  This
+behavior can be suppressed by setting =jupyter-org-auto-connect= to =nil=.
+In this case, a connection can be established by explicitly executing
+a source block.
+
+** Asynchronous execution
+  
+By default, Jupyter source blocks are executed synchronously.  To
+execute them asynchronously, the header argument ~:async~ can be set
+to ~yes~.  Note that every Jupyter source block requires a ~:session~
+header argument.  The ~:kernel~ header argument allows you to change the
+kernel for the block.  The same session name can be used for different
+values of the ~:kernel~ since, internally, the mapping between the
+underlying REPL buffer and the associated session is based on
+both ~:session~ and ~:kernel~.
+
+** Interacting with a source block
+
+#+vindex: jupyter-org-interaction-mode
+#+findex: jupyter-org-interaction-mode
+When the minor mode ~jupyter-org-interaction-mode~ is enabled,
+auto-completion is directly available from within the Org buffer, in
+other words there is no need to edit the source block
+with ~org-edit-special~ just to get auto-completion.  In addition,
+custom key-bindings only active when ~point~ is inside a source block
+are available which allow the user to interact with the source block's
+kernel.
+
+#+findex: jupyter-org-define-key
+Below is a list of the keybindings available
+when ~jupyter-org-interaction-mode~ is enabled.  New keybindings can be
+added with ~jupyter-org-define-key~.  When the bound commands are
+called, the ~jupyter-current-client~ will be set to that of the source
+block's associated session.
+
+| Key     | Command                       |
+|---------+-------------------------------|
+| C-x C-e | ~jupyter-eval-line-or-region~   |
+| C-M-x   | ~jupyter-eval-defun~            |
+| M-i     | ~jupyter-inspect-at-point~      |
+| C-c M-: | ~jupyter-eval-string-command~   |
+| C-c C-r | ~jupyter-repl-restart-kernel~   |
+| C-c C-i | ~jupyter-repl-interrupt-kernel~ |
+
+** Editing the contents of a source block
+
+When editing a Jupyter code block's contents with =C-c '=
+(~org-edit-special~) the REPL session is automatically associated with
+the edit buffer and the edit buffer has =jupyter-repl-interaction-mode=
+enabled.
+
+#+findex: org-babel-jupyter-scratch-buffer
+You may also bind the command ~org-babel-jupyter-scratch-buffer~ to an
+appropriate key in Org mode to display a scratch buffer in the source
+block's ~major-mode~ and connected to the source block's session.
+
+** Rich kernel output
+
+All of the mime-types supported by the REPL for rich kernel output are
+supported in the Org mode frontend with the addition of the =text/org=
+mime-type which has priority over all other mime-types.
+
+*** Images
+
+#+vindex: org-babel-jupyter-resource-directory
+~org-babel-jupyter-resource-directory~ is similar
+to =org-preview-latex-image-directory= but solely for any files created
+by Jupyter source blocks, e.g. automatically generated image files.
+
+**** Fixing the file name with the =:file= argument
+
+Whenever an image result is returned, a file name based on the hash of
+the contents of the file is generated and the image is written
+to =org-babel-jupyter-resource-directory=. To specify your own file name
+for the image, set the =:file= header argument.
+
+If no file extension is specified in the provided =:file= argument, then
+one will be inferred from the returned result.  This can be useful in
+scenarios where the file resulting from the source block can have
+different types depeneding on the code, e.g. if the image type
+returned can be either =png= or =svg= depending on context, you can
+specify =:file output= which will be converted into =output.png=
+or =output.svg= depending on the mime-type returned by the executed
+source block.
+
+**** Adjusting the width
+
+#+vindex: jupyter-org-adjust-image-size
+When ~org-image-actual-width~ is set to a number in a list
+and ~jupyter-org-adjust-image-size~ is non-nil, the actual width of the
+image result is computed and an ~ATTR_ORG~ keyword with the true width
+is attached to the image link so that the inlined image is displayed
+with its actual width.  Note this is only done if the default width
+in ~org-image-actual-width~ is larger than the actual width of the
+image, so that the number in ~org-image-actual-width~ acts as a maximum
+width when ~jupyter-org-adjust-image-size~ is non-nil.
+
+**** Automatic cleanup of generated files
+
+Whenever a source block is run multiple times and its results contain
+image links to files in ~org-babel-jupyter-resource-directory~, before a
+new execution of the same source block those files are automatically
+removed before replacing the results of the source block.  This is
+handy so that one can quickly iterate through generating some image
+without having the intermediate results populate the file-system.
+
+*** A note on using the =:results= header argument
+
+There are some cases where the normal result insertion mechanism may
+not be wanted.  To control result insertion somewhat, use the =:results=
+header argument:
+
+- Insert unwrapped LaTeX :: Normally LaTeX results are wrapped in
+  a =BEGIN_EXPORT= block.  To insert LaTeX unwrapped,
+  specify =:results raw=.
+- Suppress table creation :: Whenever a result can be converted into
+  an Org table, e.g. when it looks like =[1, 2, 3]=, it is automatically
+  converted into a table.  To suppress this behavior you can
+  specify =:results scalar=.
+
+*** Changing the mime-type priority with the =:display= argument
+
+The priority of mimetypes used to display results can be overwritten
+using the =:display= option.  If instead of displaying HTML results
+you'd like to display plain text, the
+argument =:display text/plain text/html= would prioritize plain text
+results over html ones. The following example displays plain text
+instead of HTML:
+#+BEGIN_SRC org
+,#+BEGIN_SRC jupyter-python :session py :display plain
+import pandas as pd
+data = [[1, 2], [3, 4]]
+pd.DataFrame(data, columns=["Foo", "Bar"])
+,#+END_SRC
+#+END_SRC
+
+*** Mime-type conversion with the =:pandoc= header argument
+
+#+vindex: jupyter-org-pandoc-convertable
+By default html, markdown, and latex results are wrapped in
+a =BEGIN_EXPORT= block.  If the header argument =:pandoc= is set to =t=,
+they are instead converted to Org mode format with [[https://pandoc.org/][pandoc]].  You can
+control which type of export blocks get converted with the custom
+variable =jupyter-org-pandoc-convertable=.
+
+** Enabling client-side queuing
+
+#+vindex: jupyter-org-queue-requests
+#+findex: jupyter-org-toggle-request-queuing
+If the customizable variable =jupyter-org-queue-requests= is non-nil,
+then client side queuing of source block execute requests is
+performed.  This means that when multiple requests are made, for
+example by executing a subtree, the requests are queued locally in
+Emacs instead of sending all the requests immediately to the kernel as
+would happen when =:async yes= is specified on all the source blocks.
+It is only when one request finishes that the next is sent.  In
+addition, if any request fails, all the queued requests that are meant
+to come after are aborted and do not get sent to the kernel.  To turn
+client side queuing on or off you
+can {{{kbd(M-x jupyter-org-toggle-request-queuing RET)}}}.
+
+* Remote file integration
+:PROPERTIES:
+:DESCRIPTION: Accessing the Contents REST API.
+:END:
+
+The Jupyter server contents REST API is accessible via a TRAMP backend
+so that reading/writing the contents of directories the notebook
+server has access to can be done using normal Emacs file operations
+using file names with remote file syntax.  Two new remote file name
+methods are defined, =jpy= for HTTP connections and =jpys= for HTTPS
+connections.  As an example, if you had a local notebook server
+at http://localhost:8888, then to access its directory contents you
+can
+
+#+begin_example
+M-x dired RET /jpy:localhost#8888:/
+#+end_example
+
+Note =localhost= is the default host and =8888= is the default port
+so =/jpy::= is equivalent to =/jpy:localhost#8888:=.  You can change the
+defaults by modifying the =jpy= or =jpys= methods in the
+variable =tramp-methods= and =tramp-default-host-alist=.
+
+* Interacting with a notebook server
+:PROPERTIES:
+:DESCRIPTION: Managing kernels on a server.
+:END:
+** Managing kernels
+
+#+findex: jupyter-server-list-kernels
+#+findex: jupyter-server-kernel-list-mode
+To manage kernels on a Jupyter notebook server, the
+command ~jupyter-server-list-kernels~ is used.  This command shows a
+list of all live kernels available on a server.  On a first call to
+the command, you will be asked for the URL of the server to connect to
+and on subsequent calls that server will be used.  To explicitly ask
+again for which server to list the kernels for, give a prefix
+argument {{{kbd(C-u M-x jupyter-server-list-kernels)}}}.
+
+#+kindex: C-RET
+#+findex: jupyter-server-kernel-list-launch-kernel
+#+kindex: RET 
+#+findex: jupyter-server-kernel-list-new-repl
+#+kindex: R
+#+findex: jupyter-server-kernel-list-name-kernel
+#+kindex: g
+#+kindex: r
+#+kindex: d
+#+kindex: C-c C-d 
+#+findex: jupyter-server-kernel-list-do-shutdown
+#+kindex: C-c C-i
+#+findex: jupyter-server-kernel-list-do-interrupt
+#+kindex: C-c C-r
+#+findex: jupyter-server-kernel-list-do-restart
+From the buffer shown by =jupyter-server-list-kernels= you can launch
+new kernels {{{kbd(C-RET)}}}
+(~jupyter-server-kernel-list-launch-kernel~), connect a REPL to an
+existing kernel {{{kbd(RET)}}} (~jupyter-server-kernel-list-new-repl~),
+interrupt a kernel {{{kbd(C-c C-i)}}}
+(~jupyter-server-kernel-list-do-interrupt~), shutdown a
+kernel {{{kbd(C-c C-d)}}} or {{{kbd(d)}}}
+(~jupyter-server-kernel-list-do-shutdown~), restart a
+kernel {{{kbd(C-c C-r)}}} (~jupyter-server-kernel-list-do-restart~),
+name or rename a kernel {{{kbd(R)}}}
+(~jupyter-server-kernel-list-name-kernel~), or refresh the list of
+kernels {{{kbd(g)}}} or {{{kbd(r)}}} (~revert-buffer~),
+
+Note, the =default-directory= of the the buffer displayed
+by ~jupyter-server-list-kernels~ will be the root directory of the
+kernel server (so that =dired-jump= will show a =dired= listing of the
+directory).
+
+*** Naming kernels
+
+#+vindex: jupyter-server-kernel-names
+Naming kernels, as with {{{kbd(R)}}} in
+a ~jupyter-server-kernel-list-mode~ buffer, adds the name to
+the ~jupyter-server-kernel-names~ global variable in a form suitable for
+persisting across Emacs sessions, e.g. using ~savehist-mode~.
+
+** Server authentication
+
+#+vindex: jupyter-api-authentication-method
+The customizable variable ~jupyter-api-authentication-method~ controls
+the authentication method used to authenticate a server connection.
+By default, when connecting to a new notebook server, e.g. by
+using {{{kbd(M-x jupyter-server-list-kernels)}}}, you will be asked if
+either a token or a password should be used for authentication.  If
+only tokens are used, the variable can be set to the symbol ~token~.  Or
+if only passwords are used for connections to ~password~.
+
+* For developers
+:PROPERTIES:
+:DESCRIPTION: Hacking.
+:END:
+
+** Kernel clients
+
+#+findex: jupyter-client
+The method ~jupyter-client~ creates a new ~jupyter-kernel-client~ to
+interact with a kernel.  Typically you would initialize a client by
+passing it a kernel object to which to connect like so:
+
+#+begin_src elisp
+(jupyter-client
+ (jupyter-kernel
+  :server (jupyter-current-server)
+  :spec "python3"))
+#+end_src
+
+If ~jupyter-use-zmq~ is non-nil a ZMQ socket based kernel can be used
+instead by specifying
+
+#+begin_src elisp
+(jupyter-kernel :spec "python3")
+;; or
+(jupyter-kernel :conn-info "kernel-6e6df1f7-7fec-4b84-8385-322a5705e5ca.json")
+#+end_src
+
+#+findex: jupyter-read-connection
+Where in the last example, with ~:conn-info~, the argument can be either
+the path to a kernel connection file or a connection file property
+list as returned by ~jupyter-read-connection~.
+
+#+vindex: jupyter-current-client
+The ~jupyter-current-client~ variable is a buffer-local variable that
+stores the current client associated with a buffer, e.g. within a REPL
+buffer or any buffer associated with a client
+using ~jupyter-repl-associate-buffer~.  This variable is used to
+evaluate code using functions like ~jupyter-eval~ as well as other uses.
+
+#+findex: jupyter-kernel-info
+~jupyter-kernel-info~ returns the kernel information of a client's
+kernel.  This is the first request made to a kernel when a client is
+instantiated.
+
+#+findex: jupyter-eval
+#+findex: jupyter-eval-region
+~jupyter-eval~ evaluates a piece of code using the client bound in
+the ~jupyter-current-client~ variable and returns the ~text/plain~
+representation of the result, an optional mime type can be passed to
+return a different mime type.  ~jupyter-eval-region~ evaluate the region
+in the same way.
+
+#+findex: jupyter-inspect
+#+findex: jupyter-inspect-at-point
+~jupyter-inspect-at-point~ sends an ~inspect_request~ for the code
+under ~point~.  An inspection displays the ~*Help*~ buffer with the
+information of the inspected code.
+
+#+findex: jupyter-completion-at-point
+#+findex: jupyter-completion-prefix
+#+findex: jupyter-completion-prefetch
+#+findex: jupyter-completion-post-completion
+~jupyter-completion-at-point~ is the ~completion-at-point-functions~
+function that sends a ~complete_request~ to a client's kernel (using the
+client bound to ~jupyter-current-client~.  The
+method ~jupyter-completion-prefix~ determines the prefix for the
+current ~complete_request~.  ~jupyter-completion-prefetch~ sends the
+request formed using the code extracted from
+the ~completion~ ~jupyter-code-context~; the prefix obtained
+from ~jupyter-completion-prefix~ should be the symbol just before the
+position returned by the code context.  The
+method ~jupyter-completion-post-completion~ can be extended to perform
+an action after completing a candidate.  The default implementation
+expands any snippet using yasnippet, e.g. argument list snippets.
+
+*** Client local variables
+
+#+findex: jupyter-set
+#+findex: jupyter-get
+~jupyter-set~ and ~jupyter-get~ set or get a client local variable, i.e. a
+buffer local variable in an internal buffer unique for each client
+instance.  A use case is the ~jupyter-include-other-output~ variable
+which says whether or not to include IOPub messages from the kernel
+that do not originate from the client.
+
+*** Interacting with a kernel
+
+#+findex: jupyter-shutdown-kernel
+#+findex: jupyter-restart-kernel
+#+findex: jupyter-interrupt-kernel
+#+findex: jupyter-launch-kernel
+All lifetime operations on a kernel go
+through
+~jupyter-shutdown-kernel~,
+~jupyter-interrupt-kernel~, ~jupyter-restart-kernel~,
+and ~jupyter-launch-kernel~.  Which, internally, pass messages to the
+underlying action subscriber that is returned by the
+kernel's ~jupyter-io~ method.
+
+#+findex: jupyter-kernel-action
+To apply a function on a client's kernel and return the result of the
+application, the function ~jupyter-kernel-action~ can be used.  The
+function supplied as its second argument is expected to be a function
+of a single argument which will be the client's kernel.
+
+#+begin_src elisp
+(jupyter-kernel-action
+    jupyter-current-client
+  (lambda (kernel)
+    (jupyter-kernelspec-name
+     (jupyter-kernel-spec kernel))))
+#+end_src
+
+#+findex: jupyter-connect
+#+findex: jupyter-disconnect
+To disconnect the client from being able to receive or send messages
+to the kernel you can use the function ~jupyter-disconnect~.  This is
+useful, for example, if the kernel is spamming messages and you would
+like to quickly disconnect from the message stream.  To resume
+communication, use ~jupyter-connect~.
+
+**** Kernel state
+
+#+findex: jupyter-execution-state
+#+findex: jupyter-kernel-busy-p
+The execution state of a client's kernel can be obtained
+with ~jupyter-execution-state~ whereas ~jupyter-kernel-busy-p~ returns
+non-nil if the kernel is busy, i.e. the execution state is ~"busy"~.
+
+*** Synchronization
+
+#+findex: jupyter-idle-sync
+#+findex: jupyter-add-idle-sync-hook
+To more or less wait until a ~jupyter-request~ becomes idle the
+function ~jupyter-idle-sync~ can be used.  ~jupyter-add-idle-sync-hook~
+can be used to add a function to a hook variable that waits until a
+particular request has become idle.
+
+*** Code contexts
+
+#+findex: jupyter-code-context
+A code context is a cons cell whose ~car~ is a string of code and
+whose ~cdr~ is a position within that code.  The
+method ~jupyter-code-context~ is used to generate code contexts
+depending on the particular method context at time of evaluation.
+Currently there are two types of code contexts, ~inspect~
+and ~completion~, defined by the particular method specialization on the
+first argument of ~jupyter-code-context~. 
+
+#+begin_src elisp
+(cl-defmethod jupyter-code-context ((_type (eql inspect)))
+  ...)
+#+end_src
+
+These code contexts are then used for requests that take code and
+position arguments:
+
+#+begin_src elisp
+(pcase (jupyter-code-context 'completion)
+  (`(,code ,pos)
+   (jupyter-complete-request
+    :code code
+    :pos pos
+    :handlers nil)))
+#+end_src
+
+The benefit of specifying these code contexts via a method is the
+ability to dispatch on method context specializers (using the ~&context~
+argument-list keyword) to allow easy extendability depending on the
+Emacs environment when the method is called.
+
+** Working with messages
+
+*** Requests
+
+All ~jupyter-request~'s have an associated function that creates
+requests of that type (the name being ~jupyter-REQUEST-TYPE~
+where ~REQUEST-TYPE~ is the same as the actual request name in the
+Jupyter specification with underscores replaced by dashes).  The
+arguments being in the form of a property list where each key is one
+of the request fields as specified in the Jupyter messaging protocol.
+For example,
+
+#+begin_src elisp
+(jupyter-inspect-request
+ :code code
+ :pos pos
+ :detail detail)
+#+end_src
+
+Where ~:pos~ is ~cursor_pos~ and ~:detail~ is ~detail_level~ in the messaging
+specification for an inspect request.  See the request function
+definitions for more details.
+
+#+vindex: jupyter-inhibit-handlers
+Every ~jupyter-REQUEST-TYPE~ function has an extra ~:handlers~ argument
+which allows you to selectively choose which handler methods of the
+client get called while handling messages of the request during its
+lifetime.  This argument has the inverted meaning
+of ~jupyter-inhibit-handlers~, if ~:handlers~ is nil then no client
+handlers are evaluated, if it is a list of elements
+from ~jupyter-message-types~ then only handlers of those types are
+evaluated, if the list's first element is the symbol ~not~ then evaluate
+all handlers other than those in the list.
+
+#+findex: jupyter-request
+An important note is that the request functions all return a deferred
+object of type ~jupyter-request~ in the sense that the object returned
+does not yet represent a live request and must be bound by a call
+to ~jupyter-mlet*~ and that form evaluated
+under ~jupyter-run-with-client~, for example, to actually send the
+request and gain access to the ~jupyter-request~ object which has been
+sent.
+
+#+begin_src elisp
+(jupyter-run-with-client
+    jupyter-current-client
+  (jupyter-mlet* ((req (jupyter-sent
+                        (jupyter-execute-request
+                         :code "1 + 1"))))
+    ...))
+#+end_src
+
+**** Generating a request object
+
+#+findex: jupyter-generate-request
+When the deferred request is actually realized, the
+method ~jupyter-generate-request~ is called to instantiate
+a ~jupyter-request~ object or a sub-type of ~jupyter-request~ depending on
+the Emacs environment when the deferred request is realized.  The
+request handler methods that define the core behavior of a particular
+sub-class of ~jupyter-kernel-client~ can then dispatch on both the
+client class and the sub-type of ~jupyter-request~.  The Org
+client, ~jupyter-org-client~, uses this method to create
+an ~jupyter-org-request~ when the request originates from a source block
+being executed from within an Org buffer.  So that during the lifetime
+of the request, since it is an ~jupyter-org-request~ all message
+handling behavior is routed to the ~jupyter-org-client~ implementation.
+
+*** Response messages
+
+There are three mechanisms that allow for messages generated by a
+request to be handled.  Message handler methods of a kernel client,
+message callback functions associated with the request itself, and
+client local hooks associated with the channel on which the message is
+received.
+
+**** Message handlers
+
+#+findex: define-jupyter-client-handler
+Message handler methods are defined with ~define-jupyter-client-handler~
+which, with a message type ~MSG-TYPE~, defines a
+method ~jupyter-handle-MSG-TYPE~ that takes arguments ~(client req msg)~
+where ~msg~ is a message received from the kernel (of type ~MSG-TYPE~) in
+response to the request, ~req~, that ~client~ made.
+
+**** Callbacks
+
+#+findex: jupyter-message-subscribed
+~jupyter-message-subscribed~ takes a deferred request and an association
+list mapping message types to callback functions and returns a
+deferred request which will evaluate the appropriate callback
+functions on the response messages.
+
+#+begin_src elisp
+(jupyter-run-with-client jupyter-current-client
+  (jupyter-mlet* ((req (jupyter-message-subscribed
+                        (jupyter-execute-request
+                         :code "1 + 1"
+                         ;; No need for handlers, since we have callbacks
+                         :handlers nil)
+                        `(("execute_result"
+                           ,(jupyter-message-lambda (res text/plain)
+                              (message "EXEC RESULT: %s" res)))))))
+    (jupyter-idle req)))
+#+end_src
+
+**** Client local hooks
+
+#+vindex: jupyter-shell-channel-hook
+#+vindex: jupyter-iopub-channel-hook
+#+vindex: jupyter-stdin-channel-hook
+#+findex: jupyter-add-hook
+~jupyter-add-hook~ can be used on one of the ~jupyter-TYPE-channel-hook~
+(where ~TYPE~ is either ~shell~, ~iopub~, or ~stdin~) to add to the
+client local value of those hook variables.  Whenever a message
+arrives on one of their respective channels, the functions on the hook
+are evaluated to determine whether or not the message should have its
+message handler evaluated.  If any of the functions return non-nil,
+then the message is not passed to the message handler.
+
+**** Convenience macros
+
+#+findex: jupyter-with-message-data
+~jupyter-with-message-data~ is a macro that binds elements of a
+message's MIME bundle.  A call such as
+
+#+begin_src elisp
+(jupyter-with-message-data msg
+    ((text text/plain)
+     (md text/markdown))
+  BODY)
+#+end_src
+
+means to bind ~text~ to the ~text/plain~ representation of ~msg~'s MIME
+bundle and ~md~ to the ~text/markdown~ representation and evaluate ~BODY~.
+
+#+findex: jupyter-with-message-content
+Similar to ~jupyter-with-message-data~, ~jupyter-with-message-content~
+takes symbols whose names are the same as the fields of a message's
+content and binds them to the field's value in the message.
+
+#+begin_src elisp
+(jupyter-with-message-content msg
+    (status indent)
+  BODY)
+#+end_src
+
+#+findex: jupyter-message-lambda
+For convenience, there is also the macro ~jupyter-message-lambda~ which
+defines a function that takes a single argument, a message, and binds
+its arguments to fields of that message.  Its argument list takes
+symbols or ~(var MIME)~ lists where in the former case the symbols are
+bound as in ~jupyter-with-message-content~ and in the latter, variables
+like ~var~ are bound as in ~jupyter-with-message-data~.  These functions
+are useful as callback functions associated with a request using ~jupyter-message-subscribed~.
+
+#+begin_src elisp
+(jupyter-message-lambda (status matches metadata)
+  BODY)
+
+;; is equivalent to
+
+(lambda (msg)
+  (jupyter-with-message-content msg
+      (status matches metadata)
+    BODY))
+#+end_src
+
+** REPL
+
+*** Input and output cells
+
+The REPL buffer is sectioned off into input cells and output cells.
+An input cell is the region of the buffer that the user types their
+code in.  Once the code is executed, the input cell becomes finalized
+and read only and the state of the buffer is updated to accept the
+next input cell.  Whenever the executed input cell generates output,
+the output is placed in the output cell immediately following the
+generating input cell.
+
+#+findex: jupyter-repl-map-cells
+To map over the input/output cells in a region you can
+use ~jupyter-repl-map-cells~ which calls a function with the region
+narrowed to the input or output cell.
+
+*** Prompts
+
+#+findex: jupyter-repl-insert-prompt
+~jupyter-repl-insert-prompt~ is used to insert one of the three types of
+prompts.  Either an input prompt, an output prompt, or a line
+continuation prompt.
+
+#+findex: jupyter-repl-cell-mark-busy
+#+findex: jupyter-repl-cell-unmark-busy
+To mark an input cell as busy or not busy you can
+use ~jupyter-repl-cell-mark-busy~ and ~jupyter-repl-cell-unmark-busy~.
+
+*** Initialization
+
+#+findex: jupyter-repl-after-init
+The method ~jupyter-repl-after-init~ can be extended per kernel language
+to perform REPL initialization specific for the kernel language.
+
+#+findex: jupyter-repl-initialize-fontification
+~jupyter-repl-initialize-fontification~ can be extended to tweak
+the ~font-lock~ properties of the REPL.  The default method sets
+the ~font-lock-defaults~ to those of the kernel language's but
+with ~font-lock-fontify-region~ and ~syntax-propertize-function~ to
+functions that fontify according to cell boundaries
+(see ~jupyter-repl-map-cells~) and enables ~font-lock-mode~.
+
+*** Method extensions
+
+The following methods can be extended per kernel language to modify
+the behavior of the REPL.
+
+#+findex: jupyter-indent-line
+~jupyter-indent-line~ can be extended to modify how a line is indented
+according to the particular kernel.  The default method
+calls ~indent-for-tab-command~.
+
+#+findex: jupyter-repl-after-change
+~jupyter-repl-after-change~ is a method intended to be used as
+an ~after-change-functions~ function.  The default method takes care of
+logistical actions to maintain the state of the REPL buffer.  An
+example usage is to add an additional prompt depending on the first
+inserted character in a REPL cell for Julia kernels.
+
+** Org client
+
+#+findex: jupyter-org-when-in-src-block
+The macro ~jupyter-org-when-in-src-block~ allows for code to be
+evaluated only when ~point~ is within the contents of a Jupyter source
+block.
+
+#+findex: jupyter-org-src-block-client
+~jupyter-org-src-block-client~ returns the ~jupyter-kernel-client~
+associated with the source block session of the source block at ~point~.
+
+#+findex: jupyter-org-with-src-block-client
+Combining the above, ~jupyter-org-with-src-block-client~ allows code to
+be evaluated when the source block's session has an associated kernel
+client already available.  The kernel client will be bound to
+the ~jupyter-current-client~ as the code is evaluated.
+
+#+vindex: jupyter-org-mime-types
+#+vindex: jupyter-org-display-mime-types
+The ~:display~ header argument allows a user to select the priority of
+mime types which a source block should use to display its results.
+The variable ~jupyter-org-mime-types~ holds the full list of available
+mime types Emacs-Jupyter can handle and are the default mime types
+used when there is no ~:display~ header argument.
+See ~jupyter-org-display-mime-types~.
+
+*** Addition of results
+
+A result in the context of the Org client is either the text of a
+stream message, the contents of a ~display_data~ message, or the
+contents of an ~execute_result~ message.  Since a ~display_data~ message
+takes essentially the same form as an ~execute_result~ message, that is,
+the relevant parts of both are the fact that they provide MIME bundles
+to be processed, the distinction between the various types of results
+are then that a result can be either a stream or non-stream result.
+
+**** Insertion vs collection
+
+Addition of result can mean two things either the insertion of the
+result directly into the buffer when the execution was asynchronous or
+the collection of the result into a list to convert the parts into an
+Org element representation, i.e. the contents of a ~RESULTS~ drawer, at
+a future time.
+
+**** Converting MIME data to Org elements
+
+#+findex: jupyter-org-get-result
+#+findex: jupyter-org-result
+The method ~jupyter-org-result~ is the main driver that converts MIME
+representations to their Org element counterpart.  The
+function ~jupyter-org-get-result~ is responsible for looping over
+the ~jupyter-org-display-mime-types~ of a request on some mime bundle to
+find which mime type to return a result for; it should be the main
+entry-point to obtain an Org element representation of a mime bundle.
+
+*** Dynamic keybindings
+
+#+findex: jupyter-org-define-key
+To implement dynamic keybindings that are only available when ~point~ is
+in a Jupyter source block, extended menu items
+(https://www.gnu.org/software/emacs/manual/html_node/elisp/Extended-Menu-Items.html)
+are used.  Since the keybindings can be specific for each kernel
+language, special vector key sequences are used which distinguish the
+keymaps for each particular language and a fallback general keymap is
+also available independent of language.  See the definition
+of ~jupyter-org-define-key~ for more details.
+
+*** Completion
+
+#+findex: jupyter-org-completion-at-point
+Completion when ~point~ is within a Jupyter source block depends
+on ~jupyter-org-with-src-block-client~ and simply uses
+the already available ~jupyter-completion-at-point~ function to retrieve
+completion candidates.  See ~jupyter-org-completion-at-point~.
+
+*** ANSI escapes in source block results
+
+#+findex: jupyter-org-font-lock-ansi-escapes
+There is full support for handling ANSI escape sequences in kernel
+output and this is achieved by extending Org mode's fontification
+keywords with the function ~jupyter-org-font-lock-ansi-escapes~.
+
+*** Stream results
+
+A stream message received by the client during the lifetime of a
+request is simply text from the stdout/stderr of the kernel's
+interpreter process.  There is special handling to process these
+messages so that asynchronous processing can work smoothly and display
+something meaningful in the Org buffer without the need of waiting for
+the full stdout/stderr stream of the request to be received before
+displaying results to the user.
+
+The representation of a stream message as an Org element is either as
+a ~fixed-width~ or ~example-block~ element.
+
+When handling stream messages, they are always input in the buffer
+as ~fixed-width~ elements or as ~example-blocks~.  The first stream
+message is always a ~fixed-width~ element if its output is less
+than ~org-babel-min-lines-for-block-output~.  When appending to a stream
+result due to another stream message being received and the current
+representation of the previous stream messages in the Org buffer is as
+a ~fixed-width~ element, that element is converted into an ~example-block~
+when its lines exceed ~org-babel-min-lines-for-block-output~.
+
+Note, to implement appending to a stream result already present in the
+Org buffer a special text property, ~jupyter-stream-newline~, is added
+to the ~line-end-position~ of the (contents-)end of the element that
+represents the stream result.
+
+** REST API
+
+#+findex: jupyter-rest-client
+#+findex: jupyter-server
+Interacting with a Jupyter notebook server through its REST API is
+done using a ~jupyter-rest-client~ which ~jupyter-server~ is a subclass
+of.
+
+#+findex: jupyter-api-get-kernelspec
+To get a list of kernelspecs that are available on a notebook server,
+use ~jupyter-api-get-kernelspec~.
+
+#+findex: jupyter-api-launch-kernel
+#+findex: jupyter-api-get-kernel
+#+findex: jupyter-api-shutdown-kernel
+#+findex: jupyter-api-restart-kernel
+#+findex: jupyter-api-interrupt-kernel
+To launch a kernel behind a rest server,
+use ~jupyter-api-launch-kernel~.  To get a REST API model of a kernel
+with a particular ID, ~jupyter-api-get-kernel~ can be
+used.  ~jupyter-api-shutdown-kernel~, ~jupyter-api-restart-kernel~,
+and ~jupyter-api-interrupt-kernel~ all manage the lifetime of a kernel
+behind a notebook server.
+
+#+findex: jupyter-api-kernel-websocket
+Once a kernel is launched a websocket connection to it can be
+obtained using ~jupyter-api-kernel-websocket~.
+
+*** Server
+
+A ~jupyter-server~ is a representation of a notebook server or kernel
+gateway and is a sub-class of ~jupyter-rest-client~.  Its main purpose
+is to build on the bare notebook REST API calls and manage the
+interactions between the notebook server and Emacs.
+
+**** The current server
+
+#+vindex: jupyter-current-server
+#+findex: jupyter-current-server
+The variable ~jupyter-current-server~ holds the current server object
+associated with a buffer, e.g. the ~jupyter-server-kernel-list-mode~
+buffer that displays the list of kernels associated with a notebook
+server.  Usually a server object is not tied to a buffer but
+the ~jupyter-current-client~ or is the server associated with a
+remote ~default-directory~.  The identically named function attempts to
+intelligently determine from these conditions which server object to
+return.
+
+**** Associating names with kernels
+
+When managing kernels through a ~jupyter-server~, it is convenient to
+associate a human readable name with the kernel so that you can simply
+refer to that name in most interactions without having to remember the
+specific ID of the kernel.  This is most apparent with the association
+of kernel names and Jupyter source block sessions
+using =/jpy:HOST:KERNEL-NAME= based sessions.
+
+#+vindex: jupyter-server-kernel-names
+The variable ~jupyter-server-kernel-names~ is an association list
+mapping kernel IDs to human friendly names.
+
+#+findex: jupyter-server-kernel-name
+#+findex: jupyter-server-kernel-id-from-name
+#+findex: jupyter-server-name-kernel
+#+findex: jupyter-server-name-client-kernel
+~jupyter-server-name-kernel~ allows you to name a kernel given its ID on
+a server.  You would typically name a kernel through the
+function ~jupyter-server-name-client-kernel~ as most interactions with a
+kernel are through its associated client.  Given an ID and a
+server, ~jupyter-server-kernel-name~ returns the name of the kernel
+in ~jupyter-server-kernel-names~.  The ID from the name can be obtained
+from ~jupyter-server-kernel-id-from-name~.
+
+*** The contents API
+
+The contents REST API, the REST API that allows you to interact with
+the files on a notebook server, is fully integrated with Emacs' remote
+file processing library, TRAMP.
+
+#+findex: jupyter-api-content-path
+~jupyter-api-content-path~ sanitizes a content path to use for a call to
+one of the contents endpoints.
+
+#+findex: jupyter-api-get-file-model
+~jupyter-api-get-file-model~ returns a model of a file on a REST server.
+
+#+findex: jupyter-api-delete-file
+#+findex: jupyter-api-rename-file
+#+findex: jupyter-api-make-directory
+#+findex: jupyter-api-copy-file
+#+findex: jupyter-api-write-file-content
+#+findex: jupyter-api-read-file-content
+The
+functions:
+~jupyter-api-delete-file~,
+~jupyter-api-rename-file~,
+~jupyter-api-copy-file~,
+~jupyter-api-make-directory~,
+~jupyter-api-write-file-content~, ~jupyter-api-read-file-content~
+implement the core functions that make up the interface to the
+contents REST API.
+
+*** TRAMP integration
+
+The contents REST API is fully integrated with Emacs' remote file
+processing library, TRAMP, so normally (depending on your purpose),
+you can simply use Emacs' built-in file operations on Jupyter based
+remote files to manipulate the file system the notebook server gives
+access to as opposed to working directly with the functions that make
+direct API calls.
+
+A key difference is that as opposed to TRAMP which normally uses
+process buffers which hold the connection between Emacs and a remote
+host, Emacs-Jupyter relies on the URL library and so the connection
+information is not accessible in the same way as TRAMP expects for
+some tasks.
+- [ ] Why does this matter?
+
+#+findex: jupyter-tramp-with-api-connection
+The macro ~jupyter-tramp-with-api-connection~
+binds ~jupyter-current-server~ to the matching server object for the
+Jupyter remote file passed to it as the first argument and evaluates
+the rest of its arguments in the environment where it is bound.
+
+** Kernels
+
+#+findex: jupyter-kernel
+#+findex: jupyter-interrupt-kernel
+#+findex: jupyter-shutdown-kernel
+#+findex: jupyter-kernel-action
+A ~jupyter-kernel~ has the following methods that control the kernel's
+lifetime: ~jupyter-launch~, ~jupyter-interrupt~, and ~jupyter-shutdown~.
+Kernel's are mostly interacted with via their associated client, which
+can be instantiated with the ~jupyter-client~ method.  To interact with
+a kernel via a client, you would use the
+functions ~jupyter-interrupt-kernel~ and ~jupyter-shutdown-kernel~ as well
+as the function ~jupyter-kernel-action~ which allows an arbitrary
+function to be evaluated on the client's underlying kernel object.
+Launching a kernel is already implicitly done when connecting to the
+kernel's I/O through the ~jupyter-io~ method if needed.
+
+#+findex: jupyter-io
+Every kernel object should have an implementation of the ~jupyter-io~
+method which returns a list of two elements, a publisher to which
+kernel messages can be sent and received and a subscriber which can be
+published to to control the exposed properties of the underlying
+kernel object.
+
+*** Server Kernel
+
+#+findex: jupyter-server-kernel
+A ~jupyter-server-kernel~ is a kernel managed by a ~jupyter-server~
+instance and can be instantiated by something like
+
+#+begin_src elisp
+(jupyter-kernel
+ :server (jupyter-current-server)
+ :spec "python3")
+#+end_src
+
+*** Kernel Process
+
+#+findex: jupyter-kernel-process
+A ~jupyter-kernel-process~ is a kernel that is managed by Emacs and uses
+ZMQ sockets for communication.  They can be instantiated by something
+like
+
+#+begin_src elisp
+(jupyter-kernel :spec "python3")
+;; or
+(jupyter-kernel :conn-info "kernel-6e6df1f7-7fec-4b84-8385-322a5705e5ca.json")
+#+end_src
+
+** Monadic interface
+
+A monad can be thought of as having a context associated with a
+computation.  A monadic value is an implied computation of some value
+within that context.  Monadic functions are functions which take
+normal values and produce monadic ones.  A function composition rule
+is associated with a monad to take monadic values and apply monadic
+functions to the underlying computed value.
+
+#+findex: jupyter-mlet*
+#+findex: jupyter-do
+#+findex: jupyter-run-with-state
+Currently, the only monad that is available is the state monad.  A
+computation under the state monad can be obtained using ~jupyter-mlet*~
+which is similar to ~let*~ with the values of the variables being bound
+being monadic values that only get evaluated when the full computation
+described by the call to ~jupyter-mlet*~ gets evaluated by a call
+to ~jupyter-run-with-state~.  ~jupyter-do~ is a macro similar
+to ~jupyter-mlet*~ which yields a monadic value that evaluates all
+monadic values it is given in sequence.
+
+#+findex: jupyter-return
+~jupyter-return~ is a monadic function that places a regular, arbitrary,
+value in the context of the state monad.  You would use this function
+to inject arbitrary values into a calculation.
+
+#+begin_src elisp
+(jupyter-mlet* ((x (jupyter-return 1)))
+  (jupyter-return (+ x 2)))
+#+end_src
+
+In the above, the monadic value, ~(jupyter-return 1)~, which contains
+the regular value 1 will bind its encapsulated value to ~x~ when the
+computation is run under a call to ~jupyter-run-with-state~ while the
+final expression evaluated in the body of the ~jupyter-mlet*~ form
+(under the context of the monad) must be another monadic value hence
+the second use of ~jupyter-return~.  So that actually executing this
+computation, you can do
+
+#+begin_src elisp :lexical t
+(let ((comp (jupyter-mlet* ((x (jupyter-return 1)))
+              (jupyter-return (+ x 2)))))
+  (jupyter-run-with-state nil
+    comp)) ; 3
+#+end_src
+
+#+findex: jupyter-get-state
+#+findex: jupyter-put-state
+#+findex: jupyter-push
+#+findex: jupyter-pop
+During the course of a computation, the state can be accessed by using
+the monadic value ~jupyter-get-state~.  While ~jupyter-put-state~ sets the
+current state to some value.  There are also ~jupyter-push~
+and ~jupyter-pop~ which add and remove to the head of the state if it is
+assumed to be a list.
+
+Below, the computation encapsulated in the state monad is the addition
+of two numbers, one constant plus the current value of the
+state.  ~jupyter-run-with-state~ evaluates the computation consisting of
+a computation to set the state to some value and a computation that
+computes the addition and returns the value of the addition.
+
+#+begin_src elisp :lexical t
+(let ((comp 
+       (jupyter-mlet* ((x (jupyter-return 1))
+                       (y (jupyter-get-state)))
+         (jupyter-return (+ x y)))))
+  (jupyter-run-with-state nil
+    (jupyter-do
+      (jupyter-put-state 3)
+      comp))) ; 4
+#+end_src
+
+*** Publisher/subscriber
+
+The publisher/subscriber API is a message passing interface that is
+used to create messaging pipelines for various actions in the
+code-base.  One use of them is as a callback mechanism for reply
+messages of a request.  Each request has a response publisher to which
+subscribers can attach to receive the messages generated by a request.
+In general the publisher/subscriber API can be used to decouple a part
+of the code-base from another part and have them interact through
+message passing using the interface setup between a publisher and its
+subscribers.
+
+#+findex: jupyter-publisher
+#+findex: jupyter-subscriber
+#+findex: jupyter-content
+#+findex: jupyter-publish
+#+findex: jupyter-unsubscribe
+A ~jupyter-publisher~ takes a publishing function as its sole argument.
+A publisher maintains a list of subscribers, consisting of
+either ~jupyter-publisher~ or ~jupyter-subscriber~ objects and can choose
+to deliver content to its subscribers or unsubscribe from the
+publisher that it is subscribed to.  The publishing function itself
+takes a single argument, a value which has been published to it
+using ~jupyter-publish,~ and is meant to process that value.  There are
+two special return values indicated by ~jupyter-content~
+and ~jupyter-unsubscribe~.  When the publishing function returns a value
+wrapped in a call to ~jupyter-content~, the value is passed on to the
+subscribers of the publisher.  Returning ~jupyter-unsubscribe~
+unsubscribes the publisher from who it is a subscriber of.  Any other
+return value of the publishing function has no effect on the
+publisher/subscriber relationship.  A ~jupyter-subscriber~ takes a
+subscription function as its sole argument and acts as a publisher
+with the only difference in that it cannot publish any content or be
+subscribed to.  It only acts as a sink of published messages.
+
+#+findex: jupyter-subscribe
+To subscribe to a publisher, you could use the ~jupyter-subscribe~
+function like so
+
+#+begin_src elisp
+(jupyter-run-with-io pub
+  (jupyter-subscribe
+    (jupyter-subscriber
+      (lambda (content)
+        ...))))
+#+end_src
+
+Similarly, publishing content to a publisher is done with
+
+#+begin_src elisp
+(jupyter-run-with-io pub
+  (jupyter-publish 'value))
+#+end_src
+
+* Main Index
+:PROPERTIES:
+:INDEX:    cp
+:DESCRIPTION: An index of Emacs-Jupyter's concepts and features.
+:END:
+
+* Key Index
+:PROPERTIES:
+:DESCRIPTION: Key bindings.
+:INDEX:    ky
+:END:
+
+* Command and Function Index
+:PROPERTIES:
+:DESCRIPTION: Commands and functions.
+:INDEX:    fn
+:END:
+* Variable Index
+:PROPERTIES:
+:DESCRIPTION: Variables.
+:INDEX:    vr
+:END:
