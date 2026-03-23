@@ -476,24 +476,39 @@ property list."
 (defvar jupyter-inhibit-handlers)
 
 (defun jupyter-message-subscribed (req cbs)
-  "Return value that subscribes CBS to a request's message publisher.
-REQ is value that evaluates to a `jupyter-request'.  CBS is an
-alist mapping message types to callback functions like
+  "Return a monadic value that subscribes CBS to a request's message publisher.
+REQ is monadic value that evaluates to a `jupyter-request', i.e. the
+monadic values returned by `jupyter-*-request' functions.
+
+CBS is an alist mapping message types to callback subscribers like
 
     `((\"execute_reply\" ,(lambda (msg) ...))
       ...)
 
-The returned value returns the sent request, subscribing the
-callbacks before sending."
+The subscribers are called only for the associated message type.
+
+All callback subscribers take a single argument, a message.  The current
+request which generated the message can be accessed through the
+`jupyter-current-request' function.
+
+CBS can also be a function, in which case it is itself the callback
+subscriber to apply to all messages of any type.
+
+The returned value returns the request that is resolved, subscribing the
+callbacks before resolving the request."
   (let (rreq)
     (jupyter-do
       (jupyter-add-subscriber
-       (lambda (msg)
-         (when-let*
-             ((msg-type (jupyter-message-type msg))
-              (fn (car (alist-get msg-type cbs nil nil #'string=)))
-              (jupyter--current-request rreq))
-           (funcall fn msg))))
+       (if (functionp cbs)
+           (lambda (msg)
+             (when-let* ((jupyter--current-request rreq))
+               (funcall cbs msg)))
+         (lambda (msg)
+           (when-let*
+               ((msg-type (jupyter-message-type msg))
+                (fn (car (alist-get msg-type cbs nil nil #'string=)))
+                (jupyter--current-request rreq))
+             (funcall fn msg)))))
       (jupyter-mlet* ((sreq req))
         (jupyter-return
           (setq rreq sreq))))))
