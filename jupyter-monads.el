@@ -140,20 +140,24 @@ context."
        client))))
 
 (defun jupyter-at-point (action)
-  "Return a value evaluating ACTION at `point'."
+  "Return a monadic value evaluating ACTION at `point'.
+If `point' doesn't point to a valid buffer position when attempting to
+run ACTION, e.g. the buffer has been killed, do nothing and return nil
+as the monadic value."
   (let ((marker (point-marker)))
     (jupyter-mlet* ((state (jupyter-get-state)))
-      (when (and (marker-buffer marker) (marker-position marker))
-        (unwind-protect
-            (with-current-buffer (marker-buffer marker)
-              (save-excursion
-                (save-restriction
-                  (widen)
-                  (goto-char (marker-position marker))
-                  (jupyter-return
+      (jupyter-return
+        (when (and (buffer-live-p (marker-buffer marker))
+                   (marker-position marker))
+          (unwind-protect
+              (with-current-buffer (marker-buffer marker)
+                (save-excursion
+                  (save-restriction
+                    (widen)
+                    (goto-char (marker-position marker))
                     (jupyter-run-with-state state
-                      action)))))
-          (move-marker marker nil))))))
+                      action))))
+            (move-marker marker nil)))))))
 
 (defmacro jupyter-with-bindings* (varlist action)
   "Return a monadic value that evaluates ACTION with bound variables.
