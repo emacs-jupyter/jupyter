@@ -46,8 +46,16 @@
 (declare-function jupyter-generate-request "jupyter-client")
 (declare-function jupyter-wait-until-idle "jupyter-client" (req &optional timeout progress-msg))
 
+(defun jupyter-get-state ()
+  "Return the current state as a monadic value."
+  (lambda (state) (cons state state)))
+
+(defun jupyter-put-state (value)
+  "Return a monadic value that sets the current state to VALUE."
+  (lambda (_state) (cons nil value)))
+
 (defun jupyter-return (value)
-  "Return a monadic value wrapping VALUE."
+  "Return VALUE as a monadic value."
   (declare (indent 0)
            (compiler-macro
             (lambda (exp)
@@ -59,14 +67,12 @@
                (t exp)))))
   (lambda (state) (cons value state)))
 
-(defun jupyter-get-state ()
-  "Return a monadic valid whose unwrapped value is the current state."
-  (lambda (state) (cons state state)))
-
-(defun jupyter-put-state (value)
-  "Return a monadic value that sets the current state to VALUE.
-The unwrapped value is nil."
-  (lambda (_state) (cons nil value)))
+(defun jupyter-bind (mvalue mfn)
+  "Bind monadic value MVALUE to monadic function MFN."
+  (declare (indent 1))
+  (lambda (state)
+    (pcase-let* ((`(,value . ,state) (funcall mvalue state)))
+      (funcall (funcall mfn value) state))))
 
 (defmacro jupyter-mlet* (varlist &rest body)
   "Bind the monadic values in VARLIST, evaluate BODY.
@@ -95,21 +101,18 @@ returned action is the result of the last action in ACTIONS."
     `(jupyter-mlet* ((_ ,(car actions)))
        (jupyter-do ,@(cdr actions))))))
 
-(defun jupyter-get-client ()
-  "Return a monadic value that returns the client."
-  (jupyter-mlet* ((state (jupyter-get-state)))
-    (let ((client (if (listp state)
-                      (car state)
-                    state)))
-      (cl-check-type client jupyter-kernel-client)
-      (jupyter-return client))))
-
 (defun jupyter-push (s)
+  "Push S as the first element of the state as a monadic value.
+The state within the context is assumed to be a list and S is pushed as
+the first element."
   (jupyter-mlet* ((state (jupyter-get-state)))
     (jupyter-put-state
      (cons s (if (listp state) state (list state))))))
 
 (defun jupyter-pop ()
+  "Pop the first element from the state as a monadic value.
+Return a monadic value that returns that first element when bound in the
+context."
   (jupyter-mlet* ((state (jupyter-get-state)))
     (let ((value (if (listp state)
                      (pop state)
@@ -118,6 +121,14 @@ returned action is the result of the last action in ACTIONS."
       (jupyter-do
         (jupyter-put-state state)
         (jupyter-return value)))))
+
+(defun jupyter-get-client ()
+  "Return a monadic value that returns the client."
+  (jupyter-mlet* ((state (jupyter-get-state)))
+    (let ((client (if (listp state)
+                      (car state)
+                    state)))
+      (jupyter-return client))))
 
 (defun jupyter-set-client (client)
   "Return a monadic value that sets the client."
@@ -143,13 +154,6 @@ returned action is the result of the last action in ACTIONS."
                     (jupyter-run-with-state state
                       action)))))
           (move-marker marker nil))))))
-
-(defun jupyter-bind (mvalue mfn)
-  "Bind MVALUE to MFN."
-  (declare (indent 1))
-  (lambda (state)
-    (pcase-let* ((`(,value . ,state) (funcall mvalue state)))
-      (funcall (funcall mfn value) state))))
 
 (defmacro jupyter-with-bindings* (varlist action)
   "Return a monadic value that evaluates ACTION with bound variables.
