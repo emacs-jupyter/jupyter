@@ -598,41 +598,44 @@ should also be aborted."
           (setq rreq sreq))))))
 
 (defun jupyter-org--enqueue (req on-busy on-reply on-abort callbacks)
-  (let* ((client jupyter-current-client)
-         (marker (copy-marker org-babel-current-src-block-location))
-         (org-babel-current-src-block-location marker))
-    (cl-check-type client jupyter-kernel-client)
-    ;; FIXME This gets overridden in `jupyter-generate-request' when
-    ;; it is called, but we need it here for
-    ;; `jupyter-org-request-at-point' to return a non-nil value for a
-    ;; pending request.
-    (put-text-property marker (1+ marker) 'jupyter-request 'pending)
-    (let ((on-abort
-           (lambda ()
-             (remove-text-properties marker (1+ marker) '(jupyter-request))
-             (set-marker marker nil)
-             (funcall on-abort)))
-          (req (jupyter-with-bindings*
-                   (org-babel-current-src-block-location
-                    org-babel-jupyter-current-src-block-params)
-                 (org-with-point-at
-                     org-babel-current-src-block-location
-                   (jupyter-at-point req)))))
-      (let ((action (jupyter-mlet* ((state (jupyter-get-state)))
-                      (jupyter-do
-                        (jupyter-put-state client)
-                        (jupyter-mlet* ((req (jupyter-org--send
-                                              (jupyter-org-dequeue-after
-                                               req)
-                                              on-busy
-                                              on-reply
-                                              callbacks)))
+  (let ((marker (copy-marker org-babel-current-src-block-location)))
+    (jupyter-with-bindings*
+        (org-babel-jupyter-current-src-block-params)
+      (jupyter-mlet* ((client (jupyter-get-client)))
+        ;; FIXME This gets overridden in `jupyter-generate-request'
+        ;; when it is called, but we need it here for
+        ;; `jupyter-org-request-at-point' to return a non-nil value
+        ;; for a pending request.
+        (put-text-property marker (1+ marker) 'jupyter-request 'pending)
+        ;; TODO Verify that the source block matches the contents of
+        ;; the request still before sending it or block the editing of
+        ;; the source block as it is queued for sending.  Maybe add an
+        ;; on-send callback in addition to an on-busy and on-reply.
+        (let* ((org-babel-current-src-block-location marker)
+               (on-abort
+                (lambda ()
+                  (remove-text-properties
+                   marker (1+ marker) '(jupyter-request))
+                  (set-marker marker nil)
+                  (funcall on-abort)))
+               (req (org-with-point-at
+                        org-babel-current-src-block-location
+                      (jupyter-at-point req))))
+          (let ((action (jupyter-mlet* ((state (jupyter-get-state)))
                           (jupyter-do
-                            (jupyter-put-state state)
-                            (jupyter-return req)))))))
-        (push (list action on-abort)
-              (gethash client jupyter-org-request-queue))
-        (jupyter-return nil)))))
+                            (jupyter-put-state client)
+                            (jupyter-mlet* ((req (jupyter-org--send
+                                                  (jupyter-org-dequeue-after
+                                                   req)
+                                                  on-busy
+                                                  on-reply
+                                                  callbacks)))
+                              (jupyter-do
+                                (jupyter-put-state state)
+                                (jupyter-return req)))))))
+            (push (list action on-abort)
+                  (gethash client jupyter-org-request-queue))
+            (jupyter-return nil)))))))
 
 (defun jupyter-org-run-queue ()
   (maphash (lambda (client _)
@@ -655,15 +658,10 @@ arguments form the CALLBACKS, a property list like
 
     \\='(:status ... :execute_result ...)
 
-where the keys are message types and the values are callback
-functions that a message as argument.  Note, the current request
-which generated the message can be accessed through
-`jupyter-current-request'.
-
-REQ is only queued if `jupyter-org-queue-requests' is non-nil, in
-that case the value returned queues the request and returns nil.
-When `jupyter-org-queue-requests' is nil, return a value that
-sends the request immediately and returns the request."
+where the keys are message types and the values are callback functions
+that take a message as argument.  Note, the current request which
+generated the message can be accessed through `jupyter-current-request'
+in these callbacks."
   (setq callbacks
         (cl-loop
          for (type cb) on callbacks by #'cddr
