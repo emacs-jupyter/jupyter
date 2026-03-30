@@ -292,15 +292,16 @@ method is called."
   ;; ARGS is only a list like (client msg)
   (cl-assert (or (null args) (= (length args) 3)) t
              "ARGS should be an argument list like (client req msg) or nil.")
-  `(cl-defmethod ,(intern (format "jupyter-handle-%s" type))
-     ,(or args
-          ;; Internal usage. Most default handlers are just stub
-          ;; definitions that should not signal an error if called,
-          ;; which is what would happen if no method was defined, so
-          ;; reduce the amount of repetition.
-          '((_client jupyter-kernel-client) _req _msg))
-     ,(or doc (format "A %s handler." (replace-regexp-in-string "-" "_" type)))
-     ,@body))
+  (let ((stype (replace-regexp-in-string "-" "_" (symbol-name type))))
+    `(cl-defmethod ,(intern (format "jupyter-handle-%s" type))
+       ,(or args
+            ;; Internal usage. Most default handlers are just stub
+            ;; definitions that should not signal an error if called,
+            ;; which is what would happen if no method was defined, so
+            ;; reduce the amount of repetition.
+            '((_client jupyter-kernel-client) _req _msg))
+       ,(or doc (format "A %s handler." stype))
+       ,@body)))
 
 ;;; Initializing a `jupyter-kernel-client'
 
