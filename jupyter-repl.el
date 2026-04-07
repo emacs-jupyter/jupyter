@@ -1,4 +1,4 @@
-;;; jupyter-repl-client.el --- A Jupyter REPL client -*- lexical-binding: t -*-
+;;; jupyter-repl.el --- A Jupyter REPL client -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2018-2024 Nathaniel Nicandro
 
