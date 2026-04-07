@@ -1920,15 +1920,14 @@ If INDENTATION is nil, it defaults to `current-indentation'."
 
 (defun jupyter-org-insert-result (req result)
   (pcase-let (((cl-struct jupyter-org-request
-                          inline-block-p block-params client)
+                          inline-block-p block-params)
                req))
     (jupyter-org-with-point-at req
       (if inline-block-p
           (org-babel-insert-result
            (if (stringp result) result
              (or (org-element-property :value result) ""))
-           (alist-get :result-params block-params)
-           nil nil (jupyter-kernel-language client))
+           (alist-get :result-params block-params))
         (let ((res-begin (org-babel-where-is-src-block-result 'insert)))
           (goto-char res-begin)
           (let ((context (org-element-context))
