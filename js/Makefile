@@ -12,10 +12,12 @@ endif
 all: build
 
 clean:
-	rm -rf built/ 2>/dev/null || true
+	@echo "Removing built directory"
+	@rm -rf built/ 2>/dev/null || true
 
 really-clean: clean
-	rm -rf node_modules/ 2>/dev/null || true
+	@echo "Removing node_modules directory"
+	@rm -rf node_modules/ 2>/dev/null || true
 
 ifeq ($(NPM),)
 	build:
