@@ -132,7 +132,6 @@ context."
 
 (defun jupyter-set-client (client)
   "Return a monadic value that sets the client."
-  (cl-check-type client jupyter-kernel-client)
   (jupyter-mlet* ((state (jupyter-get-state)))
     (jupyter-put-state
      (if (listp state)
