@@ -467,7 +467,21 @@ kernel whose kernelspec if SPEC."
   (or client-class (setq client-class 'jupyter-kernel-client))
   (cl-assert (child-of-class-p client-class 'jupyter-kernel-client))
   (let ((client (make-instance client-class)))
-    (oset client io (jupyter-io kernel))
+    (pcase (jupyter-io kernel)
+      (`(,kernel-io ,action-sub)
+        (pcase (jupyter-request-message-handler-with-fallback
+                ;; In this case `jupyter-current-request' will be nil, i.e.
+                ;; when no request handler (message publisher) can be found
+                ;; for the message.
+                (lambda (msg)
+                  (jupyter-debug "No request for parent ID: %s"
+                                 (jupyter-message-parent-id msg))
+                  (let ((channel (jupyter-message-channel msg)))
+                    (jupyter-handle-message client channel msg))))
+          (`(,client-io ,request-handler)
+           (jupyter-run-with-io kernel-io
+             (jupyter-subscribe request-handler))
+           (oset client io (list client-io kernel-io action-sub))))))
     (unless (jupyter-kernel-info client)
       (error "Kernel did not respond to kernel_info_request"))
     ;; If the connection can resolve the kernel's heartbeat channel,
@@ -475,16 +489,21 @@ kernel whose kernelspec if SPEC."
     (jupyter-hb-unpause client)
     client))
 
+(defun jupyter-client-io (client)
+  "Return CLIENT's I/O publisher."
+  (or (car-safe (oref client io))
+      (error "Invalid value of a client's IO slot.")))
+
 (defun jupyter-kernel-io (client)
   "Return the I/O function of the kernel CLIENT is connected to."
   ;; TODO: Mention the messages that can be sent to the
   ;; `jupyter-publisher'. See `jupyter-websocket-io'.
-  (or (car-safe (oref client io))
+  (or (car (cdr-safe (oref client io)))
       (error "Invalid value of a client's IO slot.")))
 
 (defun jupyter-kernel-action-subscriber (client)
   "Return a `jupyter-subscriber' used to modify CLIENT's kernel's state."
-  (or (car (cdr-safe (oref client io)))
+  (or (cadr (cdr-safe (oref client io)))
       (error "Invalid value of a client's IO slot.")))
 
 (defun jupyter-kernel-action (client fn)

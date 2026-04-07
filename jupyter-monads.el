@@ -32,6 +32,7 @@
 
 (declare-function jupyter-handle-message "jupyter-client")
 (declare-function jupyter-kernel-io "jupyter-client")
+(declare-function jupyter-client-io "jupyter-client")
 (declare-function jupyter-generate-request "jupyter-client")
 (declare-function jupyter-wait-until-idle "jupyter-client" (req &optional timeout progress-msg))
 
@@ -551,69 +552,108 @@ callbacks before resolving the request."
 
 ;;; Request
 
-(defun jupyter-message-publisher (req)
+(defun jupyter-request-message-handler-with-fallback (&optional fallback)
+  "Return a request message handler as a message publisher.
+Optional FALLBACK is a function that takes a message when there are no
+requests available to handle that message.  FALLBACK is called both when
+the message is not a `jupyter-message-p' as well as when it is and there
+is no associated request."
+  (let ((idle-request-ids nil)
+        (msg-publishers (make-hash-table :test #'equal)))
+    (list
+     (jupyter-subscriber
+       (lambda (action)
+         (pcase action
+           (`(publisher ,id ,(and f (pred functionp)))
+            (puthash id
+                     (funcall f (gethash id msg-publishers))
+                     msg-publishers))
+           (`(idle ,id)
+            (push id idle-request-ids)))))
+     (jupyter-publisher
+       (lambda (msg)
+         (if (not (jupyter-message-p msg))
+             ;; Send what doesn't appear to be a message as is.
+             (and fallback (funcall fallback msg))
+           (when (and idle-request-ids
+                      ;; A heuristic for assuming that an idle request
+                      ;; has stopped receiving messages is when there is
+                      ;; a status: busy message received by the client
+                      ;; after the request has become idle.  In this
+                      ;; case, the kernel has completed handling all of
+                      ;; the idle requests and is moving on to processing
+                      ;; a new request so the assumption is that there
+                      ;; would be no more messages received for any of
+                      ;; the idle requests and therefore they can be
+                      ;; safely removed from the table of live request
+                      ;; message publishers.
+                      (jupyter-message-status-busy-p msg))
+             (while idle-request-ids
+               (let ((id (pop idle-request-ids)))
+                 (when-let* ((pub (gethash id msg-publishers)))
+                   ;; Notify subscribers that no more messages are
+                   ;; arriving.
+                   (jupyter-run-with-io pub
+                     (jupyter-publish jupyter-empty-message)))
+                 (remhash id msg-publishers))))
+           (if-let* ((pub (gethash
+                           (jupyter-message-parent-id msg)
+                           msg-publishers)))
+               (jupyter-run-with-io pub
+                 (jupyter-publish msg))
+             ;; No message publisher for the parent request.
+             (and fallback (funcall fallback msg)))))))))
+
+(defun jupyter-message-publisher (client req)
   "Return a publisher that publishes REQ's messages.
 Any subscribers to this publisher will receive the message
 property lists of the received messages for REQ.  Note, that
 non-messages are passed to subscribers as is.  The
 `jupyter-empty-message' indicates the end of the message stream."
-  (let ((id (jupyter-request-id req))
-        (should-unsubscribe nil))
-    (jupyter-publisher
-      (lambda (msg)
-        (if should-unsubscribe (jupyter-unsubscribe)
-          (if (not (jupyter-message-p msg))
-              ;; Send what doesn't appear to be a message as is.
-              (jupyter-content msg)
-            (let ((type (jupyter-message-type msg)))
-              (cond
-               ((and (jupyter-request-idle-p req)
-                     (string= type "status"))
-                ;; Unsubscribe on the next call to the publisher.
-                (setq should-unsubscribe t)
-                ;; Notify subscribers that no more messages are arriving.
-                (jupyter-content jupyter-empty-message))
-               ((string= id (jupyter-message-parent-id msg))
-                (setf (jupyter-request-last-message req) msg)
-                (cl-callf nconc (jupyter-request-messages req) (list msg))
-                (when (or (jupyter-message-status-idle-p msg)
-                          ;; Jupyter protocol 5.1, IPython implementation
-                          ;; 7.5.0 doesn't give status: busy or status:
-                          ;; idle messages on kernel-info-requests.
-                          ;; Whereas IPython implementation 6.5.0 does.
-                          ;; Seen on Appveyor tests.
-                          ;;
-                          ;; TODO: May be related jupyter/notebook#3705
-                          ;; as the problem does happen after a kernel
-                          ;; restart when testing.
-                          (string= type "kernel_info_reply")
-                          ;; No idle message is received after a shutdown
-                          ;; reply so consider REQ as having received an
-                          ;; idle message in this case.
-                          (string= type "shutdown_reply"))
-                  (setf (jupyter-request-idle-p req) t))
-                (jupyter-content msg))))))))))
-
-(defun jupyter-subscribe-client (client req &optional
-                                        inhibited-handlers server-p)
-  "Return an action to subscribe CLIENT to a publisher.
-If SERVER-P is non-nil and a received message is a status: busy
-message, set the client as the `jupyter-current-client' in the
-`server-buffer', see `jupyter-server-mode-set-client'.
-
-Note, if `jupyter--debug' is `message' then this is a no-op."
-  (if (eq jupyter--debug 'message)
-      (jupyter-return nil)
-    (jupyter-subscribe
-      (jupyter-subscriber
-        (lambda (msg)
-          (when (jupyter-valid-message-p msg)
-            (when (and server-p (jupyter-message-status-busy-p msg))
-              (jupyter-server-mode-set-client client))
-            (let ((channel (jupyter-message-channel msg))
-                  (jupyter-inhibit-handlers inhibited-handlers)
-                  (jupyter--current-request req))
-              (jupyter-handle-message client channel msg))))))))
+  (let (pub
+        (make-pub
+         (lambda (req)
+           (setf
+            (jupyter-request-message-publisher req)
+            (jupyter-publisher
+              (lambda (msg)
+                (when (jupyter-valid-message-p msg)
+                  (setf (jupyter-request-last-message req) msg)
+                  (cl-callf nconc (jupyter-request-messages req)
+                    (list msg))
+                  (let ((type (jupyter-message-type msg)))
+                    (when (or (jupyter-message-status-idle-p msg)
+                              ;; Jupyter protocol 5.1, IPython
+                              ;; implementation 7.5.0 doesn't give
+                              ;; status: busy or status: idle messages
+                              ;; on kernel-info-requests.  Whereas
+                              ;; IPython implementation 6.5.0 does.
+                              ;; Seen on Appveyor tests.
+                              ;;
+                              ;; TODO: May be related
+                              ;; jupyter/notebook#3705 as the problem
+                              ;; does happen after a kernel restart
+                              ;; when testing.
+                              (string= type "kernel_info_reply")
+                              ;; No idle message is received after a
+                              ;; shutdown reply so consider REQ as
+                              ;; having received an idle message in
+                              ;; this case.
+                              (string= type "shutdown_reply"))
+                      (setf (jupyter-request-idle-p req) t)
+                      (jupyter-run-with-io
+                          (jupyter-client-io client)
+                        (jupyter-publish
+                          (list 'idle (jupyter-request-id req)))))))
+                (jupyter-content msg)))))))
+    (jupyter-run-with-io (jupyter-client-io client)
+      (jupyter-publish
+        (list
+         'publisher
+         (jupyter-request-id req)
+         (lambda (p)
+           (setq pub (or p (funcall make-pub req)))))))
+    pub))
 
 (defun jupyter-request (type &rest content)
   "Return an action that sends a `jupyter-request'.
@@ -622,47 +662,58 @@ list, represents."
   (declare (indent 1))
   (let ((inhibited-handlers jupyter-inhibit-handlers))
     (jupyter-mlet* ((client (jupyter-get-client)))
-      (let* ((channel (jupyter-channel-from-request-type type))
-             (req (jupyter-generate-request
-                   client
-                   :type type
-                   :content content
-                   ;; Anything sent to stdin is a reply not a request
-                   ;; so consider the "request" completed.
-                   :idle-p (string= "stdin" channel)
-                   :inhibited-handlers inhibited-handlers))
-             (id (jupyter-request-id req))
-             (pub (jupyter-message-publisher req)))
-        (setf (jupyter-request-message-publisher req) pub)
-        ;; NOTE The state is assumed to be a list with a client as the
-        ;; first element and message subscribers as the rest of the
-        ;; elements or just a client.
-        (let ((subscribe
-               (jupyter-mlet* ((client (jupyter-pop))
-                               (subscribers (jupyter-get-state)))
-                 ;; Enforce an order that the client's subscriber
-                 ;; gets evaluated before all other subscribers, the
-                 ;; order for the other subscribers being earlier
-                 ;; subscriptions get called before later.
-                 (when subscribers
-                   (dolist (sub subscribers)
-                     (jupyter-run-with-io pub
-                       (jupyter-subscribe sub))))
-                 (jupyter-run-with-io pub
-                   (jupyter-subscribe-client
-                    client req inhibited-handlers
-                    (string= type "execute_request")))
-                 (jupyter-put-state client)))
-              (send
-               (jupyter-mlet* ((client (jupyter-get-client)))
-                 (jupyter-run-with-io (jupyter-kernel-io client)
-                   (jupyter-do
-                     (jupyter-subscribe pub)
-                     (jupyter-publish (list 'send channel type content id))))
-                 (when (eq jupyter--debug 'message)
-                   (push (list client req) jupyter--debug-request-queue))
-                 (jupyter-return req))))
-          (jupyter-do subscribe send))))))
+      (jupyter-message-subscribed
+       (jupyter-mlet* ((client (jupyter-get-client)))
+         (let* ((channel (jupyter-channel-from-request-type type))
+                (req (jupyter-generate-request
+                      client
+                      :type type
+                      :content content
+                      ;; Anything sent to stdin is a reply not a request
+                      ;; so consider the "request" completed.
+                      :idle-p (string= "stdin" channel)
+                      :inhibited-handlers inhibited-handlers))
+                (id (jupyter-request-id req))
+                ;; As a side effect, this populates the table which
+                ;; holds live request publishers if not already
+                ;; present for the request.
+                (pub (jupyter-message-publisher client req)))
+           ;; NOTE The state is assumed to be a list with a client as the
+           ;; first element and message subscribers as the rest of the
+           ;; elements or just a client.
+           (let ((subscribe
+                  (jupyter-mlet* ((client (jupyter-pop))
+                                  (subscribers (jupyter-get-state)))
+                    ;; Enforce an order that the subscribers having
+                    ;; earlier subscriptions get called before later.
+                    (when subscribers
+                      (dolist (sub subscribers)
+                        (jupyter-run-with-io pub
+                          (jupyter-subscribe sub))))
+                    (jupyter-put-state client)))
+                 (send
+                  (jupyter-mlet* ((client (jupyter-get-client)))
+                    (jupyter-run-with-io (jupyter-kernel-io client)
+                      (jupyter-publish (list 'send channel type content id)))
+                    (jupyter-debug "Send MSG: %s %s %s"
+                                   (jupyter-request-id req)
+                                   type content)
+                    (when (eq jupyter--debug 'message)
+                      (push (list client req) jupyter--debug-request-queue))
+                    (jupyter-return req))))
+             (jupyter-do subscribe send))))
+       ;; The subscriber that handles the client handler interface.
+       ;; This means the client handlers are called last in the order
+       ;; the subscribers are called.
+       (lambda (msg)
+         (when (and (jupyter-valid-message-p msg)
+                    (not (eq jupyter--debug 'message)))
+           (when (and (string= type "execute_request")
+                      (jupyter-message-status-busy-p msg))
+             (jupyter-server-mode-set-client client))
+           (let ((channel (jupyter-message-channel msg))
+                 (jupyter-inhibit-handlers inhibited-handlers))
+             (jupyter-handle-message client channel msg))))))))
 
 (provide 'jupyter-monads)
 
