@@ -35,10 +35,12 @@ test:
 .PHONY: clean
 clean:
 	make -C js clean
+	@echo "Removing .elc files"
 	@rm $(ELCFILES) 2>/dev/null || true
 
 .PHONY: clean-eldev
 clean-eldev:
+	@echo "Removing .eldev directory"
 	@rm -rf .eldev/ 2>/dev/null || true
 
 .PHONY: widgets
