@@ -1094,7 +1094,7 @@ If VALUE is a list and can be represented as a table, return an
 regular string, it has a non-nil org-table text property on its
 first character.
 
-Otherwise, return VALUE formated as a fixed-width `org-element'."
+Otherwise, return VALUE formatted as a fixed-width `org-element'."
   (cond
    ((stringp value)
     (if (>= (jupyter-org-count-lines value)

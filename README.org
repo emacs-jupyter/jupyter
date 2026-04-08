@@ -219,7 +219,7 @@ a =major-mode= compatible with the client that sent the code, the opened
 file will automatically be associated with the client and have
 =jupyter-repl-interaction-mode= enabled.
 
-This feature probably wont work correctly when there are multiple
+This feature probably won't work correctly when there are multiple
 competing clients sending requests to their underlying kernels that
 want to open files or if the underlying kernel takes longer
 than =jupyter-long-timeout= seconds to open a file.
@@ -302,7 +302,7 @@ on your system.  See =jupyter-available-kernelspecs=.
   #+END_SRC
 
 - To change the kernel, set the =:kernel= parameter.
-  
+
   #+BEGIN_SRC org
   ,#+BEGIN_SRC jupyter-python :session py :async yes :kernel python2
   x = 'foo'
@@ -412,7 +412,7 @@ for the image, set the =:file= header argument.
 
 If no file extension is specified in the provided =:file=, then one will be inferred
 from the returned output. This can be useful in scenarios where the file resulting
-from the src-block can have different types depeneding on the code, e.g. if the image
+from the src-block can have different types depending on the code, e.g. if the image
 type returned can be either =png= or =svg= depending on certain settings, you can
 specify =:file = output= which will be converted into  =output.png= or =output.svg=
 depending on the MIME type return by the executed src-block.
