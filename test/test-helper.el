@@ -340,7 +340,7 @@ For `url-retrieve', the callback will be called with a nil status."
   "Execute BODY in the context where extra kernelspecs with NAMES are available.
 
 Those kernelspecs will be created in a temporary dir, which will
-be presented to Jupyter process via JUPYTER_PATH environemnt
+be presented to Jupyter process via JUPYTER_PATH environment
 variable."
   (declare (indent 1) (debug (listp body)))
   `(let ((jupyter-extra-dir (make-temp-file "jupyter-extra-dir" 'directory))

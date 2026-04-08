@@ -195,7 +195,7 @@ use `jupyter-hb-unpause'."))
   (oset channel paused t))
 
 (cl-defmethod jupyter-hb-unpause ((channel jupyter-hb-channel))
-  "Un-pause checking for heatbeat events on CHANNEL."
+  "Un-pause checking for heartbeat events on CHANNEL."
   (when (oref channel paused)
     (if (jupyter-alive-p channel)
         ;; Consume a pending message from the kernel if there is one.  We send a

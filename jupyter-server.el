@@ -320,7 +320,7 @@ a URL."
   "Start a kernel on SERVER.
 
 With a prefix argument, ask to select a server if there are
-mutiple to choose from, otherwise the most recently used server
+multiple to choose from, otherwise the most recently used server
 is used as determined by `jupyter-current-server'."
   (interactive (list (jupyter-current-server current-prefix-arg)))
   (let* ((specs (jupyter-kernelspecs server))
@@ -345,7 +345,7 @@ is used as determined by `jupyter-current-server'."
   "On SERVER start a kernel with KERNEL-NAME.
 
 With a prefix argument, ask to select a server if there are
-mutiple to choose from, otherwise the most recently used server
+multiple to choose from, otherwise the most recently used server
 is used as determined by `jupyter-current-server'.
 
 REPL-NAME, ASSOCIATE-BUFFER, CLIENT-CLASS, and DISPLAY all have
@@ -371,7 +371,7 @@ the same meaning as in `jupyter-run-repl'."
   "On SERVER, connect to the kernel with KERNEL-ID.
 
 With a prefix argument, ask to select a server if there are
-mutiple to choose from, otherwise the most recently used server
+multiple to choose from, otherwise the most recently used server
 is used as determined by `jupyter-current-server'.
 
 REPL-NAME, ASSOCIATE-BUFFER, CLIENT-CLASS, and DISPLAY all have

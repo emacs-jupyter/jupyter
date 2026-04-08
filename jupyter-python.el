@@ -34,7 +34,7 @@
 (cl-defmethod jupyter-handle-error :after ((client jupyter-repl-client) req msg
                                            &context (jupyter-lang python)
                                            (major-mode jupyter-repl-mode))
-  "Add spacing between the first occurance of ENAME and \"Traceback\".
+  "Add spacing between the first occurrence of ENAME and \"Traceback\".
 Do this only when the traceback of REQ was inserted into the REPL
 buffer."
   (unless (equal (jupyter-message-parent-type msg) "comm_msg")

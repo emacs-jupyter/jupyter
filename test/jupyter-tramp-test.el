@@ -219,7 +219,7 @@
                     (progn
                       (ert-info ("Error when directory contains files")
                         (should-error (delete-directory jpydir)))
-                      (ert-info ("Unless recursive is specifed")
+                      (ert-info ("Unless recursive is specified")
                         (delete-directory jpydir t)
                         (should-not (file-exists-p jpyfile2))
                         (should-not (file-directory-p tdir))))

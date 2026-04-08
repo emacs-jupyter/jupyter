@@ -398,7 +398,7 @@ source blocks are evaluated."
 (defun jupyter-org-jump-to-block (&optional context)
   "Jump to a source block in the buffer using `ivy'.
 If narrowing is in effect, jump to a block in the narrowed region.
-Use a numeric prefix CONTEXT to specify how many lines of context to showin the
+Use a numeric prefix CONTEXT to specify how many lines of context to show in the
 process of selecting a source block.
 Defaults to `jupyter-org-jump-to-block-context-lines'."
   (interactive
