@@ -72,55 +72,6 @@
 The unwrapped value is nil."
   (lambda (_state) (cons nil value)))
 
-(defun jupyter-get-client ()
-  "Return a monadic value that returns the client."
-  (jupyter-mlet* ((state (jupyter-get-state)))
-    (let ((client (if (listp state)
-                      (car state)
-                    state)))
-      (cl-check-type client jupyter-kernel-client)
-      (jupyter-return client))))
-
-(defun jupyter-push (s)
-  (jupyter-mlet* ((state (jupyter-get-state)))
-    (jupyter-put-state
-     (cons s (if (listp state) state (list state))))))
-
-(defun jupyter-pop ()
-  (jupyter-mlet* ((state (jupyter-get-state)))
-    (let ((value (if (listp state)
-                     (pop state)
-                   (prog1 state
-                     (setq state nil)))))
-      (jupyter-do
-        (jupyter-put-state state)
-        (jupyter-return value)))))
-
-(defun jupyter-set-client (client)
-  "Return a monadic value that sets the client."
-  (cl-check-type client jupyter-kernel-client)
-  (jupyter-mlet* ((state (jupyter-get-state)))
-    (jupyter-put-state
-     (if (listp state)
-         (cons client (cdr state))
-       client))))
-
-(defun jupyter-at-point (action)
-  "Return a value evaluating ACTION at `point'."
-  (let ((marker (point-marker)))
-    (jupyter-mlet* ((state (jupyter-get-state)))
-      (when (and (marker-buffer marker) (marker-position marker))
-        (unwind-protect
-            (with-current-buffer (marker-buffer marker)
-              (save-excursion
-                (save-restriction
-                  (widen)
-                  (goto-char (marker-position marker))
-                  (jupyter-return
-                    (jupyter-run-with-state state
-                      action)))))
-          (move-marker marker nil))))))
-
 (defun jupyter-bind (mvalue mfn)
   "Bind MVALUE to MFN."
   (declare (indent 1))
@@ -175,6 +126,55 @@ returned action is the result of the last action in ACTIONS."
   (declare (indent 1))
   ;; Discard the final state
   (car (funcall mvalue state)))
+
+(defun jupyter-get-client ()
+  "Return a monadic value that returns the client."
+  (jupyter-mlet* ((state (jupyter-get-state)))
+    (let ((client (if (listp state)
+                      (car state)
+                    state)))
+      (cl-check-type client jupyter-kernel-client)
+      (jupyter-return client))))
+
+(defun jupyter-push (s)
+  (jupyter-mlet* ((state (jupyter-get-state)))
+    (jupyter-put-state
+     (cons s (if (listp state) state (list state))))))
+
+(defun jupyter-pop ()
+  (jupyter-mlet* ((state (jupyter-get-state)))
+    (let ((value (if (listp state)
+                     (pop state)
+                   (prog1 state
+                     (setq state nil)))))
+      (jupyter-do
+        (jupyter-put-state state)
+        (jupyter-return value)))))
+
+(defun jupyter-set-client (client)
+  "Return a monadic value that sets the client."
+  (cl-check-type client jupyter-kernel-client)
+  (jupyter-mlet* ((state (jupyter-get-state)))
+    (jupyter-put-state
+     (if (listp state)
+         (cons client (cdr state))
+       client))))
+
+(defun jupyter-at-point (action)
+  "Return a value evaluating ACTION at `point'."
+  (let ((marker (point-marker)))
+    (jupyter-mlet* ((state (jupyter-get-state)))
+      (when (and (marker-buffer marker) (marker-position marker))
+        (unwind-protect
+            (with-current-buffer (marker-buffer marker)
+              (save-excursion
+                (save-restriction
+                  (widen)
+                  (goto-char (marker-position marker))
+                  (jupyter-return
+                    (jupyter-run-with-state state
+                      action)))))
+          (move-marker marker nil))))))
 
 (defmacro jupyter-run-with-io (io &rest body)
   "Return the result of evaluating the I/O value BODY evaluates to.
