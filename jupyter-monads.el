@@ -384,13 +384,22 @@ A value is returned that returns a sequence (see `seqp')."
     (jupyter-return
       (jupyter-message-seq req))))
 
-(defun jupyter-idle (req &optional timeout)
+(defun jupyter-idle (&optional req timeout)
   "Return a value that waits until REQ becomes idle.
 Returns the idled request.
+
+If REQ is nil, it defaults to a request that solely syncs the
+client's execution state of the kernel.
 
 TIMEOUT seconds may elapse before a
 `jupyter-timeout-before-message' error is raised and no idle
 message has arrived."
+  (or req (setq req
+                (jupyter-execute-request
+                 :silent t
+                 :store-history nil
+                 :code ""
+                 :handlers nil)))
   (jupyter-mlet* ((req req))
     (let ((jupyter-long-timeout (or timeout jupyter-long-timeout)))
       (seq-find
