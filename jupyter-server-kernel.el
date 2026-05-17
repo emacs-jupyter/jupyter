@@ -239,10 +239,13 @@ To receive messages from KERNEL, subscribe to IO-PUB e.g.
           (lambda (msg)
              ...))))
 
-The value \\='interrupt or \\='shutdown can be published to ACTION-SUB
-to interrupt or shutdown KERNEL.  The value (list \\='action FN)
-where FN is a single argument function can also be published, in
-this case FN will be evaluated on KERNEL."
+The value \\='interrupt or \\='shutdown or \\='restart can be published
+to ACTION-SUB to interrupt or shutdown or restart KERNEL.  The
+value (list \\='action FN) where FN is a two argument function can also
+be published, in this case FN will be evaluated on KERNEL and a flag
+variable determining whether or not messages are able to be sent and
+received.  Finally, you can publish \\='connect or \\='disconnect to
+connect or disconnect the WebSocket used for communication with KERNEL."
   (jupyter-launch kernel)
   (pcase-let* (((cl-struct jupyter-server-kernel server id) kernel))
     (letrec ((status-pub (jupyter-publisher))
@@ -295,7 +298,7 @@ this case FN will be evaluated on KERNEL."
       (funcall make-ws)
       ;; ws kernel-io
       (list kernel-io
-            (let (shutdown)
+            (let (shutdown (connected t))
               (jupyter-run-with-io
                   (jupyter-reauthentication-publisher server)
                 (jupyter-subscribe
@@ -310,20 +313,25 @@ this case FN will be evaluated on KERNEL."
                     ('interrupt
                      (jupyter-interrupt kernel))
                     ((and op (or 'connect 'disconnect))
+                     (setq connected t)
                      (if (eq op 'connect)
                          (jupyter-run-with-io kernel-io
                            (jupyter-publish 'start))
+                       (setq connected nil)
                        (jupyter-run-with-io kernel-io
                          (jupyter-publish 'stop))))
                     ('shutdown
                      (jupyter-shutdown kernel)
-                     (setq shutdown t)
+                     (setq shutdown t
+                           connected nil)
                      (jupyter-run-with-io kernel-io
                        (jupyter-publish 'stop)))
                     ('restart
+                     (setq shutdown nil
+                           connected t)
                      (jupyter-restart kernel))
                     (`(action ,fn)
-                     (funcall fn kernel))))))))))
+                     (funcall fn kernel connected))))))))))
 
 (cl-defmethod jupyter-io ((kernel jupyter-server-kernel))
   (jupyter-websocket-io kernel))

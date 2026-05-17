@@ -252,26 +252,31 @@ Call the next method if ARGS does not contain a :spec or
                          (jupyter-publish hb)))
                       (_ (error "Unhandled I/O: %s" content)))))))
         (list kernel-io
-              (jupyter-subscriber
-                (lambda (action)
-                  (pcase action
-                    ('interrupt
-                     (jupyter-interrupt kernel))
-                    ('shutdown
-                     (jupyter-shutdown kernel)
-                     (stop)
-                     (setq shutdown t))
-                    ((and op (or 'connect 'disconnect))
-                     (if (eq op 'connect) (start)
-                       (stop)))
-                    ('restart
-                     (setq shutdown nil)
-                     (jupyter-restart kernel)
-                     (stop)
-                     (set-ch-group)
-                     (start))
-                    (`(action ,fn)
-                     (funcall fn kernel))))))))))
+              (let ((connected t))
+                (jupyter-subscriber
+                  (lambda (action)
+                    (pcase action
+                      ('interrupt
+                       (jupyter-interrupt kernel))
+                      ('shutdown
+                       (jupyter-shutdown kernel)
+                       (stop)
+                       (setq shutdown t
+                             connected nil))
+                      ((and op (or 'connect 'disconnect))
+                       (setq connected t)
+                       (if (eq op 'connect) (start)
+                         (setq connected nil)
+                         (stop)))
+                      ('restart
+                       (setq shutdown nil
+                             connected t)
+                       (jupyter-restart kernel)
+                       (stop)
+                       (set-ch-group)
+                       (start))
+                      (`(action ,fn)
+                       (funcall fn kernel connected)))))))))))
 
 (cl-defmethod jupyter-io ((kernel jupyter-kernel-process))
   "Return an I/O connection to KERNEL's session."

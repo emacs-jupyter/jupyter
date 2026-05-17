@@ -440,12 +440,12 @@ messages will no longer be received on the client side although
 messages from other client's could still be exchanged between the
 kernel and those others."
   (jupyter-run-with-io (jupyter-kernel-action-subscriber client)
-    (jupyter-publish (list 'connect))))
+    (jupyter-publish 'connect)))
 
 (cl-defmethod jupyter-disconnect ((client jupyter-kernel-client))
   "Disconnect from the I/O of a CLIENT's kernel."
   (jupyter-run-with-io (jupyter-kernel-action-subscriber client)
-    (jupyter-publish (list 'disconnect))))
+    (jupyter-publish 'disconnect)))
 
 (cl-defmethod jupyter-client ((spec jupyter-kernelspec) &optional client-class)
   "Return a client connected to kernel created from SPEC.
@@ -455,7 +455,13 @@ kernel whose kernelspec if SPEC."
 
 (cl-defmethod jupyter-connected-p ((client jupyter-kernel-client))
   "Return non-nil if CLIENT is connected to a kernel."
-  (slot-boundp client 'io))
+  (let (connected)
+    (jupyter-run-with-io (jupyter-kernel-action-subscriber client)
+      (jupyter-publish
+        (list 'action
+              (lambda (_ flag)
+                (setq connected flag)))))
+    connected))
 
 (cl-defmethod jupyter-client ((kernel jupyter-kernel) &optional client-class)
   (or client-class (setq client-class 'jupyter-kernel-client))
@@ -490,7 +496,7 @@ FN takes a single argument which will be the kernel object."
     (jupyter-run-with-io kaction-sub
       (jupyter-publish
         (list 'action
-              (lambda (kernel)
+              (lambda (kernel _)
                 (setq res (funcall fn kernel))))))
     res))
 
