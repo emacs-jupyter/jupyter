@@ -247,7 +247,7 @@ variable determining whether or not messages are able to be sent and
 received.  Finally, you can publish \\='connect or \\='disconnect to
 connect or disconnect the WebSocket used for communication with KERNEL."
   (jupyter-launch kernel)
-  (pcase-let* (((cl-struct jupyter-server-kernel server id) kernel))
+  (pcase-let* (((cl-struct jupyter-server-kernel server id session) kernel))
     (letrec ((status-pub (jupyter-publisher))
              (ws nil)
              (make-ws
@@ -256,7 +256,10 @@ connect or disconnect the WebSocket used for communication with KERNEL."
                   (websocket-close ws))
                 (setq ws
                       (jupyter-api-kernel-websocket
-                       server id
+                       ;; The kernel is assumed to be launched here as
+                       ;; the kernel session is populated only on a
+                       ;; launch if not present already.
+                       server id session
                        :custom-header-alist (jupyter-api-auth-headers server)
                        ;; TODO: on-error publishes to status-pub
                        :on-message

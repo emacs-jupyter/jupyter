@@ -894,10 +894,13 @@ request."
 
 ;;;; Kernel websocket
 
-(defun jupyter-api-kernel-websocket (client id &rest plist)
+(defun jupyter-api-kernel-websocket (client id &optional session &rest plist)
   "Return a websocket using CLIENT's ws-url slot.
 ID identifies the kernel to connect to, PLIST will be passed to
 the call to `websocket-open' to initialize the websocket.
+
+With optional argument SESSION, use SESSION's ID as the session_id for
+the websocket otherwise a default session will be used.
 
 The `websocket-client-data' of the websocket will be a plist like
 
@@ -906,7 +909,7 @@ The `websocket-client-data' of the websocket will be a plist like
 where SESSION is a `jupyter-session' with a `jupyter-session-id'
 equal to the one associated with the kernel on the server CLIENT
 is communicating with."
-  (let* ((session (jupyter-session))
+  (let* ((session (or session (jupyter-session)))
          (ws (apply #'jupyter-api/kernels client "WS" id "channels"
                     `(("session_id" . ,(jupyter-session-id session)))
                     plist)))
