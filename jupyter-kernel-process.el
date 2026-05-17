@@ -127,6 +127,37 @@ Call the next method if ARGS does not contain a :spec or
 ;;; Client connection
 
 (cl-defmethod jupyter-zmq-io ((kernel jupyter-kernel-process))
+  "Return a list representing an IO connection to KERNEL.
+The list is composed of two elements (IO-PUB ACTION-SUB), IO-PUB
+is a publisher used to send/receive messages to/from KERNEL and
+ACTION-SUB is a subscriber of kernel actions to perform on
+KERNEL.
+
+To send a message to KERNEL, publish a list of the form
+
+    (list \\='send CHANNEL MSG-TYPE CONTENT MSG-ID)
+
+to IO-PUB, e.g.
+
+    (jupyter-run-with-io IO-PUB
+      (jupyter-publish (list \\='send CHANNEL MSG-TYPE CONTENT MSG-ID)))
+
+To receive messages from KERNEL, subscribe to IO-PUB e.g.
+
+    (jupyter-run-with-io IO-PUB
+      (jupyter-subscribe
+        (jupyter-subscriber
+          (lambda (msg)
+             ...))))
+
+The value \\='interrupt or \\='shutdown or \\='restart can be published
+to ACTION-SUB to interrupt or shutdown or restart KERNEL.  The
+value (list \\='action FN) where FN is a two argument function can also
+be published, in this case FN will be evaluated on KERNEL and a flag
+variable determining whether or not messages are able to be sent and
+received.  Finally, you can publish \\='connect or \\='disconnect to
+connect or disconnect the ZMQ sockets used for communication with
+KERNEL."
   (unless (jupyter-kernel-process--connect-only-p kernel)
     (jupyter-launch kernel))
   (let ((channels '(:shell :iopub :stdin :control))
