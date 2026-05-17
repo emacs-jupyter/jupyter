@@ -244,7 +244,7 @@ to interrupt or shutdown KERNEL.  The value (list \\='action FN)
 where FN is a single argument function can also be published, in
 this case FN will be evaluated on KERNEL."
   (jupyter-launch kernel)
-  (pcase-let* (((cl-struct jupyter-server-kernel server id) kernel))
+  (pcase-let* (((cl-struct jupyter-server-kernel server id session) kernel))
     (letrec ((status-pub (jupyter-publisher))
              (ws nil)
              (make-ws
@@ -253,7 +253,10 @@ this case FN will be evaluated on KERNEL."
                   (websocket-close ws))
                 (setq ws
                       (jupyter-api-kernel-websocket
-                       server id
+                       ;; The kernel is assumed to be launched here as
+                       ;; the kernel session is populated only on a
+                       ;; launch if not present already.
+                       server id session
                        :custom-header-alist (jupyter-api-auth-headers server)
                        ;; TODO: on-error publishes to status-pub
                        :on-message
