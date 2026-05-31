@@ -1124,6 +1124,32 @@ attempting to access the rest of the stream")
         (should (null jupyter-test-idle-sync-hook))
         (jupyter-return nil)))))
 
+(ert-deftest jupyter-include-other-output ()
+  :tags '(client other-output)
+  (let ((jupyter-test-with-new-client t))
+    (jupyter-test-with-python-client client1
+      (jupyter-set client1 'jupyter-include-other-output t)
+      (let* ((id (jupyter-kernel-action client1
+                   #'jupyter-server-kernel-id))
+             (client2
+              (jupyter-client
+               (jupyter-test-with-notebook server
+                 (jupyter-kernel
+                  :server server
+                  :id id))))
+             (code nil))
+        (jupyter-set client2 'jupyter-include-other-output nil)
+        (jupyter-add-hook client1 'jupyter-iopub-message-hook
+          (lambda (_ msg)
+            (when (equal (jupyter-message-type msg) "execute_input")
+              (setq code (jupyter-message-get msg :code)))
+            nil))
+        (jupyter-run-with-client client2
+          (jupyter-idle
+           (jupyter-execute-request
+            :code "1 + 1")))
+        (should (equal code "1 + 1"))))))
+
 (ert-deftest jupyter-io-connect ()
   :tags '(client connect)
   (let* ((jupyter-test-with-new-client t)
