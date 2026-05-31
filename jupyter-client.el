@@ -715,7 +715,6 @@ message being handled."
       (jupyter--update-execution-state client msg)
       (when (or jupyter--current-request
                 (jupyter-get client 'jupyter-include-other-output)
-                ;; Always handle a startup message
                 (jupyter-message-status-starting-p msg))
         (jupyter--run-handler-maybe client channel msg)))))
 
