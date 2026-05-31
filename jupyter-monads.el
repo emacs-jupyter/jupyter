@@ -622,22 +622,11 @@ non-messages are passed to subscribers as is.  The
                     (list msg))
                   (let ((type (jupyter-message-type msg)))
                     (when (or (jupyter-message-status-idle-p msg)
-                              ;; Jupyter protocol 5.1, IPython
-                              ;; implementation 7.5.0 doesn't give
-                              ;; status: busy or status: idle messages
-                              ;; on kernel-info-requests.  Whereas
-                              ;; IPython implementation 6.5.0 does.
-                              ;; Seen on Appveyor tests.
-                              ;;
-                              ;; TODO: May be related
-                              ;; jupyter/notebook#3705 as the problem
-                              ;; does happen after a kernel restart
-                              ;; when testing.
+                              ;; These message types have the potential to
+                              ;; not receive idle messages in some
+                              ;; instances of the Jupyter message
+                              ;; specification.
                               (string= type "kernel_info_reply")
-                              ;; No idle message is received after a
-                              ;; shutdown reply so consider REQ as
-                              ;; having received an idle message in
-                              ;; this case.
                               (string= type "shutdown_reply"))
                       (setf (jupyter-request-idle-p req) t)
                       (jupyter-run-with-io
