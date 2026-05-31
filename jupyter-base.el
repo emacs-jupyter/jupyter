@@ -139,11 +139,11 @@ for stepping through the code with Edebug.")
 
 (defvar jupyter--debug-request-queue nil)
 
-(defun jupyter-debug (format-string &rest args)
+(defmacro jupyter-debug (format-string &rest args)
   "Display a message when `jupyter--debug' is non-nil.
 FORMAT-STRING and ARGS have the same meaning as in `message'."
-  (when jupyter--debug
-    (apply #'message (concat "Jupyter: " format-string) args)))
+  `(when jupyter--debug
+     (message ,(concat "Jupyter: " format-string) ,@args)))
 
 (defvar jupyter-default-timeout 2.5
   "The default timeout in seconds for `jupyter-wait-until'.")
