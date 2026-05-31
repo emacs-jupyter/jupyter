@@ -575,10 +575,10 @@ display for reporting progress to the user while waiting."
       (jupyter-subscribe
         (jupyter-subscriber
           (lambda (req-msg)
-            (when (equal (jupyter-message-type req-msg) msg-type)
-              (setq msg (when (funcall cb req-msg) req-msg))
-              (when msg
-                (jupyter-unsubscribe)))))))
+            (when (and (equal (jupyter-message-type req-msg) msg-type)
+                       (funcall cb req-msg))
+              (setq msg req-msg)
+              (jupyter-unsubscribe))))))
     (let* ((timeout-spec (when jupyter--already-waiting-p
                            (with-timeout-suspend)))
            (jupyter--already-waiting-p t))
