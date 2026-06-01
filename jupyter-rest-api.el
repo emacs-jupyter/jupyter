@@ -516,6 +516,9 @@ error with the data being the error received by `url-retrieve'."
   "Return non-nil if CLIENT can access the Jupyter notebook server."
   (pcase (gethash client jupyter-api--response-cache 'check)
     ('check
+     (run-with-idle-timer
+      jupyter-api--response-cache-expiry
+      nil (lambda () (remhash client jupyter-api--response-cache)))
      (puthash client
               (ignore-errors
                 (prog1 t
@@ -524,10 +527,7 @@ error with the data being the error received by `url-retrieve'."
                         jupyter-api-request-headers)
                     ;; Hit an endpoint that requires authentication.
                     (jupyter-api-get-kernelspec client))))
-              jupyter-api--response-cache)
-     (run-with-idle-timer
-      jupyter-api--response-cache-expiry
-      nil (lambda () (remhash client jupyter-api--response-cache))))
+              jupyter-api--response-cache))
     (cached cached)))
 
 (cl-defgeneric jupyter-api-authenticate (client &rest args)
