@@ -309,10 +309,12 @@ this will cause errors in the URL library."
 
 (defun jupyter-api-url-cookies (url)
   "Return the list of cookies for URL."
-  (or (url-p url) (setq url (url-generic-parse-url url)))
-  (url-cookie-retrieve
-   (url-host url) (concat (url-filename url) "/")
-   (equal (url-type url) "https")))
+  (pcase (or (and (url-p url) url)
+             (url-generic-parse-url url))
+    ((cl-struct url host filename type)
+     (url-cookie-retrieve
+      host (concat filename "/")
+      (equal type "https")))))
 
 (defun jupyter-api-xsrf-header-from-cookies (url)
   "Return an alist containing an X-XSRFTOKEN header or nil.
@@ -335,34 +337,40 @@ HOST:PORT when PORT is a nonstandard port for the type of URL.
 The behavior of `url-retrieve-synchronously' (cookies being
 stored without considering a PORT) appears to be the standard,
 see RFC 6265."
-  (when-let* ((url (url-generic-parse-url url))
-              (host (url-host url))
-              (port (url-port-if-non-default url))
-              (host-port (format "%s:%s" host port))
-              (cookies (jupyter-api-url-cookies url)))
-    (setq url-cookies-changed-since-last-save t)
-    (cl-loop
-     for cookie in cookies
-     do (pcase-let (((cl-struct url-cookie name value expires
-                                localpart secure)
-                     cookie))
-          ;; Set the expiration date if it does not have one already since
-          ;; `url-cookie-clean-up' (called by `url-cookie-write-file') will
-          ;; correctly drop any cookies that don't have an expiration date
-          ;; since cookies are required to have them.
-          ;;
-          ;; FIXME: This is mainly for the _xsrf cookie which does not have an
-          ;; expiration date.  I believe this is to be interpreted as meaning
-          ;; the cookie should only be valid for the current session.  We go
-          ;; through `url-cookie-write-file' so that the subprocess which
-          ;; starts websockets can read the required cookies.  An alternative
-          ;; solution would be to pass the cookies directly to the subprocess.
-          (unless expires
-            (setq expires (setf (url-cookie-expires cookie)
-                                (format-time-string "%a, %d %b %Y %T %z"
-                                                    (time-add (current-time)
-                                                              (days-to-time 1))))))
-          (url-cookie-store name value expires host-port localpart secure)))))
+  (pcase (or (and (url-p url) url)
+             (url-generic-parse-url url))
+    ((and u (cl-struct url host))
+     (when-let* ((port (url-port-if-non-default u))
+                 (cookies (jupyter-api-url-cookies u))
+                 (host-port (format "%s:%s" host port)))
+       (setq url-cookies-changed-since-last-save t)
+       (cl-loop
+        for cookie in cookies
+        do (pcase-let (((cl-struct url-cookie name value expires
+                                   localpart secure)
+                        cookie))
+             ;; Set the expiration date if it does not have one
+             ;; already since `url-cookie-clean-up' (called by
+             ;; `url-cookie-write-file') will correctly drop any
+             ;; cookies that don't have an expiration date since
+             ;; cookies are required to have them.
+             ;;
+             ;; FIXME: This is mainly for the _xsrf cookie which does
+             ;; not have an expiration date.  I believe this is to be
+             ;; interpreted as meaning the cookie should only be valid
+             ;; for the current session.  We go through
+             ;; `url-cookie-write-file' so that the subprocess which
+             ;; starts websockets can read the required cookies.  An
+             ;; alternative solution would be to pass the cookies
+             ;; directly to the subprocess.
+             (unless expires
+               (setq expires (setf (url-cookie-expires cookie)
+                                   (format-time-string
+                                    "%a, %d %b %Y %T %z"
+                                    (time-add (current-time)
+                                              (days-to-time 1))))))
+             (url-cookie-store
+              name value expires host-port localpart secure)))))))
 
 ;; Adapted from `url-cookie-delete'
 (defun jupyter-api--delete-cookie (cookie)
