@@ -538,6 +538,12 @@ or may not be valid."
                   (let ((jupyter-api-authentication-in-progress-p t)
                         jupyter-api-request-data
                         jupyter-api-request-headers)
+                    ;; Request the XSRF cookie here.  In some server
+                    ;; configurations, e.g. when there is no
+                    ;; authentication, the server does not send back a
+                    ;; Set-Cookie header on the following request,
+                    ;; hence the need to explicitly request it.
+                    (jupyter-api-request-xsrf-cookie client)
                     ;; Hit an endpoint that requires authentication.
                     (jupyter-api-get-kernelspec client))))
               jupyter-api--response-cache))
@@ -624,26 +630,30 @@ Raise an error on failure."
       (cl-call-next-method))))
 
 (cl-defmethod jupyter-api-ensure-authenticated ((client jupyter-rest-client))
-  (with-slots (auth url) client
-    (when (eq auth 'ask)
-      (jupyter-api-request-xsrf-cookie client)
-      (when (jupyter-api-server-accessible-p client)
-        (oset client auth t)))
-    (unless (or (listp auth)
-                (not (memq auth '(ask token password))))
-      (when (eq auth 'ask)
-        (when noninteractive
-          (signal 'jupyter-api-authentication-failed
-                  (list "Can't authenticate non-interactively")))
-        (cond
-         ((y-or-n-p (format "Token authenticated [%s]? " url))
-          (oset client auth 'token))
-         ((y-or-n-p (format "Password needed [%s]? " url))
-          (oset client auth 'password))
-         (t
-          (signal 'jupyter-api-authentication-failed
-                  (list "Can only authenticate with password or token")))))
-      (jupyter-api-authenticate client (oref client auth)))))
+  (or (jupyter-api-server-accessible-p client)
+      (with-slots (auth url) client
+        (jupyter-api-request-xsrf-cookie client)
+        (if (memq auth '(ask token password))
+            (progn
+              (when (eq auth 'ask)
+                (when noninteractive
+                  (signal 'jupyter-api-authentication-failed
+                          (list "Can't authenticate non-interactively")))
+                (cond
+                 ((y-or-n-p (format "Token authenticated [%s]? " url))
+                  (oset client auth 'token))
+                 ((y-or-n-p (format "Password needed [%s]? " url))
+                  (oset client auth 'password))
+                 (t
+                  (signal 'jupyter-api-authentication-failed
+                          (list "Can only authenticate with password or token")))))
+              (jupyter-api-authenticate client (oref client auth))
+              (unless (jupyter-api-server-accessible-p client)
+                (signal 'jupyter-api-authentication-failed
+                        (list (format "Unaccessible after %s attempt" 1)))))
+          (unless (or (listp auth) (eq auth t))
+            (signal 'jupyter-api-authentication-failed
+                    (list "Invalid authorization value.")))))))
 
 (cl-defmethod jupyter-api-auth-headers ((client jupyter-rest-client))
   "Return the HTTP headers CLIENT is using for authentication or nil."
