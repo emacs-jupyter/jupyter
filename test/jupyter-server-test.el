@@ -113,7 +113,7 @@
 (ert-deftest jupyter-api-copy-cookies-for-websocket ()
   :tags '(rest server)
   (let* (url-cookie-storage
-         (port (jupyter-test-ensure-notebook-server))
+         (port (jupyter-test-ensure-notebook))
          (host (format "localhost:%s" port)))
     (url-cookie-store "_xsrf" "1" nil "localhost" "/")
     (url-cookie-store (format "username-login-%s" port) "2" nil "localhost" "/")
@@ -182,7 +182,7 @@
 
 (ert-deftest jupyter-api-kernel-websocket ()
   :tags '(rest server)
-  (jupyter-test-rest-api-with-notebook client
+  (jupyter-test-with-notebook client
     (cl-destructuring-bind (&key id &allow-other-keys)
         (jupyter-api-launch-kernel client)
       (unwind-protect
@@ -199,96 +199,91 @@
 
 (ert-deftest jupyter-api-server-accessible-p ()
   :tags '(rest server)
-  (jupyter-test-rest-api-with-notebook client
+  (jupyter-test-with-notebook client
     (should (jupyter-api-server-accessible-p client))))
 
 (ert-deftest jupyter-api-request-xsrf-cookie ()
   :tags '(rest server)
-  (jupyter-test-rest-api-with-notebook client
+  (jupyter-test-with-notebook (client "token")
     (let ((url (oref client url)))
       (should-not (jupyter-api-xsrf-header-from-cookies url))
       (jupyter-api-request-xsrf-cookie client)
       (should (jupyter-api-xsrf-header-from-cookies url)))))
 
+(ert-deftest jupyter-test-notebook ()
+  :tags '(test)
+  (let ((tmp jupyter-test-notebook))
+    (unwind-protect
+        (progn
+          (setq jupyter-test-notebook nil)
+          (should (integerp (jupyter-test-ensure-notebook "token")))
+          (unwind-protect
+              (let ((x jupyter-test-notebook))
+                (should (and (listp x)
+                             (processp (car x))
+                             (integerp (cadr x)))))
+            (jupyter-test-kill-notebook jupyter-test-notebook)))
+      (setq jupyter-test-notebook tmp))))
+
 (ert-deftest jupyter-api-authenticate ()
   :tags '(rest server)
   (cl-letf (((symbol-function #'url-cookie-write-file) #'ignore))
     (ert-info ("Password authentication")
-      (let ((jupyter-test-notebook nil)
-            ;; foobar
-            (password "sha1:84cbf6913f79:5df10a65c1f36cdf691bb93b089f7cae0582b20e"))
-        (jupyter-test-ensure-notebook-server password)
-        (jupyter-test-rest-api-with-notebook client
+      (let ((password (jupyter-test-password-hash "foobar")))
+        (jupyter-test-with-notebook (client password)
           (oset client auth 'password)
-          (unwind-protect
-              (progn
-                (should-not (jupyter-api-server-accessible-p client))
-                (jupyter-api-authenticate client 'password (lambda () "foobar"))
-                (should (eq (oref client auth) t))
-                (should (jupyter-api-server-accessible-p client)))
-            (when (process-live-p (car jupyter-test-notebook))
-              (delete-process (car jupyter-test-notebook)))))))
+          (should-not (jupyter-api-server-accessible-p client))
+          (jupyter-api-authenticate client 'password (lambda () "foobar"))
+          (should (jupyter-api-server-accessible-p client))
+          (should (not (memq (oref client auth)
+                             '(ask token password)))))))
     (ert-info ("Token authentication")
-      (let ((jupyter-test-notebook nil) token)
-        (jupyter-test-ensure-notebook-server t)
-        (with-current-buffer (process-buffer (car jupyter-test-notebook))
-          (while (not (re-search-forward "\\?token=\\([a-zA-Z0-9]+\\)" nil t))
-            (goto-char (point-min))
-            (sleep-for 0.02))
-          (setq token (match-string 1)))
-        (jupyter-test-rest-api-with-notebook client
-          (oset client auth 'token)
-          (unwind-protect
-              (cl-letf (((symbol-function #'read-string)
-                         (lambda (&rest _) token)))
-                (should-not (jupyter-api-server-accessible-p client))
-                (jupyter-api-authenticate client 'token)
-                (should (jupyter-api-server-accessible-p client))
-                (should (equal (list (cons "Authorization" (concat "token " token)))
-                               (oref client auth)))
-                (should (equal (list (cons "Authorization" (concat "token " token)))
-                               (jupyter-api-auth-headers client))))
-            (when (process-live-p (car jupyter-test-notebook))
-              (delete-process (car jupyter-test-notebook)))))))))
+      (jupyter-test-with-notebook (client "token") 
+        (oset client auth 'token)
+        (cl-letf (((symbol-function #'read-string)
+                   (lambda (&rest _) "token")))
+          (should-not (jupyter-api-server-accessible-p client))
+          (jupyter-api-authenticate client 'token)
+          (should (jupyter-api-server-accessible-p client))
+          (should (equal (list (cons "Authorization" "token token"))
+                         (oref client auth)))
+          (should (equal (list (cons "Authorization" "token token"))
+                         (jupyter-api-auth-headers client))))))))
 
 ;;; Server
 
 (ert-deftest jupyter-server-reauthentication ()
   :tags '(server)
-  (let ((jupyter-test-notebook nil)
-        (jupyter-api-authentication-method 'password)
+  (let ((jupyter-api-authentication-method 'password)
         ;; foobar
         (password "sha1:84cbf6913f79:5df10a65c1f36cdf691bb93b089f7cae0582b20e"))
-    (jupyter-test-ensure-notebook-server password)
-    (unwind-protect
-        (jupyter-test-with-notebook server
-          (cl-letf (((symbol-function #'read-passwd)
-                     (lambda (&rest _) "foobar")))
-            (jupyter-api-ensure-authenticated server))
-          (cl-destructuring-bind (_ client)
-              (list nil (jupyter-client (jupyter-kernel :server server :spec "python")))
-            (unwind-protect
-                (let ((id (jupyter-kernel-action client
-                            (lambda (kernel)
-                              (jupyter-server-kernel-id kernel))))
-                      (jupyter-current-client client))
-                  (should (equal (jupyter-eval "1 + 1") "2"))
-                  (let (url-cookie-storage)
-                    (should-not (jupyter-api-server-accessible-p server))
-                    (ert-info ("Can't attempt re-authentication")
-                      (let ((jupyter-api-authentication-method 'none))
-                        (should-error (jupyter-api-get-kernel server))))
-                    (should-not (jupyter-api-server-accessible-p server))
-                    (ert-info ("Do re-authentication")
-                      (cl-letf (((symbol-function #'read-passwd)
-                                 (lambda (&rest _) "foobar")))
-                        (should (jupyter-api-get-kernel server)))
-                      (should (jupyter-api-server-accessible-p server)))
-                    (ert-info ("Verify clients still work after re-authentication")
-                      (should (equal (jupyter-eval "1 + 1") "2")))))
-              (jupyter-shutdown-kernel client))))
-      (when (process-live-p (car jupyter-test-notebook))
-        (delete-process (car jupyter-test-notebook))))))
+    (jupyter-test-with-notebook (server password)
+      (should-not (jupyter-api-server-accessible-p server))
+      (cl-letf (((symbol-function #'read-passwd)
+                 (lambda (&rest _) "foobar")))
+        (jupyter-api-ensure-authenticated server))
+      (should (jupyter-api-server-accessible-p server))
+      (let ((client (jupyter-client
+                     (jupyter-kernel :server server :spec "python"))))
+        (unwind-protect
+            (let ((id (jupyter-kernel-action client
+                        #'jupyter-server-kernel-id))
+                  (jupyter-current-client client))
+              (should (equal (jupyter-eval "1 + 1") "2"))
+              (let (url-cookie-storage)
+                (should-not (jupyter-api-server-accessible-p server t))
+                (ert-info ("Can't attempt re-authentication")
+                  (let ((jupyter-api-authentication-method 'none))
+                    (should-error (jupyter-api-get-kernel server))))
+                (should-not (jupyter-api-server-accessible-p server t))
+                (ert-info ("Do re-authentication")
+                  (cl-letf (((symbol-function #'read-passwd)
+                             (lambda (&rest _) "foobar")))
+                    (should (jupyter-api-get-kernel server)))
+                  (should (jupyter-api-server-accessible-p server t))
+                  (ert-info ("Verify clients still work after re-authentication")
+                    (should (equal (jupyter-eval "1 + 1") "2"))))))
+          (jupyter-shutdown-kernel client))))))
 
 (ert-deftest jupyter-run-server-repl ()
   :tags '(server)

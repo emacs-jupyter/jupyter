@@ -147,7 +147,7 @@ If the `current-buffer' is not a REPL, this is identical to
   `(let ((default-directory jupyter-test-temporary-directory)
          (temporary-file-directory jupyter-test-temporary-directory)
          (tramp-cache-data (make-hash-table :test #'equal)))
-     (let ((port (jupyter-test-ensure-notebook-server)))
+     (let ((port (jupyter-test-ensure-notebook)))
        (dolist (method '("jpys" "jpy"))
          (setf
           (alist-get 'tramp-default-port
@@ -198,13 +198,6 @@ If the `current-buffer' is not a REPL, this is identical to
          ;; of jupyter-test.el
          (accept-process-output nil 1)
          ,@body))))
-
-(defmacro jupyter-test-with-notebook (server &rest body)
-  (declare (indent 1))
-  `(let* ((host (format "localhost:%s" (jupyter-test-ensure-notebook-server)))
-          (url (format "http://%s" host))
-          (,server (jupyter-server :url url)))
-     ,@body))
 
 (defmacro jupyter-test-with-kernel-client (kernel client &rest body)
   "Start a new KERNEL client, bind it to CLIENT, evaluate BODY.
@@ -316,14 +309,6 @@ For `url-retrieve', the callback will be called with a nil status."
                         (apply cb nil cbargs)))))
            ,bodyform)))))
 
-(defmacro jupyter-test-rest-api-with-notebook (client &rest body)
-  (declare (indent 1))
-  `(let* ((url-cookie-storage nil)
-          (url-cookie-secure-storage nil)
-          (host (format "localhost:%s" (jupyter-test-ensure-notebook-server)))
-          (,client (jupyter-rest-client :url (format "http://%s" host))))
-     ,@body))
-
 (defmacro jupyter-test-with-server-kernel (server name kernel &rest body)
   (declare (indent 3))
   (let ((id (make-symbol "id")))
@@ -374,22 +359,31 @@ The only difference between them will be their names."
                         nil
                         (format "%s/kernel.json" kernel-dir))))))
 
+(defun jupyter-test-eval-python (code &optional python)
+  (with-temp-buffer
+    (call-process (or python (jupyter-locate-python)) nil t nil "-c" code)
+    (buffer-string)))
+
+(defun jupyter-test-password-hash (passwd)
+  (let ((x (format
+            "from notebook.auth import passwd; \
+print(passwd('%s', algorithm='sha1'), end='')"
+            passwd)))
+    (jupyter-test-eval-python x)))
+
 (defun jupyter-test-ipython-kernel-version (spec)
   "Return the IPython kernel version string corresponding to SPEC.
 Assumes that SPEC is a kernelspec for a Python kernel and
 extracts the IPython kernel's semver."
-  (let* ((cmd (aref (plist-get (jupyter-kernelspec-plist spec) :argv) 0))
-         (process-environment
+  (let* ((process-environment
           (append
            (jupyter-process-environment spec)
-           process-environment))
-         (version
-          (with-temp-buffer
-            (call-process cmd nil t nil
-                          "-c" "import ipykernel; \
-print(\"{}.{}.{}\".format(*ipykernel.version_info[:3]))")
-            (buffer-string))))
-    (string-trim version)))
+           process-environment)))
+    (string-trim
+     (jupyter-test-eval-python
+      "import ipykernel; \
+print(\"{}.{}.{}\".format(*ipykernel.version_info[:3]))"
+      (aref (plist-get (jupyter-kernelspec-plist spec) :argv) 0)))))
 
 (defun jupyter-error-if-no-kernelspec (kernel)
   (prog1 kernel
@@ -626,7 +620,76 @@ Result:
 PROC is the notebook process and PORT is the port it is connected
 to.")
 
-(defun jupyter-test-ensure-notebook-server (&optional authentication)
+(defmacro jupyter-test-with-notebook (spec &rest body)
+  (declare (indent 1))
+  (let ((client (if (listp spec) (car spec) spec)))
+    (pcase spec
+      ((or `(,(and client (guard (symbolp client)))
+             ,(and x (guard (or (stringp x) (symbolp x)))))
+           (and client (pred symbolp)))
+       `(let* ((host (format "localhost:%s"
+                             (jupyter-test-ensure-notebook
+                              ,(when x
+                                 `(progn
+                                    (jupyter-test-kill-notebook
+                                     jupyter-test-notebook)
+                                    ,x)))))
+               (,client (jupyter-server :url (format "http://%s" host))))
+          (unwind-protect
+              (progn ,@(if x (cdr body) body))
+            ,(when x
+               '(jupyter-test-kill-notebook
+                 jupyter-test-notebook)))))
+      (_ (error "Invalid macro specification")))))
+
+(defvar jupyter-test-notebook-token nil
+  "The test notebook's token value.")
+
+(defun jupyter-test-make-notebook (authentication)
+  (let* ((default-directory jupyter-test-temporary-directory)
+         (passwordp (and (stringp authentication)
+                         (string-prefix-p "sha1:" authentication)))
+         (jupyter-test-notebook-token
+          (and (not passwordp)
+               (stringp authentication)
+               (prog1 authentication
+                 (setq authentication t))))
+         (port (car (jupyter-available-local-ports 1)))
+         (args (append
+                (list "notebook" "--no-browser" "--debug"
+                      (format "--NotebookApp.port=%s" port))
+                (cond
+                 ((eq authentication t)
+                  (list
+                   (format "--NotebookApp.token='%s'"
+                           (or jupyter-test-notebook-token
+                               (read-string "Token value: ")))))
+                 (passwordp
+                  (list
+                   "--NotebookApp.token=''"
+                   (format "--NotebookApp.password='%s'"
+                           authentication)))
+                 ((null authentication)
+                  (list
+                   "--NotebookApp.token=''"
+                   "--NotebookApp.password=''"))
+                 (t
+                  (error "Invalid authentication value"))))))
+    (list (apply #'start-process "jupyter-notebook"
+                 (generate-new-buffer "*jupyter-notebook*")
+                 "jupyter" args)
+          port)))
+
+(defun jupyter-test-kill-notebook (notebook)
+  (pcase notebook
+    (`(,(and proc (guard (processp proc)))
+       ,(and port (guard (integerp port))))
+     (let ((buffer (process-buffer proc)))
+       (delete-process proc)
+       (and (bufferp buffer)
+            (kill-buffer buffer))))))
+
+(defun jupyter-test-ensure-notebook (&optional authentication)
   "Ensure there is a notebook process available.
 Return the port it was started on. The starting directory of the
 process will be in the `jupyter-test-temporary-directory'.
@@ -636,35 +699,31 @@ authentication. If AUTHENTICATION is t start with token
 authentication. Finally, if AUTHENTICATION is a string it should
 be the hashed password to use for authentication to the server,
 see the documentation on the --NotebookApp.password argument."
-  (if (process-live-p (car jupyter-test-notebook))
-      (cdr jupyter-test-notebook)
-    (unless noninteractive
-      (error "This should only be called in batch mode"))
-    (message "Starting up notebook process for tests")
-    (let ((port (car (jupyter-available-local-ports 1))))
-      (prog1 port
-        (let ((default-directory jupyter-test-temporary-directory)
-              (buffer (generate-new-buffer "*jupyter-notebook*"))
-              (args (append
-                     (list "notebook" "--no-browser" "--debug"
-                           (format "--NotebookApp.port=%s" port))
-                     (cond
-                      ((eq authentication t)
-                       (list))
-                      ((stringp authentication)
-                       (list
-                        "--NotebookApp.token=''"
-                        (format "--NotebookApp.password='%s'"
-                                authentication)))
-                      (t
-                       (list
-                        "--NotebookApp.token=''"
-                        "--NotebookApp.password=''"))))))
-          (setq jupyter-test-notebook
-                (cons (apply #'start-process
-                             "jupyter-notebook" buffer "jupyter" args)
-                      port))
-          (sleep-for 5))))))
+  (pcase jupyter-test-notebook
+    (`(,(and proc (guard (processp proc)))
+       ,(and port (guard (integerp port))))
+     (if (process-live-p proc)
+         port
+       (jupyter-test-kill-notebook jupyter-test-notebook)
+       (setq jupyter-test-notebook nil)
+       (jupyter-test-ensure-notebook authentication)))
+    (`nil
+     (unless noninteractive
+       (error "This should only be called in batch mode"))
+     (message "Starting up notebook process for tests...")
+     (setq jupyter-test-notebook
+           (jupyter-test-make-notebook authentication))
+     (pcase jupyter-test-notebook
+       (`(,(and proc (guard (processp proc)))
+          ,(and port (guard (integerp port))))
+        (with-current-buffer (process-buffer proc)
+          (while (not (progn (goto-char (point-min))
+                             (re-search-forward
+                              "Jupyter Notebook [^ ]+ is running at:"
+                              nil 'noerror)))
+            (accept-process-output proc 1)))))
+     (message "Starting up notebook process for tests...done")
+     (jupyter-test-ensure-notebook))))
 
 ;;; Cleanup
 
