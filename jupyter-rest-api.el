@@ -289,8 +289,8 @@ this will cause errors in the URL library."
 
 (defun jupyter-api-write-cookie-file ()
   "Write cookies to file."
-  (setq url-cookies-changed-since-last-save t)
-  (url-cookie-write-file))
+  (let ((url-cookies-changed-since-last-save t))
+    (url-cookie-write-file)))
 
 ;; For more info on the XSRF header see
 ;; https://blog.jupyter.org/security-release-jupyter-notebook-4-3-1-808e1f3bb5e2
