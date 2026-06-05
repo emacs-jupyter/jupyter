@@ -512,9 +512,14 @@ error with the data being the error received by `url-retrieve'."
 (defvar jupyter-api--response-cache-expiry 1
   "Number of seconds of Emacs idle time before cache invalidation.")
 
-(cl-defmethod jupyter-api-server-accessible-p ((client jupyter-rest-client))
-  "Return non-nil if CLIENT can access the Jupyter notebook server."
-  (pcase (gethash client jupyter-api--response-cache 'check)
+(cl-defmethod jupyter-api-server-accessible-p ((client jupyter-rest-client)
+                                               &optional force)
+  "Return non-nil if CLIENT can access the Jupyter notebook server.
+If optional argument FORCE is non-nil, make an explicit check otherwise
+return a transient cached value of the previous access check which may
+or may not be valid."
+  (pcase (if force 'check
+           (gethash client jupyter-api--response-cache 'check))
     ('check
      (run-with-idle-timer
       jupyter-api--response-cache-expiry
@@ -552,7 +557,7 @@ slot of CLIENT and restore the AUTH slot on failure."
                     (jupyter-api-auth-headers client))))
         (while (and (not (progn
                            (funcall authenticator)
-                           (jupyter-api-server-accessible-p client)))
+                           (jupyter-api-server-accessible-p client t)))
                     (not (zerop (cl-decf max-tries))))))
       (when (zerop max-tries)
         (oset client auth auth)
