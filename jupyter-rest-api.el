@@ -312,14 +312,26 @@ this will cause errors in the URL library."
      (ignore-errors
        (jupyter-api-http-request (oref client url) "login" "GET")))))
 
-(defun jupyter-api-url-cookies (url)
-  "Return the list of cookies for URL."
+(defun jupyter-api-url-cookies (url &optional standard-only)
+  "Return the list of cookies for URL.
+All cookies associated with the HOST of URL are returned.  If URL has a
+non-standard port for the type of URL, all cookies associated with
+HOST:PORT are returned instead.
+
+If STANDARD-ONLY is non-nil, return the cookies associated with the
+standard port regardless of whether or not URL has a non-standard port."
   (pcase (or (and (url-p url) url)
              (url-generic-parse-url url))
-    ((cl-struct url host filename type)
-     (url-cookie-retrieve
-      host (concat filename "/")
-      (equal type "https")))))
+    ((and u (cl-struct url host filename type))
+     (let ((port (url-port-if-non-default u)))
+       (url-cookie-retrieve
+        (if (and port (not standard-only))
+            (format "%s:%s" host port)
+          host)
+        (or (and (string-empty-p filename) "/")
+            filename
+            "/")
+        (equal type "https"))))))
 
 (defun jupyter-api-xsrf-header-from-cookies (url)
   "Return an alist containing an X-XSRFTOKEN header or nil.
@@ -327,7 +339,11 @@ Searches the cookies of URL for an _xsrf token, if found, sets
 the value of the cookie as the value of the X-XSRFTOKEN header
 returned."
   (cl-loop
-   for cookie in (jupyter-api-url-cookies url)
+   ;; We look only at the cookies of the standard port, regardless of
+   ;; whether or not URL has a non-standard port since the URL library
+   ;; doesn't seem to consider the port when setting cookies from
+   ;; requests.
+   for cookie in (jupyter-api-url-cookies url t)
    if (equal (url-cookie-name cookie) "_xsrf")
    return `(("X-XSRFTOKEN" .
              ,(jupyter-api--ensure-unibyte
@@ -344,10 +360,12 @@ stored without considering a PORT) appears to be the standard,
 see RFC 6265."
   (pcase (or (and (url-p url) url)
              (url-generic-parse-url url))
-    ((and u (cl-struct url host))
+    ((and u (cl-struct url type host filename))
      (when-let* ((port (url-port-if-non-default u))
-                 (cookies (jupyter-api-url-cookies u))
-                 (host-port (format "%s:%s" host port)))
+                 (cookies (jupyter-api-url-cookies
+                           (url-parse-make-urlobj
+                            type nil nil host nil filename)))
+                 (new-domain (format "%s:%s" host port)))
        (cl-loop
         for cookie in cookies
         do (pcase-let (((cl-struct url-cookie name value expires
@@ -374,7 +392,7 @@ see RFC 6265."
                                     (time-add (current-time)
                                               (days-to-time 1))))))
              (url-cookie-store
-              name value expires host-port localpart secure)))))))
+              name value expires new-domain localpart secure)))))))
 
 ;; Adapted from `url-cookie-delete'
 (defun jupyter-api--delete-cookie (cookie)
@@ -393,20 +411,17 @@ see RFC 6265."
 All cookies associated with the HOST of URL are deleted.  If URL
 has a non-standard port for the type of URL, all cookies
 associated with HOST:PORT are deleted as well."
-  (let* ((url (if (url-p url) url
-                (url-generic-parse-url url)))
-         (host (url-host url)))
+  (let ((url (or (and (url-p url) url)
+                 (url-generic-parse-url url))))
     (dolist (u (cons url
-                     ;; Also delete cookies that were duplicated by
-                     ;; `jupyter-api-copy-cookies-for-websocket'.
-                     (when-let* ((port (url-port-if-non-default url))
-                                 (u (copy-sequence url)))
-                       (prog1 (list u)
-                         (setf (url-host u) (format "%s:%s" host port))))))
+                     (when (url-port-if-non-default url)
+                       (list
+                        (pcase-let (((cl-struct url type host) url))
+                          (url-parse-make-urlobj
+                           type nil nil host))))))
       (cl-loop
        for cookie in (jupyter-api-url-cookies u)
-       do (jupyter-api--delete-cookie cookie)))
-    (jupyter-api-write-cookie-file)))
+       do (jupyter-api--delete-cookie cookie)))))
 
 (defun jupyter-api-add-websocket-headers (plist)
   "Destructively modify PLIST to add a `:custom-header-alist' key.
