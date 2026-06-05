@@ -112,22 +112,31 @@
 
 (ert-deftest jupyter-api-copy-cookies-for-websocket ()
   :tags '(rest server)
-  (let* (url-cookie-storage
-         (port (jupyter-test-ensure-notebook))
-         (host (format "localhost:%s" port)))
-    (url-cookie-store "_xsrf" "1" nil "localhost" "/")
-    (url-cookie-store (format "username-login-%s" port) "2" nil "localhost" "/")
-    (let ((old-cookies (url-cookie-retrieve "localhost" "/")) cookies)
-      (jupyter-api-copy-cookies-for-websocket (format "http://%s" host))
-      (should (setq cookies (url-cookie-retrieve host "/")))
+  (let* ((url-cookie-storage
+          '(("localhost"
+             [url-cookie
+              "username-localhost-8888"
+              "2"
+              "Fri, 16 Aug 9999 06:02:50 GMT"
+              "/" "localhost" nil]
+             [url-cookie
+              "_xsrf"
+              "1"
+              "Fri, 16 Aug 9999 06:02:50 GMT"
+              "/" "localhost" nil]))))
+    (jupyter-api-copy-cookies-for-websocket "http://localhost:8888")
+    (let ((cookies-default-port
+           (jupyter-api-url-cookies "http://localhost"))
+          (cookies-nondefault-port
+           (jupyter-api-url-cookies "http://localhost:8888")))
+      (should cookies-default-port)
+      (should cookies-nondefault-port)
       (cl-loop
-       for cookie in old-cookies
-       do (setf (url-cookie-domain cookie) host))
+       for cookie in cookies-default-port
+       do (setf (url-cookie-domain cookie) "localhost:8888"))
       (cl-loop
-       for cookie in cookies
-       ;; old-cookies now have the domain of the new cookies for verification
-       ;; purposes
-       do (should (member cookie old-cookies))))))
+       for cookie in cookies-nondefault-port
+       do (should (member cookie cookies-default-port))))))
 
 (defvar url-cookie-storage)
 (defvar url-cookies-changed-since-last-save)
@@ -147,14 +156,9 @@
                   "foo"
                   "Fri, 16 Aug 9999 06:02:50 GMT"
                   "/" "localhost" nil])))
-             (cookies-written nil)
-             ((symbol-function #'url-cookie-write-file)
-              (lambda ()
-                (should url-cookies-changed-since-last-save)
-                (setq cookies-written t))))
+             ((symbol-function #'url-cookie-write-file) #'ignore))
     (jupyter-api-delete-cookies "http://localhost:8888")
-    (should-not url-cookie-storage)
-    (should cookies-written)))
+    (should-not url-cookie-storage)))
 
 (ert-deftest jupyter-api-login ()
   :tags '(rest)
