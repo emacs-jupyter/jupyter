@@ -516,6 +516,7 @@ These parameters are handled internally."
                  ;; for the pending results.
                  (jupyter-org-pending-async-results req)))
               (t
+               ;; TODO: If this quits, interrupt the kernel.
                (jupyter-idle-sync req)
                (if (jupyter-org-request-inline-block-p req)
                    ;; When evaluating a source block synchronously, only the
