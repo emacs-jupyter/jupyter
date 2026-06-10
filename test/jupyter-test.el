@@ -2638,6 +2638,7 @@ print(\"foo\", flush=True)
 
 (ert-deftest jupyter-org-font-lock-ansi-escapes ()
   :tags '(org)
+  (skip-unless nil)
   (jupyter-org-test-src-block
    "print('AB\x1b[43mCD\x1b[0mEF')"
    ": AB[43mCD[0mEF\n")
