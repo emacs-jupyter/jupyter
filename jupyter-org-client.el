@@ -2008,35 +2008,48 @@ the return value for asynchronous Jupyter source blocks in
 Meant to be used as the return value of
 `org-babel-execute:jupyter'."
   (pcase-let (((cl-struct jupyter-org-request block-params
-                          results silent-p block-params)
+                          results silent-p
+                          inline-block-p block-params)
                req))
-    (setq results (jupyter-org--coalesce-stream-results (nreverse results)))
-    (if silent-p
-        (org-babel-script-escape
-         (mapconcat
-          (lambda (result)
-            (if (consp result)
-                (or (jupyter-mime-value result :text/plain) "")
-              (cl-check-type result string)
-              result))
-          results
-          "\n"))
-      (when-let* ((results
-                   (mapcar (lambda (r)
-                        (if (jupyter-org--stream-result-p r)
-                            (jupyter-org-scalar
-                             (jupyter-org-strip-last-newline r))
-                          r))
-                      (jupyter-org--process-pandoc-results
-                       (mapcar (apply-partially #'jupyter-org-get-result req)
-                          results))))
-                  (result-params (alist-get :result-params block-params)))
-        (org-element-interpret-data
-         (if (or (and (= (length results) 1)
-                      (jupyter-org-babel-result-p (car results)))
-                 (member "raw" result-params))
-             (car results)
-           (apply #'jupyter-org-results-drawer results)))))))
+    (if inline-block-p
+        ;; When evaluating a source block
+        ;; synchronously, only the
+        ;; :execute-result will be in
+        ;; `jupyter-org-request-results'
+        ;; since stream results and any
+        ;; displayed data will be placed
+        ;; in a separate buffer.
+        (let ((el (jupyter-org-result
+                   req (car results))))
+          (if (stringp el) el
+            (org-element-property :value el)))
+      (setq results (jupyter-org--coalesce-stream-results (nreverse results)))
+      (if silent-p
+          (org-babel-script-escape
+           (mapconcat
+            (lambda (result)
+              (if (consp result)
+                  (or (jupyter-mime-value result :text/plain) "")
+                (cl-check-type result string)
+                result))
+            results
+            "\n"))
+        (when-let* ((results
+                     (mapcar (lambda (r)
+                          (if (jupyter-org--stream-result-p r)
+                              (jupyter-org-scalar
+                               (jupyter-org-strip-last-newline r))
+                            r))
+                        (jupyter-org--process-pandoc-results
+                         (mapcar (apply-partially #'jupyter-org-get-result req)
+                            results))))
+                    (result-params (alist-get :result-params block-params)))
+          (org-element-interpret-data
+           (if (or (and (= (length results) 1)
+                        (jupyter-org-babel-result-p (car results)))
+                   (member "raw" result-params))
+               (car results)
+             (apply #'jupyter-org-results-drawer results))))))))
 
 (provide 'jupyter-org-client)
 
