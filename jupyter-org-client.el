@@ -273,15 +273,19 @@ nothing and return nil."
     (cl-call-next-method)))
 
 (defun jupyter-org-request-at-point ()
-  "Return the `jupyter-org-request' associated with `point' or nil."
+  "Return the `jupyter-org-request' associated with `point'.
+Nil is returned if there is no request or if it is already idle.
+If the request has not been sent yet, e.g. it is still pending
+due to being queued, return t."
   (when-let* ((context (org-element-context))
               (babel-p (memq (org-element-type context)
                              '(src-block babel-call
-                               inline-babel-call inline-src-block)))
-              (pos (jupyter-org-element-begin-after-affiliated context))
-              (req (get-text-property pos 'jupyter-request)))
-    (and (not (jupyter-request-idle-p req))
-         req)))
+                                         inline-babel-call inline-src-block)))
+              (pos (jupyter-org-element-begin-after-affiliated context)))
+    (pcase (get-text-property pos 'jupyter-request)
+      (`pending t)
+      (`nil nil)
+      (req (unless (jupyter-request-idle-p req) req)))))
 
 ;;;; Stream
 
