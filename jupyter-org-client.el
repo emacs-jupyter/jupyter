@@ -144,16 +144,7 @@ See also the docstring of `org-image-actual-width' for more details."
   "MIME types handled by Jupyter Org.")
 
 (defclass jupyter-org-client (jupyter-repl-client)
-  ((most-recent-request
-    :type (or jupyter-request null)
-    :initform nil
-    :initarg :most-recent-request
-    :documentation "The most recently sent request.")
-   (last-queued-request
-    :type (or jupyter-request null)
-    :initform nil
-    :initarg :last-queued-request
-    :documentation "The last queued request.")))
+  ())
 
 (cl-defstruct (jupyter-org-request
                (:include jupyter-request)
@@ -519,9 +510,6 @@ message down the chain of subscribers to the REQ's message
 publisher to indicate that any subsequent, queued, requests
 should also be aborted."
   (setf (jupyter-request-idle-p req) t)
-  (let ((client (jupyter-request-client req)))
-    (when (eq (oref client last-queued-request) req)
-      (oset client last-queued-request nil)))
   (jupyter-org--remove-overlay req)
   (jupyter-org--clear-async-indicator req)
   (let ((marker (jupyter-org-request-marker req)))
@@ -535,69 +523,164 @@ should also be aborted."
       (jupyter-publish 'abort)))
   (jupyter-unsubscribe))
 
-(defun jupyter-org-maybe-queued (dreq)
-  "Return a monadic value that either sends or continues to delay DREQ.
-DREQ is an already delayed request, as returned by
-`jupyter-request' and friends.  When the value is bound to a
-client, using e.g. `jupyter-run-with-client', send DREQ if there
-are no queued requests otherwise queue DREQ.  The value returns
-the unboxed request contained in DREQ.
+(defvar jupyter-org-client-queues (make-hash-table :weakness 'key))
 
-If the variable `jupyter-org-queue-requests' is nil, just send
-the request immediately instead of attempting to queue it."
-  (if (not jupyter-org-queue-requests)
-      (jupyter-do dreq)
-    (jupyter-mlet* ((client (jupyter-get-state))
-                    (req dreq))
-      (let* ((send
-              (lambda (req)
-                (jupyter-run-with-client client
-                  (jupyter-mlet* ((req (jupyter-sent
-                                        (jupyter-return req))))
-                    (oset client most-recent-request req)
-                    (jupyter-run-with-io
-                        (jupyter-request-message-publisher req)
-                      (jupyter-subscribe
-                        (jupyter-subscriber
-                          (lambda (msg)
-                            (when (or (eq msg 'abort)
-                                      (equal (jupyter-message-type msg) "execute_reply"))
-                              (when (eq (oref client most-recent-request) req)
-                                (oset client most-recent-request nil))
-                              (jupyter-unsubscribe))))))
-                    (when (eq (oref client last-queued-request) req)
-                      (oset client last-queued-request nil))
-                    (jupyter-return req)))))
-             (queue
-              ;; Subscribe REQ to the message publisher of QREQ such that
-              ;; REQ is sent or aborted when QREQ receives an
-              ;; execute_reply.
-              (lambda (qreq req)
-                (let ((pub (jupyter-request-message-publisher qreq)))
-                  (jupyter-run-with-io pub
-                    (jupyter-subscribe
-                      (jupyter-subscriber
-                        (lambda (msg)
-                          (if (eq msg 'abort)
-                              (jupyter-org-abort req)
-                            (pcase (jupyter-message-type msg)
-                              ("execute_reply"
-                               (jupyter-with-message-content msg (status)
-                                 (if (equal status "ok")
-                                     (funcall send req)
-                                   (jupyter-org-abort req)))
-                               (jupyter-unsubscribe))))))))))))
-        (let ((mreq (oref client most-recent-request)) qreq)
-          (cond
-           ((null mreq)
-            (funcall send req))
-           ((setq qreq (oref client last-queued-request))
-            (funcall queue qreq req)
-            (oset client last-queued-request req))
-           (t
-            (funcall queue mreq req)
-            (oset client last-queued-request req)))
-          (jupyter-return req))))))
+(defun jupyter-org-message-subscribed (req idle-sub &optional callbacks)
+  "Return a value that subscribes message handlers for REQ.
+IDLE-SUB is a `jupyter-subscriber' or `jupyter-publisher' that gets sent
+an \\`idle' message when the request is idle and a \\`busy' message when
+the request is busy.
+
+CALLBACKS is an alist of message type, callback pairs as per
+`jupyter-message-subscribed'."
+  (jupyter-message-subscribed
+   (if callbacks
+       (jupyter-message-subscribed
+        req callbacks)
+     req)
+   ;; Send 'idle to SUB when it is guaranteed that the reply message
+   ;; has been received regardless of when the idle message has been
+   ;; received.
+   (let (idle reply done)
+     (lambda (msg)
+       (if done (jupyter-unsubscribe)
+         (if (jupyter-message-status-busy-p msg)
+             (jupyter-run-with-io idle-sub
+               (jupyter-publish 'busy))
+           (or idle (setq idle (jupyter-message-status-idle-p msg)))
+           (or reply (setq reply (jupyter-message-reply-p msg)))
+           (when (and reply idle)
+             (setq done t)
+             (jupyter-run-with-io idle-sub
+               (jupyter-publish 'idle)))))))))
+
+(defun jupyter-org-queue ()
+  (let (q live)
+    (jupyter-subscriber
+      (lambda (msg)
+        (pcase msg
+          (`(enqueue . ,el) (push el q))
+          ((or 'start 'dequeue)
+           (unless (and live (eq msg 'start))
+             ;; FIXME Edge case when popping the last item and
+             ;; evaluating and then an enqueue happens before the
+             ;; dequeue of the live request.
+             (pcase-let ((`(,action ,_)
+                          (pcase q
+                            (`nil '(nil nil))
+                            (`(,_) (pop q))
+                            (_
+                             (pcase-let* (((and l `(,_ ,next))
+                                           (last q 2)))
+                               (setcdr l nil)
+                               next)))))
+               (setq live (and action t))
+               (when action
+                 (jupyter-run-with-state nil
+                   action)))))
+          ('abort
+           (pcase-dolist (`(,_ ,on-abort) q)
+             (funcall on-abort))
+           (setq q nil
+                 live nil)))))))
+
+(defun jupyter-org-enqueued (req sub callbacks)
+  (let ((marker (copy-marker org-babel-current-src-block-location))
+        (params org-babel-jupyter-current-src-block-params))
+    (jupyter-mlet* ((client (jupyter-get-client)))
+      (let ((q (or (gethash client jupyter-org-client-queues)
+                   (puthash client (jupyter-org-queue) jupyter-org-client-queues))))
+        ;; FIXME This gets overridden in `jupyter-generate-request'
+        ;; when it is called, but we need it here for
+        ;; `jupyter-org-request-at-point' to return a non-nil value
+        ;; for a pending request.
+        (put-text-property marker (1+ marker) 'jupyter-request 'pending)
+        ;; TODO Verify that the source block matches the contents of
+        ;; the request still before sending it or block the editing of
+        ;; the source block as it is queued for sending.  Maybe add an
+        ;; on-send callback in addition to an on-busy and on-reply.
+        (jupyter-run-with-io q
+          (jupyter-publish
+            (list 'enqueue
+                  (jupyter-with-temporary-state client
+                    (jupyter-do
+                      (jupyter-add-subscriber
+                       (lambda (msg)
+                         (when (jupyter-message-reply-p msg)
+                           (jupyter-with-message-content msg (status)
+                             (jupyter-run-with-io q
+                               (if (equal status "ok")
+                                   (jupyter-publish 'dequeue)
+                                 (jupyter-publish 'abort))))
+                           (jupyter-unsubscribe))))
+                      (jupyter-do
+                        (jupyter-org-message-subscribed
+                         (jupyter-with-bindings*
+                             ((org-babel-current-src-block-location
+                               marker)
+                              (org-babel-jupyter-current-src-block-params
+                               params))
+                           (org-with-point-at marker
+                             (jupyter-at-point req)))
+                         sub
+                         callbacks))))
+                  (lambda ()
+                    (remove-text-properties
+                     marker (1+ marker) '(jupyter-request))
+                    (set-marker marker nil)
+                    (jupyter-run-with-io sub
+                      (jupyter-publish 'abort))))))
+        (jupyter-org-schedule-queue))
+      (jupyter-return nil))))
+
+(defun jupyter-org-maybe-queued (req &optional sub &rest callbacks)
+  "Queue REQ with some message handlers.
+REQ is only queued if `jupyter-org-queue-requests' is non-nil, in that
+case the monadic value returned queues the request and returns nil.
+When `jupyter-org-queue-requests' is nil, return a value that sends the
+request immediately and returns the request.
+
+SUB is a subscriber that can be sent the messages: 'busy, 'idle, or
+'abort indicating that the request has begun execution on the kernel,
+has completed execution, or has been aborted on the client side, i.e. in
+Emacs due to some other queued request raising an error during its
+evaluation.  The rest of the arguments form the CALLBACKS, a property
+list like
+
+    \\='(:status ... :execute_result ...)
+
+where the keys are message types and the values are callback functions
+that take a message as argument.
+
+Note, the current request which generated the message can be accessed
+through `jupyter-current-request' in these callbacks as well as in SUB,
+except when receiving the 'abort message since in that case, the request
+was never instantiated."
+  (setq callbacks
+        (cl-loop
+         for (type cb) on callbacks by #'cddr
+         for ty = (substring (symbol-name type) 1)
+         collect (list ty cb)))
+  (or sub (setq sub (jupyter-subscriber #'ignore)))
+  (if jupyter-org-queue-requests
+      (jupyter-org-enqueued req sub callbacks)
+    (jupyter-org-message-subscribed req sub callbacks)))
+
+(defun jupyter-org-run-queue ()
+  (maphash (lambda (_ queue)
+             (jupyter-run-with-io queue
+               (jupyter-publish 'start)))
+           jupyter-org-client-queues))
+
+(defvar jupyter-org-queue-timer nil)
+
+(defun jupyter-org-schedule-queue ()
+  (when jupyter-org-queue-requests
+    (when jupyter-org-queue-timer
+      (cancel-timer jupyter-org-queue-timer))
+    (setq jupyter-org-queue-timer
+          (run-at-time 0 nil
+                       #'jupyter-org-run-queue))))
 
 ;;; Caching the current source block's information
 
@@ -1962,11 +2045,8 @@ the return value for asynchronous Jupyter source blocks in
       (setq org-babel-after-execute-hook
             (list (lambda ()
                     (setq message-log-max log-max)
-                    (unwind-protect
-                        (jupyter-org--add-result
-                         req (list :text/plain (jupyter-org-request-id req)))
-                      (setq org-babel-after-execute-hook hook)
-                      (run-hooks 'org-babel-after-execute-hook))))))))
+                    (setq org-babel-after-execute-hook hook)
+                    (run-hooks 'org-babel-after-execute-hook)))))))
 
 (defun jupyter-org--coalesce-stream-results (results)
   "Return RESULTS with all contiguous stream results concatenated."
