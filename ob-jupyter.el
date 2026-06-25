@@ -532,7 +532,7 @@ the PARAMS alist."
       (goto-char org-babel-current-src-block-location)
       (when (jupyter-org-request-at-point)
         (user-error "Source block currently being executed"))))
-  (let* ((org-babel-jupyter-current-src-block-params params)
+  (let* ((org-babel-jupyter-current-src-block-params (copy-sequence params))
          (async-p (jupyter-org-execute-async-p params))
          (inline-p (jupyter-org-inline-block-p
                     (org-with-point-at
