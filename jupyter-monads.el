@@ -163,15 +163,28 @@ as the monadic value."
 
 (defmacro jupyter-with-bindings* (varlist action)
   "Return a monadic value that evaluates ACTION with bound variables.
-VARLIST is a list of variable names, return a monadic value that
-evaluates ACTION with those names bound to their value in the
-context of the evaluation environment where the returned value is
-generated."
+VARLIST is a list of variables as in `let*', return a monadic value that
+evaluates ACTION with those variables bound to their values in the
+context of the evaluation environment of ACTION.
+
+If an element of VARLIST is simply a variable name then, when ACTION is
+evaluated, that name will be bound to the value it had at the time the
+returned value is generated.  This is useful, for example, to bind
+dynamic variables to the same values, during the evaluation of ACTION,
+they had when the returned value is generated.  If an element of VARLIST
+is a list (VAR VALUE), then VALUE is bound to VAR when ACTION is
+evaluated."
   (declare (indent 1))
   (let ((syms (mapcar (lambda (_) (gensym)) varlist)))
-    `(let* ,(cl-mapcar (lambda (s v) (list s v)) syms varlist)
+    `(let* ,(cl-mapcar (lambda (s v)
+                         (list s (if (listp v) (cadr v)
+                                   v)))
+                       syms varlist)
        (jupyter-mlet* ((state (jupyter-get-state)))
-         (let* ,(cl-mapcar (lambda (s v) (list v s)) syms varlist)
+         (let* ,(cl-mapcar (lambda (s v) (list (if (listp v) (car v)
+                                            v)
+                                          s))
+                           syms varlist)
            (jupyter-return
              (jupyter-run-with-state state
                ,action)))))))
