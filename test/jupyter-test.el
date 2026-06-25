@@ -2104,7 +2104,11 @@ $\\alpha$
      "\
 from IPython.core.display import Latex
 Latex(r'$\\alpha$')"
-     "$\\alpha$\n"
+     "\
+:RESULTS:
+$\\alpha$
+:END:
+"
      :results "raw")))
 
 (ert-deftest ob-jupyter-error-results ()

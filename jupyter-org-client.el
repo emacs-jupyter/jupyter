@@ -2122,12 +2122,10 @@ Meant to be used as the return value of
                             r))
                         (jupyter-org--process-pandoc-results
                          (mapcar (apply-partially #'jupyter-org-get-result req)
-                            results))))
-                    (result-params (alist-get :result-params block-params)))
+                            results)))))
           (org-element-interpret-data
-           (if (or (and (= (length results) 1)
-                        (jupyter-org-babel-result-p (car results)))
-                   (member "raw" result-params))
+           (if (and (= (length results) 1)
+                    (jupyter-org-babel-result-p (car results)))
                (car results)
              (apply #'jupyter-org-results-drawer results))))))))
 

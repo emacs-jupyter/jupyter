@@ -564,13 +564,7 @@ the PARAMS alist."
                  (or async-p
                      (not (or (member "link" result-params)
                               (member "graphics" result-params)))))
-        (org-babel-jupyter--remove-file-param params))
-      ;; KLUDGE: Add the "raw" result parameter for non-inline
-      ;; synchronous results because an Org formatted string is
-      ;; already returned in that case and
-      ;; `org-babel-insert-result' should not process it.
-      (unless (or async-p inline-p)
-        (nconc (alist-get :result-params params) (list "raw"))))
+        (org-babel-jupyter--remove-file-param params)))
     (pcase-let* ((`(,jupyter-current-client ,code)
                   (org-babel-jupyter--client-and-code body params))
                  (aborted nil)
@@ -622,6 +616,12 @@ the PARAMS alist."
             org-babel-jupyter-pending-request-indicator)
         (while (not (or aborted idle-p))
           (accept-process-output nil 1))
+        ;; KLUDGE: Add the "raw" result parameter for non-inline
+        ;; synchronous results because an Org formatted string is
+        ;; already returned in that case and `org-babel-insert-result'
+        ;; should not process it.
+        (unless inline-p
+          (nconc (alist-get :result-params params) (list "raw")))
         result))))
 
 ;;; Overriding source block languages, language aliases
