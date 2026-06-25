@@ -524,7 +524,7 @@ These parameters are handled internally."
 
 (defun org-babel-jupyter--insert-result (result)
   (cl-letf (((symbol-function #'message) #'ignore))
-    (org-babel-insert-result result)))
+    (org-babel-insert-result result '("replace"))))
 
 (defun org-babel-execute:jupyter (body params)
   "Execute BODY according to PARAMS.
@@ -581,11 +581,8 @@ the PARAMS alist."
              (lambda (event)
                (pcase event
                  ('busy
-                  (jupyter-org-with-point-at (jupyter-current-request)
-                    ;; FIXME Silence the generated message.
-                    (if inline-p
-                        (org-babel-remove-inline-result)
-                      (org-babel-remove-result))
+                  (jupyter-org-with-point-at
+                      (jupyter-current-request)
                     (org-babel-jupyter--insert-result
                      (jupyter-request-id (jupyter-current-request)))))
                  ('idle
@@ -598,9 +595,6 @@ the PARAMS alist."
                   (setq aborted t)
                   (unwind-protect
                       (org-with-point-at marker
-                        (if inline-p
-                            (org-babel-remove-inline-result)
-                          (org-babel-remove-result))
                         (if async-p
                             (org-babel-jupyter--insert-result "Aborted!")
                           (setq result "Aborted!")))
