@@ -3005,14 +3005,14 @@ publish_display_data({'text/plain': \"foo\", 'text/latex': \"$\\alpha$\"});"
   :tags '(org)
   (ert-info ("Treat inline and non-inline results similarly")
     ;; #204
-    (let ((src (format "\
+    (jupyter-org-test
+     (let ((src (format "\
 #+NAME: hello_jupyter
 #+BEGIN_SRC jupyter-python :results value :display plain :session %s
 \"hello\"
 #+END_SRC
 
 " jupyter-org-test-session)))
-      (jupyter-org-test
        (insert src)
        (insert "call_hello_jupyter()")
        (let ((pos (point)))
@@ -3021,11 +3021,18 @@ publish_display_data({'text/plain': \"foo\", 'text/latex': \"$\\alpha$\"});"
          (goto-char pos)
          (should (looking-at-p " {{{results(=hello=)}}}"))))
       (jupyter-org-test
-       (save-excursion (insert src))
-       (org-ctrl-c-ctrl-c)
-       (goto-char (org-babel-where-is-src-block-result))
-       (forward-line)
-       (should (looking-at-p ": hello"))))))
+       (let ((src (format "\
+#+NAME: hello_jupyter
+#+BEGIN_SRC jupyter-python :results value :display plain :session %s
+\"hello\"
+#+END_SRC
+
+" jupyter-org-test-session)))
+         (save-excursion (insert src))
+         (org-ctrl-c-ctrl-c)
+         (goto-char (org-babel-where-is-src-block-result))
+         (forward-line)
+         (should (looking-at-p ": hello")))))))
 
 (ert-deftest org-babel-jupyter-pandoc-output-order ()
   :tags '(org pandoc)
@@ -3205,7 +3212,7 @@ raise Exception(\"This is an error\")
        (org-babel-execute-subtree)
        (while (jupyter-org-request-at-point)
          (sleep-for 0.1))
-       (funcall check-result "")
+       (funcall check-result ": Aborted!")
        (org-previous-block 1)
        (org-babel-execute-src-block)
        (while (jupyter-org-request-at-point)
