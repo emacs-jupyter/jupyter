@@ -2217,7 +2217,7 @@ Image(filename='%s', width=300)" file)
 #+end_src" jupyter-org-test-session))
    (goto-char (point-min))
    (org-babel-execute-src-block)
-   (let ((req (jupyter-org-request-at-point)))
+   (let ((req (jupyter-org-request-at-point t)))
      (should req)
      (should (jupyter-org-request-p req))
      (jupyter-wait-until-idle req)
@@ -2239,7 +2239,7 @@ Image(filename='%s', width=300)" file)
           (list :language_info (list :name 'python)))
     (should (equal (jupyter-kernel-language jupyter-current-client) 'python))
     ;; Bring in the python specific methods
-    (jupyter-load-language-support jupyter-current-client)
+    (jupyter-load-language-support)
     (should (equal (jupyter-org-get-result req (list :text/plain "[1, 2, 3]"))
                    "| 1 | 2 | 3 |\n"))
     (should py-method-called)))
@@ -3005,14 +3005,14 @@ publish_display_data({'text/plain': \"foo\", 'text/latex': \"$\\alpha$\"});"
   :tags '(org)
   (ert-info ("Treat inline and non-inline results similarly")
     ;; #204
-    (let ((src (format "\
+    (jupyter-org-test
+     (let ((src (format "\
 #+NAME: hello_jupyter
 #+BEGIN_SRC jupyter-python :results value :display plain :session %s
 \"hello\"
 #+END_SRC
 
 " jupyter-org-test-session)))
-      (jupyter-org-test
        (insert src)
        (insert "call_hello_jupyter()")
        (let ((pos (point)))
@@ -3021,11 +3021,18 @@ publish_display_data({'text/plain': \"foo\", 'text/latex': \"$\\alpha$\"});"
          (goto-char pos)
          (should (looking-at-p " {{{results(=hello=)}}}"))))
       (jupyter-org-test
-       (save-excursion (insert src))
-       (org-ctrl-c-ctrl-c)
-       (goto-char (org-babel-where-is-src-block-result))
-       (forward-line)
-       (should (looking-at-p ": hello"))))))
+       (let ((src (format "\
+#+NAME: hello_jupyter
+#+BEGIN_SRC jupyter-python :results value :display plain :session %s
+\"hello\"
+#+END_SRC
+
+" jupyter-org-test-session)))
+         (save-excursion (insert src))
+         (org-ctrl-c-ctrl-c)
+         (goto-char (org-babel-where-is-src-block-result))
+         (forward-line)
+         (should (looking-at-p ": hello")))))))
 
 (ert-deftest org-babel-jupyter-pandoc-output-order ()
   :tags '(org pandoc)
@@ -3077,7 +3084,8 @@ print(2)"
 (ert-deftest org-babel-jupyter-ssh-connections ()
   :tags '(org ssh)
   (skip-unless (getenv "SSH_HOST"))
-  (let* ((session (make-temp-name "ob-jupyter-test"))
+  (let* ((jupyter-use-zmq t)
+         (session (make-temp-name "ob-jupyter-test"))
          (src (format "\
 #+BEGIN_SRC jupyter-python :session /ssh:test:%s
 \"hello\"
@@ -3095,12 +3103,9 @@ print(2)"
                           (progn
                             (org-previous-block 1)
                             (org-babel-get-src-block-info)))))
-         (cl-letf (((symbol-function 'yes-or-no-p)
-                    (lambda (_prompt) t))
-                   ((symbol-function 'y-or-n-p)
-                    (lambda (_prompt) t)))
-           (kill-buffer (org-babel-jupyter-initiate-session
-                         (alist-get :session params) params))))))))
+         (jupyter-test-kill-buffer
+          (org-babel-jupyter-initiate-session
+           (alist-get :session params) params)))))))
 
 (ert-deftest org-babel-jupyer-issue-565 ()
   :tags '(org)
@@ -3205,7 +3210,7 @@ raise Exception(\"This is an error\")
        (org-babel-execute-subtree)
        (while (jupyter-org-request-at-point)
          (sleep-for 0.1))
-       (funcall check-result "")
+       (funcall check-result ": Aborted!")
        (org-previous-block 1)
        (org-babel-execute-src-block)
        (while (jupyter-org-request-at-point)
@@ -3225,7 +3230,9 @@ raise Exception(\"This is an error\")
      (org-previous-block 1)
      (org-babel-execute-src-block)
      (should (jupyter-org-request-at-point))
-     (should-error (org-babel-execute-src-block)))))
+     (should-error (org-babel-execute-src-block))
+     (while (jupyter-org-request-at-point)
+       (accept-process-output nil 1)))))
 
 ;; Local Variables:
 ;; byte-compile-warnings: (unresolved obsolete lexical)
