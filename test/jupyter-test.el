@@ -3232,7 +3232,9 @@ raise Exception(\"This is an error\")
      (org-previous-block 1)
      (org-babel-execute-src-block)
      (should (jupyter-org-request-at-point))
-     (should-error (org-babel-execute-src-block)))))
+     (should-error (org-babel-execute-src-block))
+     (while (jupyter-org-request-at-point)
+       (accept-process-output nil 1)))))
 
 ;; Local Variables:
 ;; byte-compile-warnings: (unresolved obsolete lexical)
