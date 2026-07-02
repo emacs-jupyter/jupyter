@@ -410,7 +410,7 @@ Also set the local value of `left-margin-width' to
   (let ((ovs (cl-remove-if-not
               (lambda (ov) (overlay-get ov 'jupyter-prompt))
               (overlays-in (point-min) (point-max))))
-        (max-width size-hint))
+        (max-width (or size-hint jupyter-repl-prompt-margin-width)))
     (dolist (ov ovs)
       (cl-callf max max-width (length (jupyter-repl--prompt-string ov))))
     (cl-callf * max-width (jupyter-repl--prompt-scale-factor))
