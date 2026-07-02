@@ -535,8 +535,7 @@ the PARAMS alist."
       (goto-char org-babel-current-src-block-location)
       (when (jupyter-org-request-at-point)
         (user-error "Source block currently being executed"))))
-  (let* ((org-babel-jupyter-current-src-block-params (copy-sequence params))
-         (async-p (jupyter-org-execute-async-p params))
+  (let* ((async-p (jupyter-org-execute-async-p params))
          (inline-p (jupyter-org-inline-block-p
                     (org-with-point-at
                         ;; FIXME What about when source blocks all
@@ -544,35 +543,37 @@ the PARAMS alist."
                         ;; what to do?
                         org-babel-current-src-block-location
                       (org-element-context)))))
-    (let ((result-params (assq :result-params params)))
-      (when (member "replace" result-params)
-        (org-babel-jupyter-cleanup-file-links))
-      ;; KLUDGE: Remove the file result-parameter so that
-      ;; `org-babel-insert-result' doesn't attempt to handle it while
-      ;; async results are pending.  Do the same in the synchronous
-      ;; case, but not if link or graphics are also result-parameters,
-      ;; only in Org >= 9.2, since those in combination with file mean
-      ;; to interpret the result as a file link, a useful meaning that
-      ;; doesn't interfere with Jupyter style result insertion.
-      ;;
-      ;; Do this after sending the request since
-      ;; `jupyter-generate-request' still needs access to the :file
-      ;; parameter.
-      ;; FIXME This condition is no longer valid, as the request is not
-      ;; generated at all within org-babel-execute:jupyter, but happens
-      ;; some time later.  It seems to be still valid to do this, but it
-      ;; needs to now, I think, be re-added to the parameters just
-      ;; before the request actually gets generated.
-      (when (and (member "file" result-params)
-                 (or async-p
-                     (not (or (member "link" result-params)
-                              (member "graphics" result-params)))))
-        (org-babel-jupyter--remove-file-param params)))
     (pcase-let* ((`(,jupyter-current-client ,code)
                   (org-babel-jupyter--client-and-code body params))
+                 (org-babel-jupyter-current-src-block-params
+                  (copy-sequence params))
                  (aborted nil)
                  (idle-p nil)
                  (result nil))
+      (let ((result-params (assq :result-params params)))
+        (when (member "replace" result-params)
+          (org-babel-jupyter-cleanup-file-links))
+        ;; KLUDGE: Remove the file result-parameter so that
+        ;; `org-babel-insert-result' doesn't attempt to handle it while
+        ;; async results are pending.  Do the same in the synchronous
+        ;; case, but not if link or graphics are also result-parameters,
+        ;; only in Org >= 9.2, since those in combination with file mean
+        ;; to interpret the result as a file link, a useful meaning that
+        ;; doesn't interfere with Jupyter style result insertion.
+        ;;
+        ;; Do this after sending the request since
+        ;; `jupyter-generate-request' still needs access to the :file
+        ;; parameter.
+        ;; FIXME This condition is no longer valid, as the request is not
+        ;; generated at all within org-babel-execute:jupyter, but happens
+        ;; some time later.  It seems to be still valid to do this, but it
+        ;; needs to now, I think, be re-added to the parameters just
+        ;; before the request actually gets generated.
+        (when (and (member "file" result-params)
+                   (or async-p
+                       (not (or (member "link" result-params)
+                                (member "graphics" result-params)))))
+          (org-babel-jupyter--remove-file-param params)))
       (jupyter-run-with-client jupyter-current-client
         (jupyter-org-maybe-queued
          (jupyter-execute-request :code code)
