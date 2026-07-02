@@ -850,19 +850,6 @@ attempting to access the rest of the stream")
         (jupyter-shutdown kernelA)
         (jupyter-shutdown kernelB)))))
 
-(ert-deftest jupyter-kernel-process/on-unexpected-exit ()
-  :tags '(kernel process)
-  (skip-unless nil)
-  (let ((kernel (jupyter-kernel :spec "python"))
-        called)
-    (jupyter-launch
-     kernel (lambda (kernel)
-              (setq called t)))
-    (let ((process (jupyter--kernel-process kernel)))
-      (kill-process process)
-      (sleep-for 0.01)
-      (should called))))
-
 (ert-deftest jupyter-session-with-random-ports ()
   :tags '(kernel)
   (let ((session (jupyter-session-with-random-ports)))
@@ -953,45 +940,6 @@ attempting to access the rest of the stream")
 
 ;;; Client
 
-;; TODO: Different values of the session argument
-;;
-;; FIXME: Re-work after refactoring the kernelspec -> connectable kernel code paths.
-(ert-deftest jupyter-comm-initialize ()
-  :tags '(client init)
-  (skip-unless nil)
-  (jupyter-test-with-python-client client
-	(with-slots (session kcomm) client
-	  (ert-info ("Client session")
-        (should (string= (jupyter-session-key session)
-                         (plist-get conn-info :key)))
-        (should (equal (jupyter-session-conn-info session)
-					   conn-info)))
-	  (ert-info ("Heartbeat channel initialized")
-        (should (eq session (oref (oref kcomm hb) session)))
-        (should (string= (oref (oref kcomm hb) endpoint)
-                         (format "tcp://127.0.0.1:%d"
-                                 (plist-get conn-info :hb_port)))))
-	  (ert-info ("Shell, iopub, stdin initialized")
-        (cl-loop
-         for channel in '(:shell :iopub :stdin)
-         for port_sym = (intern (concat (symbol-name channel) "_port"))
-         do
-         (should (plist-member (plist-get channels channel) :alive-p))
-         (should (plist-member (plist-get channels channel) :endpoint))
-         (should
-          (string= (plist-get (plist-get channels channel) :endpoint)
-                   (format "tcp://127.0.0.1:%d"
-                           (plist-get conn-info port_sym))))))
-      (ert-info ("Initialization stops any running channels")
-        (should-not (jupyter-channels-running-p client))
-        (jupyter-start-channels client)
-        (should (jupyter-channels-running-p client))
-        (jupyter-comm-initialize client conn-info)
-        (should-not (jupyter-channels-running-p client)))
-      (ert-info ("Invalid signature scheme")
-        (plist-put conn-info :signature_scheme "hmac-foo")
-        (should-error (jupyter-comm-initialize client conn-info))))))
-
 (ert-deftest jupyter-write-connection-file ()
   :tags '(client)
   (let* ((conn-info '(:kernel_name "python"
@@ -1007,34 +955,6 @@ attempting to access the rest of the stream")
     (should (file-exists-p conn-file))
     (should (string= (file-name-directory conn-file) (jupyter-runtime-directory)))
     (should (equal (jupyter-read-plist conn-file) conn-info))))
-
-;; FIXME: Revisit after transition
-(ert-deftest jupyter-client-channels ()
-  :tags '(client channels)
-  (skip-unless nil)
-  (ert-info ("Starting/stopping channels")
-	;; FIXME: Without a new client, I'm getting
-	;;
-	;;   (zmq-EFSM "Operation cannot be accomplished in current state")
-	;;
-	;; on the `jupyter-connect-repl' test pretty consistently.
-	(let ((jupyter-test-with-new-client t))
-	  (jupyter-test-with-python-client client
-		(jupyter-stop-channels client)
-		(cl-loop
-		 for channel in '(:hb :shell :iopub :stdin)
-		 for alive-p = (jupyter-alive-p client channel)
-		 do (should-not alive-p))
-		(jupyter-start-channels client)
-		(cl-loop
-		 for channel in '(:hb :shell :iopub :stdin)
-		 for alive-p = (jupyter-alive-p client channel)
-		 do (should alive-p))
-		(jupyter-stop-channels client)
-		(cl-loop
-		 for channel in '(:hb :shell :iopub :stdin)
-		 for alive-p = (jupyter-alive-p client channel)
-		 do (should-not alive-p))))))
 
 (defvar jupyter-inhibit-handlers)
 
