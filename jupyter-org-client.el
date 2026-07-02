@@ -37,7 +37,7 @@
 (declare-function org-babel-jupyter-language-p "ob-jupyter" (lang))
 (declare-function org-element-context "org-element" (&optional element))
 (declare-function org-element-create "org-element" (type &optional props &rest children))
-(declare-function org-element-type "org-element" (element))
+(declare-function org-element-type "org-element" (element &optional anonymous))
 (declare-function org-element-normalize-string "org-element" (s))
 (declare-function org-element-at-point "org-element" ())
 (declare-function org-element-parse-buffer "org-element" (&optional granularity visible-only))
@@ -656,12 +656,12 @@ case the monadic value returned queues the request and returns nil.
 When `jupyter-org-queue-requests' is nil, return a value that sends the
 request immediately and returns the request.
 
-SUB is a subscriber that can be sent the messages: 'busy, 'idle, or
-'abort indicating that the request has begun execution on the kernel,
-has completed execution, or has been aborted on the client side, i.e. in
-Emacs due to some other queued request raising an error during its
-evaluation.  The rest of the arguments form the CALLBACKS, a property
-list like
+SUB is a subscriber that can be sent the messages: \\`busy', \\`idle',
+or \\`abort' indicating that the request has begun execution on the
+kernel, has completed execution, or has been aborted on the client side,
+i.e. in Emacs due to some other queued request raising an error during
+its evaluation.  The rest of the arguments form the CALLBACKS, a
+property list like
 
     \\='(:status ... :execute_result ...)
 
@@ -670,8 +670,8 @@ that take a message as argument.
 
 Note, the current request which generated the message can be accessed
 through `jupyter-current-request' in these callbacks as well as in SUB,
-except when receiving the 'abort message since in that case, the request
-was never instantiated."
+except when receiving the \\`abort' message since in that case, the
+request was never instantiated."
   (setq callbacks
         (cl-loop
          for (type cb) on callbacks by #'cddr
