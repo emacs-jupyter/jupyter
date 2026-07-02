@@ -40,6 +40,7 @@
 
 (declare-function org-in-src-block-p "org" (&optional inside))
 (declare-function org-element-at-point "org-element")
+(declare-function org-element-post-affiliated "org-element")
 (declare-function org-element-property "org-element" (property element))
 (declare-function org-element-context "org-element" (&optional element))
 (declare-function org-babel-execute-src-block "ob-core" (&optional arg info params executor-type))

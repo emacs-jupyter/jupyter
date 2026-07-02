@@ -946,16 +946,17 @@ available via CLIENT."
 (autoload 'tramp-drop-volume-letter "tramp")
 
 (defun jupyter-api--sanitize-path (path)
-  (thread-last
-    path
-    (tramp-drop-volume-letter)
-    ;; Strip slashes
-    (replace-regexp-in-string "/+" "/")
-    (replace-regexp-in-string "^/" "")
-    (replace-regexp-in-string "/$" "")
-    ((lambda (x)
-       (url-hexify-string
-        x (cons ?/ url-unreserved-chars))))))
+  (cl-labels ((hexify (x)
+                (url-hexify-string
+                 x (cons ?/ url-unreserved-chars))))
+    (thread-last
+      path
+      (tramp-drop-volume-letter)
+      ;; Strip slashes
+      (replace-regexp-in-string "/+" "/")
+      (replace-regexp-in-string "^/" "")
+      (replace-regexp-in-string "/$" "")
+      (hexify))))
 
 ;; See https://jupyter-server.readthedocs.io/en/latest/developers/contents.html#api-paths
 (defsubst jupyter-api-content-path (file)
