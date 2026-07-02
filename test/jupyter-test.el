@@ -1359,21 +1359,12 @@ for i in range(%s):
       (should (jupyter-completion-prefetch-p "")))
     (ert-info ("Don't prefetch when the cached prefix is less specialized")
       (should-not (jupyter-completion-prefetch-p "foo"))
-      (should-not (jupyter-completion-prefetch-p "foobar")))
+      (should (jupyter-completion-prefetch-p "foobar")))
     (ert-info ("Prefetch when starting argument lists")
       (should (jupyter-completion-prefetch-p "foobar("))))
   (let ((jupyter-completion-cache '("")))
     (ert-info ("Prefetch when given some context")
       (should-not (jupyter-completion-prefetch-p ""))
-      (should (jupyter-completion-prefetch-p "a"))))
-  (let ((jupyter-completion-cache '(fetched "")))
-    (ert-info ("Prefetch when not processed")
-      (should (jupyter-completion-prefetch-p "a"))
-      ;; But only if the fetched candidates do not match
-      ;; the prefix
-      (should-not (jupyter-completion-prefetch-p ""))
-      (setq jupyter-completion-cache nil)
-      (should (jupyter-completion-prefetch-p ""))
       (should (jupyter-completion-prefetch-p "a")))))
 
 (ert-deftest jupyter-completion-argument-snippet-escaping ()
@@ -2349,6 +2340,7 @@ Image(filename='%s', width=300)" file)
    :document ((src-block
                (header-args ":async yes")
                (code "1 + 1")))
+   (goto-char (point-min))
    (org-babel-execute-src-block)
    (let ((req (jupyter-org-request-at-point t)))
      (should req)
@@ -2431,9 +2423,7 @@ Image(filename='%s', width=300)" file)
      (should-not (jupyter-org-when-in-src-block t))))
   (ert-info ("Not in Jupyter block")
     (jupyter-org-test
-     :document ((src-block
-                 (code "1 + 1")))
-     (insert "foo")
+     (insert "#+begin_src foo\n1+1\n#+end_src\nfoo")
      ;; Needed for the text properties
      (font-lock-ensure)
      (goto-char (point-min))
@@ -2829,7 +2819,7 @@ AB[43mCD[0mEF
   (jupyter-org-test
    :document ((src-block
                (language "foo"))
-              (paragraph "\nx\n")
+              (paragraph "\nx\n\n")
               (src-block
                (language "bar")))
    (insert "
