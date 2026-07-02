@@ -228,20 +228,24 @@ nothing and return nil."
                        :silent-p (car (or (member "none" result-params)
                                           (member "silent" result-params))))
                       slots))))
-    (put-text-property (point) (1+ (point)) 'jupyter-request req)
+    (let ((pos (jupyter-org-element-begin-after-affiliated context)))
+      (put-text-property pos (1+ pos) 'jupyter-request req))
     (setf (jupyter-org-request-overlay req)
-          (pcase (org-element-type context)
-            (`src-block
-             (jupyter-org--make-overlay
-              (save-excursion
-                (goto-char (jupyter-org-element-begin-after-affiliated context))
-                (line-beginning-position 2))
-              (jupyter-org-element-contents-end context)))
-            ((and type (or `inline-src-block `babel-call `inline-babel-call))
-             (jupyter-org--make-overlay
-              (jupyter-org-element-begin-after-affiliated context)
-              (jupyter-org-element-end-before-blanks context)
-              (memq type '(inline-src-block babel-call inline-babel-call))))))
+          (apply #'jupyter-org--make-overlay
+                 (pcase (org-element-type context)
+                   (`src-block
+                    (list
+                     (save-excursion
+                       (goto-char (jupyter-org-element-begin-after-affiliated
+                                   context))
+                       (line-beginning-position 2))
+                     (jupyter-org-element-contents-end context)))
+                   ((or `inline-src-block `babel-call
+                        `inline-babel-call)
+                    (list
+                     (jupyter-org-element-begin-after-affiliated context)
+                     (jupyter-org-element-end-before-blanks context)
+                     t)))))
     req))
 
 (cl-defmethod jupyter-generate-request ((_client jupyter-org-client) &rest slots)
