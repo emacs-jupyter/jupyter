@@ -514,21 +514,20 @@ error with the data being the error received by `url-retrieve'."
 
 (cl-defmethod jupyter-api-server-accessible-p ((client jupyter-rest-client))
   "Return non-nil if CLIENT can access the Jupyter notebook server."
-  (pcase (gethash client jupyter-api--response-cache 'check)
-    ('check
-     (puthash client
+  (cl-flet ((check-cache (client)
+              (and-let* ((expiry-time (gethash client jupyter-api--response-cache)))
+                (time-less-p (current-time) expiry-time)))
+            (check-for-response (client)
               (ignore-errors
-                (prog1 t
-                  (let ((jupyter-api-authentication-in-progress-p t)
-                        jupyter-api-request-data
-                        jupyter-api-request-headers)
-                    ;; Hit an endpoint that requires authentication.
-                    (jupyter-api-get-kernelspec client))))
-              jupyter-api--response-cache)
-     (run-with-idle-timer
-      jupyter-api--response-cache-expiry
-      nil (lambda () (remhash client jupyter-api--response-cache))))
-    (cached cached)))
+                (let ((jupyter-api-authentication-in-progress-p t)
+                      jupyter-api-request-data
+                      jupyter-api-request-headers)
+                  ;; Hit an endpoint that requires authentication.
+                  (jupyter-api-get-kernelspec client)))))
+    (or (check-cache client)
+        (and (check-for-response client)
+             (puthash client (time-add (current-time) jupyter-api--response-cache-expiry)
+                      jupyter-api--response-cache)))))
 
 (cl-defgeneric jupyter-api-authenticate (client &rest args)
   (declare (indent 1)))
