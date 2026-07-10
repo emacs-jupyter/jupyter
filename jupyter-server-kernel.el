@@ -282,7 +282,7 @@ this case FN will be evaluated on KERNEL."
                  ;; TODO: on-error publishes to status-pub
                  :on-message
                  (lambda (_ws frame)
-                   (when-let ((response (jupyter-server-kernel-parse-frame frame)))
+                   (when-let* ((response (jupyter-server-kernel-parse-frame frame)))
                      (pcase (websocket-frame-opcode frame)
                        ((or 'text 'binary 'continuation)
                         (let ((msg (jupyter-read-plist-from-string response)))

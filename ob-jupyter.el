@@ -367,7 +367,7 @@ session."
     (org-babel-jupyter-aliases-from-kernelspecs
      nil (jupyter-kernelspecs server))
     (let ((sname (file-local-name rsession)))
-      (if-let ((id (jupyter-server-kernel-id-from-name server sname)))
+      (if-let* ((id (jupyter-server-kernel-id-from-name server sname)))
           ;; Connecting to an existing kernel
           (cl-destructuring-bind (&key name id &allow-other-keys)
               (or (ignore-errors (jupyter-api-get-kernel server id))
