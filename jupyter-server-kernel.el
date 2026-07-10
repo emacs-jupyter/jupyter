@@ -193,18 +193,15 @@ Call the next method if ARGS does not contain :server."
     (jupyter-run-with-io pub
       (jupyter-publish 'reauthenticate))))
 
-(defvar jupyter-server-kernel-frame-acc "")
-
-(defun jupyter-server-kernel-parse-frame (frame)
-  "Accumulate the WebSocket frame data and return the full response when complete.
-Return nil if the frame is not yet complete."
-  (let ((payload (websocket-frame-payload frame)))
-    (setq jupyter-server-kernel-frame-acc (concat jupyter-server-kernel-frame-acc payload))
-    (if (websocket-frame-completep frame)
-        (let ((full-response jupyter-server-kernel-frame-acc))
-          (setq jupyter-server-kernel-frame-acc "")
-          full-response)
-      nil)))
+(defun jupyter-server-kernel-frame-parser ()
+  "Return a function that accumulates WebSocket frames.
+The function accumulates WebSocket frames until completion and returns
+the accumulated string.  If the frame is not complete, it returns nil."
+  (let ((acc ""))
+    (lambda (frame)
+      (cl-callf concat acc (websocket-frame-payload frame))
+      (when (websocket-frame-completep frame)
+        (prog1 acc (setq acc ""))))))
 
 (defun jupyter-reauthentication-publisher (server)
   "Return SERVER's publisher for a reauth signal.
@@ -263,17 +260,18 @@ connect or disconnect the WebSocket used for communication with KERNEL."
                        :custom-header-alist (jupyter-api-auth-headers server)
                        ;; TODO: on-error publishes to status-pub
                        :on-message
-                       (lambda (_ws frame)
-                         (when-let ((response (jupyter-server-kernel-parse-frame frame)))
-                           (pcase (websocket-frame-opcode frame)
-                             ((or 'text 'binary 'continuation)
-                              (let ((msg (jupyter-read-plist-from-string response)))
-                                (jupyter-run-with-io kernel-io
-                                  (jupyter-publish (cons 'message msg)))))
-                             (_
-                              (jupyter-run-with-io status-pub
-                                (jupyter-publish
-                                  (list 'error (websocket-frame-opcode frame))))))))))))
+                       (let ((parser (jupyter-server-kernel-frame-parser)))
+                         (lambda (_ws frame)
+                           (when-let ((response (funcall parser frame)))
+                             (pcase (websocket-frame-opcode frame)
+                               ((or 'text 'binary 'continuation)
+                                (let ((msg (jupyter-read-plist-from-string response)))
+                                  (jupyter-run-with-io kernel-io
+                                    (jupyter-publish (cons 'message msg)))))
+                               (_
+                                (jupyter-run-with-io status-pub
+                                  (jupyter-publish
+                                    (list 'error (websocket-frame-opcode frame)))))))))))))
              (kernel-io
               (let ()
                 (jupyter-publisher
