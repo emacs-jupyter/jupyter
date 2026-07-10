@@ -164,38 +164,36 @@ If the `current-buffer' is not a REPL, this is identical to
 
 (defvar jupyter-test-global-repls nil)
 
+(defun jupyter-test--reap-cached-clients (sym)
+  (set sym
+       (cl-loop for val in (symbol-value sym)
+                for client = (cdr val)
+                if (jupyter-kernel-alive-p client)
+                collect val
+                else do (jupyter-disconnect client))))
+
 (defmacro jupyter-test-with-client-cache (client-fun saved-sym kernel client &rest body)
   (declare (indent 4) (debug (functionp symbolp stringp symbolp &rest form)))
   (let ((spec (make-symbol "spec"))
-        (saved (make-symbol "saved")))
-    `(progn
-       ;; If a kernel has died, e.g. being shutdown, remove it.
-       (cl-loop
-        for saved in (copy-sequence ,saved-sym)
-        for client = (cdr saved)
-        when (and client
-                  (not (and (jupyter-connected-p client)
-                            (jupyter-kernel-action client
-                              (lambda (kernel)
-                                (jupyter-alive-p kernel))))))
-        do (jupyter-disconnect client)
-        (cl-callf2 delq saved ,saved-sym))
-       (let* ((,spec (progn (jupyter-error-if-no-kernelspec ,kernel)
-                            (car (jupyter-find-kernelspecs ,kernel))))
-              (,saved (cdr (assoc (jupyter-kernelspec-name ,spec) ,saved-sym)))
-              (,client (if (and ,saved (not jupyter-test-with-new-client))
-                           ,saved
-                         ;; Want a fresh kernel, so shutdown the cached one
-                         (when (and ,saved (jupyter-connected-p ,saved))
-                           (jupyter-run-with-client ,saved
-                             (jupyter-sent (jupyter-shutdown-request)))
-                           (jupyter-disconnect ,saved))
-                         (let ((client (,client-fun (jupyter-kernelspec-name ,spec))))
-                           (prog1 client
-                             (let ((el (cons (jupyter-kernelspec-name ,spec) client)))
-                               (push el ,saved-sym)))))))
-         ;; See the note about increasing timeouts during CI testing at the top
-         ;; of jupyter-test.el
+        (cached (make-symbol "cached")))
+    `(let* ((,spec (or (car (jupyter-find-kernelspecs (regexp-quote ,kernel)))
+                       (error "Kernel not found (%s)" ,kernel)))
+            (,cached (progn
+                       ;; If a kernel has died, e.g. being shutdown, remove it.
+                       (jupyter-test--reap-cached-clients (quote ,saved-sym))
+                       (cdr (assoc (jupyter-kernelspec-name ,spec) ,saved-sym)))))
+       (when (and jupyter-test-with-new-client ,cached)
+         (when (jupyter-connected-p ,cached)
+           (jupyter-run-with-client ,cached
+             (jupyter-shutdown-request)))
+         (setq ,cached nil))
+       (let ((,client (or ,cached
+                          (let* ((spec-name (jupyter-kernelspec-name ,spec))
+                                 (client (,client-fun spec-name)))
+                            (prog1 client
+                              (push (cons spec-name client) ,saved-sym))))))
+         ;; See the note about increasing timeouts during CI testing
+         ;; at the top of jupyter-test.el
          (accept-process-output nil 1)
          ,@body))))
 
@@ -210,8 +208,7 @@ This only starts a single global client unless the variable
        (jupyter-test-with-notebook server
         (jupyter-kernel
          :server server
-         :spec name))
-       'jupyter-kernel-client))
+         :spec name))))
     jupyter-test-global-clients ,kernel ,client
     (unwind-protect
         (jupyter-with-client ,client
