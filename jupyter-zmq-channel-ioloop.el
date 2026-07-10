@@ -49,7 +49,7 @@
     (push 'jupyter-zmq-channel-ioloop--recv-messages jupyter-ioloop-post-hook)
     (cl-loop
      for channel in '(:shell :stdin :iopub :control)
-     unless (object-assoc channel :type jupyter-channel-ioloop-channels)
+     unless (object-assoc channel 'type jupyter-channel-ioloop-channels)
      do (push (jupyter-zmq-channel
                :session jupyter-channel-ioloop-session
                :type channel)

@@ -194,7 +194,7 @@ For example suppose we define an argument type, jupyter-channel:
 
     (jupyter-ioloop-add-arg-type jupyter-channel
       (lambda (arg)
-        `(or (object-assoc ,arg :type jupyter-channel-ioloop-channels)
+        `(or (object-assoc ,arg 'type jupyter-channel-ioloop-channels)
              (error \"Channel not alive (%s)\" ,arg))))
 
 and define an event like
