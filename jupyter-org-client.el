@@ -626,7 +626,7 @@ inside a Jupyter src-block, return nil."
                   ;; Move the end marker when text is inserted
                   (set-marker-insertion-type end t)
                   end))))
-  (if (org-in-src-block-p 'inside)
+  (if (org-in-src-block-p)
       (or (jupyter-org--at-cached-src-block-p)
           (when-let* ((el (org-element-at-point))
                       (info (and (eq (org-element-type el) 'src-block)
