@@ -295,7 +295,10 @@ By default this adds the events quit, callback, and timer."
                       (setq jupyter-ioloop-timeout 0)
                       (add-hook 'jupyter-ioloop-pre-hook (byte-compile cb) 'append)))
                    ('(quit) (signal 'quit nil))
-                   (_ (error "Unhandled command %s" cmd)))))
+                   (_ (error "Unhandled command %s" cmd))))
+            (print-circle t)
+            (print-escape-nonascii t)
+            print-level print-length)
        ;; Can only send lists at the moment
        (when (and res (listp res)) (zmq-prin1 res)))))
 
@@ -475,8 +478,11 @@ returning."
         (setq jupyter-ioloop--send-buffer
               (get-buffer-create " *jupyter-ioloop-send*")))
     (erase-buffer)
-    (let (print-level print-length)
-      (prin1 plist (current-buffer)))
+    (prin1 plist (current-buffer)
+           '((circle . t)
+             (escape-nonascii . t)
+             (level . nil)
+             (length . nil)))
     (buffer-string)))
 
 (cl-defmethod jupyter-send ((ioloop jupyter-ioloop) &rest args)
