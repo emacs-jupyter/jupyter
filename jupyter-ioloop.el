@@ -85,6 +85,15 @@ events have the same value as the return value of
   "Return non-nil if this Emacs instance is an IOLoop subprocess."
   (and noninteractive jupyter-ioloop-stdin jupyter-ioloop-poller))
 
+(defun jupyter-ioloop-prin1 (sexp &optional flush)
+  "Print SEXP using `prin1', and flush `stdout' if FLUSH is non-nil."
+  (prin1 sexp nil '((circle . t)
+                    (escape-nonascii . t)
+                    (level . nil)
+                    (length . nil)))
+  (when flush
+    (zmq-flush 'stdout)))
+
 (defclass jupyter-ioloop (jupyter-finalized-object)
   ((process :type (or null process) :initform nil)
    (callbacks :type list :initform nil)
@@ -295,12 +304,9 @@ By default this adds the events quit, callback, and timer."
                       (setq jupyter-ioloop-timeout 0)
                       (add-hook 'jupyter-ioloop-pre-hook (byte-compile cb) 'append)))
                    ('(quit) (signal 'quit nil))
-                   (_ (error "Unhandled command %s" cmd))))
-            (print-circle t)
-            (print-escape-nonascii t)
-            print-level print-length)
+                   (_ (error "Unhandled command %s" cmd)))))
        ;; Can only send lists at the moment
-       (when (and res (listp res)) (zmq-prin1 res)))))
+       (when (and res (listp res)) (jupyter-ioloop-prin1 res 'flush)))))
 
 (cl-defgeneric jupyter-ioloop-add-callback ()
   (declare (indent 1)))
@@ -314,7 +320,7 @@ WARNING: A function added as a callback should be quoted to avoid
 sending closures to the IOLOOP.  An example:
 
     (jupyter-ioloop-add-callback ioloop
-      `(lambda () (zmq-prin1 \='foo \"bar\")))"
+      `(lambda () (zmq-prin1 \\='foo \"bar\")))"
   (cl-assert (functionp cb))
   (cl-callf append (oref ioloop callbacks) (list cb))
   (when (process-live-p (oref ioloop process))
@@ -354,7 +360,7 @@ nothing."
                             (quote ,(mapcar #'macroexpand-all
                                        (oref ioloop callbacks))))))
            ;; Notify the parent process we are ready to do something
-           (zmq-prin1 '(start))
+           (jupyter-ioloop-prin1 '(start) 'flush)
            (let ((on-stdin (byte-compile (lambda () ,on-stdin))))
              (while t
                (run-hooks 'jupyter-ioloop-pre-hook)
@@ -372,7 +378,7 @@ nothing."
                (run-hook-with-args 'jupyter-ioloop-post-hook events))))
        (quit
         ,@(oref ioloop teardown)
-        (zmq-prin1 '(quit))))))
+        (jupyter-ioloop-prin1 '(quit) 'flush)))))
 
 (defun jupyter-ioloop--function (ioloop port)
   "Return the function that does the work of IOLOOP.
@@ -478,11 +484,8 @@ returning."
         (setq jupyter-ioloop--send-buffer
               (get-buffer-create " *jupyter-ioloop-send*")))
     (erase-buffer)
-    (prin1 plist (current-buffer)
-           '((circle . t)
-             (escape-nonascii . t)
-             (level . nil)
-             (length . nil)))
+    (let ((standard-output (current-buffer)))
+      (jupyter-ioloop-prin1 plist))
     (buffer-string)))
 
 (cl-defmethod jupyter-send ((ioloop jupyter-ioloop) &rest args)

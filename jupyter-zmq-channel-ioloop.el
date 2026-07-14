@@ -75,11 +75,7 @@ list as returned by `jupyter-recv'."
     (when messages
       ;; Send messages
       (mapc (lambda (msg)
-              (prin1 (cons 'message msg) nil
-                     '((circle . t)
-                       (escape-nonascii . t)
-                       (level . nil)
-                       (length . nil))))
+              (jupyter-ioloop-prin1 (cons 'message msg)))
             (nreverse messages))
       (zmq-flush 'stdout))))
 
