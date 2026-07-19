@@ -32,8 +32,10 @@
 (require 'jupyter-rest-api)
 (require 'jupyter-monads)
 (require 'websocket)
+(eval-when-compile (require 'jupyter-messages))
 
 (declare-function jupyter-encode-raw-message "jupyter-messages")
+(declare-function jupyter-message-content "jupyter-messages")
 (declare-function jupyter-tramp-server-from-file-name "jupyter-tramp")
 (declare-function jupyter-tramp-file-name-p "jupyter-tramp")
 (declare-function jupyter-server-kernel-id-from-name "jupyter-server")
@@ -247,6 +249,7 @@ connect or disconnect the WebSocket used for communication with KERNEL."
   (pcase-let* (((cl-struct jupyter-server-kernel server id session) kernel))
     (letrec ((status-pub (jupyter-publisher))
              (ws nil)
+             (shutdown nil)
              (make-ws
               (lambda ()
                 (when ws
@@ -276,30 +279,50 @@ connect or disconnect the WebSocket used for communication with KERNEL."
               (let ()
                 (jupyter-publisher
                   (lambda (event)
-                    (pcase event
-                      (`(message . ,rest) (jupyter-content rest))
-                      (`(send ,channel ,msg-type ,content ,msg-id)
-                       (let ((send
-                              (lambda ()
-                                (websocket-send-text
-                                 ws (let* ((cd (websocket-client-data ws))
-                                           (session (plist-get cd :session)))
-                                      (jupyter-encode-raw-message session msg-type
-                                        :channel channel
-                                        :msg-id msg-id
-                                        :content content))))))
-                         (condition-case nil
-                             (funcall send)
-                           (websocket-closed
-                            (funcall make-ws)
-                            (funcall send)))))
-                      ('start
-                       (funcall make-ws))
-                      ('stop (websocket-close ws))))))))
+                    (if (and shutdown (not (eq event 'stop)))
+                        (error "Kernel I/O no longer available: %s"
+                               (cl-prin1-to-string session))
+                      (pcase event
+                        (`(message . ,rest) (jupyter-content rest))
+                        (`(send ,channel ,msg-type ,content ,msg-id)
+                         (let ((send
+                                (lambda ()
+                                  (websocket-send-text
+                                   ws (let* ((cd (websocket-client-data ws))
+                                             (session (plist-get cd :session)))
+                                        (jupyter-encode-raw-message session msg-type
+                                          :channel channel
+                                          :msg-id msg-id
+                                          :content content))))))
+                           (condition-case nil
+                               (funcall send)
+                             (websocket-closed
+                              (funcall make-ws)
+                              (funcall send)))))
+                        ('start
+                         (funcall make-ws))
+                        ('stop (websocket-close ws)))))))))
       (funcall make-ws)
       ;; ws kernel-io
       (list kernel-io
-            (let (shutdown (connected t))
+            (letrec ((connected t)
+                     (shutdown nil)
+                     (post-shutdown
+                      (lambda (restart)
+                        (if (eq restart t)
+                            (setq shutdown nil
+                                  connected t)
+                          (jupyter-run-with-io kernel-io
+                            (jupyter-publish 'stop))
+                          (setq shutdown t
+                                connected nil)))))
+              (jupyter-run-with-io kernel-io
+                (jupyter-subscribe
+                  (jupyter-subscriber
+                    (lambda (msg)
+                      (when (equal (jupyter-message-type msg) "shutdown_reply")
+                        (jupyter-with-message-content msg (restart)
+                          (funcall post-shutdown restart)))))))
               (jupyter-run-with-io
                   (jupyter-reauthentication-publisher server)
                 (jupyter-subscribe
@@ -323,14 +346,10 @@ connect or disconnect the WebSocket used for communication with KERNEL."
                          (jupyter-publish 'stop))))
                     ('shutdown
                      (jupyter-shutdown kernel)
-                     (setq shutdown t
-                           connected nil)
-                     (jupyter-run-with-io kernel-io
-                       (jupyter-publish 'stop)))
+                     (funcall post-shutdown nil))
                     ('restart
-                     (setq shutdown nil
-                           connected t)
-                     (jupyter-restart kernel))
+                     (jupyter-restart kernel)
+                     (funcall post-shutdown t))
                     (`(action ,fn)
                      (funcall fn kernel connected))))))))))
 
