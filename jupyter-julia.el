@@ -121,7 +121,15 @@ Make the character after `point' invisible."
   "Return the Pkg prompt.
 If the Pkg prompt can't be retrieved from the kernel, return
 nil."
-  (let ((prompt-code "import Pkg; Pkg.REPLMode.promptf()"))
+  (let ((prompt-code "\
+import REPL
+if isdefined(REPL, :Pkg_promptf)
+    REPL.Pkg_promptf()
+else
+    import Pkg
+    Pkg.REPLMode.promptf()
+end
+"))
     (jupyter-run (:client current)
       (jupyter-mlet* ((msg
                        (jupyter-reply
