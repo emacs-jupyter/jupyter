@@ -763,6 +763,23 @@ attempting to access the rest of the stream")
              (lambda (_) nil)))
     (should-error (jupyter-locate-python))))
 
+(ert-deftest jupyter-client-kernel-shutdown-state ()
+  :tags '(client shutdown)
+  (cl-macrolet ((should-disconnect (form)
+                  (let ((client (nth 1 form)))
+                    `(progn
+                       (should (jupyter-connected-p ,client))
+                       ,form
+                       (should-not (jupyter-connected-p ,client))))))
+    (jupyter-test-with-python-client client
+      (should-disconnect
+       (jupyter-shutdown-kernel client)))
+    (jupyter-test-with-python-client client
+      (should-disconnect
+       (jupyter-run-with-client client
+         (jupyter-reply
+          (jupyter-shutdown-request)))))))
+
 ;; FIXME: Revisit after transition
 (ert-deftest jupyter-kernel-process ()
   :tags '(kernel process)

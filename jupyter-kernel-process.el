@@ -250,28 +250,22 @@ KERNEL."
               ;; displayed to know where to look.  This requires a
               ;; `jupyter-publisher' struct type.
               (jupyter-publisher
-                (lambda (content)
-                  (if shutdown
+                (lambda (event)
+                  (if (and shutdown (not (eq event 'stop)))
                       (error "Kernel I/O no longer available: %s"
                              (cl-prin1-to-string session))
-                    (pcase (car content)
-                      ;; ('message channel idents . msg)
-                      ('message
-                       (pop content)
-                       ;; Set the channel key of the message property list
-                       (plist-put
-                        (cddr content) :channel
-                        (substring (symbol-name (car content)) 1))
-                       (jupyter-content (cddr content)))
-                      ('send
-                       ;; Set the channel argument to a keyword so its
-                       ;; recognized by the ioloop
-                       (setq content
-                             (cons (car content)
-                                   (cons (intern (concat ":" (cadr content)))
-                                         (cddr content))))
-                       (apply #'jupyter-send (start) content))
-                      ('hb
+                    (pcase event
+                      (`(message ,channel ,_idents . ,msg)
+                       (plist-put msg :channel (substring (symbol-name channel) 1))
+                       (jupyter-content msg))
+                      (`(send ,channel . ,msg)
+                       (apply #'jupyter-send (start)
+                              (cons 'send (cons (intern (concat ":" channel)) msg))))
+                      ('start
+                       (start))
+                      ('stop
+                       (stop))
+                      (`(hb ,fun)
                        (unless hb
                          (setq hb
                                (let ((endpoints (set-session)))
@@ -279,11 +273,26 @@ KERNEL."
                                   'jupyter-hb-channel
                                   :session session
                                   :endpoint (plist-get endpoints :hb)))))
-                       (jupyter-run-with-io (cadr content)
-                         (jupyter-publish hb)))
-                      (_ (error "Unhandled I/O: %s" content)))))))
+                       (funcall fun hb))
+                      (_ (error "Unhandled I/O: %s" event)))))))
         (list kernel-io
-              (let ((connected t))
+              (letrec ((connected t)
+                       (post-shutdown
+                        (lambda (restart)
+                          (if (eq restart t)
+                              (setq shutdown nil
+                                    connected t)
+                            (jupyter-run-with-io kernel-io
+                              (jupyter-publish 'stop))
+                            (setq shutdown t
+                                  connected nil)))))
+                (jupyter-run-with-io kernel-io
+                  (jupyter-subscribe
+                    (jupyter-subscriber
+                      (lambda (msg)
+                        (when (equal (jupyter-message-type msg) "shutdown_reply")
+                          (jupyter-with-message-content msg (restart)
+                            (funcall post-shutdown restart)))))))
                 (jupyter-subscriber
                   (lambda (action)
                     (pcase action
@@ -291,18 +300,18 @@ KERNEL."
                        (jupyter-interrupt kernel))
                       ('shutdown
                        (jupyter-shutdown kernel)
-                       (stop)
-                       (setq shutdown t
-                             connected nil))
+                       (funcall post-shutdown nil))
                       ((and op (or 'connect 'disconnect))
                        (setq connected t)
-                       (if (eq op 'connect) (start)
+                       (if (eq op 'connect)
+                           (jupyter-run-with-io kernel-io
+                             (jupyter-publish 'start))
                          (setq connected nil)
-                         (stop)))
+                         (jupyter-run-with-io kernel-io
+                           (jupyter-publish 'stop))))
                       ('restart
-                       (setq shutdown nil
-                             connected t)
                        (jupyter-restart kernel)
+                       (funcall post-shutdown t)
                        (stop)
                        (set-ch-group)
                        (start))
