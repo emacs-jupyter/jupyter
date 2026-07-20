@@ -1448,24 +1448,33 @@ Works for Julia and Python."
 
 (defun jupyter-completion--make-arg-snippet (args)
   "Construct a snippet from ARGS."
-  (cl-loop
-   with i = 1
-   for top-args in args
-   ;; TODO: Handle nested arguments
-   for ((arg . sep) . inner-args) = top-args
-   collect (format (concat "${%d:%s}" (when sep "%c")) i
-                   ;; Escape special characters in snippet expansion
-                   ;; to avoid arbitrary code execution through
-                   ;; snippet template.
-                   (replace-regexp-in-string
-                    "\\([^\\]\\|^\\)\\([$`]\\)"
-                    "\\1\\\\\\2"
-                    arg)
-                   sep)
-   into constructs
-   and do (setq i (1+ i))
-   finally return
-   (concat "(" (mapconcat #'identity constructs " ") ")")))
+  (concat "(" (mapconcat
+               #'identity
+               (let ((i 1))
+                 (mapcar (lambda (x)
+                      (prog1
+                          (pcase x
+                            (`((,(and arg
+                                      ;; Escape special characters
+                                      ;; in snippet expansion to
+                                      ;; avoid arbitrary code
+                                      ;; execution through snippet
+                                      ;; template.
+                                      (let escaped-arg
+                                        (replace-regexp-in-string
+                                         "\\([^\\]\\|^\\)\\([$`]\\)"
+                                         "\\1\\\\\\2"
+                                         arg)))
+                                . ,sep)
+                               ;; TODO: Handle nested arguments
+                               . ,_)
+                             (if sep
+                                 (format "${%d:%s}%c" i escaped-arg sep)
+                               (format "${%d:%s}" i escaped-arg))))
+                        (cl-incf i)))
+                    args))
+               " ")
+          ")"))
 
 ;;;;; Completion prefix
 
