@@ -1453,7 +1453,15 @@ Works for Julia and Python."
    for top-args in args
    ;; TODO: Handle nested arguments
    for ((arg . sep) . inner-args) = top-args
-   collect (format (concat "${%d:%s}" (when sep "%c")) i arg sep)
+   collect (format (concat "${%d:%s}" (when sep "%c")) i
+                   ;; Escape special characters in snippet expansion
+                   ;; to avoid arbitrary code execution through
+                   ;; snippet template.
+                   (replace-regexp-in-string
+                    "\\([^\\]\\|^\\)\\([$`]\\)"
+                    "\\1\\\\\\2"
+                    arg)
+                   sep)
    into constructs
    and do (setq i (1+ i))
    finally return

@@ -1165,6 +1165,15 @@
       (should (jupyter-completion-prefetch-p ""))
       (should (jupyter-completion-prefetch-p "a")))))
 
+(ert-deftest jupyter-completion-argument-snippet-escaping ()
+  :tags '(completion)
+  (with-temp-buffer
+    (save-excursion
+      (insert "(a, b, `c`, $1)"))
+    (let ((snippet (jupyter-completion--make-arg-snippet
+                    (jupyter-completion--arg-extract))))
+      (should (equal snippet "(${1:a}, ${2:b}, ${3:\\`c\\`}, ${4:\\$1})")))))
+
 ;;; REPL
 
 (ert-deftest jupyter-repl-client-predicates ()
