@@ -166,49 +166,50 @@ if the content is not JSON.
 If the maximum number of redirects are reached a
 `jupyter-api-http-redirect-limit' error is raised instead."
   (with-current-buffer buffer
-    (goto-char url-http-end-of-headers)
-    (skip-syntax-forward "->")
-    (let* ((json-object-type 'plist)
-           (json-false nil)
-           (resp (when (and (equal url-http-content-type "application/json")
-                           (not (eobp)))
-                  (if (< url-http-response-status 400)
-                      (json-read)
-                    ;; Handle cases, for example, where status is 404
-                    ;; and the message of the error is returned
-                    ;; instead of JSON.
-                    (let ((start (point)))
-                      (condition-case nil
-                          (json-read)
-                        (error
-                         (list :message (buffer-substring start (point-max))))))))))
-      (cond
-       ((>= url-http-response-status 400)
-        (cl-destructuring-bind
-            (&key reason message traceback &allow-other-keys) resp
-          (when traceback
-            (setq traceback
-                  (format "%s (%s): %s" reason message
-                          (car (last (split-string traceback "\n" t))))))
-          (signal 'jupyter-api-http-error
-                  (list url-http-response-status
-                        (or traceback
-                            (and (or reason message)
-                                 (concat reason
-                                         (and reason ": ")
-                                         message))
-                            (nth 2 (assoc url-http-response-status
-                                          url-http-codes)))))))
-       ;; Handle other kinds of errors, e.g. max redirects
-       ((and (boundp 'url-callback-arguments)
-             (plist-get (car url-callback-arguments) :error))
-        (let ((err (plist-get (car url-callback-arguments) :error)))
-          (if (eq (nth 1 err) 'http-redirect-limit)
-              (signal 'jupyter-api-http-redirect-limit
-                      (cons url-http-response-status
-                            (cddr err)))
-            (signal (car err) (cdr err)))))
-       (t resp)))))
+    (when url-http-end-of-headers
+      (goto-char url-http-end-of-headers)
+      (skip-syntax-forward "->")
+      (let* ((json-object-type 'plist)
+             (json-false nil)
+             (resp (when (and (equal url-http-content-type "application/json")
+                              (not (eobp)))
+                     (if (< url-http-response-status 400)
+                         (json-read)
+                       ;; Handle cases, for example, where status is 404
+                       ;; and the message of the error is returned
+                       ;; instead of JSON.
+                       (let ((start (point)))
+                         (condition-case nil
+                             (json-read)
+                           (error
+                            (list :message (buffer-substring start (point-max))))))))))
+        (cond
+         ((>= url-http-response-status 400)
+          (cl-destructuring-bind
+              (&key reason message traceback &allow-other-keys) resp
+            (when traceback
+              (setq traceback
+                    (format "%s (%s): %s" reason message
+                            (car (last (split-string traceback "\n" t))))))
+            (signal 'jupyter-api-http-error
+                    (list url-http-response-status
+                          (or traceback
+                              (and (or reason message)
+                                   (concat reason
+                                           (and reason ": ")
+                                           message))
+                              (nth 2 (assoc url-http-response-status
+                                            url-http-codes)))))))
+         ;; Handle other kinds of errors, e.g. max redirects
+         ((and (boundp 'url-callback-arguments)
+               (plist-get (car url-callback-arguments) :error))
+          (let ((err (plist-get (car url-callback-arguments) :error)))
+            (if (eq (nth 1 err) 'http-redirect-limit)
+                (signal 'jupyter-api-http-redirect-limit
+                        (cons url-http-response-status
+                              (cddr err)))
+              (signal (car err) (cdr err)))))
+         (t resp))))))
 
 (defun jupyter-api-url-request (url &optional async &rest async-args)
   "Retrieve URL and return its JSON response.
