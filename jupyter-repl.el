@@ -1966,7 +1966,9 @@ Do so only if possible in the `current-buffer'."
 the REPL is connected, `x' means the REPL is disconnected
 from the kernel."
   (pcase jupyter-current-client
-    ((and client (cl-type jupyter-repl-client))
+    ((and client (pred
+                  (lambda (x)
+                    (cl-typep x 'jupyter-repl-client))))
      (format jupyter-repl-interaction-mode-line-format
              (cond
               ((not (jupyter-hb-beating-p client)) "x")
