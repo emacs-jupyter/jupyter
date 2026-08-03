@@ -363,10 +363,17 @@ The only difference between them will be their names."
 
 (defun jupyter-test-password-hash (passwd)
   (let ((x (format
-            "from notebook.auth import passwd; \
+            "\
+try:
+    from notebook.auth import passwd
+except:
+    from jupyter_server.auth.security import passwd
 print(passwd('%s', algorithm='sha1'), end='')"
             passwd)))
-    (jupyter-test-eval-python x)))
+    (let ((hashed (jupyter-test-eval-python x)))
+      (if (not (string-prefix-p "sha1:" hashed))
+          (error "Something went wrong hashing a password")
+        hashed))))
 
 (defun jupyter-test-ipython-kernel-version (spec)
   "Return the IPython kernel version string corresponding to SPEC.
@@ -792,7 +799,7 @@ see the documentation on the --NotebookApp.password argument."
         (with-current-buffer (process-buffer proc)
           (while (not (progn (goto-char (point-min))
                              (re-search-forward
-                              "Jupyter Notebook [^ ]+ is running at:"
+                              "Jupyter \\(Notebook\\|Server\\) [^ ]+ is running at:"
                               nil 'noerror)))
             (accept-process-output proc 1)))))
      (message "Starting up notebook process for tests...done")
