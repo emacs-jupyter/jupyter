@@ -202,7 +202,7 @@
         (jupyter-api-shutdown-kernel client id)))))
 
 (ert-deftest jupyter-api-server-accessible-p ()
-  :tags '(rest server)
+  :tags '(rest server url)
   (jupyter-test-with-notebook client
     (should (jupyter-api-server-accessible-p client))))
 
