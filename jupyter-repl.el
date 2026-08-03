@@ -60,7 +60,6 @@
   (require 'jupyter-base))
 (require 'jupyter-mime)
 (require 'jupyter-kernelspec)
-(require 'jupyter-widget-client)
 (require 'ring)
 (require 'face-remap)
 
@@ -200,7 +199,7 @@ kernel."
 
 ;;; Implementation
 
-(defclass jupyter-repl-client (jupyter-widget-client jupyter-kernel-client)
+(defclass jupyter-repl-client (jupyter-kernel-client)
   ((buffer
     :type (or null buffer)
     :initform nil
@@ -336,18 +335,6 @@ Do this only when the `major-mode' is `jupyter-repl-mode'."
     (jupyter-with-insertion-bounds
         beg end (cl-call-next-method)
       (add-text-properties beg end '(read-only t)))))
-
-(cl-defmethod jupyter-insert ((_mime (eql :application/vnd.jupyter.widget-view+json)) data
-                              &context ((and (require 'websocket nil t)
-                                             (require 'simple-httpd nil t)
-                                             (and jupyter-current-client
-                                                  (object-of-class-p
-                                                   jupyter-current-client
-                                                   'jupyter-widget-client))
-                                             t)
-                                        (eql t))
-                              &optional _metadata)
-  (jupyter-widgets-display-model jupyter-current-client (plist-get data :model_id)))
 
 ;;; Util
 
