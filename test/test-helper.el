@@ -70,6 +70,7 @@ start a new kernel REPL instead of re-using one.")
 ;; Ensure we don't overwrite the default cookie file
 (setq url-cookie-file (let ((temporary-file-directory jupyter-test-temporary-directory))
                         (make-temp-file "jupyter-cookie")))
+(setq url-debug 0)
 
 (message "system-configuration %s" system-configuration)
 
@@ -718,8 +719,10 @@ to.")
           (unwind-protect
               (progn ,@(if x (cdr body) body))
             ,(when x
-               '(jupyter-test-kill-notebook
-                 jupyter-test-notebook)))))
+               '(progn
+                  (jupyter-api-delete-cookies (oref ,client url))
+                  (jupyter-test-kill-notebook
+                   jupyter-test-notebook))))))
       (_ (error "Invalid macro specification")))))
 
 (defvar jupyter-test-notebook-token nil
