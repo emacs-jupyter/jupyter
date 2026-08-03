@@ -3,7 +3,7 @@ jobs:
   test-windows:
     strategy:
       matrix:
-        emacs-version: [27.2, 28.2, 29.3, snapshot]
+        emacs-version: [28.2, 29.3, 30.2, snapshot]
     runs-on: windows-latest
     defaults:
       run:
@@ -49,10 +49,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        emacs-version: [27.2, 28.2, 29.3, snapshot]
-        exclude:
-          - os: macos-latest
-            emacs-version: 27.2
+        emacs-version: [28.2, 29.3, 30.2, snapshot]
     defaults:
       run:
         shell: bash -el {0}
