@@ -43,7 +43,6 @@
   (spec (make-jupyter-kernelspec)
         :type jupyter-kernelspec
         :documentation "The kernelspec of this kernel.")
-  ;; FIXME: Remove this slot, used by `jupyter-widget-client'.
   (session nil :type jupyter-session))
 
 (cl-defmethod jupyter-alive-p ((kernel jupyter-kernel))
