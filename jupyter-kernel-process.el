@@ -28,6 +28,7 @@
 
 (require 'jupyter-kernel)
 (require 'jupyter-monads)
+(eval-when-compile (require 'jupyter-messages))
 
 (defgroup jupyter-kernel-process nil
   "Jupyter kernels as Emacs processes"
@@ -40,6 +41,8 @@
 (declare-function jupyter-channel-ioloop-set-session "jupyter-channel-ioloop")
 (declare-function ansi-color-apply "ansi-color")
 (declare-function jupyter-hb-pause "jupyter-zmq-channel")
+(declare-function jupyter-message-type "jupyter-messages")
+(declare-function jupyter-message-content "jupyter-messages")
 
 (defvar jupyter--kernel-processes '()
   "The list of kernel processes launched.
