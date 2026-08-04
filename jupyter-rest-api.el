@@ -304,14 +304,12 @@ this will cause errors in the URL library."
   ;; loop since this function is used during authentication.
   (let (jupyter-api-request-headers jupyter-api-request-data)
     (or
-     ;; Already have the xsrf cookie, no need to request the login
-     ;; page to receive it as a side effect.
+     ;; Already have the xsrf cookie, no need to make a request to get
+     ;; it as a side effect.
      (jupyter-api-xsrf-header-from-cookies (oref client url))
-     ;; FIXME: It is not reliable to attempt to get the xsrf cookie as
-     ;; a side effect of requesting the login page since it may not
-     ;; always exist.
-     (ignore-errors
-       (jupyter-api-http-request (oref client url) "login" "GET")))))
+     ;; jupyter_server sets the xsrf cookie header on the base URL of
+     ;; the API.
+     (jupyter-api-http-request (oref client url) "" "GET"))))
 
 (defun jupyter-api-url-cookies (url &optional standard-only)
   "Return the list of cookies for URL.
