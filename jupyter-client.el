@@ -319,13 +319,6 @@ method is called."
   (and (jupyter-connected-p client)
        (jupyter-kernel-action client #'jupyter-alive-p)))
 
-(defun jupyter-find-client-for-session (session-id)
-  "Return the kernel client whose session has SESSION-ID."
-  (or (cl-find-if
-       (lambda (x) (string= (jupyter-session-id (oref x session)) session-id))
-       (jupyter-all-objects 'jupyter--clients))
-      (error "No client found for session (%s)" session-id)))
-
 ;;; Client local variables
 
 (defmacro jupyter-with-client-buffer (client &rest body)
