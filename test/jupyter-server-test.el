@@ -68,7 +68,10 @@
 
 (ert-deftest jupyter-rest-api ()
   :tags '(rest)
-  (let ((client (jupyter-rest-client
+  ;; Don't attempt to authenticate as doing so makes irrelevant
+  ;; URL requests.
+  (let ((jupyter-api-authentication-in-progress-p t)
+        (client (jupyter-rest-client
                  :url "http://foo"
                  :ws-url "ws://foo"
                  :auth t)))
@@ -85,11 +88,14 @@
      (should (equal url-request-data (json-encode '(:name "bar"))))
      (should (equal (alist-get "Content-Type" url-request-extra-headers nil nil #'equal)
                     "application/json")))
-    (cl-letf (((symbol-function #'websocket-open)
-               (lambda (url &rest plist)
-                 (should (equal url "ws://foo/api/kernels"))
-                 (should (equal (plist-get plist :on-open) 'identity)))))
-      (jupyter-api-request client "WS" "api" "kernels" :on-open 'identity))))
+    (let ((websocket-opened nil))
+      (cl-letf (((symbol-function #'websocket-open)
+                 (lambda (url &rest plist)
+                   (setq websocket-opened t)
+                   (should (equal url "ws://foo/api/kernels"))
+                   (should (equal (plist-get plist :on-open) 'identity)))))
+        (jupyter-api-request client "WS" "api" "kernels" :on-open 'identity)
+        (should websocket-opened)))))
 
 (ert-deftest jupyter-api-add-websocket-headers ()
   :tags '(rest)
