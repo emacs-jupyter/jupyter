@@ -1278,7 +1278,10 @@ file links, so that each result appears on a single line in the
 string representation of the drawer.  The returned drawer has a
 name of \"RESULTS\"."
   (apply #'org-element-set-contents
-         (list 'drawer (list :drawer-name "RESULTS"))
+         (list 'drawer (list
+                        :drawer-name "RESULTS"
+                        :pre-blank 0
+                        :post-blank 0))
          (cl-loop
           for res in results
           if (jupyter-org-object-p res)
