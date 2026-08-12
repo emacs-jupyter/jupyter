@@ -557,8 +557,19 @@ Optional FALLBACK is a function that takes a message when there are no
 requests available to handle that message.  FALLBACK is called both when
 the message is not a `jupyter-message-p' as well as when it is and there
 is no associated request."
-  (let ((idle-request-ids nil)
-        (msg-publishers (make-hash-table :test #'equal)))
+  (let* ((idle-request-ids nil)
+         (msg-publishers (make-hash-table :test #'equal))
+         (purge-idle-requests
+          (lambda ()
+            (while idle-request-ids
+              (let ((id (pop idle-request-ids)))
+                (unwind-protect
+                    (when-let* ((pub (gethash id msg-publishers)))
+                      ;; Notify subscribers that no more messages are
+                      ;; arriving.
+                      (jupyter-run-with-io pub
+                        (jupyter-publish jupyter-empty-message)))
+                  (remhash id msg-publishers)))))))
     (list
      (jupyter-subscriber
        (lambda (action)
@@ -587,14 +598,7 @@ is no associated request."
                       ;; safely removed from the table of live request
                       ;; message publishers.
                       (jupyter-message-status-busy-p msg))
-             (while idle-request-ids
-               (let ((id (pop idle-request-ids)))
-                 (when-let* ((pub (gethash id msg-publishers)))
-                   ;; Notify subscribers that no more messages are
-                   ;; arriving.
-                   (jupyter-run-with-io pub
-                     (jupyter-publish jupyter-empty-message)))
-                 (remhash id msg-publishers))))
+             (funcall purge-idle-requests))
            (if-let* ((pub (gethash
                            (jupyter-message-parent-id msg)
                            msg-publishers)))
