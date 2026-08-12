@@ -483,7 +483,17 @@ kernel whose kernelspec if SPEC."
     client))
 
 (defun jupyter-client-io (client)
-  "Return CLIENT's I/O publisher."
+  "Return CLIENT's I/O publisher.
+A client's I/O publisher can be sent the messages
+
+    (list \\='publisher ID FN) or (list \\='idle ID)
+
+In the first type, FN is a function of a single argument that is either
+nil or the current message publisher for the request with ID.  The
+function should return the message publisher to assign for the request
+with ID.  In the second type, ID is the request ID of a request that has
+gone idle which indicates that it's message publisher can be safely
+removed from CLIENT's request table."
   (or (car-safe (oref client io))
       (error "Invalid value of a client's IO slot.")))
 
