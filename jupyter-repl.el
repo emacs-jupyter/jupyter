@@ -1976,7 +1976,7 @@ from the kernel."
 (defun jupyter-repl-pop-to-buffer ()
   "Switch to the REPL buffer of the `jupyter-current-client'."
   (interactive)
-  (if-let ((client jupyter-current-client))
+  (if-let* ((client jupyter-current-client))
       (progn
         (jupyter-resurrect-repl client)
         (jupyter-with-repl-buffer client

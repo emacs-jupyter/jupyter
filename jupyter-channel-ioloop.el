@@ -74,7 +74,7 @@
 
 (jupyter-ioloop-add-arg-type jupyter-channel
   (lambda (arg)
-    `(or (object-assoc ,arg :type jupyter-channel-ioloop-channels)
+    `(or (object-assoc ,arg 'type jupyter-channel-ioloop-channels)
          (error "Channel not alive (%s)" ,arg))))
 
 (defclass jupyter-channel-ioloop (jupyter-ioloop)
@@ -158,7 +158,7 @@ A list with the form
 
 is returned to the parent process."
   (jupyter-ioloop-add-event ioloop stop-channel (type)
-    (let ((channel (object-assoc type :type jupyter-channel-ioloop-channels)))
+    (let ((channel (object-assoc type 'type jupyter-channel-ioloop-channels)))
       (when (and channel (jupyter-alive-p channel))
         (jupyter-stop channel))
       (list 'stop-channel type))))

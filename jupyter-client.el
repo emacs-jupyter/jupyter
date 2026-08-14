@@ -172,45 +172,7 @@ In addition, if the first element of the list is the symbol
 Do not set this variable directly, let bind it around specific
 requests like the above example.")
 
-(defvar jupyter--clients nil)
-
 ;; Define channel classes for method dispatching based on the channel type
-
-(defclass jupyter-kernel-client (jupyter-instance-tracker
-                                 jupyter-finalized-object)
-  ((tracking-symbol :initform 'jupyter--clients)
-   (execution-state
-    :type string
-    :initform "idle"
-    :documentation "The current state of the kernel.  Can be
-either \"idle\", \"busy\", or \"starting\".")
-   (execution-count
-    :type integer
-    :initform 1
-    :documentation "The *next* execution count of the kernel.
-I.e., the execution count that will be assigned to the
-next :execute-request sent to the kernel.")
-   (kernel-info
-    :type json-plist
-    :initform nil
-    :documentation "The saved kernel info created when first
-initializing this client.")
-   (comms
-    :type hash-table
-    :initform (make-hash-table :test 'equal)
-    :documentation "A hash table with comm ID's as keys.
-Contains all of the open comms.  Each value is a cons cell (REQ .
-DATA) which contains the generating `jupyter-request' that caused
-the comm to open and the initial DATA passed to the comm for
-initialization.")
-   (io
-    :type list
-    :initarg :io
-    :documentation "The I/O context kernel messages are communicated on.")
-   (-buffer
-    :type buffer
-    :documentation "An internal buffer used to store client local
-variables.")))
 
 ;;; `jupyter-current-client' language method specializer
 
