@@ -74,7 +74,9 @@ list as returned by `jupyter-recv'."
           (push (cons type (jupyter-recv channel)) messages))))
     (when messages
       ;; Send messages
-      (mapc (lambda (msg) (prin1 (cons 'message msg))) (nreverse messages))
+      (mapc (lambda (msg)
+              (jupyter-ioloop-prin1 (cons 'message msg)))
+            (nreverse messages))
       (zmq-flush 'stdout))))
 
 (provide 'jupyter-zmq-channel-ioloop)

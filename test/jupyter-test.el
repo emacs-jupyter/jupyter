@@ -1030,6 +1030,20 @@
     (jupyter-ioloop-stop ioloop)
     (should jupyter-ioloop-test-handler-called)))
 
+(ert-deftest jupyter-ioloop-handle-complex-objects ()
+  :tags '(zmq ioloop)
+  (let ((ioloop (jupyter-ioloop))
+        (msg "circular"))
+    (add-text-properties 0 1 (list :backref msg) msg)
+    (setq jupyter-ioloop-test-handler-called nil)
+    (jupyter-ioloop-add-event ioloop circle (tag data)
+      "Echo DATA back to the parent process."
+      (list 'circle tag data))
+    (jupyter-test-ioloop-start ioloop)
+    (jupyter-send ioloop 'circle "message" msg)
+    (jupyter-ioloop-stop ioloop)
+    (should jupyter-ioloop-test-handler-called)))
+
 (ert-deftest jupyter-channel-ioloop-send-event ()
   :tags '(zmq ioloop)
   (jupyter-test-channel-ioloop
