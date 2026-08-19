@@ -1501,7 +1501,20 @@ parsed, wrap DATA in a minipage environment and return it."
 Call the next method, if it returns \"scalar\" results, return a
 new \"scalar\" result with the result of calling
 `org-babel-script-escape' on the old result."
-  (let ((result (cl-call-next-method)))
+  (let ((result (cl-call-next-method))
+        (param-transforms
+         (lambda (value)
+           (let ((colnames (alist-get :colnames params)))
+             (if (and (listp value) colnames)
+                 (if (listp colnames)
+                     (cons colnames
+                           (cons 'hline value))
+                   (if (member colnames '(t "yes"))
+                       (cons (car value)
+                             (cons 'hline
+                                   (cdr value)))
+                     value))
+               value)))))
     (jupyter-org-scalar
      (cond
       ((and (stringp result)
@@ -1522,13 +1535,13 @@ new \"scalar\" result with the result of calling
                                (?\( ?\)))))
               (eq end (aref result (1- (length result))))))
        (if-let* ((escaped (org-babel-script-escape result)))
-           escaped
+           (funcall param-transforms escaped)
          ;; Just return result when it looks like "()" which
          ;; `org-babel-script-escape' turns into nil, otherwise
          ;; `jupyter-org-scalar' will consider it as
          ;; (jupyter-org-table-string "\n")
          result))
-      (t result)))))
+      (t (funcall param-transforms result))))))
 
 (cl-defmethod jupyter-org-result ((_mime (eql :text/plain)) content _params)
   (plist-get content :data))

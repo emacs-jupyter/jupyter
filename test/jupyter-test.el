@@ -3089,6 +3089,22 @@ os.path.abspath(os.getcwd())"
               :dir (file-name-base dir)
               :bindings ((default-directory (file-name-directory dir)))))))))))
 
+(ert-deftest jupyter-org-:colnames-header-arg ()
+  :tags '(org)
+  (jupyter-org-test-src-block
+   "[['Col 1', 'Col 2', 'Col 3'], [1, 2, 3]]"
+   "| Col 1 | Col 2 | Col 3 |
+|-------+-------+-------|
+|     1 |     2 |     3 |\n"
+   :colnames "yes")
+  (jupyter-org-test-src-block
+   "[[1, 2, 3]]"
+   "| Col 1 | Col 2 | Col 3 |
+|-------+-------+-------|
+|     1 |     2 |     3 |\n"
+   :colnames (quote (quote ("Col 1" "Col 2" "Col 3")))))
+
+
 (ert-deftest jupyter-org--find-mime-types ()
   :tags '(org mime)
   (ert-info ("Mimetype priority overwrite")
