@@ -88,7 +88,7 @@ host, localname, ..., are all bound to values parsed from FILE."
      ;; just need a `jupyter-rest-client'.  Is there a reason this needs to be
      ;; here?
      (let ((jupyter-current-server
-            (jupyter-tramp-server-from-file-name ,file)))
+            (jupyter-tramp-server-from-file-name v)))
        ,@body)))
 
 ;;; File name handler setup
@@ -289,42 +289,58 @@ The filename is based off of URL's host and port if any."
               (if port (format "#%d" port) "")))))
 
 ;;;###autoload
-(defun jupyter-tramp-url-from-file-name (filename)
+(defun jupyter-tramp-url-from-file-name (vec-or-filename)
   "Return a URL string based off the method, host, and port of FILENAME."
-  (with-parsed-tramp-file-name filename nil
-    (unless port (setq port (when (functionp 'tramp-file-name-port-or-default)
-                              ;; This function was introduced in Emacs 26.1
-                              (tramp-file-name-port-or-default v))))
-    (format "%s://%s%s" (if (member method '("jupys" "jpys")) "https" "http")
-            host (if port (format ":%s" port) ""))))
+  (let ((make-url
+         (lambda (method host port)
+           (unless port
+             (setq port (when (functionp 'tramp-file-name-port-or-default)
+                          ;; This function was introduced in Emacs 26.1
+                          (tramp-file-name-port-or-default v))))
+           (format "%s://%s%s" (if (member method '("jupys" "jpys")) "https" "http")
+                   host (if port (format ":%s" port) "")))))
+    (pcase vec-or-filename
+      ((cl-struct tramp-file-name method host port)
+       (funcall make-url method host port))
+      (filename
+       (with-parsed-tramp-file-name filename nil
+         (funcall make-url method host port))))))
 
 ;;;###autoload
-(defun jupyter-tramp-server-from-file-name (filename)
+(defun jupyter-tramp-server-from-file-name (vec-or-filename)
   "Return a `jupyter-server' instance based off of FILENAME's remote components.
 If the connection has not been authenticated by the server,
 attempt to authenticate the connection.  Raise an error if that
 fails."
-  (unless (jupyter-tramp-file-name-p filename)
+  (unless (jupyter-tramp-file-name-p vec-or-filename)
     (error "Not a Jupyter filename"))
-  (with-parsed-tramp-file-name filename nil
-    (let* ((url (jupyter-tramp-url-from-file-name filename))
-           (client (jupyter-server :url url)))
-      (prog1 client
-        (unless (jupyter-api-server-accessible-p client)
-          (cond
-           ((y-or-n-p (format "Login to %s using a token? " url))
-            (jupyter-api-authenticate client 'token))
-           (t
-            ;; This is here so that reading a password using
-            ;; `tramp-read-passwd' via `jupyter-tramp-read-passwd' will check
-            ;; auth sources.
-            (tramp-set-connection-property v "first-password-request" t)
-            (jupyter-api-authenticate client
-              'password
-              (let ((remote (file-remote-p filename)))
-                (lambda ()
-                  (jupyter-tramp-read-passwd
-                   filename (format "Password [%s]: " remote))))))))))))
+  (pcase (let ((make-client (lambda (vec)
+                              (jupyter-server
+                               :url (jupyter-tramp-url-from-file-name vec)))))
+           (pcase vec-or-filename
+             ((cl-struct tramp-file-name)
+              (cons vec-or-filename (funcall make-client vec-or-filename)))
+             (filename
+              (let ((vec (tramp-dissect-file-name filename)))
+                (cons vec (funcall make-client vec))))))
+    (`(,vec . ,client)
+     (prog1 client
+       (unless (jupyter-api-server-accessible-p client)
+         (cond
+          ((y-or-n-p (format "Login to %s using a token? " url))
+           (jupyter-api-authenticate client 'token))
+          (t
+           ;; This is here so that reading a password using
+           ;; `tramp-read-passwd' via `jupyter-tramp-read-passwd' will check
+           ;; auth sources.
+           (tramp-set-connection-property vec "first-password-request" t)
+           (jupyter-api-authenticate client
+             'password
+             (let* ((filename (tramp-make-tramp-file-name vec))
+                    (remote (file-remote-p filename)))
+               (lambda ()
+                 (jupyter-tramp-read-passwd
+                  filename (format "Password [%s]: " remote))))))))))))
 
 ;;; Getting information about file models
 
