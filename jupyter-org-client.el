@@ -1099,6 +1099,11 @@ be wrapped in a drawer.  Used in `jupyter-org-babel-result-p'."
   (prog1 (jupyter-org-raw-string str)
     (put-text-property 0 1 'org-table t str)))
 
+(defun jupyter-org-table-string-p (str)
+  "Return non-nil if STR represents an Org table."
+  (and (jupyter-org-raw-string-p str)
+       (get-text-property 0 'org-table str)))
+
 (defun jupyter-org-comment (value)
   "Return a comment `org-element' with VALUE."
   (org-element-create 'comment (list :value value)))
@@ -1604,11 +1609,7 @@ appear after the element."
 
 (defun jupyter-org-babel-result-p (result)
   "Return non-nil if RESULT can be removed by `org-babel-remove-result'."
-  (or (and (stringp result)
-           ;; Org tables are returned as strings by this time.  So we need
-           ;; something to distinguish them from regular strings.  See
-           ;; `jupyter-org-scalar'.
-           (get-text-property 0 'org-table result))
+  (or (jupyter-org-table-string-p result)
       (memq (org-element-type result)
             '(link
               ;; Taken from `org-babel-result-end', excludes table.
