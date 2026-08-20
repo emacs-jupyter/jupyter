@@ -776,13 +776,18 @@ any Jupyter code block, [jupyter]."
 
 (defun jupyter-org--define-key-filter (key &rest _)
   "Return the definition for KEY when inside a Jupyter src-block or nil."
-  ;; Fall back to regular `org-mode' keys when the current point is invisible,
-  ;; e.g. folded subtrees.
-  (unless (org-invisible-p)
-    (jupyter-org-with-src-block-client
-     (let ((lang (jupyter-kernel-language)))
-       (or (jupyter-org--key-def key `[,lang])
-           (jupyter-org--key-def key [jupyter]))))))
+  ;; Keymaps get walked outside the buffers they apply to (e.g., `C-h m' expands
+  ;; \\{org-mode-map} in a temporary `fundamental-mode' buffer).  If we omit the
+  ;; guard against being in an org-mode buffer, the body below would parse that
+  ;; buffer as Org and warn.
+  (when (derived-mode-p 'org-mode)
+    ;; Fall back to regular `org-mode' keys when the current point is
+    ;; invisible, e.g. folded subtrees.
+    (unless (org-invisible-p)
+      (jupyter-org-with-src-block-client
+       (let ((lang (jupyter-kernel-language)))
+         (or (jupyter-org--key-def key `[,lang])
+             (jupyter-org--key-def key [jupyter])))))))
 
 (defun jupyter-org--call-with-src-block-client (def)
   "Call DEF interactively with the current src-block's client."
