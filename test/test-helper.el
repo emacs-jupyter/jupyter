@@ -647,7 +647,9 @@ see the documentation on the --NotebookApp.password argument."
               (buffer (generate-new-buffer "*jupyter-notebook*"))
               (args (append
                      (list "notebook" "--no-browser" "--debug"
-                           (format "--NotebookApp.port=%s" port))
+                           (format "--NotebookApp.port=%s" port)
+                           "--FileContentsManager.delete_to_trash=False"
+                           "--FileContentsManager.always_delete_dir=True")
                      (cond
                       ((eq authentication t)
                        (list))
