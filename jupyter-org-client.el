@@ -406,15 +406,18 @@ to."
 ;;;; Execute result
 
 (cl-defmethod jupyter-handle-execute-result ((_client jupyter-org-client) (req jupyter-org-request) msg)
-  (unless (eq (jupyter-org-request-result-type req) 'output)
-    (jupyter-with-message-content msg (data metadata)
-      (when (jupyter-org-request-inline-block-p req)
-        ;; For inline results, only text/plain results are allowed at the moment.
-        ;;
-        ;; TODO: Handle all of the different macro types for inline results, see
-        ;; `org-babel-insert-result'.
-        (setq data `(:text/plain ,(plist-get data :text/plain))))
-      (jupyter-org--add-result req data metadata))))
+  (pcase req
+    ((cl-struct jupyter-org-request result-type inline-block-p)
+     (unless (eq result-type 'output)
+       (jupyter-with-message-content msg (data metadata)
+         (when inline-block-p
+           ;; For inline results, only text/plain results are allowed
+           ;; at the moment.
+           ;;
+           ;; TODO: Handle all of the different macro types for inline
+           ;; results, see `org-babel-insert-result'.
+           (setq data `(:text/plain ,(plist-get data :text/plain))))
+         (jupyter-org--add-result req data metadata))))))
 
 ;;;; Display data
 
