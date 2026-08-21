@@ -589,10 +589,13 @@ the PARAMS alist."
                      (jupyter-request-id (jupyter-current-request)))))
                  ('idle
                   (setq idle-p t)
-                  (and (not async-p)
-                       (setq result
-                             (jupyter-org-sync-results
-                              (jupyter-current-request)))))
+                  (if async-p
+                      (jupyter-org-with-point-at
+                          (jupyter-current-request)
+                        (run-hooks 'org-babel-after-execute-hook))
+                    (setq result
+                          (jupyter-org-sync-results
+                           (jupyter-current-request)))))
                  ('abort
                   (setq aborted t)
                   (unwind-protect

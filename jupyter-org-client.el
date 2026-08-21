@@ -505,9 +505,7 @@ to."
         (message "Code block evaluation complete.")
       (message "An error occurred when evaluating code block."))
     (when (jupyter-org-request-async-p req)
-      (jupyter-org--clear-async-indicator req)
-      (jupyter-org-with-point-at req
-        (run-hooks 'org-babel-after-execute-hook)))))
+      (jupyter-org--clear-async-indicator req))))
 
 ;;; Queueing requests
 
