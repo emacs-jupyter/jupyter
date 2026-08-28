@@ -40,11 +40,13 @@
 ;;; Code:
 
 (require 'jupyter-base)
+(require 'jupyter-org-client)
 (require 'shr)
 (require 'ansi-color)
 
 (declare-function jupyter-message-content "jupyter-messages" (msg))
 (declare-function org-format-latex "org" (prefix &optional beg end dir overlays msg forbuffer processing-type))
+(declare-function org-combine-plists "org-macs" (&rest PLISTS))
 (declare-function markdown-link-at-pos "ext:markdown-mode" (pos))
 (declare-function markdown-follow-link-at-point "ext:markdown-mode")
 
@@ -421,9 +423,22 @@ aligns on the current line."
 ;;; LaTeX
 
 (defvar org-format-latex-options)
-(defvar org-preview-latex-image-directory)
-(defvar org-babel-jupyter-resource-directory)
 (defvar org-preview-latex-default-process)
+
+(defcustom jupyter-preview-latex-default-process nil
+  "The default process to convert LaTeX fragments to image files.
+
+If nil, use `org-preview-latex-default-process'
+
+All available processes and theirs documents can be found in
+`org-preview-latex-process-alist', which see."
+  :type 'symbol
+  :group 'jupyter-repl)
+
+(defcustom jupyter-format-latex-extra-options '(:scale 2.0)
+  "Jupyter-specific options for `org-format-latex-options'"
+  :type 'plist
+  :group 'jupyter-repl)
 
 (defun jupyter-insert-latex (tex)
   "Generate and insert a LaTeX image based on TEX.
@@ -438,20 +453,20 @@ image."
   (let ((kill-buffer-query-functions nil)
         ;; This is added to in `org-babel-jupyter-initiate-session-by-key'
         (kill-buffer-hook nil)
-        (org-format-latex-options
-         `(:foreground
-           default
-           :background default :scale 2.0
-           :matchers ,(plist-get org-format-latex-options :matchers))))
+        (org-format-latex-options (org-combine-plists
+                                   org-format-latex-options
+                                   jupyter-format-latex-extra-options)))
     (jupyter-with-insertion-bounds
         beg end (insert tex)
       ;; FIXME: Best way to cleanup these files? Just delete them by reading
       ;; the image data and using that for the image instead?
-      (org-format-latex
-       "ltximg" beg end org-babel-jupyter-resource-directory
-       'overlays nil 'forbuffer
-       ;; Use the default method for creating image files
-       org-preview-latex-default-process)
+      (let ((major-mode 'org-mode))  ;; suppresses warnings from org-element
+        (org-format-latex
+         "ltximg" beg end jupyter-org-resource-directory
+         'overlays nil 'forbuffer
+         ;; Use jupyter-specific method for creating image if defined.
+         (or jupyter-preview-latex-default-process
+             org-preview-latex-default-process))))
       ;; Avoid deleting the image overlays due to text property changes
       (dolist (o (overlays-in beg end))
         (when (eq (overlay-get o 'org-overlay-type)
