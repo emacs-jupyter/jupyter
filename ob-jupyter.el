@@ -834,10 +834,11 @@ mapped to their appropriate minted language in
 (defun org-babel-jupyter-make-local-aliases ()
   (let ((default-directory user-emacs-directory))
     (org-babel-jupyter-aliases-from-kernelspecs)))
-(add-hook 'org-mode-hook #'org-babel-jupyter-make-local-aliases 10)
 
-(add-hook 'org-export-before-processing-functions #'org-babel-jupyter-setup-export)
-(add-hook 'org-export-before-parsing-functions  #'org-babel-jupyter-strip-ansi-escapes)
+(when jupyter-org-want-integration
+  (add-hook 'org-mode-hook #'org-babel-jupyter-make-local-aliases 10)
+  (add-hook 'org-export-before-processing-functions #'org-babel-jupyter-setup-export)
+  (add-hook 'org-export-before-parsing-functions  #'org-babel-jupyter-strip-ansi-escapes))
 
 (provide 'ob-jupyter)
 
