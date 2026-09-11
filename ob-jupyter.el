@@ -465,7 +465,8 @@ the host."
 (defun org-babel-jupyter-cleanup-file-links ()
   "Delete the files of image links for the current source block result.
 Do this only if the file exists in
-`org-babel-jupyter-resource-directory'."
+`org-babel-jupyter-resource-directory' and is not linked to elsewhere in
+the buffer."
   (when-let*
       ((pos (org-babel-where-is-src-block-result))
        (link-re (format "^[ \t]*%s[ \t]*$" org-link-bracket-re))
@@ -482,7 +483,11 @@ Do this only if the file exists in
                (dir (when (file-name-directory path)
                       (expand-file-name (file-name-directory path)))))
             (when (and (equal dir resource-dir)
-                       (file-exists-p path))
+                       (file-exists-p path)
+                       ;; Check for another link to the file in the buffer.
+                       (save-excursion
+                         (goto-char (point-min))
+                         (not (search-forward path nil t 2))))
               (delete-file path))))))))
 
 ;; TODO: What is a better way to handle discrepancies between how `org-mode'
