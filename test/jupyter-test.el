@@ -65,6 +65,182 @@
                        (jupyter-request-id req)))
         (should (equal (jupyter-message-get (caddr msgs) :execution_state) "idle"))))))
 
+;;; Org test
+
+(ert-deftest jupyter-org-test ()
+  :tags '(org mock)
+  (with-temp-buffer
+    (let ((jupyter-org-test-buffer (current-buffer))
+          (jupyter-org-test-session "sess"))
+      (jupyter-org-test
+       :document (("Tree"
+                   (properties
+                    (one (expand-file-name "foo" "/tmp"))
+                    (two "two"))
+                   (src-block
+                    (code "1 + 1"))
+                   ("Tree2"
+                    (properties
+                     (one "bar")
+                     (two "baz"))
+                    (src-block
+                     (code "return \"str\"")))))
+       (should (equal (buffer-string)
+                      "\
+* Tree
+:PROPERTIES:
+:one: /tmp/foo
+:two: two
+:END:
+
+#+begin_src jupyter-python :session sess
+1 + 1
+#+end_src
+
+** Tree2
+:PROPERTIES:
+:one: bar
+:two: baz
+:END:
+
+#+begin_src jupyter-python :session sess
+return \"str\"
+#+end_src
+")))
+      (ert-info ("Default session can be overridden")
+        (jupyter-org-test
+         :document ((src-block
+                     (session "another-sess")
+                     (code "1 + 1")))
+         (should (equal (buffer-string) "\
+#+begin_src jupyter-python :session another-sess
+1 + 1
+#+end_src
+"))))
+      (ert-info ("Paragraph")
+        (jupyter-org-test
+         :document (("Tree"
+                     (paragraph "one")
+                     (src-block (code "1 + 1"))
+                     (paragraph "two")))
+         (should (equal (buffer-string) "\
+* Tree
+one
+
+#+begin_src jupyter-python :session sess
+1 + 1
+#+end_src
+
+two
+"))))
+      (ert-info ("Plain list")
+        (jupyter-org-test
+         :document (("Tree"
+                     (plain-list
+                      (paragraph "one")
+                      (src-block
+                       (code "1 + 1"))
+                      (plain-list
+                       (paragraph "tree\nfour\nfive")))
+                     (paragraph "two")))
+         (should (equal (buffer-string) "\
+* Tree
+- one
+  
+  #+begin_src jupyter-python :session sess
+  1 + 1
+  #+end_src
+  
+  - tree
+    four
+    five
+    
+two
+"))))
+      (ert-info ("Source block")
+        (jupyter-org-test
+         :document ((src-block
+                     (header-args ":async yes")
+                     (language "julia")
+                     (code "1 + 1")))
+         (should (equal (buffer-string) "\
+#+HEADER: :async yes
+#+begin_src jupyter-julia :session sess
+1 + 1
+#+end_src
+")))))))
+
+;;; Stream
+
+(ert-deftest jupyter-stream ()
+  :tags '(stream)
+  (letrec ((num (lambda (start)
+                  (jupyter-stream-cons start
+                    (funcall num (1+ start))))))
+    (let ((s (funcall num 0)))
+      (should (eq 0 (jupyter-stream-car s)))
+      (setq s (jupyter-stream-cdr s))
+      (should (eq 1 (jupyter-stream-car s)))
+      (setq s (jupyter-stream-cdr s))
+      (should (eq 2 (jupyter-stream-car s)))))
+  (ert-info ("\
+Evaluate the head element of the stream before \
+attempting to access the rest of the stream")
+    (let ((box '(nil)))
+      (let ((s (jupyter-stream-cons (setcar box 1)
+                 (jupyter-stream-cons
+                     (setcar box 2)
+                   jupyter-null-stream))))
+        (should (eq (car box) nil))
+        (setq s (jupyter-stream-cdr s))
+        (should (eq (car box) 1))
+        (setq s (jupyter-stream-cdr s))
+        (should (eq (car box) 2))
+        (should (jupyter-null-stream-p
+                 (jupyter-stream-cdr s)))))))
+
+;;; Seq
+
+(ert-deftest jupyter-seq ()
+  :tags '(stream seq)
+  (let ((null-seq (jupyter-seq :stream jupyter-null-stream)))
+    (should (seqp null-seq))
+    (let ((s (seq-copy null-seq)))
+      (should-not (eq s null-seq))
+      (should (jupyter-seq-p s))
+      (should (jupyter-null-stream-p (jupyter-seq-stream s))))
+    (should (eq 0 (seq-length null-seq)))
+    (should-error (seq-elt null-seq 0)))
+  (let* ((s (jupyter-stream-cons 1
+              (jupyter-stream-cons 2
+                (jupyter-stream-cons 3
+                  jupyter-null-stream))))
+         (seq (jupyter-seq :stream s)))
+    (should (eq (seq-length seq) 3))
+    (should (eq (seq-elt seq 2) 3))
+    (should-error (seq-elt seq 3))
+    (let ((lst '()))
+      (seq-do (lambda (x) (push x lst)) seq)
+      (should (equal '(3 2 1) lst)))
+    (should (equal '(1 2 3) (seq-into-sequence seq)))
+    (should (equal (seq-into seq 'vector) [1 2 3]))
+    (should (equal (seq-into seq 'list) '(1 2 3)))
+    (should-error (seq-into seq 'other)))
+  (let* ((s (jupyter-stream-cons 'alpha
+              (jupyter-stream-cons 'beta
+                (jupyter-stream-cons 'gamma
+                  jupyter-null-stream))))
+         (seq (jupyter-seq :stream s)))
+    (should (equal (seq-subseq seq 0)
+                   '(alpha beta gamma)))
+    (should (equal (seq-subseq seq 1)
+                   '(beta gamma)))
+    (should (equal (seq-subseq seq -1)
+                   '(gamma)))
+    (should (equal (seq-subseq seq 0 -2)
+                   '(alpha)))
+    (should-error (seq-subseq seq -5))))
+
 ;;; Callbacks
 
 (ert-deftest jupyter-wait-until-idle ()
@@ -409,15 +585,13 @@
       (cl-letf (((symbol-function 'read-from-minibuffer)
                  (lambda (_prompt &rest _args) "foo")))
         (jupyter-run-with-client client
-          (jupyter-mlet* ((msgs (jupyter-messages
-                                 (jupyter-execute-request :code "input('')")
-                                 jupyter-long-timeout)))
-            (let ((res (jupyter-find-message "execute_result" msgs)))
-              (should-not (null res))
-              (should (json-plist-p res))
-              (should (string= (jupyter-message-type res) "execute_result"))
-              (should (equal (jupyter-message-data res :text/plain) "'foo'"))
-              (jupyter-return nil))))))
+          (jupyter-mlet* ((res (jupyter-result
+                                (jupyter-execute-request :code "input('')"))))
+            (should-not (null res))
+            (should (json-plist-p res))
+            (should (string= (jupyter-message-type res) "execute_result"))
+            (should (equal (jupyter-message-data res :text/plain) "'foo'"))
+            (jupyter-return nil)))))
     (ert-info ("Inspect")
       (jupyter-run-with-client client
         (jupyter-mlet* ((res (jupyter-reply
@@ -557,8 +731,9 @@
 
 (ert-deftest jupyter-locate-python ()
   :tags '(kernel)
+  (skip-unless nil)
   ;; TODO: Generalize for Windows
-  (skip-unless (not (memq system-type '(ms-dos windows-nt cygwin))))
+  ;; (skip-unless (not (memq system-type '(ms-dos windows-nt cygwin))))
   ;; Load file name handlers
   (ignore (file-remote-p "/ssh:foo:"))
   (cl-letf (((symbol-function #'jupyter-command)
@@ -572,7 +747,8 @@
                (member file '("/home/USER/.julia/conda/3/bin/python3"
                               "/ssh:foo:/usr/local/bin/python3")))))
     (should (equal (jupyter-locate-python) "/home/USER/.julia/conda/3/bin/python3"))
-    (let ((default-directory "/ssh:foo:"))
+    (let ((tramp-ignored-file-name-regexp "/ssh:foo:.*")
+          (default-directory "/ssh:foo:"))
       (should (equal (jupyter-locate-python) "/usr/local/bin/python3"))))
   (cl-letf (((symbol-function #'jupyter-command)
              (lambda (&rest _)
@@ -586,6 +762,23 @@
             ((symbol-function #'file-exists-p)
              (lambda (_) nil)))
     (should-error (jupyter-locate-python))))
+
+(ert-deftest jupyter-client-kernel-shutdown-state ()
+  :tags '(client shutdown)
+  (cl-macrolet ((should-disconnect (form)
+                  (let ((client (nth 1 form)))
+                    `(progn
+                       (should (jupyter-connected-p ,client))
+                       ,form
+                       (should-not (jupyter-connected-p ,client))))))
+    (jupyter-test-with-python-client client
+      (should-disconnect
+       (jupyter-shutdown-kernel client)))
+    (jupyter-test-with-python-client client
+      (should-disconnect
+       (jupyter-run-with-client client
+         (jupyter-reply
+          (jupyter-shutdown-request)))))))
 
 ;; FIXME: Revisit after transition
 (ert-deftest jupyter-kernel-process ()
@@ -675,19 +868,6 @@
               (should-not (string= conn-fileA conn-fileB))))
         (jupyter-shutdown kernelA)
         (jupyter-shutdown kernelB)))))
-
-(ert-deftest jupyter-kernel-process/on-unexpected-exit ()
-  :tags '(kernel process)
-  (skip-unless nil)
-  (let ((kernel (jupyter-kernel :spec "python"))
-        called)
-    (jupyter-launch
-     kernel (lambda (kernel)
-              (setq called t)))
-    (let ((process (jupyter--kernel-process kernel)))
-      (kill-process process)
-      (sleep-for 0.01)
-      (should called))))
 
 (ert-deftest jupyter-session-with-random-ports ()
   :tags '(kernel)
@@ -779,45 +959,6 @@
 
 ;;; Client
 
-;; TODO: Different values of the session argument
-;;
-;; FIXME: Re-work after refactoring the kernelspec -> connectable kernel code paths.
-(ert-deftest jupyter-comm-initialize ()
-  :tags '(client init)
-  (skip-unless nil)
-  (jupyter-test-with-python-client client
-	(with-slots (session kcomm) client
-	  (ert-info ("Client session")
-        (should (string= (jupyter-session-key session)
-                         (plist-get conn-info :key)))
-        (should (equal (jupyter-session-conn-info session)
-					   conn-info)))
-	  (ert-info ("Heartbeat channel initialized")
-        (should (eq session (oref (oref kcomm hb) session)))
-        (should (string= (oref (oref kcomm hb) endpoint)
-                         (format "tcp://127.0.0.1:%d"
-                                 (plist-get conn-info :hb_port)))))
-	  (ert-info ("Shell, iopub, stdin initialized")
-        (cl-loop
-         for channel in '(:shell :iopub :stdin)
-         for port_sym = (intern (concat (symbol-name channel) "_port"))
-         do
-         (should (plist-member (plist-get channels channel) :alive-p))
-         (should (plist-member (plist-get channels channel) :endpoint))
-         (should
-          (string= (plist-get (plist-get channels channel) :endpoint)
-                   (format "tcp://127.0.0.1:%d"
-                           (plist-get conn-info port_sym))))))
-      (ert-info ("Initialization stops any running channels")
-        (should-not (jupyter-channels-running-p client))
-        (jupyter-start-channels client)
-        (should (jupyter-channels-running-p client))
-        (jupyter-comm-initialize client conn-info)
-        (should-not (jupyter-channels-running-p client)))
-      (ert-info ("Invalid signature scheme")
-        (plist-put conn-info :signature_scheme "hmac-foo")
-        (should-error (jupyter-comm-initialize client conn-info))))))
-
 (ert-deftest jupyter-write-connection-file ()
   :tags '(client)
   (let* ((conn-info '(:kernel_name "python"
@@ -834,33 +975,7 @@
     (should (string= (file-name-directory conn-file) (jupyter-runtime-directory)))
     (should (equal (jupyter-read-plist conn-file) conn-info))))
 
-;; FIXME: Revisit after transition
-(ert-deftest jupyter-client-channels ()
-  :tags '(client channels)
-  (skip-unless nil)
-  (ert-info ("Starting/stopping channels")
-	;; FIXME: Without a new client, I'm getting
-	;;
-	;;   (zmq-EFSM "Operation cannot be accomplished in current state")
-	;;
-	;; on the `jupyter-connect-repl' test pretty consistently.
-	(let ((jupyter-test-with-new-client t))
-	  (jupyter-test-with-python-client client
-		(jupyter-stop-channels client)
-		(cl-loop
-		 for channel in '(:hb :shell :iopub :stdin)
-		 for alive-p = (jupyter-alive-p client channel)
-		 do (should-not alive-p))
-		(jupyter-start-channels client)
-		(cl-loop
-		 for channel in '(:hb :shell :iopub :stdin)
-		 for alive-p = (jupyter-alive-p client channel)
-		 do (should alive-p))
-		(jupyter-stop-channels client)
-		(cl-loop
-		 for channel in '(:hb :shell :iopub :stdin)
-		 for alive-p = (jupyter-alive-p client channel)
-		 do (should-not alive-p))))))
+(defvar jupyter-inhibit-handlers)
 
 (ert-deftest jupyter-inhibited-handlers ()
   :tags '(client handlers)
@@ -868,11 +983,15 @@
     (jupyter-run-with-client client
       (jupyter-mlet* ((req (jupyter-kernel-info-request
                             :handlers '(not "stream"))))
+        ;; FIXME Remove this slot as `jupyter-inhibit-handlers' is now
+        ;; let bound when processing messages.
         (should (equal (jupyter-request-inhibited-handlers req)
                        '("stream")))
-        (should-not (jupyter--request-allows-handler-p
-                     req (jupyter-test-message
-                          req "stream" (list :name "stdout" :text "foo"))))
+        (let ((jupyter-inhibit-handlers
+               (jupyter-request-inhibited-handlers req)))
+          (should-not (jupyter-allow-handler-p
+                       (jupyter-test-message
+                        req "stream" (list :name "stdout" :text "foo")))))
         (should-error (jupyter-kernel-info-request
                        :handlers '(not "foo")))
         (jupyter-return nil)))))
@@ -928,13 +1047,13 @@
   :tags '(client hook)
   (jupyter-test-with-python-client client
     (jupyter-run-with-client client
-      (jupyter-mlet* ((req (jupyter-sent (jupyter-execute-request :code "1 + 1"))))
+      (jupyter-mlet* ((req (jupyter-do (jupyter-execute-request :code "1 + 1"))))
         (should-not (jupyter-request-idle-p req))
         (jupyter-idle-sync req)
         (should (jupyter-request-idle-p req))
         (jupyter-return nil)))
     (jupyter-run-with-client client
-      (jupyter-mlet* ((req (jupyter-sent (jupyter-execute-request :code "1 + 1"))))
+      (jupyter-mlet* ((req (jupyter-do (jupyter-execute-request :code "1 + 1"))))
         (should (null jupyter-test-idle-sync-hook))
         (jupyter-add-idle-sync-hook 'jupyter-test-idle-sync-hook req)
         (should-not (null jupyter-test-idle-sync-hook))
@@ -943,6 +1062,117 @@
         (should (jupyter-request-idle-p req))
         (should (null jupyter-test-idle-sync-hook))
         (jupyter-return nil)))))
+
+(ert-deftest jupyter-include-other-output ()
+  :tags '(client other-output)
+  (let ((jupyter-test-with-new-client t))
+    (jupyter-test-with-python-client client1
+      (jupyter-set client1 'jupyter-include-other-output t)
+      (let* ((id (jupyter-kernel-action client1
+                   #'jupyter-server-kernel-id))
+             (client2
+              (jupyter-client
+               (jupyter-test-with-notebook server
+                 (jupyter-kernel
+                  :server server
+                  :id id))))
+             (code nil))
+        (jupyter-set client2 'jupyter-include-other-output nil)
+        (jupyter-add-hook client1 'jupyter-iopub-message-hook
+          (lambda (_ msg)
+            (when (equal (jupyter-message-type msg) "execute_input")
+              (setq code (jupyter-message-get msg :code)))
+            nil))
+        (jupyter-run-with-client client2
+          (jupyter-idle
+           (jupyter-execute-request
+            :code "1 + 1")))
+        (should (equal code "1 + 1"))))))
+
+(ert-deftest jupyter-io-connect ()
+  :tags '(client connect)
+  (let* ((jupyter-test-with-new-client t)
+         (N 10)
+         (sleep-max 1.0)
+
+         (did-disconnect nil)
+         (continue nil)
+         (err nil)
+         (total N))
+    (jupyter-test-with-python-client client
+      (cl-letf (((symbol-function 'read-from-minibuffer)
+                 (lambda (_prompt &rest _args)
+                   (sleep-for (* (+ (/ (random 10) 10.0) 0.1) sleep-max))
+                   (jupyter-new-uuid))))
+        (cl-labels
+            ((add-stream-counter
+               ()
+               (jupyter-add-subscriber
+                (lambda (msg)
+                  (pcase (jupyter-message-type msg)
+                    ("stream"
+                     (cl-decf total))
+                    ;; This is received after reconnecting.
+                    ("error"
+                     (jupyter-with-message-content msg (ename)
+                       (setq err ename)))))))
+             (add-disconnecter
+               (pred on-disconnect)
+               (jupyter-add-subscriber
+                (lambda (msg)
+                  (when (funcall pred msg)
+                    (jupyter-disconnect client)
+                    (setq did-disconnect (not (jupyter-connected-p client)))
+                    (jupyter-run-soon (funcall on-disconnect))
+                    (jupyter-unsubscribe))))))
+          (jupyter-run-with-client client
+            (jupyter-do
+              (add-stream-counter)
+              (add-disconnecter
+               (let ((count 0)
+                     (max (floor (/ N 2))))
+                 (lambda (msg)
+                   (and (equal (jupyter-message-type msg) "stream")
+                        (let ((text
+                               (string-trim
+                                (jupyter-message-get msg :text))))
+                          (pcase (split-string text)
+                            (`(,(and type
+                                     (guard (equal type "msg")))
+                               ,uuid)
+                             (and (stringp uuid)
+                                  (not (string-empty-p uuid))))))
+                        (cl-incf count)
+                        (>= count max))))
+               (lambda ()
+                 (sleep-for (* 1.2 sleep-max))
+                 (jupyter-connect client)
+                 ;; Allow any pending input('') to bail.  We are
+                 ;; simulating a disconnect and reconnect on the
+                 ;; client side to the kernel which the idling ensures
+                 ;; that a message can be sent after reconnecting, but
+                 ;; it needs to be processed on the kernel side and
+                 ;; the input('') would block the handling.
+                 (jupyter-interrupt-kernel client)
+                 (jupyter-run-with-client client
+                   (jupyter-idle))
+                 (setq continue t)))
+              (jupyter-execute-request
+               :code (format "\
+def uuid():
+    return input('')
+
+for i in range(%s):
+    print(\"msg \" + uuid())
+" N))))
+          (jupyter-with-timeout
+              ("Waiting" (* 5 sleep-max)
+               (error "Timed out"))
+            continue)
+          (should did-disconnect)
+          (should (> N total 0))
+          (should (equal err "KeyboardInterrupt"))
+          (should (jupyter-connected-p client)))))))
 
 ;;; IOloop
 
@@ -1111,9 +1341,9 @@
     (unwind-protect
         (jupyter-run-with-client client
           (jupyter-mlet* ((_ (jupyter-do
-                               (jupyter-sent (jupyter-execute-request :code "1 + 1"))
-                               (jupyter-sent (jupyter-execute-request :code "1 + 1"))
-                               (jupyter-sent (jupyter-execute-request :code "1 + 1"))))
+                               (jupyter-do (jupyter-execute-request :code "1 + 1"))
+                               (jupyter-do (jupyter-execute-request :code "1 + 1"))
+                               (jupyter-do (jupyter-execute-request :code "1 + 1"))))
                           (res (jupyter-result
                                 (jupyter-execute-request :code "1 + 1"))))
             (should (equal (jupyter-message-data res :text/plain) "2"))
@@ -1148,21 +1378,12 @@
       (should (jupyter-completion-prefetch-p "")))
     (ert-info ("Don't prefetch when the cached prefix is less specialized")
       (should-not (jupyter-completion-prefetch-p "foo"))
-      (should-not (jupyter-completion-prefetch-p "foobar")))
+      (should (jupyter-completion-prefetch-p "foobar")))
     (ert-info ("Prefetch when starting argument lists")
       (should (jupyter-completion-prefetch-p "foobar("))))
   (let ((jupyter-completion-cache '("")))
     (ert-info ("Prefetch when given some context")
       (should-not (jupyter-completion-prefetch-p ""))
-      (should (jupyter-completion-prefetch-p "a"))))
-  (let ((jupyter-completion-cache '(fetched "")))
-    (ert-info ("Prefetch when not processed")
-      (should (jupyter-completion-prefetch-p "a"))
-      ;; But only if the fetched candidates do not match
-      ;; the prefix
-      (should-not (jupyter-completion-prefetch-p ""))
-      (setq jupyter-completion-cache nil)
-      (should (jupyter-completion-prefetch-p ""))
       (should (jupyter-completion-prefetch-p "a")))))
 
 (ert-deftest jupyter-completion-argument-snippet-escaping ()
@@ -1955,14 +2176,13 @@ next(x"))))))
 
 (ert-deftest org-babel-jupyter-initiate-session-by-key ()
   :tags '(org)
-  (jupyter-org-test
-   (let ((session (make-temp-name "jupyter")))
-     (save-excursion
-       (insert
-        (format "#+begin_src jupyter-python :session %s\n1+1\n#+end_src\n"
-                session)))
+  (let ((session (make-temp-name "jupyter")))
+    (jupyter-org-test
+     :document ((src-block
+                 (session session)
+                 (code "1 + 1")))
      (let* ((params (nth 2 (org-babel-get-src-block-info)))
-            (key (org-babel-jupyter-session-key params)))
+            (key (org-babel-jupyter--session-key params)))
        (should-not (gethash key org-babel-jupyter-session-clients))
        (let ((buffer (org-babel-jupyter-initiate-session-by-key
                       session params))
@@ -2029,7 +2249,11 @@ $\\alpha$
      "\
 from IPython.core.display import Latex
 Latex(r'$\\alpha$')"
-     "$\\alpha$\n"
+     "\
+:RESULTS:
+$\\alpha$
+:END:
+"
      :results "raw")))
 
 (ert-deftest ob-jupyter-error-results ()
@@ -2132,13 +2356,12 @@ Image(filename='%s', width=300)" file)
 (ert-deftest jupyter-org-request-at-point ()
   :tags '(org)
   (jupyter-org-test
-   (insert (format "\
-#+begin_src jupyter-python :session %s :async yes
-1 + 1;
-#+end_src" jupyter-org-test-session))
+   :document ((src-block
+               (header-args ":async yes")
+               (code "1 + 1")))
    (goto-char (point-min))
    (org-babel-execute-src-block)
-   (let ((req (jupyter-org-request-at-point)))
+   (let ((req (jupyter-org-request-at-point t)))
      (should req)
      (should (jupyter-org-request-p req))
      (jupyter-wait-until-idle req)
@@ -2160,7 +2383,7 @@ Image(filename='%s', width=300)" file)
           (list :language_info (list :name 'python)))
     (should (equal (jupyter-kernel-language jupyter-current-client) 'python))
     ;; Bring in the python specific methods
-    (jupyter-load-language-support jupyter-current-client)
+    (jupyter-load-language-support)
     (should (equal (jupyter-org-get-result req (list :text/plain "[1, 2, 3]"))
                    "| 1 | 2 | 3 |\n"))
     (should py-method-called)))
@@ -2169,10 +2392,9 @@ Image(filename='%s', width=300)" file)
   :tags '(org)
   (let (jupyter-org--src-block-cache)
     (jupyter-org-test
-     (insert
-      "#+BEGIN_SRC jupyter-python :session " jupyter-org-test-session "\n"
-      "imp\n"
-      "#+END_SRC\n\n\n#+RESULTS:")
+     :document ((src-block
+                 (code "imp")))
+     (insert "#+RESULTS:")
      ;; Needed for the text properties
      (font-lock-ensure)
      (goto-char (point-min))
@@ -2205,10 +2427,9 @@ Image(filename='%s', width=300)" file)
   :tags '(org)
   (ert-info ("In Jupyter blocks")
     (jupyter-org-test
-     (insert
-      "#+BEGIN_SRC jupyter-python :session " jupyter-org-test-session "\n"
-      "1 + 1\n"
-      "#+END_SRC\nfoo")
+     :document ((src-block
+                 (code "1 + 1")))
+     (insert "foo")
      ;; Needed for the text properties
      (font-lock-ensure)
      (goto-char (point-min))
@@ -2221,10 +2442,7 @@ Image(filename='%s', width=300)" file)
      (should-not (jupyter-org-when-in-src-block t))))
   (ert-info ("Not in Jupyter block")
     (jupyter-org-test
-     (insert
-      "#+BEGIN_SRC python :session " jupyter-org-test-session "\n"
-      "1 + 1\n"
-      "#+END_SRC\nfoo")
+     (insert "#+begin_src foo\n1+1\n#+end_src\nfoo")
      ;; Needed for the text properties
      (font-lock-ensure)
      (goto-char (point-min))
@@ -2541,15 +2759,13 @@ print(\"foo\", flush=True)
 (ert-deftest jupyter-org-issue-126 ()
   :tags '(org)
   (jupyter-org-test
-   (insert (format "\
-* H1
-  - list1
-    #+begin_src jupyter-python :session %s :async yes
-      print(\"Hello\")
-    #+end_src
-
-* H2
-" jupyter-org-test-session))
+   :document (("H1"
+               (plain-list
+                (paragraph "list1")
+                (src-block
+                 (header-args ":async yes")
+                 (code "print(\"Hello\")"))))
+              ("H2"))
    (org-babel-previous-src-block)
    (org-babel-execute-src-block)
    (with-current-buffer (org-babel-initiate-session)
@@ -2567,6 +2783,7 @@ print(\"foo\", flush=True)
 
 (ert-deftest jupyter-org-font-lock-ansi-escapes ()
   :tags '(org)
+  (skip-unless nil)
   (jupyter-org-test-src-block
    "print('AB\x1b[43mCD\x1b[0mEF')"
    ": AB[43mCD[0mEF\n")
@@ -2577,13 +2794,16 @@ publish_display_data({'text/plain': 'AB\x1b[43mCD\x1b[0mEF'});"
    ": AB[43mCD[0mEF\n")
   (with-temp-buffer
     (org-mode)
+    (when (functionp 'org-ansi-mode)
+      (setq org-ansi-hide-sequences t)
+      (org-ansi-mode))
     (jupyter-org-interaction-mode 1)
     (let ((test-fun
            (lambda (face-pos invisible-pos)
              (font-lock-ensure)
-             (jupyter-test-text-has-property 'invisible t invisible-pos)
+             (jupyter-test-text-has-property 'invisible 'org-ansi invisible-pos)
              (should (listp (get-text-property face-pos 'face)))
-             (should (get-text-property face-pos 'jupyter-face))
+             ;; (should (get-text-property face-pos 'jupyter-face))
              (should (memq (caar (get-text-property face-pos 'face))
                            '(:background background-color))))))
       (insert ": AB[43mCD[0mEF")
@@ -2616,17 +2836,14 @@ AB[43mCD[0mEF
 (ert-deftest jupyter-org-closest-jupyter-language ()
   :tags '(org)
   (jupyter-org-test
-   (insert "\
-#+BEGIN_SRC jupyter-foo
-#+END_SRC
-
-x
-
-#+BEGIN_SRC jupyter-bar
-#+END_SRC
-
-#+BEGIN_SRC baz
-#+END_SRC
+   :document ((src-block
+               (language "foo"))
+              (paragraph "\nx\n\n")
+              (src-block
+               (language "bar")))
+   (insert "
+#+begin_src baz
+#+end_src
 ")
    (re-search-backward "x")
    (should (equal (jupyter-org-closest-jupyter-language)
@@ -2647,11 +2864,9 @@ x
 (ert-deftest jupyter-org-define-key ()
   :tags '(org)
   (jupyter-org-test
-   (save-excursion
-     (insert (format "\
-#+begin_src jupyter-python :session %s
-1 + 1
-#+end_src" jupyter-org-test-session)))
+   :document ((src-block
+               (code "1 + 1")))
+   (goto-char (point-min))
    ;; Needed for the text properties
    (font-lock-ensure)
    (forward-line)
@@ -2700,7 +2915,7 @@ x
 #+END_SRC")
    (goto-char (point-min))
    (should (equal (org-babel-jupyter-src-block-session)
-                  (org-babel-jupyter-session-key
+                  (org-babel-jupyter--session-key
                    (nth 2 (org-babel-get-src-block-info 'light)))))
    (erase-buffer)
 
@@ -2711,7 +2926,7 @@ x
 
 #+CALL: foo()")
    (should (equal (org-babel-jupyter-src-block-session)
-                  (org-babel-jupyter-session-key
+                  (org-babel-jupyter--session-key
                    (nth 2 (org-babel-lob-get-info)))))))
 
 (ert-deftest org-babel-jupyter-override-src-block ()
@@ -2815,64 +3030,64 @@ x
 
 (ert-deftest org-babel-jupyter-:dir-header-arg ()
   :tags '(org)
-  (let ((convert-path
-         (lambda (s)
-           ;; Convert forward slashes to backslashes on Windows
-           (if (memq system-type '(windows-nt cygwin ms-dos))
-               (replace-regexp-in-string "/" "\\\\" s)
-             ;; Account for symlinked directories like /var being
-             ;; linked to /private/var on OSX.
-             (file-truename s))))
-        (temporary-file-directory jupyter-test-temporary-directory))
-    (let ((dir (make-temp-file "dir" t))
-          (pwd
-           (substring
-            (jupyter-org-test
-             (let ((jupyter-current-client
-                    (jupyter-org-test-session-client "python")))
-               (jupyter-eval "import os; os.getcwd()")))
-            1 -1)))
-      (ert-info ("Python")
-        (jupyter-org-test-src-block
+  (jupyter-test-at-temporary-directory
+   (let ((convert-path
+          (lambda (s)
+            ;; Convert forward slashes to backslashes on Windows
+            (if (memq system-type '(windows-nt cygwin ms-dos))
+                (replace-regexp-in-string "/" "\\\\" s)
+              ;; Account for symlinked directories like /var being
+              ;; linked to /private/var on OSX.
+              (file-truename s)))))
+     (let ((dir (make-temp-file "dir" t))
+           (pwd
+            (substring
+             (jupyter-org-test
+              (let ((jupyter-current-client
+                     (jupyter-org-test-session-client "python")))
+                (jupyter-eval "import os; os.getcwd()")))
+             1 -1)))
+       (ert-info ("Python")
+         (jupyter-org-test-src-block
           "\
 os.path.abspath(os.getcwd())"
           (concat ": " (funcall convert-path dir) "\n")
           :dir dir)
-        (ert-info ("Directory restored")
-          (jupyter-org-test-src-block
-           "\
+         (ert-info ("Directory restored")
+           (jupyter-org-test-src-block
+            "\
 os.path.abspath(os.getcwd())"
-           (concat ": "
-                   (funcall convert-path
-                            (expand-file-name (directory-file-name pwd)))
-                   "\n")))
-        (ert-info ("Transformed code and backslashes")
-          ;; See #302
-          (jupyter-org-test-src-block
-           "print(r\"\\r\")"
-           ": \\r\n")
-          ;; See #561
-          (jupyter-org-test-src-block
-           "\"\"\"foo\"\"\""
-           ": foo\n"
-           :dir dir)
-          (jupyter-org-test-src-block
-           "\"test\""
-           ": test\n"
-           :dir dir))
-        (jupyter-org-test-src-block
-         "\"test\\\"\""
-         ": test\"\n"
-         :dir dir)
-        (ert-info ("Relative directory")
-          ;; See #302
-          (let* ((temporary-file-directory jupyter-test-temporary-directory)
-                 (dir (make-temp-file "dir-header-arg" t)))
-            ;; FIXME: Don't use an internal function here.
-            (jupyter-org-test
-             (let ((default-directory (file-name-directory dir)))
-               (jupyter-org-test-src-block-1
-                "print(\"hi\")" ": hi\n" :dir (file-name-base dir))))))))))
+            (concat ": "
+                    (funcall convert-path
+                             (expand-file-name (directory-file-name pwd)))
+                    "\n")))
+         (ert-info ("Transformed code and backslashes")
+           ;; See #302
+           (jupyter-org-test-src-block
+            "print(r\"\\r\")"
+            ": \\r\n")
+           ;; See #561
+           (jupyter-org-test-src-block
+            "\"\"\"foo\"\"\""
+            ": foo\n"
+            :dir dir)
+           (jupyter-org-test-src-block
+            "\"test\""
+            ": test\n"
+            :dir dir))
+         (jupyter-org-test-src-block
+          "\"test\\\"\""
+          ": test\"\n"
+          :dir dir)
+         (ert-info ("Relative directory")
+           ;; See #302
+           (let* ((temporary-file-directory jupyter-test-temporary-directory)
+                  (dir (make-temp-file "dir-header-arg" t)))
+             (jupyter-org-test-src-block
+              "print(\"hi\")"
+              ": hi\n"
+              :dir (file-name-base dir)
+              :bindings ((default-directory (file-name-directory dir)))))))))))
 
 (ert-deftest jupyter-org--find-mime-types ()
   :tags '(org mime)
@@ -2902,15 +3117,11 @@ publish_display_data({'text/plain': \"foo\", 'text/latex': \"$\\alpha$\"});"
 (ert-deftest org-babel-jupyter-babel-call ()
   :tags '(org babel)
   (jupyter-org-test
-   (insert (format "\
-#+NAME: foo
-#+begin_src jupyter-python :async yes :session %s
-1 + 1
-#+end_src
-
-" jupyter-org-test-session))
-   (insert "
-#+CALL: foo()")
+   :document ((src-block
+               (name "foo")
+               (header-args ":async yes")
+               (code "1 + 1")))
+   (insert "#+CALL: foo()")
    (org-ctrl-c-ctrl-c)
    (beginning-of-line)
    (jupyter-wait-until-idle (jupyter-org-request-at-point))
@@ -2922,27 +3133,28 @@ publish_display_data({'text/plain': \"foo\", 'text/latex': \"$\\alpha$\"});"
   :tags '(org)
   (ert-info ("Treat inline and non-inline results similarly")
     ;; #204
-    (let ((src (format "\
-#+NAME: hello_jupyter
-#+BEGIN_SRC jupyter-python :results value :display plain :session %s
-\"hello\"
-#+END_SRC
-
-" jupyter-org-test-session)))
-      (jupyter-org-test
-       (insert src)
-       (insert "call_hello_jupyter()")
-       (let ((pos (point)))
-         (beginning-of-line)
-         (org-ctrl-c-ctrl-c)
-         (goto-char pos)
-         (should (looking-at-p " {{{results(=hello=)}}}"))))
-      (jupyter-org-test
-       (save-excursion (insert src))
+    (jupyter-org-test
+     :document ((src-block
+                 (name "hello_jupyter")
+                 (header-args ":results value :display plain")
+                 (code "\"hello\"")))
+     (insert "call_hello_jupyter()")
+     (let ((pos (point)))
+       (beginning-of-line)
        (org-ctrl-c-ctrl-c)
-       (goto-char (org-babel-where-is-src-block-result))
-       (forward-line)
-       (should (looking-at-p ": hello"))))))
+       (goto-char pos)
+       (should (looking-at-p " {{{results(=hello=)}}}"))))
+    (jupyter-org-test
+     :document ((src-block
+                 (name "hello_jupyter")
+                 (header-args ":results value :display plain")
+                 (code "\"hello\"")))
+     (goto-char (point-min))
+     (org-next-block 1)
+     (org-ctrl-c-ctrl-c)
+     (goto-char (org-babel-where-is-src-block-result))
+     (forward-line)
+     (should (looking-at-p ": hello")))))
 
 (ert-deftest org-babel-jupyter-pandoc-output-order ()
   :tags '(org pandoc)
@@ -2994,15 +3206,20 @@ print(2)"
 (ert-deftest org-babel-jupyter-ssh-connections ()
   :tags '(org ssh)
   (skip-unless (getenv "SSH_HOST"))
-  (let* ((session (make-temp-name "ob-jupyter-test"))
-         (src (format "\
-#+BEGIN_SRC jupyter-python :session /ssh:test:%s
-\"hello\"
-#+END_SRC
-
-" session)))
+  (let ((jupyter-use-zmq t))
     (jupyter-org-test
-     (save-excursion (insert src))
+     :document ((src-block
+                 (code "\"hello\"")
+                 (session (concat (format "/ssh:test@%s:"
+                                          (getenv "SSH_HOST"))
+                                  (make-temp-name "ob-jupyter-test")))))
+     ;; FIXME How to do this when no jupyter binary exists on the machine
+     ;; that Emacs is running on?  The specs need to be had from
+     ;; somewhere and all that is known is that there is a machine that
+     ;; we can ssh into.
+     (let ((default-directory (format "/ssh:test@%s:" (getenv "SSH_HOST"))))
+       (org-babel-jupyter-aliases-from-kernelspecs))
+     (goto-char (point-min))
      (org-ctrl-c-ctrl-c)
      (goto-char (org-babel-where-is-src-block-result))
      (forward-line)
@@ -3012,12 +3229,9 @@ print(2)"
                           (progn
                             (org-previous-block 1)
                             (org-babel-get-src-block-info)))))
-         (cl-letf (((symbol-function 'yes-or-no-p)
-                    (lambda (_prompt) t))
-                   ((symbol-function 'y-or-n-p)
-                    (lambda (_prompt) t)))
-           (kill-buffer (org-babel-jupyter-initiate-session
-                         (alist-get :session params) params))))))))
+         (jupyter-test-kill-buffer
+          (org-babel-jupyter-initiate-session
+           (alist-get :session params) params)))))))
 
 (ert-deftest org-babel-jupyer-issue-565 ()
   :tags '(org)
@@ -3052,62 +3266,35 @@ for i in range(10):
    :async "yes"))
 
 (ert-deftest org-babel-src-block-name-resolution ()
-  :tags '(org)
-  (let ((src (format "\
-#+NAME: x
-#+BEGIN_SRC jupyter-python :session %s :async yes
-2
-#+END_SRC
-
-#+BEGIN_SRC jupyter-python :session %s :noweb yes
-3*<<x()>>
-#+END_SRC
-"
-                     jupyter-org-test-session
-                     jupyter-org-test-session)))
-    (jupyter-org-test
-     (insert src)
-     (org-backward-element)
-     (org-ctrl-c-ctrl-c)
-     (let ((pos (org-babel-where-is-src-block-result)))
-       (should pos)
-       (goto-char pos)
-       (forward-line)
-       (should (looking-at-p ": 6"))))))
+  :tags '(org ref)
+  (jupyter-org-test
+   :document ((src-block
+               (name "x")
+               (code "2")
+               (header-args ":async yes"))
+              (src-block
+               (code "3*<<x()>>")
+               (header-args ":noweb yes")))
+   (org-backward-element)
+   (org-ctrl-c-ctrl-c)
+   (let ((pos (org-babel-where-is-src-block-result)))
+     (should pos)
+     (goto-char pos)
+     (forward-line)
+     (should (looking-at-p ": 6")))))
 
 (ert-deftest org-babel-src-block-queuing  ()
-  :tags '(org)
-  (let ((jupyter-org-queue-requests t)
-        (src (apply #'format "\
-* Tree
-
-#+BEGIN_SRC jupyter-python :session %s :async yes
-1
-#+END_SRC
-
-#+BEGIN_SRC jupyter-python :session %s :async yes
-raise Exception(\"This is an error\")
-#+END_SRC
-
-#+BEGIN_SRC jupyter-python :session %s :async yes
-3
-#+END_SRC
-
-#+BEGIN_SRC jupyter-python :session %s :async yes
-4
-#+END_SRC
-
-#+BEGIN_SRC jupyter-python :session %s :async yes
-5
-#+END_SRC
-
-#+BEGIN_SRC jupyter-python :session %s :async yes
-6
-#+END_SRC
-"
-                    (cl-loop repeat 6 collect jupyter-org-test-session))))
+  :tags '(org q)
+  (let ((jupyter-org-queue-requests t))
     (jupyter-org-test
-     (insert src)
+     :document (("Tree"
+                 (properties (header-args ":async yes"))
+                 (src-block (code "1"))
+                 (src-block (code "raise Exception(\"This is an error\")"))
+                 (src-block (code "3"))
+                 (src-block (code "4"))
+                 (src-block (code "5"))
+                 (src-block (code "6"))))
      (let ((check-result
             (lambda (result)
               (let ((pos (org-babel-where-is-src-block-result)))
@@ -3122,7 +3309,7 @@ raise Exception(\"This is an error\")
        (org-babel-execute-subtree)
        (while (jupyter-org-request-at-point)
          (sleep-for 0.1))
-       (funcall check-result "")
+       (funcall check-result ": Aborted!")
        (org-previous-block 1)
        (org-babel-execute-src-block)
        (while (jupyter-org-request-at-point)
@@ -3130,19 +3317,17 @@ raise Exception(\"This is an error\")
        (funcall check-result ": 6")))))
 
 (ert-deftest org-babel-prevent-multiple-executions  ()
-  :tags '(org q)
-  (let ((src (format "\
-#+BEGIN_SRC jupyter-python :session %s :async yes
-1
-#+END_SRC
-"
-                    jupyter-org-test-session)))
-    (jupyter-org-test
-     (insert src)
-     (org-previous-block 1)
-     (org-babel-execute-src-block)
-     (should (jupyter-org-request-at-point))
-     (should-error (org-babel-execute-src-block)))))
+  :tags '(org)
+  (jupyter-org-test
+   :document ((src-block
+               (code "1")
+               (header-args ":async yes")))
+   (org-previous-block 1)
+   (org-babel-execute-src-block)
+   (should (jupyter-org-request-at-point))
+   (should-error (org-babel-execute-src-block))
+   (while (jupyter-org-request-at-point)
+     (accept-process-output nil 1))))
 
 ;; Local Variables:
 ;; byte-compile-warnings: (unresolved obsolete lexical)

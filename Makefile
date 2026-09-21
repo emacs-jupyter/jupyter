@@ -34,17 +34,18 @@ test:
 
 .PHONY: clean
 clean:
-	make -C js clean
+	@echo "Removing .elc files"
 	@rm $(ELCFILES) 2>/dev/null || true
 
 .PHONY: clean-eldev
 clean-eldev:
+	@echo "Removing .eldev directory"
 	@rm -rf .eldev/ 2>/dev/null || true
-
-.PHONY: widgets
-widgets:
-	make -C js
 
 .PHONY: compile
 compile:
 	$(ELDEV) compile
+
+.PHONY: doc
+doc:
+	$(ELDEV) emacs --batch --eval "(progn (find-file \"doc/jupyter.org\") (org-texinfo-export-to-info))"

@@ -28,6 +28,7 @@
 
 (require 'jupyter-kernel)
 (require 'jupyter-monads)
+(eval-when-compile (require 'jupyter-messages))
 
 (defgroup jupyter-kernel-process nil
   "Jupyter kernels as Emacs processes"
@@ -40,6 +41,8 @@
 (declare-function jupyter-channel-ioloop-set-session "jupyter-channel-ioloop")
 (declare-function ansi-color-apply "ansi-color")
 (declare-function jupyter-hb-pause "jupyter-zmq-channel")
+(declare-function jupyter-message-type "jupyter-messages")
+(declare-function jupyter-message-content "jupyter-messages")
 
 (defvar jupyter--kernel-processes '()
   "The list of kernel processes launched.
@@ -127,6 +130,37 @@ Call the next method if ARGS does not contain a :spec or
 ;;; Client connection
 
 (cl-defmethod jupyter-zmq-io ((kernel jupyter-kernel-process))
+  "Return a list representing an IO connection to KERNEL.
+The list is composed of two elements (IO-PUB ACTION-SUB), IO-PUB
+is a publisher used to send/receive messages to/from KERNEL and
+ACTION-SUB is a subscriber of kernel actions to perform on
+KERNEL.
+
+To send a message to KERNEL, publish a list of the form
+
+    (list \\='send CHANNEL MSG-TYPE CONTENT MSG-ID)
+
+to IO-PUB, e.g.
+
+    (jupyter-run-with-io IO-PUB
+      (jupyter-publish (list \\='send CHANNEL MSG-TYPE CONTENT MSG-ID)))
+
+To receive messages from KERNEL, subscribe to IO-PUB e.g.
+
+    (jupyter-run-with-io IO-PUB
+      (jupyter-subscribe
+        (jupyter-subscriber
+          (lambda (msg)
+             ...))))
+
+The value \\='interrupt or \\='shutdown or \\='restart can be published
+to ACTION-SUB to interrupt or shutdown or restart KERNEL.  The
+value (list \\='action FN) where FN is a two argument function can also
+be published, in this case FN will be evaluated on KERNEL and a flag
+variable determining whether or not messages are able to be sent and
+received.  Finally, you can publish \\='connect or \\='disconnect to
+connect or disconnect the ZMQ sockets used for communication with
+KERNEL."
   (unless (jupyter-kernel-process--connect-only-p kernel)
     (jupyter-launch kernel))
   (let ((channels '(:shell :iopub :stdin :control))
@@ -219,28 +253,22 @@ Call the next method if ARGS does not contain a :spec or
               ;; displayed to know where to look.  This requires a
               ;; `jupyter-publisher' struct type.
               (jupyter-publisher
-                (lambda (content)
-                  (if shutdown
+                (lambda (event)
+                  (if (and shutdown (not (eq event 'stop)))
                       (error "Kernel I/O no longer available: %s"
                              (cl-prin1-to-string session))
-                    (pcase (car content)
-                      ;; ('message channel idents . msg)
-                      ('message
-                       (pop content)
-                       ;; Set the channel key of the message property list
-                       (plist-put
-                        (cddr content) :channel
-                        (substring (symbol-name (car content)) 1))
-                       (jupyter-content (cddr content)))
-                      ('send
-                       ;; Set the channel argument to a keyword so its
-                       ;; recognized by the ioloop
-                       (setq content
-                             (cons (car content)
-                                   (cons (intern (concat ":" (cadr content)))
-                                         (cddr content))))
-                       (apply #'jupyter-send (start) content))
-                      ('hb
+                    (pcase event
+                      (`(message ,channel ,_idents . ,msg)
+                       (plist-put msg :channel (substring (symbol-name channel) 1))
+                       (jupyter-content msg))
+                      (`(send ,channel . ,msg)
+                       (apply #'jupyter-send (start)
+                              (cons 'send (cons (intern (concat ":" channel)) msg))))
+                      ('start
+                       (start))
+                      ('stop
+                       (stop))
+                      (`(hb ,fun)
                        (unless hb
                          (setq hb
                                (let ((endpoints (set-session)))
@@ -248,30 +276,50 @@ Call the next method if ARGS does not contain a :spec or
                                   'jupyter-hb-channel
                                   :session session
                                   :endpoint (plist-get endpoints :hb)))))
-                       (jupyter-run-with-io (cadr content)
-                         (jupyter-publish hb)))
-                      (_ (error "Unhandled I/O: %s" content)))))))
+                       (funcall fun hb))
+                      (_ (error "Unhandled I/O: %s" event)))))))
         (list kernel-io
-              (jupyter-subscriber
-                (lambda (action)
-                  (pcase action
-                    ('interrupt
-                     (jupyter-interrupt kernel))
-                    ('shutdown
-                     (jupyter-shutdown kernel)
-                     (stop)
-                     (setq shutdown t))
-                    ((and op (or 'connect 'disconnect))
-                     (if (eq op 'connect) (stop)
-                       (start)))
-                    ('restart
-                     (setq shutdown nil)
-                     (jupyter-restart kernel)
-                     (stop)
-                     (set-ch-group)
-                     (start))
-                    (`(action ,fn)
-                     (funcall fn kernel))))))))))
+              (letrec ((connected t)
+                       (post-shutdown
+                        (lambda (restart)
+                          (if (eq restart t)
+                              (setq shutdown nil
+                                    connected t)
+                            (jupyter-run-with-io kernel-io
+                              (jupyter-publish 'stop))
+                            (setq shutdown t
+                                  connected nil)))))
+                (jupyter-run-with-io kernel-io
+                  (jupyter-subscribe
+                    (jupyter-subscriber
+                      (lambda (msg)
+                        (when (equal (jupyter-message-type msg) "shutdown_reply")
+                          (jupyter-with-message-content msg (restart)
+                            (funcall post-shutdown restart)))))))
+                (jupyter-subscriber
+                  (lambda (action)
+                    (pcase action
+                      ('interrupt
+                       (jupyter-interrupt kernel))
+                      ('shutdown
+                       (jupyter-shutdown kernel)
+                       (funcall post-shutdown nil))
+                      ((and op (or 'connect 'disconnect))
+                       (setq connected t)
+                       (if (eq op 'connect)
+                           (jupyter-run-with-io kernel-io
+                             (jupyter-publish 'start))
+                         (setq connected nil)
+                         (jupyter-run-with-io kernel-io
+                           (jupyter-publish 'stop))))
+                      ('restart
+                       (jupyter-restart kernel)
+                       (funcall post-shutdown t)
+                       (stop)
+                       (set-ch-group)
+                       (start))
+                      (`(action ,fn)
+                       (funcall fn kernel connected)))))))))))
 
 (cl-defmethod jupyter-io ((kernel jupyter-kernel-process))
   "Return an I/O connection to KERNEL's session."
@@ -389,7 +437,7 @@ See also https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-spe
                 ('signal
                  (let ((kernel (process-get process :kernel)))
                    (when kernel
-                     (warn "Kernel died unexpectedly")
+                     (display-warning 'jupyter "Kernel died unexpectedly")
                      (jupyter-shutdown kernel)))))))))
   (cl-call-next-method))
 

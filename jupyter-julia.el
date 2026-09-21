@@ -71,14 +71,14 @@
 (cl-defmethod jupyter-completion-post-completion (candidate
                                                   &context (jupyter-lang julia))
   "Insert the unicode representation of a LaTeX completion."
-  (if (eq (aref candidate 0) ?\\)
-      (when (get-text-property 0 'annot candidate)
-        (search-backward candidate)
-        (delete-region (point) (match-end 0))
-        ;; Alternatively use `julia-latexsub-or-indent', but I have found
-        ;; problems with that.
-        (insert (string-trim (get-text-property 0 'annot candidate))))
-    (cl-call-next-method)))
+  (if (not (and (eq (aref candidate 0) ?\\)
+                (get-text-property 0 'annot candidate)))
+      (cl-call-next-method)
+    (search-backward candidate)
+    (delete-region (point) (match-end 0))
+    ;; Alternatively use `julia-latexsub-or-indent', but I have found
+    ;; problems with that.
+    (insert (string-trim (get-text-property 0 'annot candidate)))))
 
 ;;; `markdown-mode'
 
@@ -121,8 +121,16 @@ Make the character after `point' invisible."
   "Return the Pkg prompt.
 If the Pkg prompt can't be retrieved from the kernel, return
 nil."
-  (let ((prompt-code "import Pkg; Pkg.REPLMode.promptf()"))
-    (jupyter-run-with-client jupyter-current-client
+  (let ((prompt-code "\
+import REPL
+if isdefined(REPL, :Pkg_promptf)
+    REPL.Pkg_promptf()
+else
+    import Pkg
+    Pkg.REPLMode.promptf()
+end
+"))
+    (jupyter-run (:client current)
       (jupyter-mlet* ((msg
                        (jupyter-reply
                         (jupyter-execute-request
@@ -189,7 +197,7 @@ nil."
 
 (defun jupyter-julia--setup-hooks (client)
   (jupyter-run-with-client client
-     (jupyter-sent
+    (jupyter-do
       (jupyter-execute-request
        :handlers nil
        :store-history nil

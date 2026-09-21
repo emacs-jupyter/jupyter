@@ -40,6 +40,7 @@
 
 (declare-function org-in-src-block-p "org" (&optional inside))
 (declare-function org-element-at-point "org-element")
+(declare-function org-element-post-affiliated "org-element")
 (declare-function org-element-property "org-element" (property element))
 (declare-function org-element-context "org-element" (&optional element))
 (declare-function org-babel-execute-src-block "ob-core" (&optional arg info params executor-type))
@@ -102,7 +103,7 @@ table for the source block at `point'.")
       (advice-member-p
        'ob-jupyter (intern (concat "org-babel-execute:" lang)))))
 
-(defun org-babel-jupyter-session-key (params &optional noerror)
+(defun org-babel-jupyter--session-key (params &optional noerror)
   "Return a string that is the concatenation of the :session and :kernel PARAMS.
 PARAMS is the arguments alist as returned by
 `org-babel-get-src-block-info'.  The returned string can then be
@@ -117,7 +118,7 @@ to identify a session return nil, otherwise raise an error."
              (not (equal session "none")))
         (concat session "-" kernel)
       (unless noerror
-        (error "Need a valid session and a kernel to form a key")))))
+        (error "A key needs a valid :session and :kernel argument")))))
 
 (defun org-babel-jupyter-src-block-session ()
   "Return the session key for the current Jupyter source block.
@@ -129,7 +130,7 @@ if there is no source block at point."
     (when info
       (cl-destructuring-bind (lang _ params . rest) info
         (when (org-babel-jupyter-language-p lang)
-          (org-babel-jupyter-session-key params))))))
+          (org-babel-jupyter--session-key params))))))
 
 ;;; `ob' integration
 
@@ -395,7 +396,7 @@ If NOERROR is nil, raise an error if PARAMS doesn't contain valid
 information to identify a session, e.g. the `:session' key is
 \"none\".  Otherwise, for a non-nil NOERROR and when PARAMS
 doesn't contain valid information, return nil."
-  (when-let* ((key (org-babel-jupyter-session-key params noerror)))
+  (when-let* ((key (org-babel-jupyter--session-key params noerror)))
     (gethash key org-babel-jupyter-session-clients)))
 
 (defun org-babel-jupyter-initiate-session-by-key (session params)
@@ -415,7 +416,7 @@ kernel starts on the remote host /ssh:ec2: with a session name of
 jl.  The remote host must have jupyter installed since the
 \"jupyter kernel\" command will be used to start the kernel on
 the host."
-  (let* ((key (org-babel-jupyter-session-key params))
+  (let* ((key (org-babel-jupyter--session-key params))
          (client (gethash key org-babel-jupyter-session-clients)))
     (unless client
       (setq client (org-babel-jupyter-initiate-client
@@ -499,39 +500,32 @@ These parameters are handled internally."
 (defconst org-babel-jupyter-async-inline-results-pending-indicator "???"
   "A string to disambiguate pending inline results from empty results.")
 
-(defun org-babel-jupyter--execute (code async-p)
-  (jupyter-run-with-client jupyter-current-client
-    (let ((dreq (jupyter-execute-request :code code)))
-      (jupyter-mlet* ((req (jupyter-org-maybe-queued dreq)))
-        (jupyter-return
-          `(,req
-            ,(cond
-              (async-p
-               (when (bound-and-true-p org-export-current-backend)
-                 (jupyter-add-idle-sync-hook
-                  'org-babel-after-execute-hook req 'append))
-               (if (jupyter-org-request-inline-block-p req)
-                   org-babel-jupyter-async-inline-results-pending-indicator
-                 ;; This returns the message ID of REQ as an indicator
-                 ;; for the pending results.
-                 (jupyter-org-pending-async-results req)))
-              (t
-               (jupyter-idle-sync req)
-               (if (jupyter-org-request-inline-block-p req)
-                   ;; When evaluating a source block synchronously, only the
-                   ;; :execute-result will be in `jupyter-org-request-results' since
-                   ;; stream results and any displayed data will be placed in a separate
-                   ;; buffer.
-                   (let ((el (jupyter-org-get-result
-                              req (car (jupyter-org-request-results req)))))
-                     (if (stringp el) el
-                       (org-element-property :value el)))
-                 ;; This returns an Org formatted string of the collected
-                 ;; results.
-                 (jupyter-org-sync-results req))))))))))
+(defconst org-babel-jupyter-pending-request-indicator "Pending...")
 
 (defvar org-babel-jupyter-current-src-block-params nil
   "The block parameters of the most recently executed Jupyter source block.")
+
+(defun org-babel-jupyter--client-and-code (body params)
+  (let* ((session (alist-get :session params))
+         (buf (org-babel-jupyter-initiate-session session params))
+         (client (buffer-local-value 'jupyter-current-client buf))
+         (lang (jupyter-kernel-language client))
+         (vars (org-babel-variable-assignments:jupyter params lang)))
+    (when-let* ((dir (alist-get :dir params)))
+      ;; `default-directory' is already set according to :dir when
+      ;; executing a source block.  Set :dir to the absolute path so
+      ;; that `org-babel-expand-body:jupyter' does not try to
+      ;; re-expand the path. See #302.
+      (setf (alist-get :dir params) default-directory))
+    (list client
+          (let ((jupyter-current-client client))
+            ;; Let bind `jupyter-current-client' to allow method
+            ;; specializers like jupyter-lang to work.
+            (org-babel-expand-body:jupyter body params vars lang)))))
+
+(defun org-babel-jupyter--insert-result (result)
+  (cl-letf (((symbol-function #'message) #'ignore))
+    (org-babel-insert-result result '("replace"))))
 
 (defun org-babel-execute:jupyter (body params)
   "Execute BODY according to PARAMS.
@@ -542,27 +536,24 @@ the PARAMS alist."
       (goto-char org-babel-current-src-block-location)
       (when (jupyter-org-request-at-point)
         (user-error "Source block currently being executed"))))
-  (let* ((result-params (assq :result-params params))
-         (async-p (jupyter-org-execute-async-p params)))
-    (when (member "replace" result-params)
-      (org-babel-jupyter-cleanup-file-links))
-    (let* ((org-babel-jupyter-current-src-block-params params)
-           (session (alist-get :session params))
-           (buf (org-babel-jupyter-initiate-session session params))
-           (jupyter-current-client (buffer-local-value 'jupyter-current-client buf))
-           (lang (jupyter-kernel-language jupyter-current-client))
-           (vars (org-babel-variable-assignments:jupyter params lang))
-           (code (progn
-                   (when-let* ((dir (alist-get :dir params)))
-                     ;; `default-directory' is already set according
-                     ;; to :dir when executing a source block.  Set
-                     ;; :dir to the absolute path so that
-                     ;; `org-babel-expand-body:jupyter' does not try
-                     ;; to re-expand the path. See #302.
-                     (setf (alist-get :dir params) default-directory))
-                   (org-babel-expand-body:jupyter body params vars lang))))
-      (pcase-let ((`(,req ,maybe-result)
-                   (org-babel-jupyter--execute code async-p)))
+  (let* ((async-p (jupyter-org-execute-async-p params))
+         (inline-p (jupyter-org-inline-block-p
+                    (org-with-point-at
+                        ;; FIXME What about when source blocks all
+                        ;; called nestedly?  How will we determine
+                        ;; what to do?
+                        org-babel-current-src-block-location
+                      (org-element-context)))))
+    (pcase-let* ((`(,jupyter-current-client ,code)
+                  (org-babel-jupyter--client-and-code body params))
+                 (org-babel-jupyter-current-src-block-params
+                  (copy-sequence params))
+                 (aborted nil)
+                 (idle-p nil)
+                 (result nil))
+      (let ((result-params (assq :result-params params)))
+        (when (member "replace" result-params)
+          (org-babel-jupyter-cleanup-file-links))
         ;; KLUDGE: Remove the file result-parameter so that
         ;; `org-babel-insert-result' doesn't attempt to handle it while
         ;; async results are pending.  Do the same in the synchronous
@@ -574,19 +565,63 @@ the PARAMS alist."
         ;; Do this after sending the request since
         ;; `jupyter-generate-request' still needs access to the :file
         ;; parameter.
+        ;; FIXME This condition is no longer valid, as the request is not
+        ;; generated at all within org-babel-execute:jupyter, but happens
+        ;; some time later.  It seems to be still valid to do this, but it
+        ;; needs to now, I think, be re-added to the parameters just
+        ;; before the request actually gets generated.
         (when (and (member "file" result-params)
                    (or async-p
                        (not (or (member "link" result-params)
                                 (member "graphics" result-params)))))
-          (org-babel-jupyter--remove-file-param params))
-        (prog1 maybe-result
-          ;; KLUDGE: Add the "raw" result parameter for non-inline
-          ;; synchronous results because an Org formatted string is
-          ;; already returned in that case and
-          ;; `org-babel-insert-result' should not process it.
-          (unless (or async-p
-                      (jupyter-org-request-inline-block-p req))
-            (nconc (alist-get :result-params params) (list "raw"))))))))
+          (org-babel-jupyter--remove-file-param params)))
+      (jupyter-run-with-client jupyter-current-client
+        (jupyter-org-maybe-queued
+         (jupyter-execute-request :code code)
+         (let ((marker (copy-marker org-babel-current-src-block-location)))
+           (jupyter-subscriber
+             (lambda (event)
+               (pcase event
+                 ('busy
+                  (jupyter-org-with-point-at
+                      (jupyter-current-request)
+                    (org-babel-jupyter--insert-result
+                     (jupyter-request-id (jupyter-current-request)))))
+                 ('idle
+                  (setq idle-p t)
+                  (and (not async-p)
+                       (setq result
+                             (jupyter-org-sync-results
+                              (jupyter-current-request)))))
+                 ('abort
+                  (setq aborted t)
+                  (unwind-protect
+                      (org-with-point-at marker
+                        (if async-p
+                            (org-babel-jupyter--insert-result "Aborted!")
+                          (setq result "Aborted!")))
+                    (move-marker marker nil)))))))))
+      (when (and async-p
+                 (bound-and-true-p org-export-current-backend))
+        (letrec ((sync
+                  (lambda ()
+                    (remove-hook 'org-babel-after-execute-hook sync)
+                    (while (not (or aborted idle-p))
+                      (accept-process-output nil 1)))))
+          (add-hook 'org-babel-after-execute-hook sync 'append)))
+      (if async-p
+          (if inline-p
+              org-babel-jupyter-async-inline-results-pending-indicator
+            org-babel-jupyter-pending-request-indicator)
+        (while (not (or aborted idle-p))
+          (accept-process-output nil 1))
+        ;; KLUDGE: Add the "raw" result parameter for non-inline
+        ;; synchronous results because an Org formatted string is
+        ;; already returned in that case and `org-babel-insert-result'
+        ;; should not process it.
+        (unless inline-p
+          (nconc (alist-get :result-params params) (list "raw")))
+        result))))
 
 ;;; Overriding source block languages, language aliases
 
@@ -757,26 +792,26 @@ Similarly, associate the same value for LANG in
 
 (defun org-babel-jupyter-aliases-from-kernelspecs (&optional refresh specs)
   "Make language aliases based on the available kernelspecs.
-For all kernel SPECS, make a language alias for the kernel
-language if one does not already exist.  The alias is created with
+For all kernel SPECS, make a language alias for the kernel language if
+one does not already exist.  The alias is created with
 `org-babel-jupyter-make-language-alias'.
 
 SPECS defaults to those associated with the `default-directory'.
 Optional argument REFRESH has the same meaning as in
 `jupyter-kernelspecs'.
 
-Note, spaces in the kernel language name are converted into
-dashes in the language alias, e.g.
+Note, spaces in the kernel language name are converted into dashes in
+the language alias, e.g.
 
     Wolfram Language -> jupyter-Wolfram-Language
 
-For convenience, after creating a language alias for a kernel
-language LANG, set the :kernel default header argument if not
-present in `org-babel-default-header-args:jupyter-LANG', see
-`org-babel-header-args:jupyter'.  This allows users to set that
-variable in their configurations without having to also set the
-:kernel header argument since it is common for only one per
-language to exist on someone's system."
+For convenience, after creating a language alias for a kernel language
+LANG, set the :kernel default header argument if not present in
+`org-babel-default-header-args:jupyter-LANG', see
+`org-babel-header-args:jupyter'.  This allows users to set that variable
+in their configurations without having to also set the :kernel header
+argument since it is common for only one per language to exist on a
+system."
   (cl-loop
    for spec in (or specs
                    (with-demoted-errors "Error retrieving kernelspecs: %S"

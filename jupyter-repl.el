@@ -1,4 +1,4 @@
-;;; jupyter-repl-client.el --- A Jupyter REPL client -*- lexical-binding: t -*-
+;;; jupyter-repl.el --- A Jupyter REPL client -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2018-2024 Nathaniel Nicandro
 
@@ -60,7 +60,6 @@
   (require 'jupyter-base))
 (require 'jupyter-mime)
 (require 'jupyter-kernelspec)
-(require 'jupyter-widget-client)
 (require 'ring)
 (require 'face-remap)
 
@@ -200,7 +199,7 @@ kernel."
 
 ;;; Implementation
 
-(defclass jupyter-repl-client (jupyter-widget-client jupyter-kernel-client)
+(defclass jupyter-repl-client (jupyter-kernel-client)
   ((buffer
     :type (or null buffer)
     :initform nil
@@ -337,18 +336,6 @@ Do this only when the `major-mode' is `jupyter-repl-mode'."
         beg end (cl-call-next-method)
       (add-text-properties beg end '(read-only t)))))
 
-(cl-defmethod jupyter-insert ((_mime (eql :application/vnd.jupyter.widget-view+json)) data
-                              &context ((and (require 'websocket nil t)
-                                             (require 'simple-httpd nil t)
-                                             (and jupyter-current-client
-                                                  (object-of-class-p
-                                                   jupyter-current-client
-                                                   'jupyter-widget-client))
-                                             t)
-                                        (eql t))
-                              &optional _metadata)
-  (jupyter-widgets-display-model jupyter-current-client (plist-get data :model_id)))
-
 ;;; Util
 
 (defun jupyter-repl-completing-read-repl-buffer (&optional mode)
@@ -410,7 +397,7 @@ Also set the local value of `left-margin-width' to
   (let ((ovs (cl-remove-if-not
               (lambda (ov) (overlay-get ov 'jupyter-prompt))
               (overlays-in (point-min) (point-max))))
-        (max-width size-hint))
+        (max-width (or size-hint jupyter-repl-prompt-margin-width)))
     (dolist (ov ovs)
       (cl-callf max max-width (length (jupyter-repl--prompt-string ov))))
     (cl-callf * max-width (jupyter-repl--prompt-scale-factor))
@@ -420,7 +407,7 @@ Also set the local value of `left-margin-width' to
       (jupyter-repl--reset-prompt-display ov))))
 
 (defun jupyter-repl--make-prompt (str face props)
-  "Make a prompt overlay for the character before POS.
+  "Make a prompt overlay for the character before `point'.
 STR is used as the prompt string and FACE is its
 `font-lock-face'.  Add PROPS as text properties to the character."
   (let ((size-hint (* (length str)
@@ -562,9 +549,6 @@ should be a face that the prompt will use and defaults to
 
 (defun jupyter-repl-cell-beginning-position ()
   "Return the cell beginning position of the current cell.
-If `point' is already at the beginning of the current cell,
-return `point'.
-
 If the end of a cell is found before the beginning of one, i.e.
 when `point' is somewhere inside the output of a cell, raise an
 error.
@@ -884,11 +868,12 @@ Return the `jupyter-request' representing the executed code."
       (run-hooks 'jupyter-repl-cell-pre-send-hook))
     (let ((code (string-trim (jupyter-repl-cell-code) "[\r\n]+")))
       (jupyter-run-with-client client
-        (jupyter-mlet* ((req (jupyter-execute-request
-                              :code code
-                              ;; Handle empty code cells as just an update
-                              ;; of the prompt number
-                              :silent (and (= (length code) 0) t))))
+        (jupyter-mlet* ((req (jupyter-do
+                               (jupyter-execute-request
+                                :code code
+                                ;; Handle empty code cells as just an update
+                                ;; of the prompt number
+                                :silent (and (= (length code) 0) t)))))
           (jupyter-repl-without-continuation-prompts
            (jupyter-repl-cell-mark-busy)
            (jupyter-repl-finalize-cell req)
@@ -898,7 +883,7 @@ Return the `jupyter-request' representing the executed code."
           (save-excursion
             (jupyter-repl-backward-cell)
             (run-hooks 'jupyter-repl-cell-post-send-hook))
-          (jupyter-sent (jupyter-return req)))))))
+          (jupyter-return req))))))
 
 (cl-defmethod jupyter-handle-payload ((_source (eql set_next_input)) pl
                                       &context (major-mode jupyter-repl-mode))
@@ -980,9 +965,7 @@ Return the `jupyter-request' representing the executed code."
       (jupyter-repl-clear-last-cell-output client)))))
 
 (cl-defmethod jupyter-handle-status ((client jupyter-repl-client) req msg)
-  (when (equal "idle"
-               (jupyter-with-message-content msg (execution_state)
-                 execution_state))
+  (when (jupyter-message-status-idle-p msg)
     (jupyter-with-repl-buffer client
       (save-excursion
         (when (ignore-errors
@@ -1249,7 +1232,7 @@ execute the current cell."
             ;; we prevent sending a request when the kernel is busy
             ;; because of the is_complete_request.  Some kernels don't
             ;; respond to this request when the kernel is busy.
-            (when (and (jupyter-kernel-busy-p jupyter-current-client)
+            (when (and (jupyter-kernel-busy-p)
                        (not jupyter-repl-allow-RET-when-busy))
               (error "Kernel busy")))
           (cond
@@ -1259,7 +1242,7 @@ execute the current cell."
             (jupyter-repl-indent-line))
            ((or jupyter-repl-use-builtin-is-complete
                 (and jupyter-repl-allow-RET-when-busy
-                     (jupyter-kernel-busy-p jupyter-current-client)))
+                     (jupyter-kernel-busy-p)))
             (if (save-excursion
                   (goto-char (point-max))
                   (string-empty-p
@@ -1273,7 +1256,7 @@ execute the current cell."
               (jupyter-repl-indent-line)))
            (t
             (condition-case nil
-                (jupyter-run-with-client jupyter-current-client
+                (jupyter-run (:client current)
                   (jupyter-idle
                    (jupyter-is-complete-request
                     :code (jupyter-repl-cell-code)
@@ -1515,34 +1498,34 @@ value."
         (prog1 (jupyter-repl-execute-cell)
           (jupyter-repl-replace-cell-code code)))))
    (t
-    (jupyter-run-with-client jupyter-current-client
-      (jupyter-sent
-       (let ((req
-              (jupyter-execute-request
-               :code str
-               :store-history jupyter-repl-echo-eval-p
-               :handlers '("input_request"))))
-         (if (and jupyter-repl-echo-eval-p
-                  (get-buffer-window
-                   (oref jupyter-current-client buffer)
-                   'visible))
-             req
-           ;; Add callbacks to display evaluation output in pop-up
-           ;; buffers either when we aren't copying the input to a
-           ;; REPL cell or, if we are, when the REPL buffer isn't
-           ;; visible.
-           ;;
-           ;; Make sure we do this in the original buffer where
-           ;; STR originated from when BEG and END are non-nil.
-           (jupyter-message-subscribed
-            req (jupyter-eval-callbacks insert beg end)))))))))
+    (jupyter-run (:client current)
+      (jupyter-do
+        (let ((req
+               (jupyter-execute-request
+                :code str
+                :store-history jupyter-repl-echo-eval-p
+                :handlers '("input_request"))))
+          (if (and jupyter-repl-echo-eval-p
+                   (get-buffer-window
+                    (oref jupyter-current-client buffer)
+                    'visible))
+              req
+            ;; Add callbacks to display evaluation output in pop-up
+            ;; buffers either when we aren't copying the input to a
+            ;; REPL cell or, if we are, when the REPL buffer isn't
+            ;; visible.
+            ;;
+            ;; Make sure we do this in the original buffer where
+            ;; STR originated from when BEG and END are non-nil.
+            (jupyter-message-subscribed
+             req (jupyter-eval-callbacks insert beg end)))))))))
 
 ;;; Kernel management
 
 (defun jupyter-repl--get-client ()
   (or jupyter-current-client
-      ;; Also allow this command to be called from an Org mode buffer by
-      ;; selecting a client based on the REPL buffer.
+      ;; TODO: Also allow this command to be called from an Org mode
+      ;; buffer by selecting a client based on the REPL buffer.
       (buffer-local-value
        'jupyter-current-client
        (or (jupyter-repl-completing-read-repl-buffer)
@@ -1582,7 +1565,7 @@ CLIENT defaults to `jupyter-current-client'."
   (if (jupyter-kernel-alive-p client)
       (jupyter-restart-kernel client)
     (message "Starting dead kernel...")
-    (jupyter-kernel-action client #'jupyter-launch))
+    (jupyter-launch-kernel client))
   (jupyter-repl--insert-banner-and-prompt client)
   (jupyter-hb-unpause client))
 
@@ -1681,16 +1664,25 @@ in the appropriate direction, to the saved element."
 
 ;;; `jupyter-repl-mode'
 
+(defun jupyter-repl-derived-buffer-name (client name)
+  (let* ((repl (buffer-name (oref client buffer)))
+         (derived (replace-regexp-in-string
+                   "^*jupyter-repl"
+                   (concat "*jupyter-" name)
+                   repl)))
+    (if (equal derived repl)
+        (error "Not a REPL buffer name")
+      derived)))
+
 (defun jupyter-repl-scratch-buffer ()
   "Switch to a scratch buffer connected to the current REPL in another window.
 Return the buffer switched to."
   (interactive)
   (if (jupyter-repl-connected-p)
       (let* ((client jupyter-current-client)
-             (name (replace-regexp-in-string "^*jupyter-repl"
-					     "*jupyter-scratch"
-					     (buffer-name) (oref client buffer))))
-        (unless (get-buffer name)
+             (name (jupyter-repl-derived-buffer-name client "scratch"))
+             (buffer (get-buffer name)))
+        (unless buffer
           (with-current-buffer (get-buffer-create name)
             (funcall (jupyter-kernel-language-mode client))
             (jupyter-repl-associate-buffer client)
@@ -1701,8 +1693,10 @@ Return the buffer switched to."
 \\[jupyter-eval-buffer] to evaluate the whole buffer.
 \\[jupyter-repl-pop-to-buffer] to show the REPL buffer."))
             (comment-region (point-min) (point-max))
-            (insert "\n\n")))
-        (switch-to-buffer-other-window name))
+            (insert "\n\n")
+            (setq buffer (current-buffer))
+            (switch-to-buffer-other-window name)))
+        buffer)
     (error "Not in a valid REPL buffer")))
 
 (defvar jupyter-repl-mode-map
@@ -1740,19 +1734,19 @@ Return the buffer switched to."
   ;; Initialize a buffer using the major-mode correponding to the kernel's
   ;; language.  This will be used for indentation and to capture font lock
   ;; properties.
-  (let* ((info (jupyter-kernel-info jupyter-current-client))
+  (let* ((info (jupyter-kernel-info))
          (language (plist-get (plist-get info :language_info) :name)))
-    (jupyter-load-language-support jupyter-current-client)
-    (cl-destructuring-bind (mode syntax)
-        (jupyter-kernel-language-mode-properties jupyter-current-client)
-      (setq jupyter-repl-lang-mode mode)
-      (setq jupyter-repl-lang-buffer
-            (get-buffer-create
-             (format " *jupyter-repl-lang-%s*" language)))
-      (set-syntax-table syntax)
-      (jupyter-with-repl-lang-buffer
-        (unless (eq major-mode mode)
-          (funcall mode))))
+    (jupyter-load-language-support)
+    (pcase (jupyter-kernel-language-mode-properties)
+      (`(,mode ,syntax)
+       (setq jupyter-repl-lang-mode mode)
+       (setq jupyter-repl-lang-buffer
+             (get-buffer-create
+              (format " *jupyter-repl-lang-%s*" language)))
+       (set-syntax-table syntax)
+       (jupyter-with-repl-lang-buffer
+         (unless (eq major-mode mode)
+           (funcall mode)))))
     ;; Get history from kernel
     (setq jupyter-repl-history
           (make-ring (1+ jupyter-repl-history-maximum-length)))
@@ -1760,13 +1754,13 @@ Return the buffer switched to."
     ;; history since next/previous navigation is implemented by rotations on the
     ;; ring.
     (ring-insert jupyter-repl-history 'jupyter-repl-history)
-    (jupyter-run-with-client jupyter-current-client
-      (jupyter-sent
-       (jupyter-history-request
-        :n jupyter-repl-history-maximum-length
-        :raw t
-        :unique t
-        :handlers '(not "status"))))
+    (jupyter-run (:client current)
+      (jupyter-do
+        (jupyter-history-request
+         :n jupyter-repl-history-maximum-length
+         :raw t
+         :unique t
+         :handlers '(not "status"))))
     (erase-buffer)
     ;; Add local hooks
     (add-hook 'kill-buffer-query-functions #'jupyter-repl-kill-buffer-query-function nil t)
@@ -1797,38 +1791,44 @@ would look like
 (defun jupyter-repl-font-lock-fontify-region (fontify-fun beg end &optional verbose)
   "Use FONTIFY-FUN to fontify input cells between BEG and END.
 VERBOSE has the same meaning as in
-`font-lock-fontify-region-function'."
+`font-lock-fontify-region-function'.
+
+Output cells are unfontified."
   (jupyter-repl-map-cells beg end
-    ;; Ensure that the buffer is narrowed to the actual cell code before calling
-    ;; the REPL language's `major-mode' specific fontification functions since
-    ;; those functions don't know anything about input cells or output cells and
-    ;; may traverse cell boundaries.
+    ;; Ensure that the buffer is narrowed to the actual cell code
+    ;; before calling the REPL language's `major-mode' specific
+    ;; fontification functions since those functions don't know
+    ;; anything about input cells or output cells and may traverse
+    ;; cell boundaries.
     ;;
-    ;; It is OK that we do not update BEG and END using the return value of this
-    ;; function as long as the default value of
-    ;; `font-lock-extend-region-functions' is used since an input cell always
-    ;; starts at the beginning of a line and ends at the end of a line and does
-    ;; not use the font-lock-multiline property (2018-12-20).
+    ;; It is OK that we do not update BEG and END using the return
+    ;; value of this function as long as the default value of
+    ;; `font-lock-extend-region-functions' is used since an input cell
+    ;; always starts at the beginning of a line and ends at the end of
+    ;; a line and does not use the font-lock-multiline property
+    ;; (2018-12-20).
     (lambda ()  (funcall fontify-fun (point-min) (point-max) verbose))
-    ;; Unfontify the region mainly to remove the font-lock-multiline property in
-    ;; the output, e.g. added by markdown.  These regions will get highlighted
-    ;; syntactically in some scenarios.
+    ;; Unfontify the region mainly to remove the font-lock-multiline
+    ;; property in the output, e.g. added by markdown.  These regions
+    ;; will get highlighted syntactically in some scenarios.
     (lambda () (font-lock-unfontify-region (point-min) (point-max))))
   `(jit-lock-bounds ,beg . ,end))
 
 (defun jupyter-repl-syntax-propertize-function (propertize-fun beg end)
   "Use PROPERTIZE-FUN to syntax propertize text between BEG and END."
   (jupyter-repl-map-cells beg end
-    ;; See note in `jupyter-repl-font-lock-fontify-region' on why the buffer
-    ;; should be narrowed to the input cell before calling this function.
+    ;; See note in `jupyter-repl-font-lock-fontify-region' on why the
+    ;; buffer should be narrowed to the input cell before calling this
+    ;; function.
     (lambda () (funcall propertize-fun (point-min) (point-max)))
-    ;; Treat parenthesis and string characters as punctuation when parsing the
-    ;; syntax of the output.  Although we don't fontify output regions,
-    ;; `syntax-ppss' still looks at the whole contents of the buffer.  If there
-    ;; are unmatched parenthesis or string delimiters in the output, it will
-    ;; interfere with `syntax-ppss'.  Note, this requires
-    ;; `parse-sexp-lookup-properties' to be non-nil so that `syntax-ppss' will
-    ;; look at the `syntax-table' property.
+    ;; Treat parenthesis and string characters as punctuation when
+    ;; parsing the syntax of the output.  Although we don't fontify
+    ;; output regions, `syntax-ppss' still looks at the whole contents
+    ;; of the buffer.  If there are unmatched parenthesis or string
+    ;; delimiters in the output, it will interfere with `syntax-ppss'.
+    ;; Note, this requires `parse-sexp-lookup-properties' to be
+    ;; non-nil so that `syntax-ppss' will look at the `syntax-table'
+    ;; property.
     (lambda ()
       (goto-char (point-min))
       (skip-syntax-forward "^()\"")
@@ -1903,7 +1903,7 @@ the updated state."
                  (jupyter-repl-update-cell-count
                   (oref client execution-count)))))
            (jupyter-return nil))))
-    (jupyter-run-with-client jupyter-current-client
+    (jupyter-run (:client current)
       (jupyter-do sync update-cell-count))))
 
 ;;; `jupyter-repl-interaction-mode'
@@ -1957,7 +1957,7 @@ Do so only if possible in the `current-buffer'."
   (when (and (not jupyter-repl-interaction-mode)
              (cl-typep jupyter-current-client 'jupyter-repl-client)
              (eq major-mode
-                 (jupyter-kernel-language-mode jupyter-current-client)))
+                 (jupyter-kernel-language-mode)))
     (jupyter-repl-interaction-mode)))
 
 (defun jupyter-repl-interaction-mode-line ()
@@ -1966,7 +1966,9 @@ Do so only if possible in the `current-buffer'."
 the REPL is connected, `x' means the REPL is disconnected
 from the kernel."
   (pcase jupyter-current-client
-    ((and client (cl-type jupyter-repl-client))
+    ((and client (pred
+                  (lambda (x)
+                    (cl-typep x 'jupyter-repl-client))))
      (format jupyter-repl-interaction-mode-line-format
              (cond
               ((not (jupyter-hb-beating-p client)) "x")
@@ -2010,9 +2012,9 @@ If the `major-mode' of the `current-buffer' is the
 `jupyter-repl-lang-mode' of CLIENT, call the function
 `jupyter-repl-interaction-mode' to enable the corresponding mode.
 
-CLIENT should be the symbol `jupyter-repl-client' or the symbol
-of a subclass.  If CLIENT is a buffer or the name of a buffer, use
-the `jupyter-current-client' local to the buffer."
+CLIENT should be a `jupyter-repl-client' or a subclass thereof.  If
+CLIENT is a buffer or the name of a buffer, use the
+`jupyter-current-client' local to the buffer."
   (interactive
    (list
     (when-let* ((buffer (jupyter-repl-completing-read-repl-buffer major-mode)))
@@ -2046,7 +2048,7 @@ of that variable."
              (buffer-live-p buffer)
              (null (buffer-local-value 'jupyter-repl-interaction-mode buffer))
              (eq (buffer-local-value 'major-mode buffer)
-                 (jupyter-kernel-language-mode jupyter-current-client)))
+                 (jupyter-kernel-language-mode)))
     (let ((client jupyter-current-client))
       (with-current-buffer buffer
         (jupyter-repl-associate-buffer client)))))

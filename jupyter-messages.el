@@ -53,7 +53,7 @@
   :group 'jupyter)
 
 (defconst jupyter-message-delimiter "<IDS|MSG>"
-  "The message delimiter required in the jupyter messaging protocol.")
+  "The message delimiter required in the Jupyter messaging protocol.")
 
 (defconst jupyter--false :json-false
   "The symbol used to disambiguate nil from boolean false.")
@@ -108,7 +108,7 @@ signs messages using `jupyter-hmac-sha256'."
        with key = (encode-coding-string
                    (jupyter-session-key session) 'utf-8 t)
        with parts = (encode-coding-string
-                     (mapconcat #'identity parts)
+                     (mapconcat #'identity parts "")
                      'utf-8 t)
        for byte across (funcall signer parts key)
        concat (format "%02x" byte))
@@ -169,20 +169,17 @@ return the result."
        'utf-8 t))))
 
 (defun jupyter--json-encode (original object)
-  (let (msg-type)
-    (cond
-     ((eq (car-safe object) 'message-part)
-      (cl-destructuring-bind (_ encoded-rep decoded-rep) object
-        (or encoded-rep (setf (nth 1 object)
-                              (jupyter--json-encode original decoded-rep)))))
-     ((and (keywordp object)
-           (setf msg-type (plist-get jupyter-message-types object)))
-      (json-encode msg-type))
-     ((and (listp object)
-           (= (length object) 4)
-           (cl-every #'integerp object))
-      (jupyter-encode-time object))
-     (t (funcall original object)))))
+  (cond
+   ((eq (car-safe object) 'message-part)
+    (pcase object
+      (`(,_ ,encoded-rep ,decoded-rep)
+       (or encoded-rep (setf (nth 1 object)
+                             (jupyter--json-encode original decoded-rep))))))
+   ((and (listp object)
+         (= (length object) 4)
+         (cl-every #'integerp object))
+    (jupyter-encode-time object))
+   (t (funcall original object))))
 
 (defun jupyter--decode (part)
   "Decode a message PART.
@@ -678,11 +675,10 @@ And is not the `jupyter-empty-message'."
 
 (defsubst jupyter-message-data (msg mimetype)
   "Get the message data for a specific mimetype.
-MSG should be a message with a `:data' field in its contents.
-MIMETYPE is should be a standard media mimetype
-keyword (`:text/plain', `:image/png', ...).  If the messages data
-has a key corresponding to MIMETYPE, return the value.  Otherwise
-return nil."
+MSG should be a message with a `:data' field in its contents.  MIMETYPE
+is a standard media mimetype keyword (`:text/plain', `:image/png', ...).
+If the messages data has a key corresponding to MIMETYPE, return the
+value.  Otherwise return nil."
   (plist-get (jupyter-message-get msg :data) mimetype))
 
 (defun jupyter-message-status-idle-p (msg)

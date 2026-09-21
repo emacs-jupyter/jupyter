@@ -166,49 +166,50 @@ if the content is not JSON.
 If the maximum number of redirects are reached a
 `jupyter-api-http-redirect-limit' error is raised instead."
   (with-current-buffer buffer
-    (goto-char url-http-end-of-headers)
-    (skip-syntax-forward "->")
-    (let* ((json-object-type 'plist)
-           (json-false nil)
-           (resp (when (and (equal url-http-content-type "application/json")
-                           (not (eobp)))
-                  (if (< url-http-response-status 400)
-                      (json-read)
-                    ;; Handle cases, for example, where status is 404
-                    ;; and the message of the error is returned
-                    ;; instead of JSON.
-                    (let ((start (point)))
-                      (condition-case nil
-                          (json-read)
-                        (error
-                         (list :message (buffer-substring start (point-max))))))))))
-      (cond
-       ((>= url-http-response-status 400)
-        (cl-destructuring-bind
-            (&key reason message traceback &allow-other-keys) resp
-          (when traceback
-            (setq traceback
-                  (format "%s (%s): %s" reason message
-                          (car (last (split-string traceback "\n" t))))))
-          (signal 'jupyter-api-http-error
-                  (list url-http-response-status
-                        (or traceback
-                            (and (or reason message)
-                                 (concat reason
-                                         (and reason ": ")
-                                         message))
-                            (nth 2 (assoc url-http-response-status
-                                          url-http-codes)))))))
-       ;; Handle other kinds of errors, e.g. max redirects
-       ((and (boundp 'url-callback-arguments)
-             (plist-get (car url-callback-arguments) :error))
-        (let ((err (plist-get (car url-callback-arguments) :error)))
-          (if (eq (nth 1 err) 'http-redirect-limit)
-              (signal 'jupyter-api-http-redirect-limit
-                      (cons url-http-response-status
-                            (cddr err)))
-            (signal (car err) (cdr err)))))
-       (t resp)))))
+    (when url-http-end-of-headers
+      (goto-char url-http-end-of-headers)
+      (skip-syntax-forward "->")
+      (let* ((json-object-type 'plist)
+             (json-false nil)
+             (resp (when (and (equal url-http-content-type "application/json")
+                              (not (eobp)))
+                     (if (< url-http-response-status 400)
+                         (json-read)
+                       ;; Handle cases, for example, where status is 404
+                       ;; and the message of the error is returned
+                       ;; instead of JSON.
+                       (let ((start (point)))
+                         (condition-case nil
+                             (json-read)
+                           (error
+                            (list :message (buffer-substring start (point-max))))))))))
+        (cond
+         ((>= url-http-response-status 400)
+          (cl-destructuring-bind
+              (&key reason message traceback &allow-other-keys) resp
+            (when traceback
+              (setq traceback
+                    (format "%s (%s): %s" reason message
+                            (car (last (split-string traceback "\n" t))))))
+            (signal 'jupyter-api-http-error
+                    (list url-http-response-status
+                          (or traceback
+                              (and (or reason message)
+                                   (concat reason
+                                           (and reason ": ")
+                                           message))
+                              (nth 2 (assoc url-http-response-status
+                                            url-http-codes)))))))
+         ;; Handle other kinds of errors, e.g. max redirects
+         ((and (boundp 'url-callback-arguments)
+               (plist-get (car url-callback-arguments) :error))
+          (let ((err (plist-get (car url-callback-arguments) :error)))
+            (if (eq (nth 1 err) 'http-redirect-limit)
+                (signal 'jupyter-api-http-redirect-limit
+                        (cons url-http-response-status
+                              (cddr err)))
+              (signal (car err) (cdr err)))))
+         (t resp))))))
 
 (defun jupyter-api-url-request (url &optional async &rest async-args)
   "Retrieve URL and return its JSON response.
@@ -287,6 +288,11 @@ this will cause errors in the URL library."
            ,(funcall setter `(encode-coding-string ,old 'us-ascii))
          ,old))))
 
+(defun jupyter-api-write-cookie-file ()
+  "Write cookies to file."
+  (let ((url-cookies-changed-since-last-save t))
+    (url-cookie-write-file)))
+
 ;; For more info on the XSRF header see
 ;; https://blog.jupyter.org/security-release-jupyter-notebook-4-3-1-808e1f3bb5e2
 ;; and
@@ -298,21 +304,33 @@ this will cause errors in the URL library."
   ;; loop since this function is used during authentication.
   (let (jupyter-api-request-headers jupyter-api-request-data)
     (or
-     ;; Already have the xsrf cookie, no need to request the login
-     ;; page to receive it as a side effect.
+     ;; Already have the xsrf cookie, no need to make a request to get
+     ;; it as a side effect.
      (jupyter-api-xsrf-header-from-cookies (oref client url))
-     ;; FIXME: It is not reliable to attempt to get the xsrf cookie as
-     ;; a side effect of requesting the login page since it may not
-     ;; always exist.
-     (ignore-errors
-       (jupyter-api-http-request (oref client url) "login" "GET")))))
+     ;; jupyter_server sets the xsrf cookie header on the base URL of
+     ;; the API.
+     (jupyter-api-http-request (oref client url) "" "GET"))))
 
-(defun jupyter-api-url-cookies (url)
-  "Return the list of cookies for URL."
-  (or (url-p url) (setq url (url-generic-parse-url url)))
-  (url-cookie-retrieve
-   (url-host url) (concat (url-filename url) "/")
-   (equal (url-type url) "https")))
+(defun jupyter-api-url-cookies (url &optional standard-only)
+  "Return the list of cookies for URL.
+All cookies associated with the HOST of URL are returned.  If URL has a
+non-standard port for the type of URL, all cookies associated with
+HOST:PORT are returned instead.
+
+If STANDARD-ONLY is non-nil, return the cookies associated with the
+standard port regardless of whether or not URL has a non-standard port."
+  (pcase (or (and (url-p url) url)
+             (url-generic-parse-url url))
+    ((and u (cl-struct url host filename type))
+     (let ((port (url-port-if-non-default u)))
+       (url-cookie-retrieve
+        (if (and port (not standard-only))
+            (format "%s:%s" host port)
+          host)
+        (or (and (string-empty-p filename) "/")
+            filename
+            "/")
+        (equal type "https"))))))
 
 (defun jupyter-api-xsrf-header-from-cookies (url)
   "Return an alist containing an X-XSRFTOKEN header or nil.
@@ -320,7 +338,11 @@ Searches the cookies of URL for an _xsrf token, if found, sets
 the value of the cookie as the value of the X-XSRFTOKEN header
 returned."
   (cl-loop
-   for cookie in (jupyter-api-url-cookies url)
+   ;; We look only at the cookies of the standard port, regardless of
+   ;; whether or not URL has a non-standard port since the URL library
+   ;; doesn't seem to consider the port when setting cookies from
+   ;; requests.
+   for cookie in (jupyter-api-url-cookies url t)
    if (equal (url-cookie-name cookie) "_xsrf")
    return `(("X-XSRFTOKEN" .
              ,(jupyter-api--ensure-unibyte
@@ -335,34 +357,41 @@ HOST:PORT when PORT is a nonstandard port for the type of URL.
 The behavior of `url-retrieve-synchronously' (cookies being
 stored without considering a PORT) appears to be the standard,
 see RFC 6265."
-  (when-let* ((url (url-generic-parse-url url))
-              (host (url-host url))
-              (port (url-port-if-non-default url))
-              (host-port (format "%s:%s" host port))
-              (cookies (jupyter-api-url-cookies url)))
-    (setq url-cookies-changed-since-last-save t)
-    (cl-loop
-     for cookie in cookies
-     do (pcase-let (((cl-struct url-cookie name value expires
-                                localpart secure)
-                     cookie))
-          ;; Set the expiration date if it does not have one already since
-          ;; `url-cookie-clean-up' (called by `url-cookie-write-file') will
-          ;; correctly drop any cookies that don't have an expiration date
-          ;; since cookies are required to have them.
-          ;;
-          ;; FIXME: This is mainly for the _xsrf cookie which does not have an
-          ;; expiration date.  I believe this is to be interpreted as meaning
-          ;; the cookie should only be valid for the current session.  We go
-          ;; through `url-cookie-write-file' so that the subprocess which
-          ;; starts websockets can read the required cookies.  An alternative
-          ;; solution would be to pass the cookies directly to the subprocess.
-          (unless expires
-            (setq expires (setf (url-cookie-expires cookie)
-                                (format-time-string "%a, %d %b %Y %T %z"
-                                                    (time-add (current-time)
-                                                              (days-to-time 1))))))
-          (url-cookie-store name value expires host-port localpart secure)))))
+  (pcase (or (and (url-p url) url)
+             (url-generic-parse-url url))
+    ((and u (cl-struct url type host filename))
+     (when-let* ((port (url-port-if-non-default u))
+                 (cookies (jupyter-api-url-cookies
+                           (url-parse-make-urlobj
+                            type nil nil host nil filename)))
+                 (new-domain (format "%s:%s" host port)))
+       (cl-loop
+        for cookie in cookies
+        do (pcase-let (((cl-struct url-cookie name value expires
+                                   localpart secure)
+                        cookie))
+             ;; Set the expiration date if it does not have one
+             ;; already since `url-cookie-clean-up' (called by
+             ;; `url-cookie-write-file') will correctly drop any
+             ;; cookies that don't have an expiration date since
+             ;; cookies are required to have them.
+             ;;
+             ;; FIXME: This is mainly for the _xsrf cookie which does
+             ;; not have an expiration date.  I believe this is to be
+             ;; interpreted as meaning the cookie should only be valid
+             ;; for the current session.  We go through
+             ;; `url-cookie-write-file' so that the subprocess which
+             ;; starts websockets can read the required cookies.  An
+             ;; alternative solution would be to pass the cookies
+             ;; directly to the subprocess.
+             (unless expires
+               (setq expires (setf (url-cookie-expires cookie)
+                                   (format-time-string
+                                    "%a, %d %b %Y %T %z"
+                                    (time-add (current-time)
+                                              (days-to-time 1))))))
+             (url-cookie-store
+              name value expires new-domain localpart secure)))))))
 
 ;; Adapted from `url-cookie-delete'
 (defun jupyter-api--delete-cookie (cookie)
@@ -381,21 +410,17 @@ see RFC 6265."
 All cookies associated with the HOST of URL are deleted.  If URL
 has a non-standard port for the type of URL, all cookies
 associated with HOST:PORT are deleted as well."
-  (let* ((url (if (url-p url) url
-                (url-generic-parse-url url)))
-         (host (url-host url)))
+  (let ((url (or (and (url-p url) url)
+                 (url-generic-parse-url url))))
     (dolist (u (cons url
-                     ;; Also delete cookies that were duplicated by
-                     ;; `jupyter-api-copy-cookies-for-websocket'.
-                     (when-let* ((port (url-port-if-non-default url))
-                                 (u (copy-sequence url)))
-                       (prog1 (list u)
-                         (setf (url-host u) (format "%s:%s" host port))))))
+                     (when (url-port-if-non-default url)
+                       (list
+                        (pcase-let (((cl-struct url type host) url))
+                          (url-parse-make-urlobj
+                           type nil nil host))))))
       (cl-loop
        for cookie in (jupyter-api-url-cookies u)
-       do (jupyter-api--delete-cookie cookie)))
-    (setq url-cookies-changed-since-last-save t)
-    (url-cookie-write-file)))
+       do (jupyter-api--delete-cookie cookie)))))
 
 (defun jupyter-api-add-websocket-headers (plist)
   "Destructively modify PLIST to add a `:custom-header-alist' key.
@@ -501,7 +526,7 @@ error with the data being the error received by `url-retrieve'."
         (signal 'jupyter-api-login-failed err)))
     ;; Handle cookies.
     (jupyter-api-copy-cookies-for-websocket (oref client url))
-    (url-cookie-write-file)))
+    (jupyter-api-write-cookie-file)))
 
 ;;;; Authenticators
 
@@ -512,9 +537,14 @@ error with the data being the error received by `url-retrieve'."
 (defvar jupyter-api--response-cache-expiry 1
   "Number of seconds of Emacs idle time before cache invalidation.")
 
-(cl-defmethod jupyter-api-server-accessible-p ((client jupyter-rest-client))
-  "Return non-nil if CLIENT can access the Jupyter notebook server."
-  (pcase (gethash client jupyter-api--response-cache 'check)
+(cl-defmethod jupyter-api-server-accessible-p ((client jupyter-rest-client)
+                                               &optional force)
+  "Return non-nil if CLIENT can access the Jupyter notebook server.
+If optional argument FORCE is non-nil, make an explicit check otherwise
+return a transient cached value of the previous access check which may
+or may not be valid."
+  (pcase (if force 'check
+           (gethash client jupyter-api--response-cache 'check))
     ('check
      (run-with-idle-timer
       jupyter-api--response-cache-expiry
@@ -525,6 +555,12 @@ error with the data being the error received by `url-retrieve'."
                   (let ((jupyter-api-authentication-in-progress-p t)
                         jupyter-api-request-data
                         jupyter-api-request-headers)
+                    ;; Request the XSRF cookie here.  In some server
+                    ;; configurations, e.g. when there is no
+                    ;; authentication, the server does not send back a
+                    ;; Set-Cookie header on the following request,
+                    ;; hence the need to explicitly request it.
+                    (jupyter-api-request-xsrf-cookie client)
                     ;; Hit an endpoint that requires authentication.
                     (jupyter-api-get-kernelspec client))))
               jupyter-api--response-cache))
@@ -552,7 +588,7 @@ slot of CLIENT and restore the AUTH slot on failure."
                     (jupyter-api-auth-headers client))))
         (while (and (not (progn
                            (funcall authenticator)
-                           (jupyter-api-server-accessible-p client)))
+                           (jupyter-api-server-accessible-p client t)))
                     (not (zerop (cl-decf max-tries))))))
       (when (zerop max-tries)
         (oset client auth auth)
@@ -611,26 +647,30 @@ Raise an error on failure."
       (cl-call-next-method))))
 
 (cl-defmethod jupyter-api-ensure-authenticated ((client jupyter-rest-client))
-  (with-slots (auth url) client
-    (when (eq auth 'ask)
-      (jupyter-api-request-xsrf-cookie client)
-      (when (jupyter-api-server-accessible-p client)
-        (oset client auth t)))
-    (unless (or (listp auth)
-                (not (memq auth '(ask token password))))
-      (when (eq auth 'ask)
-        (when noninteractive
-          (signal 'jupyter-api-authentication-failed
-                  (list "Can't authenticate non-interactively")))
-        (cond
-         ((y-or-n-p (format "Token authenticated [%s]? " url))
-          (oset client auth 'token))
-         ((y-or-n-p (format "Password needed [%s]? " url))
-          (oset client auth 'password))
-         (t
-          (signal 'jupyter-api-authentication-failed
-                  (list "Can only authenticate with password or token")))))
-      (jupyter-api-authenticate client (oref client auth)))))
+  (or (jupyter-api-server-accessible-p client)
+      (with-slots (auth url) client
+        (jupyter-api-request-xsrf-cookie client)
+        (if (memq auth '(ask token password))
+            (progn
+              (when (eq auth 'ask)
+                (when noninteractive
+                  (signal 'jupyter-api-authentication-failed
+                          (list "Can't authenticate non-interactively")))
+                (cond
+                 ((y-or-n-p (format "Token authenticated [%s]? " url))
+                  (oset client auth 'token))
+                 ((y-or-n-p (format "Password needed [%s]? " url))
+                  (oset client auth 'password))
+                 (t
+                  (signal 'jupyter-api-authentication-failed
+                          (list "Can only authenticate with password or token")))))
+              (jupyter-api-authenticate client (oref client auth))
+              (unless (jupyter-api-server-accessible-p client)
+                (signal 'jupyter-api-authentication-failed
+                        (list (format "Unaccessible after %s attempt" 1)))))
+          (unless (or (listp auth) (eq auth t))
+            (signal 'jupyter-api-authentication-failed
+                    (list "Invalid authorization value.")))))))
 
 (cl-defmethod jupyter-api-auth-headers ((client jupyter-rest-client))
   "Return the HTTP headers CLIENT is using for authentication or nil."
@@ -868,10 +908,13 @@ request."
 
 ;;;; Kernel websocket
 
-(defun jupyter-api-kernel-websocket (client id &rest plist)
+(defun jupyter-api-kernel-websocket (client id &optional session &rest plist)
   "Return a websocket using CLIENT's ws-url slot.
 ID identifies the kernel to connect to, PLIST will be passed to
 the call to `websocket-open' to initialize the websocket.
+
+With optional argument SESSION, use SESSION's ID as the session_id for
+the websocket otherwise a default session will be used.
 
 The `websocket-client-data' of the websocket will be a plist like
 
@@ -880,7 +923,7 @@ The `websocket-client-data' of the websocket will be a plist like
 where SESSION is a `jupyter-session' with a `jupyter-session-id'
 equal to the one associated with the kernel on the server CLIENT
 is communicating with."
-  (let* ((session (jupyter-session))
+  (let* ((session (or session (jupyter-session)))
          (ws (apply #'jupyter-api/kernels client "WS" id "channels"
                     `(("session_id" . ,(jupyter-session-id session)))
                     plist)))
@@ -902,20 +945,23 @@ available via CLIENT."
 (autoload 'tramp-drop-volume-letter "tramp")
 
 (defun jupyter-api--sanitize-path (path)
-  (thread-last
-    path
-    (tramp-drop-volume-letter)
-    ;; Strip slashes
-    (replace-regexp-in-string "^/+" "")
-    (replace-regexp-in-string "/+$" "")
-    ;; Handle #
-    (string-replace "#" "%23")))
+  (cl-labels ((hexify (x)
+                (url-hexify-string
+                 x (cons ?/ url-unreserved-chars))))
+    (thread-last
+      path
+      (tramp-drop-volume-letter)
+      ;; Strip slashes
+      (replace-regexp-in-string "/+" "/")
+      (replace-regexp-in-string "^/" "")
+      (replace-regexp-in-string "/$" "")
+      (hexify))))
 
 ;; See https://jupyter-server.readthedocs.io/en/latest/developers/contents.html#api-paths
 (defsubst jupyter-api-content-path (file)
-  "Return a sanitized path for locating FILE on a Jupyter REST server.
-Note, if FILE is not an absolute file name, it is expanded into
-one as if the `default-directory' where /."
+  "Return a sanitized path for locating FILE on a Jupyter server.
+If FILE is not an absolute file name, it is expanded into one as if the
+`default-directory' where /."
   (jupyter-api--sanitize-path
    (expand-file-name (file-local-name file) "/")))
 
@@ -1110,8 +1156,8 @@ otherwise nil."
   "Return non-nil if MODEL corresponds to Jupyter notebook JSON."
   (equal (plist-get model :type) "notebook"))
 
-;; TODO: Replace the :content key with the buffer? It is redundant to have both
-;; a string and a buffer holding the contents.
+;; TODO: Replace the :content key with the buffer?  It is redundant to
+;; have both a string and a buffer holding the contents.
 (defun jupyter-api-content-buffer (model)
   "Return a buffer holding MODEL's content.
 If MODEL's content is binary, the returned buffer will hold the

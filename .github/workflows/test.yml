@@ -3,7 +3,7 @@ jobs:
   test-windows:
     strategy:
       matrix:
-        emacs-version: [27.2, 28.2, 29.3, snapshot]
+        emacs-version: [28.2, 29.3, 30.2, snapshot]
     runs-on: windows-latest
     defaults:
       run:
@@ -25,7 +25,7 @@ jobs:
       - name: Install requirements
         run: |
           conda install -c conda-forge pandoc
-          conda install -c anaconda jupyter
+          conda install -c anaconda jupyter ca-certificates
           curl -fsSL https://raw.github.com/doublep/eldev/master/webinstall/eldev | sh
       - name: Add Eldev path
         shell: powershell
@@ -49,10 +49,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        emacs-version: [27.2, 28.2, 29.3, snapshot]
-        exclude:
-          - os: macos-latest
-            emacs-version: 27.2
+        emacs-version: [28.2, 29.3, 30.2, snapshot]
     defaults:
       run:
         shell: bash -el {0}

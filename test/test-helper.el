@@ -70,6 +70,7 @@ start a new kernel REPL instead of re-using one.")
 ;; Ensure we don't overwrite the default cookie file
 (setq url-cookie-file (let ((temporary-file-directory jupyter-test-temporary-directory))
                         (make-temp-file "jupyter-cookie")))
+(setq url-debug 0)
 
 (message "system-configuration %s" system-configuration)
 
@@ -147,8 +148,8 @@ If the `current-buffer' is not a REPL, this is identical to
   `(let ((default-directory jupyter-test-temporary-directory)
          (temporary-file-directory jupyter-test-temporary-directory)
          (tramp-cache-data (make-hash-table :test #'equal)))
-     (let ((port (jupyter-test-ensure-notebook-server)))
-       (dolist (method '("jpys" "jpy"))
+     (let ((port (jupyter-test-ensure-notebook)))
+       (dolist (method '("jupys" "jupy"))
          (setf
           (alist-get 'tramp-default-port
                      (alist-get method tramp-methods nil nil #'equal))
@@ -164,47 +165,38 @@ If the `current-buffer' is not a REPL, this is identical to
 
 (defvar jupyter-test-global-repls nil)
 
+(defun jupyter-test--reap-cached-clients (sym)
+  (set sym
+       (cl-loop for val in (symbol-value sym)
+                for client = (cdr val)
+                if (jupyter-kernel-alive-p client)
+                collect val
+                else do (jupyter-disconnect client))))
+
 (defmacro jupyter-test-with-client-cache (client-fun saved-sym kernel client &rest body)
   (declare (indent 4) (debug (functionp symbolp stringp symbolp &rest form)))
   (let ((spec (make-symbol "spec"))
-        (saved (make-symbol "saved")))
-    `(progn
-       ;; If a kernel has died, e.g. being shutdown, remove it.
-       (cl-loop
-        for saved in (copy-sequence ,saved-sym)
-        for client = (cdr saved)
-        when (and client
-                  (not (and (jupyter-connected-p client)
-                            (jupyter-kernel-action client
-                              (lambda (kernel)
-                                (jupyter-alive-p kernel))))))
-        do (jupyter-disconnect client)
-        (cl-callf2 delq saved ,saved-sym))
-       (let* ((,spec (progn (jupyter-error-if-no-kernelspec ,kernel)
-                            (car (jupyter-find-kernelspecs ,kernel))))
-              (,saved (cdr (assoc (jupyter-kernelspec-name ,spec) ,saved-sym)))
-              (,client (if (and ,saved (not jupyter-test-with-new-client))
-                           ,saved
-                         ;; Want a fresh kernel, so shutdown the cached one
-                         (when (and ,saved (jupyter-connected-p ,saved))
-                           (jupyter-run-with-client ,saved
-                             (jupyter-sent (jupyter-shutdown-request)))
-                           (jupyter-disconnect ,saved))
-                         (let ((client (,client-fun (jupyter-kernelspec-name ,spec))))
-                           (prog1 client
-                             (let ((el (cons (jupyter-kernelspec-name ,spec) client)))
-                               (push el ,saved-sym)))))))
-         ;; See the note about increasing timeouts during CI testing at the top
-         ;; of jupyter-test.el
+        (cached (make-symbol "cached")))
+    `(let* ((,spec (or (car (jupyter-find-kernelspecs (regexp-quote ,kernel)))
+                       (error "Kernel not found (%s)" ,kernel)))
+            (,cached (progn
+                       ;; If a kernel has died, e.g. being shutdown, remove it.
+                       (jupyter-test--reap-cached-clients (quote ,saved-sym))
+                       (cdr (assoc (jupyter-kernelspec-name ,spec) ,saved-sym)))))
+       (when (and jupyter-test-with-new-client ,cached)
+         (when (jupyter-connected-p ,cached)
+           (jupyter-run-with-client ,cached
+             (jupyter-shutdown-request)))
+         (setq ,cached nil))
+       (let ((,client (or ,cached
+                          (let* ((spec-name (jupyter-kernelspec-name ,spec))
+                                 (client (,client-fun spec-name)))
+                            (prog1 client
+                              (push (cons spec-name client) ,saved-sym))))))
+         ;; See the note about increasing timeouts during CI testing
+         ;; at the top of jupyter-test.el
          (accept-process-output nil 1)
          ,@body))))
-
-(defmacro jupyter-test-with-notebook (server &rest body)
-  (declare (indent 1))
-  `(let* ((host (format "localhost:%s" (jupyter-test-ensure-notebook-server)))
-          (url (format "http://%s" host))
-          (,server (jupyter-server :url url)))
-     ,@body))
 
 (defmacro jupyter-test-with-kernel-client (kernel client &rest body)
   "Start a new KERNEL client, bind it to CLIENT, evaluate BODY.
@@ -217,8 +209,7 @@ This only starts a single global client unless the variable
        (jupyter-test-with-notebook server
         (jupyter-kernel
          :server server
-         :spec name))
-       'jupyter-kernel-client))
+         :spec name))))
     jupyter-test-global-clients ,kernel ,client
     (unwind-protect
         (jupyter-with-client ,client
@@ -316,14 +307,6 @@ For `url-retrieve', the callback will be called with a nil status."
                         (apply cb nil cbargs)))))
            ,bodyform)))))
 
-(defmacro jupyter-test-rest-api-with-notebook (client &rest body)
-  (declare (indent 1))
-  `(let* ((url-cookie-storage nil)
-          (url-cookie-secure-storage nil)
-          (host (format "localhost:%s" (jupyter-test-ensure-notebook-server)))
-          (,client (jupyter-rest-client :url (format "http://%s" host))))
-     ,@body))
-
 (defmacro jupyter-test-with-server-kernel (server name kernel &rest body)
   (declare (indent 3))
   (let ((id (make-symbol "id")))
@@ -374,22 +357,38 @@ The only difference between them will be their names."
                         nil
                         (format "%s/kernel.json" kernel-dir))))))
 
+(defun jupyter-test-eval-python (code &optional python)
+  (with-temp-buffer
+    (call-process (or python (jupyter-locate-python)) nil t nil "-c" code)
+    (buffer-string)))
+
+(defun jupyter-test-password-hash (passwd)
+  (let ((x (format
+            "\
+try:
+    from notebook.auth import passwd
+except:
+    from jupyter_server.auth.security import passwd
+print(passwd('%s', algorithm='sha1'), end='')"
+            passwd)))
+    (let ((hashed (jupyter-test-eval-python x)))
+      (if (not (string-prefix-p "sha1:" hashed))
+          (error "Something went wrong hashing a password")
+        hashed))))
+
 (defun jupyter-test-ipython-kernel-version (spec)
   "Return the IPython kernel version string corresponding to SPEC.
 Assumes that SPEC is a kernelspec for a Python kernel and
 extracts the IPython kernel's semver."
-  (let* ((cmd (aref (plist-get (jupyter-kernelspec-plist spec) :argv) 0))
-         (process-environment
+  (let* ((process-environment
           (append
            (jupyter-process-environment spec)
-           process-environment))
-         (version
-          (with-temp-buffer
-            (call-process cmd nil t nil
-                          "-c" "import ipykernel; \
-print(\"{}.{}.{}\".format(*ipykernel.version_info[:3]))")
-            (buffer-string))))
-    (string-trim version)))
+           process-environment)))
+    (string-trim
+     (jupyter-test-eval-python
+      "import ipykernel; \
+print(\"{}.{}.{}\".format(*ipykernel.version_info[:3]))"
+      (aref (plist-get (jupyter-kernelspec-plist spec) :argv) 0)))))
 
 (defun jupyter-error-if-no-kernelspec (kernel)
   (prog1 kernel
@@ -522,12 +521,76 @@ should have PROP with VAL."
     (insert (jupyter-org-test-block lang ""))
     (jupyter-org-test-client-from-info (org-babel-get-src-block-info))))
 
+(defun jupyter-org-test--plain-list (text)
+  (if-let* ((pos (string-search "\n" text)))
+      (let ((rest (substring text (1+ pos))))
+        (concat "- " (substring text 0 pos)
+                "\n  " (mapconcat #'identity
+                                (split-string rest "\n")
+                                "\n  ")))
+    (concat "- " text)))
+
+(defun jupyter-org-test-make-document (spec &optional depth)
+  (let ((properties
+         (let ((props (assq 'properties spec)))
+           (when props
+             (setq spec (delq props spec))
+             `(concat ":PROPERTIES:\n"
+                      ,@(cl-loop
+                         for (name value) in (cdr props)
+                         collect `(format ":%s: %s\n" ',name ,value))
+                      ":END:\n"))))
+        (doc
+         (cl-loop
+          for (type . args) in spec collect
+          (pcase type
+            ((guard (stringp type))
+             `(concat
+               ,(format "%s %s\n" (make-string (or depth 1) ?*) type)
+               ,(jupyter-org-test-make-document args (1+ (or depth 1)))))
+            (`src-block
+             (let ((name (cadr (assq 'name args)))
+                   (header-args (cadr (assq 'header-args args)))
+                   (code (cadr (assq 'code args)))
+                   (language (cadr (assq 'language args)))
+                   (session (cadr (assq 'session args))))
+               `(concat
+                 ,@(when name `((concat "#+NAME: " ,name "\n")))
+                 ,@(when header-args
+                     `((concat "#+HEADER: " ,header-args "\n")))
+                 (format "#+begin_src jupyter-%s :session %s\n"
+                         ,(if language `,language "python")
+                         ,(if session `,session
+                            'jupyter-org-test-session))
+                 (let ((c ,code))
+                   (if c
+                       (concat (string-trim-right c) "\n")))
+                 "#+end_src\n")))
+            (`paragraph `(concat ,(car args) "\n"))
+            (`plain-list
+             `(jupyter-org-test--plain-list
+               ,(jupyter-org-test-make-document args depth)))
+            (_
+             (error "Unrecognize type"))))))
+    (push 'list doc)
+    (if properties
+        `(concat ,properties "\n"
+                 (mapconcat #'identity ,doc "\n"))
+      `(mapconcat #'identity ,doc "\n"))))
+
 (defmacro jupyter-org-test (&rest body)
   (declare (debug (body)))
-  `(progn
-     (jupyter-org-test-setup)
-     (with-current-buffer jupyter-org-test-buffer
-       ,@body)))
+  (let (spec)
+    (while (keywordp (car body))
+      (push (pop body) spec)
+      (push (pop body) spec))
+    (setq spec (nreverse spec))
+    `(progn
+       (jupyter-org-test-setup)
+       (with-current-buffer jupyter-org-test-buffer
+         ,@(when-let* ((spec (plist-get spec :document)))
+             (list `(insert ,(jupyter-org-test-make-document spec))))
+         ,@body))))
 
 (defmacro jupyter-org-test-src-block (block expected-result &rest args)
   "Test source code BLOCK.
@@ -538,12 +601,24 @@ then the source code block will begin like
 
     #+BEGIN_SRC jupyter-python :results raw ...
 
-Note if ARGS contains a key, regexp, then if regexp is non-nil,
-EXPECTED-RESULT is a regular expression to match against the
-results instead of an equality match."
-  `(jupyter-org-test
-    (jupyter-org-test-src-block-1
-     ,block ,expected-result ,@args)))
+Note if ARGS contains a key, :regexp, then if its value is
+non-nil, EXPECTED-RESULT is a regular expression to match against
+the results instead of an equality match.
+
+If ARGS contains the key, :bindings, then its value is a variable
+list which to bind during the evaluation of the test, note the
+bindings occur from within the test buffer."
+  (let (bindings)
+    (setq args
+          (cl-loop
+           for (key value) on args by #'cddr
+           if (eq key :bindings) do (setq bindings value)
+           else collect key and collect value))
+    (let ((form `(jupyter-org-test-src-block-1
+                  ,block ,expected-result ,@args)))
+      (when bindings
+        (setq form `(let* ,bindings ,form)))
+      `(jupyter-org-test ,form))))
 
 (defun jupyter-org-test-make-block (code args)
   (let ((arg-str
@@ -580,7 +655,7 @@ results instead of an equality match."
       (save-window-excursion
         (org-babel-execute-src-block nil info)
         (when (equal (plist-get args :async) "yes")
-          (when-let* ((req (jupyter-org-request-at-point)))
+          (when-let* ((req (jupyter-org-request-at-point t)))
             (jupyter-idle-sync req)))
         (goto-char (or (org-babel-where-is-src-block-result) (point)))
         (when (plist-get args :pandoc)
@@ -626,7 +701,78 @@ Result:
 PROC is the notebook process and PORT is the port it is connected
 to.")
 
-(defun jupyter-test-ensure-notebook-server (&optional authentication)
+(defmacro jupyter-test-with-notebook (spec &rest body)
+  (declare (indent 1))
+  (let ((client (if (listp spec) (car spec) spec)))
+    (pcase spec
+      ((or `(,(and client (guard (symbolp client)))
+             ,(and x (guard (or (stringp x) (symbolp x)))))
+           (and client (pred symbolp)))
+       `(let* ((host (format "localhost:%s"
+                             (jupyter-test-ensure-notebook
+                              ,(when x
+                                 `(progn
+                                    (jupyter-test-kill-notebook
+                                     jupyter-test-notebook)
+                                    ,x)))))
+               (,client (jupyter-server :url (format "http://%s" host))))
+          (unwind-protect
+              (progn ,@(if x (cdr body) body))
+            ,(when x
+               '(progn
+                  (jupyter-api-delete-cookies (oref ,client url))
+                  (jupyter-test-kill-notebook
+                   jupyter-test-notebook))))))
+      (_ (error "Invalid macro specification")))))
+
+(defvar jupyter-test-notebook-token nil
+  "The test notebook's token value.")
+
+(defun jupyter-test-make-notebook (authentication)
+  (let* ((default-directory jupyter-test-temporary-directory)
+         (passwordp (and (stringp authentication)
+                         (string-prefix-p "sha1:" authentication)))
+         (jupyter-test-notebook-token
+          (and (not passwordp)
+               (stringp authentication)
+               (prog1 authentication
+                 (setq authentication t))))
+         (port (car (jupyter-available-local-ports 1)))
+         (args (append
+                (list "notebook" "--no-browser" "--debug"
+                      (format "--NotebookApp.port=%s" port))
+                (cond
+                 ((eq authentication t)
+                  (list
+                   (format "--NotebookApp.token='%s'"
+                           (or jupyter-test-notebook-token
+                               (read-string "Token value: ")))))
+                 (passwordp
+                  (list
+                   "--NotebookApp.token=''"
+                   (format "--NotebookApp.password='%s'"
+                           authentication)))
+                 ((null authentication)
+                  (list
+                   "--NotebookApp.token=''"
+                   "--NotebookApp.password=''"))
+                 (t
+                  (error "Invalid authentication value"))))))
+    (list (apply #'start-process "jupyter-notebook"
+                 (generate-new-buffer "*jupyter-notebook*")
+                 "jupyter" args)
+          port)))
+
+(defun jupyter-test-kill-notebook (notebook)
+  (pcase notebook
+    (`(,(and proc (guard (processp proc)))
+       ,(and port (guard (integerp port))))
+     (let ((buffer (process-buffer proc)))
+       (delete-process proc)
+       (and (bufferp buffer)
+            (kill-buffer buffer))))))
+
+(defun jupyter-test-ensure-notebook (&optional authentication)
   "Ensure there is a notebook process available.
 Return the port it was started on. The starting directory of the
 process will be in the `jupyter-test-temporary-directory'.
@@ -636,35 +782,31 @@ authentication. If AUTHENTICATION is t start with token
 authentication. Finally, if AUTHENTICATION is a string it should
 be the hashed password to use for authentication to the server,
 see the documentation on the --NotebookApp.password argument."
-  (if (process-live-p (car jupyter-test-notebook))
-      (cdr jupyter-test-notebook)
-    (unless noninteractive
-      (error "This should only be called in batch mode"))
-    (message "Starting up notebook process for tests")
-    (let ((port (car (jupyter-available-local-ports 1))))
-      (prog1 port
-        (let ((default-directory jupyter-test-temporary-directory)
-              (buffer (generate-new-buffer "*jupyter-notebook*"))
-              (args (append
-                     (list "notebook" "--no-browser" "--debug"
-                           (format "--NotebookApp.port=%s" port))
-                     (cond
-                      ((eq authentication t)
-                       (list))
-                      ((stringp authentication)
-                       (list
-                        "--NotebookApp.token=''"
-                        (format "--NotebookApp.password='%s'"
-                                authentication)))
-                      (t
-                       (list
-                        "--NotebookApp.token=''"
-                        "--NotebookApp.password=''"))))))
-          (setq jupyter-test-notebook
-                (cons (apply #'start-process
-                             "jupyter-notebook" buffer "jupyter" args)
-                      port))
-          (sleep-for 5))))))
+  (pcase jupyter-test-notebook
+    (`(,(and proc (guard (processp proc)))
+       ,(and port (guard (integerp port))))
+     (if (process-live-p proc)
+         port
+       (jupyter-test-kill-notebook jupyter-test-notebook)
+       (setq jupyter-test-notebook nil)
+       (jupyter-test-ensure-notebook authentication)))
+    (`nil
+     (unless noninteractive
+       (error "This should only be called in batch mode"))
+     (message "Starting up notebook process for tests...")
+     (setq jupyter-test-notebook
+           (jupyter-test-make-notebook authentication))
+     (pcase jupyter-test-notebook
+       (`(,(and proc (guard (processp proc)))
+          ,(and port (guard (integerp port))))
+        (with-current-buffer (process-buffer proc)
+          (while (not (progn (goto-char (point-min))
+                             (re-search-forward
+                              "Jupyter \\(Notebook\\|Server\\) [^ ]+ is running at:"
+                              nil 'noerror)))
+            (accept-process-output proc 1)))))
+     (message "Starting up notebook process for tests...done")
+     (jupyter-test-ensure-notebook))))
 
 ;;; Cleanup
 

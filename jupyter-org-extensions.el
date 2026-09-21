@@ -41,7 +41,7 @@
 (declare-function org-fold-show-context "org-fold" (&optional key))
 (declare-function org-next-line-empty-p "org" ())
 (declare-function org-element-context "org-element" (&optional element))
-(declare-function org-element-type "org-element" (element))
+(declare-function org-element-type "org-element" (element &optional anonymous))
 (declare-function org-element-property "org-element" (property element))
 (declare-function org-element-interpret-data "org-element" (data))
 (declare-function org-element-at-point "org-element" ())
@@ -273,9 +273,9 @@ The session is selected in the following way:
 NOTE: If a session could be selected, only Jupyter source blocks
 that have the same session are evaluated *without* evaluating any
 other source blocks.  You can also evaluate ANY source block that
-doesn't have a Jupyter session by providing a prefix argument.
-This is useful, e.g. to evaluate shell source blocks along with
-Jupyter source blocks."
+doesn't have a Jupyter session, in addition to those with that
+session, by providing a prefix argument.  This is useful, e.g. to
+evaluate shell source blocks along with Jupyter source blocks."
   (interactive "P")
   ;; Use a marker here to account for buffer changes during evaluation of
   ;; source blocks.

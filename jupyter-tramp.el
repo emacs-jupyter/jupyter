@@ -23,32 +23,32 @@
 ;;; Commentary:
 
 ;; Integrate the Jupyter REST API contents endpoint with Emacs' file handling
-;; facilities for remote files.  Adds two new remote file methods, /jpy: and
-;; /jpys:, the former being HTTP connections and the latter being HTTPS
+;; facilities for remote files.  Adds two new remote file methods, /jupy: and
+;; /jupys:, the former being HTTP connections and the latter being HTTPS
 ;; connections.
 ;;
 ;; If you run a local notebook server on port 8888 then reading and writing
 ;; files to the server is as easy as
 ;;
-;;     (write-region "xxxx" nil "/jpy:localhost:happy.txt")
+;;     (write-region "xxxx" nil "/jupy:localhost:happy.txt")
 ;;
 ;; or
 ;;
-;;     (find-file "/jpy:localhost:serious.py")
+;;     (find-file "/jupy:localhost:serious.py")
 ;;
 ;; To open a `dired' listing to the base directory of the notebook server
 ;;
-;;     (dired "/jpy:localhost:/")
+;;     (dired "/jupy:localhost:/")
 ;;
 ;; You can change the default port by changing the `tramp-default-port' entry
-;; of the jpy or jpys method in `tramp-methods' or you can specify a port
-;; inline using something like /jpy:localhost#8888:/.
+;; of the jupy or jupys method in `tramp-methods' or you can specify a port
+;; inline using something like /jupy:localhost#8888:/.
 ;;
 ;; You can also set an entry in `tramp-default-host-alist' like
 ;;
-;;     (add-to-list 'tramp-default-host-alist (list "jpy" nil "HOST"))
+;;     (add-to-list 'tramp-default-host-alist (list "jupy" nil "HOST"))
 ;;
-;; Then specifying filenames like /jpy::/foo is equivalent to /jpy:HOST:
+;; Then specifying filenames like /jupy::/foo is equivalent to /jupy:HOST:
 ;;
 ;; TODO: Same messages for implemented file operations that TRAMP and Emacs
 ;; give.
@@ -200,7 +200,7 @@ host, localname, ..., are all bound to values parsed from FILE."
 Operations not mentioned here will be handled by the default Emacs primitives.")
 
 ;;;###autoload
-(defconst jupyter-tramp-methods '("jpy" "jpys")
+(defconst jupyter-tramp-methods '("jupy" "jupys")
   "Methods to connect Jupyter kernel servers.")
 
 ;;;###autoload
@@ -215,12 +215,12 @@ Operations not mentioned here will be handled by the default Emacs primitives.")
   (tramp-register-foreign-file-name-handler
    'jupyter-tramp-file-name-p 'jupyter-tramp-file-name-handler)
   (add-to-list 'tramp-default-host-alist
-               '("\\`jpys?\\'" nil "localhost")))
+               '("\\`jupys?\\'" nil "localhost")))
 
 ;;;###autoload
 (defsubst jupyter-tramp-file-name-method-p (method)
   "Return METHOD if it corresponds to a Jupyter filename method or nil."
-  (and (string-match-p "\\`jpys?\\'" method) method))
+  (and (string-match-p "\\`jupys?\\'" method) method))
 
 ;; Port of `tramp-ensure-dissected-file-name' in Emacs 29
 ;;;###autoload
@@ -272,7 +272,7 @@ defaults to \"Password:\"."
 The filename is based off of URL's host and port if any."
   (let ((url (if (url-p url) url
                (url-generic-parse-url url))))
-    (format "/jpy%s:%s%s:/"
+    (format "/jupy%s:%s%s:/"
             (if (equal (url-type url) "https") "s" "")
             (url-host url)
             (let ((port (url-port-if-non-default url)))
@@ -285,7 +285,7 @@ The filename is based off of URL's host and port if any."
     (unless port (setq port (when (functionp 'tramp-file-name-port-or-default)
                               ;; This function was introduced in Emacs 26.1
                               (tramp-file-name-port-or-default v))))
-    (format "%s://%s%s" (if (equal method "jpys") "https" "http")
+    (format "%s://%s%s" (if (equal method "jupys") "https" "http")
             host (if port (format ":%s" port) ""))))
 
 ;;;###autoload

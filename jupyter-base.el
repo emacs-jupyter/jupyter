@@ -1,6 +1,6 @@
 ;;; jupyter-base.el --- Core definitions for Jupyter -*- lexical-binding: t -*-
 
-;; Copyright (C) 2018-2024 Nathaniel Nicandro
+;; Copyright (C) 2018-2025 Nathaniel Nicandro
 
 ;; Author: Nathaniel Nicandro <nathanielnicandro@gmail.com>
 ;; Created: 06 Jan 2018
@@ -32,12 +32,19 @@
 (require 'eieio)
 (require 'eieio-base)
 (require 'json)
+(require 'thunk)
 
 (declare-function tramp-dissect-file-name "tramp" (name &optional nodefault))
 (declare-function tramp-file-name-user "tramp")
 (declare-function tramp-file-name-host "tramp")
 (declare-function jupyter-message-content "jupyter-messages" (msg))
+(declare-function jupyter-message-time "jupyter-messages" (msg))
+(declare-function jupyter-message-type "jupyter-messages" (msg))
 (declare-function jupyter-new-uuid "jupyter-messages")
+(declare-function jupyter-message-p "jupyter-messages" (msg))
+(declare-function jupyter-subscribe "jupyter-monads")
+(declare-function jupyter-subscriber "jupyter-monads")
+(declare-function jupyter-run-with-state "jupyter-monads")
 
 (cl-deftype json-plist () '(satisfies json-plist-p))
 
@@ -125,18 +132,18 @@ from a backing notebook server."
 
 (defvar jupyter--debug nil
   "When non-nil, some parts of Jupyter will emit debug statements.
-If the symbol \='message, messages received by a kernel will only
-be handled by clients when the function
+If the symbol \\='message, messages received from a kernel will
+only be handled by clients when the function
 `jupyter--debug-replay-requests' is called manually.  This allows
 for stepping through the code with Edebug.")
 
 (defvar jupyter--debug-request-queue nil)
 
-(defun jupyter-debug (format-string &rest args)
+(defmacro jupyter-debug (format-string &rest args)
   "Display a message when `jupyter--debug' is non-nil.
 FORMAT-STRING and ARGS have the same meaning as in `message'."
-  (when jupyter--debug
-    (apply #'message (concat "Jupyter: " format-string) args)))
+  `(when jupyter--debug
+     (message ,(concat "Jupyter: " format-string) ,@args)))
 
 (defvar jupyter-default-timeout 2.5
   "The default timeout in seconds for `jupyter-wait-until'.")
@@ -198,8 +205,21 @@ The END marker will advance if BODYFORM inserts text in the
 current buffer.  Thus after BODYFORM is evaluated, AFTERFORMS will
 have access to the bounds of the text inserted by BODYFORM in the
 variables BEG and END.  The result of evaluating BODYFORM is
-returned."
+returned.
+
+Note this only handles the simple case that BODYFORM inserts text at
+`point' and not, for example, in non-contiguous regions before or after
+`point'."
   (declare (indent 3) (debug (symbolp symbolp form body)))
+  ;; (let* ((bounds nil)
+  ;;        (after-change-functions
+  ;;         (cons (lambda (beg end change)
+  ;;                 (setq bounds (cons beg end)))
+  ;;               after-change-functions)))
+  ;;   (combine-after-change-calls ,bodyform)
+  ;;   (pcase bounds
+  ;;     (`(,,beg . ,,end)
+  ;;      ,@afterforms)))
   `(let ((,beg (point-marker))
          (,end (point-marker)))
      (set-marker-insertion-type ,end t)
@@ -207,6 +227,14 @@ returned."
          (prog1 ,bodyform ,@afterforms)
        (set-marker ,beg nil)
        (set-marker ,end nil))))
+
+;; (with-temp-buffer
+;;   (let ((after-change-functions
+;;          (cons (lambda (beg end change)
+;;                  (setq bounds (cons beg end)))
+;;                after-change-functions)))
+    
+;;     ))
 
 (defun jupyter-map-mime-bundle (mime-types content fun)
   "For each mime-type in MIME-TYPES, call FUN with its data in CONTENT.
@@ -464,6 +492,49 @@ fields:
        do (cl-assert port) and
        collect channel and collect (funcall addr port)))))
 
+;;; Stream
+
+(cl-defstruct (jupyter-stream
+               (:constructor nil)
+               (:constructor
+                jupyter-stream
+                (&key (-car nil)
+                      (-cdr nil))))
+  (-car nil :read-only t)
+  (-cdr nil :read-only t))
+
+(defmacro jupyter-stream-cons (car &rest body)
+  "Return a new stream.
+CAR is an expression that will be evaluated when
+`jupyter-stream-car' is called on the returned stream object to
+return the head element of the stream.  BODY is a list of
+expressions to be evaluated on a call to `jupyter-stream-cdr'
+whose return value must be a `jupyter-stream' object representing
+the rest of the elements of the stream."
+  (declare (indent 1) (debug (form body)))
+  `(jupyter-stream
+    :-car (thunk-delay ,car)
+    :-cdr (thunk-delay ,@body)))
+
+(defun jupyter-stream-car (s)
+  "Return the head element of S, a stream."
+  (thunk-force (jupyter-stream--car s)))
+
+(defun jupyter-stream-cdr (s)
+  "Return the rest of the stream elements of S."
+  (unless (thunk-evaluated-p (jupyter-stream--car s))
+    (thunk-force (jupyter-stream--car s)))
+  (thunk-force (jupyter-stream--cdr s)))
+
+(defvar jupyter-null-stream
+  (letrec ((s (jupyter-stream-cons nil s)))
+    s)
+  "The null stream.")
+
+(defun jupyter-null-stream-p (s)
+  "Return non-nil if S is the null stream."
+  (eq s jupyter-null-stream))
+
 ;;; Request object definition
 
 (cl-defstruct jupyter-request
@@ -482,13 +553,102 @@ call the handler methods of those types."
   (id (jupyter-new-uuid) :read-only t)
   (type nil :read-only t)
   (content nil :read-only t)
-  (client nil :read-only nil)
   (time (current-time) :read-only t)
   (idle-p nil)
   (last-message nil)
   (messages nil)
   (message-publisher nil)
+  (-message-stream nil)
   (inhibited-handlers nil))
+
+(define-error 'jupyter-timeout-before-message
+              "Timeout before a message arrived")
+
+(defvar jupyter-empty-message)
+
+;; If someone is interacting with a Jupyter server across the
+;; country, obviously there would be delays between messages
+;; which could result in a threshold being breached and messages
+;; arriving after an idle message, such as iopub messages still
+;; streaming in so what to do in those situations?  What do I do
+;; currently to handle them?  I'm not sure anything is done or
+;; has been considered that deeply in the code base.
+(defun jupyter--stream-wait (req msgs)
+  "Wait for a message in MSGS to arrive.
+Return nil if a `quit' was signaled before one arrived, t if a
+message is ready, `idle-timeout' if REQ is idle and
+`jupyter-default-timeout' seconds elapsed since waiting, or
+`timeout' if `jupyter-long-timeout' seconds elapsed without one
+arriving."
+  (let ((inhibit-quit t)
+        (start (float-time)))
+    (catch 'timeout
+      (with-local-quit
+        (while (pcase msgs
+                 (`(messages ,_ . ,_) nil)
+                 (_
+                  ;; XXX A request's messages can be arbitrarily
+                  ;; delayed before it becomes idle, how to consider
+                  ;; this?  Also, when it does become idle how do the
+                  ;; iopub messages get received?  Is it that an idle
+                  ;; message indicates that all processing of the
+                  ;; request has ceased and its just output buffers
+                  ;; that are being sent until they are empty on the
+                  ;; kernel side?
+                  ;; 
+                  ;; Consider an input_request from the kernel which
+                  ;; requires user input so that suppose the stream
+                  ;; processing was doing something and then a prompt
+                  ;; was displayed to the user, these prompts would
+                  ;; happen before the stream processing since there
+                  ;; is an order to when subscribers are called.
+                  (let ((dt (- (float-time) start)))
+                    (cond
+                     ((and (jupyter-request-idle-p req)
+                           (>= dt jupyter-default-timeout))
+                      (throw 'timeout 'idle-timeout))
+                     ((>= dt jupyter-long-timeout)
+                      (throw 'timeout 'timeout))
+                     (t 'wait)))))
+          (accept-process-output nil 1))
+        t))))
+
+(defun jupyter--stream-next-message (req msgs &optional ntimeouts)
+  (pcase msgs
+    (`(messages ,next . ,_)
+     (pop (cdr msgs))
+     (if (eq next jupyter-empty-message)
+         jupyter-null-stream
+       (jupyter-stream-cons next
+         (jupyter--stream-next-message req msgs))))
+    (`(messages)
+     (pcase (jupyter--stream-wait req msgs)
+       (`t (jupyter--stream-next-message req msgs))
+       (`nil (signal 'quit nil))
+       (`timeout
+        (or ntimeouts (setq ntimeouts 0))
+        (if (> ntimeouts 3)
+            (signal 'jupyter-timeout-before-message req)
+          (let ((jupyter-long-timeout
+                 (* 1.5 jupyter-long-timeout)))
+            (jupyter--stream-next-message req msgs (1+ ntimeouts)))))
+       (`idle-timeout jupyter-null-stream)))
+    (_ jupyter-null-stream)))
+
+(defun jupyter-request-message-stream (req)
+  (or (jupyter-request--message-stream req)
+      (let ((msgs (cons 'messages
+                        (copy-sequence
+                         (jupyter-request-messages req)))))
+        (jupyter-run-with-state
+            (jupyter-request-message-publisher req)
+          (jupyter-subscribe
+            (jupyter-subscriber
+              (lambda (msg)
+                (when (jupyter-message-p msg)
+                  (nconc msgs (list msg)))))))
+        (setf (jupyter-request--message-stream req)
+              (jupyter--stream-next-message req msgs)))))
 
 (defun jupyter-channel-from-request-type (type)
   "Return the name of the channel that a request with TYPE is sent on."
@@ -496,9 +656,6 @@ call the handler methods of those types."
     ((or "input_reply" "input_request") "stdin")
     ((or "interrupt_request" "shutdown_request") "control")
     (_ "shell")))
-
-(declare-function jupyter-message-time "jupyter-messages")
-(declare-function jupyter-find-message "jupyter-monads")
 
 (defun jupyter-execution-time (req)
   "Return an approximate value of the execution time of REQ.
@@ -516,12 +673,16 @@ long it actually takes for the request to generate all of its
 potential output.  So the returned time, in addition to the true
 execution time of the code, contains the time taken in preparing
 the request to be executed and other kernel specific tasks."
-  (when-let* ((msgs (jupyter-request-messages req))
-              (ex-input (jupyter-find-message "execute_input" msgs))
-              (ex-reply (jupyter-find-message "execute_reply" msgs)))
-    (time-subtract
-     (jupyter-message-time ex-reply)
-     (jupyter-message-time ex-input))))
+  (let ((find (lambda (type)
+                (cl-find-if
+                 (lambda (msg)
+                   (equal (jupyter-message-type msg) type))
+                 (jupyter-request-messages req)))))
+    (when-let* ((ex-input (funcall find "execute_input"))
+                (ex-reply (funcall find "execute_reply")))
+      (time-subtract
+       (jupyter-message-time ex-reply)
+       (jupyter-message-time ex-input)))))
 
 ;;; Connecting to a kernel's channels
 
@@ -633,7 +794,17 @@ ports remapped to the local ports."
 (defvar jupyter-io-cache (make-hash-table :weakness 'key))
 
 (cl-defgeneric jupyter-io (thing)
-  "Return the I/O object of THING.")
+  "Return the I/O object of THING.
+The returned value must be a list of the form
+
+    \(IO SUB)
+
+where IO is the I/O publisher which can be subscribed to in order to
+receive the messages which THING publishes and to which requests can be
+published to send on the underlying communication layer, e.g. a ZMQ
+socket or a WebSocket.  SUB is an action subscriber which can be
+published to in order to perform actions on THING, e.g. modifying the
+internal state of THING.")
 
 (cl-defmethod jupyter-io :around (thing)
   "Cache the I/O object of THING in `jupyter-io-cache'."
@@ -686,8 +857,9 @@ following in your Emacs configuration
 before starting any Jupyter kernels.  The kernel also has to know
 that it should use EDITOR to open files."
   (when (bound-and-true-p server-mode)
-    ;; After switching to a server buffer, keep the client alive in `server-buffer'
-    ;; to account for multiple files being opened by the server.
+    ;; After switching to a server buffer, keep the client alive in
+    ;; `server-buffer' to account for multiple files being opened by
+    ;; the server.
     (unless (and (boundp 'server-switch-hook)
                  (memq #'jupyter-server-mode--unset-client-soon
                        server-switch-hook))

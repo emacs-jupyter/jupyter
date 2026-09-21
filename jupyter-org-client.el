@@ -33,11 +33,11 @@
 (declare-function org-babel-python-table-or-string "ob-python" (results))
 (declare-function org-babel-jupyter-initiate-session "ob-jupyter" (&optional session params))
 (declare-function org-babel-jupyter-src-block-session "ob-jupyter" ())
-(declare-function org-babel-jupyter-session-initiated-p "ob-jupyter" (params))
+(declare-function org-babel-jupyter-session-initiated-p "ob-jupyter" (params &optional noerror))
 (declare-function org-babel-jupyter-language-p "ob-jupyter" (lang))
 (declare-function org-element-context "org-element" (&optional element))
 (declare-function org-element-create "org-element" (type &optional props &rest children))
-(declare-function org-element-type "org-element" (element))
+(declare-function org-element-type "org-element" (element &optional anonymous))
 (declare-function org-element-normalize-string "org-element" (s))
 (declare-function org-element-at-point "org-element" ())
 (declare-function org-element-parse-buffer "org-element" (&optional granularity visible-only))
@@ -144,16 +144,7 @@ See also the docstring of `org-image-actual-width' for more details."
   "MIME types handled by Jupyter Org.")
 
 (defclass jupyter-org-client (jupyter-repl-client)
-  ((most-recent-request
-    :type (or jupyter-request null)
-    :initform nil
-    :initarg :most-recent-request
-    :documentation "The most recently sent request.")
-   (last-queued-request
-    :type (or jupyter-request null)
-    :initform nil
-    :initarg :last-queued-request
-    :documentation "The last queued request.")))
+  ())
 
 (cl-defstruct (jupyter-org-request
                (:include jupyter-request)
@@ -186,7 +177,7 @@ If the marker points nowhere don't evaluate BODY, just do
 nothing and return nil."
   (declare (indent 1) (debug (form body)))
   `(pcase-let (((cl-struct jupyter-org-request marker) ,req))
-     (when (and (marker-buffer marker) (marker-position marker))
+     (when (and marker (marker-buffer marker) (marker-position marker))
        (org-with-point-at marker
          ,@body))))
 
@@ -221,67 +212,87 @@ nothing and return nil."
   (memq (org-element-type context)
         '(inline-babel-call inline-src-block)))
 
+(defun jupyter-org--request (&rest slots)
+  (let* ((block-params org-babel-jupyter-current-src-block-params)
+         (result-params (alist-get :result-params block-params))
+         (context (org-element-context))
+         (req (apply #'jupyter-org-request
+                     (append
+                      (list
+                       :marker (copy-marker org-babel-current-src-block-location)
+                       :inline-block-p (jupyter-org-inline-block-p context)
+                       :result-type (alist-get :result-type block-params)
+                       :file (alist-get :file block-params)
+                       :block-params block-params
+                       :async-p (jupyter-org-execute-async-p block-params)
+                       :silent-p (car (or (member "none" result-params)
+                                          (member "silent" result-params))))
+                      slots))))
+    (let ((pos (jupyter-org-element-begin-after-affiliated context)))
+      (put-text-property pos (1+ pos) 'jupyter-request req))
+    (setf (jupyter-org-request-overlay req)
+          (apply #'jupyter-org--make-overlay
+                 (pcase (org-element-type context)
+                   (`src-block
+                    (list
+                     (save-excursion
+                       (goto-char (jupyter-org-element-begin-after-affiliated
+                                   context))
+                       (line-beginning-position 2))
+                     (jupyter-org-element-contents-end context)))
+                   ((or `inline-src-block `babel-call
+                        `inline-babel-call)
+                    (list
+                     (jupyter-org-element-begin-after-affiliated context)
+                     (jupyter-org-element-end-before-blanks context)
+                     t)))))
+    req))
+
 (cl-defmethod jupyter-generate-request ((_client jupyter-org-client) &rest slots)
   "Return a `jupyter-org-request' for the current source code block."
   (if (and org-babel-current-src-block-location
            org-babel-jupyter-current-src-block-params
            (provided-mode-derived-p
             (buffer-local-value
-             ;; Handle indirect buffers used by packages like polymode, see #171.
+             ;; Handle indirect buffers used by packages like
+             ;; polymode, see #171.
              'major-mode (or (buffer-base-buffer) (current-buffer)))
             'org-mode))
-      ;; Only use a `jupyter-org-request' when executing code blocks, setting
-      ;; the `major-mode' context isn't enough, consider when a client is
-      ;; started due to sending a completion request.
+      ;; Only use a `jupyter-org-request' when executing code blocks,
+      ;; setting the `major-mode' context isn't enough, consider when
+      ;; a client is started due to sending a completion request.
       (save-excursion
         (goto-char org-babel-current-src-block-location)
         (jupyter-org-clear-execution-time)
-        (let* ((context (org-element-context))
-               (block-params org-babel-jupyter-current-src-block-params)
-               (result-params (alist-get :result-params block-params))
-               (req
-                (apply #'jupyter-org-request
-                       (append
-                        (list
-                         :marker (copy-marker org-babel-current-src-block-location)
-                         :inline-block-p (jupyter-org-inline-block-p context)
-                         :result-type (alist-get :result-type block-params)
-                         :file (alist-get :file block-params)
-                         :block-params block-params
-                         :async-p (jupyter-org-execute-async-p block-params)
-                         :silent-p (car (or (member "none" result-params)
-                                            (member "silent" result-params))))
-                        slots))))
-          (put-text-property
-           org-babel-current-src-block-location
-           (1+ org-babel-current-src-block-location)
-           'jupyter-request req)
-          (setf (jupyter-org-request-overlay req)
-                (pcase (org-element-type context)
-                  (`src-block
-                   (jupyter-org--make-overlay
-                    (save-excursion
-                      (goto-char (jupyter-org-element-begin-after-affiliated context))
-                      (line-beginning-position 2))
-                    (jupyter-org-element-contents-end context)))
-                  ((and type (or `inline-src-block `babel-call `inline-babel-call))
-                   (jupyter-org--make-overlay
-                    (jupyter-org-element-begin-after-affiliated context)
-                    (jupyter-org-element-end-before-blanks context)
-                    (memq type '(inline-src-block babel-call inline-babel-call))))))
-          req))
+        (apply #'jupyter-org--request slots))
     (cl-call-next-method)))
 
-(defun jupyter-org-request-at-point ()
-  "Return the `jupyter-org-request' associated with `point' or nil."
-  (when-let* ((context (org-element-context))
-              (babel-p (memq (org-element-type context)
-                             '(src-block babel-call
-                               inline-babel-call inline-src-block)))
-              (pos (jupyter-org-element-begin-after-affiliated context))
-              (req (get-text-property pos 'jupyter-request)))
-    (and (not (jupyter-request-idle-p req))
-         req)))
+(defun jupyter-org--request-at-point (force)
+  (pcase (get-text-property (point) 'jupyter-request)
+    (`pending
+     (if (not force) t
+       (while (eq (get-text-property (point) 'jupyter-request) 'pending)
+         (accept-process-output nil 1))
+       (jupyter-org--request-at-point force)))
+    (`nil nil)
+    (req
+     (cl-check-type req jupyter-org-request)
+     (unless (jupyter-request-idle-p req) req))))
+
+(defun jupyter-org-request-at-point (&optional force)
+  "Return the `jupyter-org-request' associated with `point'.
+Nil is returned if there is no request or if it is already idle.
+If the request has not been sent yet, e.g. it is still pending
+due to being queued, return t.  If FORCE is non-nil and the
+request is pending, wait until it has been realized and return
+it."
+  (let ((context (org-element-context)))
+    (when (memq (org-element-type context)
+                '(src-block babel-call
+                            inline-babel-call inline-src-block))
+      (org-with-point-at
+          (jupyter-org-element-begin-after-affiliated context)
+        (jupyter-org--request-at-point force)))))
 
 ;;;; Stream
 
@@ -367,9 +378,9 @@ to."
     (pcase-let (((cl-struct jupyter-org-request inline-block-p silent-p) req))
       (cond
        ((or inline-block-p silent-p)
-        ;; Remove old inline results when an error happens since, if this was not
-        ;; done, it would look like the code which caused the error produced the
-        ;; old result.
+        ;; Remove old inline results when an error happens since, if
+        ;; this was not done, it would look like the code which caused
+        ;; the error produced the old result.
         (when inline-block-p
           (jupyter-org-with-point-at req
             (org-babel-remove-inline-result)))
@@ -381,8 +392,8 @@ to."
           (jupyter-display-current-buffer-reuse-window)))
        (t
         ;; The keymap property in the string returned by
-        ;; `jupyter-org--goto-error-string' gets removed by font-lock so ensure it
-        ;; is re-added.
+        ;; `jupyter-org--goto-error-string' gets removed by font-lock
+        ;; so ensure it is re-added.
         (unless (memq 'jupyter-org-add-error-keymap org-font-lock-hook)
           (add-hook 'org-font-lock-hook 'jupyter-org-add-error-keymap nil t))
         (jupyter-org--add-result
@@ -447,7 +458,7 @@ to."
                    (let time (jupyter-execution-time req)))
               (and (pred numberp) secs
                    (let time (jupyter-execution-time req))
-                   (guard (> time secs))))
+                   (guard (> (float-time time) secs))))
           (let (cl-struct jupyter-org-request inline-block-p) req)
           (guard (not inline-block-p)))
      (jupyter-org-with-point-at req
@@ -515,9 +526,6 @@ message down the chain of subscribers to the REQ's message
 publisher to indicate that any subsequent, queued, requests
 should also be aborted."
   (setf (jupyter-request-idle-p req) t)
-  (let ((client (jupyter-request-client req)))
-    (when (eq (oref client last-queued-request) req)
-      (oset client last-queued-request nil)))
   (jupyter-org--remove-overlay req)
   (jupyter-org--clear-async-indicator req)
   (let ((marker (jupyter-org-request-marker req)))
@@ -531,69 +539,164 @@ should also be aborted."
       (jupyter-publish 'abort)))
   (jupyter-unsubscribe))
 
-(defun jupyter-org-maybe-queued (dreq)
-  "Return a monadic value that either sends or continues to delay DREQ.
-DREQ is an already delayed request, as returned by
-`jupyter-request' and friends.  When the value is bound to a
-client, using e.g. `jupyter-run-with-client', send DREQ if there
-are no queued requests otherwise queue DREQ.  The value returns
-the unboxed request contained in DREQ.
+(defvar jupyter-org-client-queues (make-hash-table :weakness 'key))
 
-If the variable `jupyter-org-queue-requests' is nil, just send
-the request immediately instead of attempting to queue it."
-  (if (not jupyter-org-queue-requests)
-      (jupyter-sent dreq)
-    (jupyter-mlet* ((client (jupyter-get-state))
-                    (req dreq))
-      (let* ((send
-              (lambda (req)
-                (jupyter-run-with-client client
-                  (jupyter-mlet* ((req (jupyter-sent
-                                        (jupyter-return req))))
-                    (oset client most-recent-request req)
-                    (jupyter-run-with-io
-                        (jupyter-request-message-publisher req)
-                      (jupyter-subscribe
-                        (jupyter-subscriber
-                          (lambda (msg)
-                            (when (or (eq msg 'abort)
-                                      (equal (jupyter-message-type msg) "execute_reply"))
-                              (when (eq (oref client most-recent-request) req)
-                                (oset client most-recent-request nil))
-                              (jupyter-unsubscribe))))))
-                    (when (eq (oref client last-queued-request) req)
-                      (oset client last-queued-request nil))
-                    (jupyter-return req)))))
-             (queue
-              ;; Subscribe REQ to the message publisher of QREQ such that
-              ;; REQ is sent or aborted when QREQ receives an
-              ;; execute_reply.
-              (lambda (qreq req)
-                (let ((pub (jupyter-request-message-publisher qreq)))
-                  (jupyter-run-with-io pub
-                    (jupyter-subscribe
-                      (jupyter-subscriber
-                        (lambda (msg)
-                          (if (eq msg 'abort)
-                              (jupyter-org-abort req)
-                            (pcase (jupyter-message-type msg)
-                              ("execute_reply"
-                               (jupyter-with-message-content msg (status)
-                                 (if (equal status "ok")
-                                     (funcall send req)
-                                   (jupyter-org-abort req)))
-                               (jupyter-unsubscribe))))))))))))
-        (let ((mreq (oref client most-recent-request)) qreq)
-          (cond
-           ((null mreq)
-            (funcall send req))
-           ((setq qreq (oref client last-queued-request))
-            (funcall queue qreq req)
-            (oset client last-queued-request req))
-           (t
-            (funcall queue mreq req)
-            (oset client last-queued-request req)))
-          (jupyter-return req))))))
+(defun jupyter-org-message-subscribed (req idle-sub &optional callbacks)
+  "Return a value that subscribes message handlers for REQ.
+IDLE-SUB is a `jupyter-subscriber' or `jupyter-publisher' that gets sent
+an \\`idle' message when the request is idle and a \\`busy' message when
+the request is busy.
+
+CALLBACKS is an alist of message type, callback pairs as per
+`jupyter-message-subscribed'."
+  (jupyter-message-subscribed
+   (if callbacks
+       (jupyter-message-subscribed
+        req callbacks)
+     req)
+   ;; Send 'idle to SUB when it is guaranteed that the reply message
+   ;; has been received regardless of when the idle message has been
+   ;; received.
+   (let (idle reply done)
+     (lambda (msg)
+       (if done (jupyter-unsubscribe)
+         (if (jupyter-message-status-busy-p msg)
+             (jupyter-run-with-io idle-sub
+               (jupyter-publish 'busy))
+           (or idle (setq idle (jupyter-message-status-idle-p msg)))
+           (or reply (setq reply (jupyter-message-reply-p msg)))
+           (when (and reply idle)
+             (setq done t)
+             (jupyter-run-with-io idle-sub
+               (jupyter-publish 'idle)))))))))
+
+(defun jupyter-org-queue ()
+  (let (q live)
+    (jupyter-subscriber
+      (lambda (msg)
+        (pcase msg
+          (`(enqueue . ,el) (push el q))
+          ((or 'start 'dequeue)
+           (unless (and live (eq msg 'start))
+             ;; FIXME Edge case when popping the last item and
+             ;; evaluating and then an enqueue happens before the
+             ;; dequeue of the live request.
+             (pcase-let ((`(,action ,_)
+                          (pcase q
+                            (`nil '(nil nil))
+                            (`(,_) (pop q))
+                            (_
+                             (pcase-let* (((and l `(,_ ,next))
+                                           (last q 2)))
+                               (setcdr l nil)
+                               next)))))
+               (setq live (and action t))
+               (when action
+                 (jupyter-run-with-state nil
+                   action)))))
+          ('abort
+           (pcase-dolist (`(,_ ,on-abort) q)
+             (funcall on-abort))
+           (setq q nil
+                 live nil)))))))
+
+(defun jupyter-org-enqueued (req sub callbacks)
+  (let ((marker (copy-marker org-babel-current-src-block-location))
+        (params org-babel-jupyter-current-src-block-params))
+    (jupyter-mlet* ((client (jupyter-get-client)))
+      (let ((q (or (gethash client jupyter-org-client-queues)
+                   (puthash client (jupyter-org-queue) jupyter-org-client-queues))))
+        ;; FIXME This gets overridden in `jupyter-generate-request'
+        ;; when it is called, but we need it here for
+        ;; `jupyter-org-request-at-point' to return a non-nil value
+        ;; for a pending request.
+        (put-text-property marker (1+ marker) 'jupyter-request 'pending)
+        ;; TODO Verify that the source block matches the contents of
+        ;; the request still before sending it or block the editing of
+        ;; the source block as it is queued for sending.  Maybe add an
+        ;; on-send callback in addition to an on-busy and on-reply.
+        (jupyter-run-with-io q
+          (jupyter-publish
+            (list 'enqueue
+                  (jupyter-with-temporary-state client
+                    (jupyter-do
+                      (jupyter-add-subscriber
+                       (lambda (msg)
+                         (when (jupyter-message-reply-p msg)
+                           (jupyter-with-message-content msg (status)
+                             (jupyter-run-with-io q
+                               (if (equal status "ok")
+                                   (jupyter-publish 'dequeue)
+                                 (jupyter-publish 'abort))))
+                           (jupyter-unsubscribe))))
+                      (jupyter-do
+                        (jupyter-org-message-subscribed
+                         (jupyter-with-bindings*
+                             ((org-babel-current-src-block-location
+                               marker)
+                              (org-babel-jupyter-current-src-block-params
+                               params))
+                           (org-with-point-at marker
+                             (jupyter-at-point req)))
+                         sub
+                         callbacks))))
+                  (lambda ()
+                    (remove-text-properties
+                     marker (1+ marker) '(jupyter-request))
+                    (set-marker marker nil)
+                    (jupyter-run-with-io sub
+                      (jupyter-publish 'abort))))))
+        (jupyter-org-schedule-queue))
+      (jupyter-return nil))))
+
+(defun jupyter-org-maybe-queued (req &optional sub &rest callbacks)
+  "Queue REQ with some message handlers.
+REQ is only queued if `jupyter-org-queue-requests' is non-nil, in that
+case the monadic value returned queues the request and returns nil.
+When `jupyter-org-queue-requests' is nil, return a value that sends the
+request immediately and returns the request.
+
+SUB is a subscriber that can be sent the messages: \\`busy', \\`idle',
+or \\`abort' indicating that the request has begun execution on the
+kernel, has completed execution, or has been aborted on the client side,
+i.e. in Emacs due to some other queued request raising an error during
+its evaluation.  The rest of the arguments form the CALLBACKS, a
+property list like
+
+    \\='(:status ... :execute_result ...)
+
+where the keys are message types and the values are callback functions
+that take a message as argument.
+
+Note, the current request which generated the message can be accessed
+through `jupyter-current-request' in these callbacks as well as in SUB,
+except when receiving the \\`abort' message since in that case, the
+request was never instantiated."
+  (setq callbacks
+        (cl-loop
+         for (type cb) on callbacks by #'cddr
+         for ty = (substring (symbol-name type) 1)
+         collect (list ty cb)))
+  (or sub (setq sub (jupyter-subscriber #'ignore)))
+  (if jupyter-org-queue-requests
+      (jupyter-org-enqueued req sub callbacks)
+    (jupyter-org-message-subscribed req sub callbacks)))
+
+(defun jupyter-org-run-queue ()
+  (maphash (lambda (_ queue)
+             (jupyter-run-with-io queue
+               (jupyter-publish 'start)))
+           jupyter-org-client-queues))
+
+(defvar jupyter-org-queue-timer nil)
+
+(defun jupyter-org-schedule-queue ()
+  (when jupyter-org-queue-requests
+    (when jupyter-org-queue-timer
+      (cancel-timer jupyter-org-queue-timer))
+    (setq jupyter-org-queue-timer
+          (run-at-time 0 nil
+                       #'jupyter-org-run-queue))))
 
 ;;; Caching the current source block's information
 
@@ -680,13 +783,17 @@ block, but only if it was in the same buffer.  Otherwise return
 nil."
   (jupyter-org--set-src-block-cache)
   (pcase jupyter-org--src-block-cache
-    ((and (and (guard (and previous
-                           (not (jupyter-org--at-cached-src-block-p)))))
+    ;; Getting the previous source block information, when we are not
+    ;; at a cached source block.  The previous source block info must
+    ;; have been invalidated because point was moved outside its
+    ;; bounds.
+    ((and (guard (and previous
+                      (not (jupyter-org--at-cached-src-block-p))))
           `(invalid ,params ,beg . ,_)
           (guard (eq (marker-buffer beg) (current-buffer))))
-     ;; NOTE There are probably cases where the parameters could no
-     ;; longer be valid, hence the invalid tag.  This is mainly for
-     ;; the purposes of creating a mode line according to
+     ;; NOTE There are cases where the parameters could no longer be
+     ;; valid, hence the invalid tag.  This is mainly for the purposes
+     ;; of creating a mode line according to
      ;; `jupyter-org-interaction-mode-line-display-most-recent'.
      params)
     (`(invalid . ,_) nil)
@@ -776,13 +883,18 @@ any Jupyter code block, [jupyter]."
 
 (defun jupyter-org--define-key-filter (key &rest _)
   "Return the definition for KEY when inside a Jupyter src-block or nil."
-  ;; Fall back to regular `org-mode' keys when the current point is invisible,
-  ;; e.g. folded subtrees.
-  (unless (org-invisible-p)
-    (jupyter-org-with-src-block-client
-     (let ((lang (jupyter-kernel-language)))
-       (or (jupyter-org--key-def key `[,lang])
-           (jupyter-org--key-def key [jupyter]))))))
+  ;; Keymaps get walked outside the buffers they apply to (e.g., `C-h m' expands
+  ;; \\{org-mode-map} in a temporary `fundamental-mode' buffer).  If we omit the
+  ;; guard against being in an org-mode buffer, the body below would parse that
+  ;; buffer as Org and warn.
+  (when (derived-mode-p 'org-mode)
+    ;; Fall back to regular `org-mode' keys when the current point is
+    ;; invisible, e.g. folded subtrees.
+    (unless (org-invisible-p)
+      (jupyter-org-with-src-block-client
+       (let ((lang (jupyter-kernel-language)))
+         (or (jupyter-org--key-def key `[,lang])
+             (jupyter-org--key-def key [jupyter])))))))
 
 (defun jupyter-org--call-with-src-block-client (def)
   "Call DEF interactively with the current src-block's client."
@@ -907,6 +1019,57 @@ property."
 
 (defvar org-font-lock-keywords)
 
+(defcustom jupyter-org-interaction-mode-line-format " JuPy:%->5N[%s]"
+  "Format to use when producing the mode line in Org mode.
+The format specifier %s is replaced with the status of the kernel.  The
+format specifier %N is replaced with the session name of the current
+source block client.  The string is passed to `format-spec' and so each
+format specifier accepts flags for truncation."
+  :group 'ob-jupter
+  :type 'string)
+
+(defcustom jupyter-org-interaction-mode-line-display-most-recent t
+  "Whether or not to display status outside of a source block.
+If this variable is non-nil, then the mode line will display the
+status of the most recent Jupyter source block that `point' was
+in whenever `point' leaves the source block.  This is only for
+the `current-buffer'.
+
+When `point' is inside a Jupyter source block that doesn't yet
+have a client associated with it, \"JuPy:-\" is displayed so as
+to not confuse the user."
+  :group 'ob-jupyter
+  :type 'boolean)
+
+(defun jupyter-org-interaction-mode-line ()
+  "Return the status of the current source block's kernel.
+If no source block exists at point, just indicate that
+`jupyter-org-interaction-mode' is enabled.  See
+`jupyter-repl-interaction-mode' for the possible statuses."
+  (let ((mode-line-string
+         (lambda (&optional params)
+           (when-let* ((params params)
+                       (jupyter-repl-interaction-mode-line-format
+                        (format-spec
+                         jupyter-org-interaction-mode-line-format
+                         `((?N . ,(lambda ()
+                                    (file-local-name (alist-get :session params)))))
+                         'ignore)))
+             (jupyter-repl-interaction-mode-line)))))
+    (let* ((params (jupyter-org-src-block-params))
+           (client (jupyter-org-src-block-client nil nil params))
+           (client-able params))
+      (when (and (null client)
+                 jupyter-org-interaction-mode-line-display-most-recent)
+        (setq params (jupyter-org-src-block-params 'previous)
+              client (jupyter-org-src-block-client 'previous nil params)))
+      (or (when client
+            (jupyter-with-client client
+              (funcall mode-line-string params)))
+          (if client-able
+              " JuPy:-"
+            " JuPy")))))
+
 (define-minor-mode jupyter-org-interaction-mode
   "Minor mode for interacting with a Jupyter REPL from an `org-mode' buffer.
 When this minor mode is enabled, some of the keybindings
@@ -930,28 +1093,31 @@ C-c C-r         `jupyter-repl-restart-kernel'
 
 C-x C-e         `jupyter-eval-line-or-region'"
   :group 'ob-jupyter
+  :lighter (:eval (jupyter-org-interaction-mode-line))
   :init-value nil
   (cond
    (jupyter-org-interaction-mode
     (add-hook 'completion-at-point-functions 'jupyter-org-completion-at-point nil t)
     (add-hook 'after-revert-hook 'jupyter-org-interaction-mode nil t)
-    (setq-local char-property-alias-alist
-                (copy-tree char-property-alias-alist))
-    (cl-callf append (alist-get 'invisible char-property-alias-alist)
-      '(jupyter-invisible))
-    (unless (cl-find-if
-             (lambda (x) (eq (car x) 'jupyter-org-font-lock-ansi-escapes))
-             org-font-lock-keywords)
-      (cl-callf append org-font-lock-keywords
-        '((jupyter-org-font-lock-ansi-escapes)))))
+    (unless (functionp 'org-fontify-ansi-sequences)
+      (setq-local char-property-alias-alist
+                  (copy-tree char-property-alias-alist))
+      (cl-callf append (alist-get 'invisible char-property-alias-alist)
+        '(jupyter-invisible))
+      (unless (cl-find-if
+               (lambda (x) (eq (car x) 'jupyter-org-font-lock-ansi-escapes))
+               org-font-lock-keywords)
+        (cl-callf append org-font-lock-keywords
+          '((jupyter-org-font-lock-ansi-escapes))))))
    (t
     (remove-hook 'completion-at-point-functions 'jupyter-org-completion-at-point t)
     (remove-hook 'after-revert-hook 'jupyter-org-interaction-mode t)
-    (cl-callf2 delq 'jupyter-invisible
-               (alist-get 'invisible char-property-alias-alist))
-    (cl-callf2 cl-remove-if
-        (lambda (x) (eq (car x) 'jupyter-org-font-lock-ansi-escapes))
-        org-font-lock-keywords))))
+    (unless (functionp 'org-fontify-ansi-sequences)
+      (cl-callf2 delq 'jupyter-invisible
+                 (alist-get 'invisible char-property-alias-alist))
+      (cl-callf2 cl-remove-if
+          (lambda (x) (eq (car x) 'jupyter-org-font-lock-ansi-escapes))
+          org-font-lock-keywords)))))
 
 (add-hook 'org-mode-hook 'jupyter-org-interaction-mode)
 
@@ -1117,7 +1283,10 @@ file links, so that each result appears on a single line in the
 string representation of the drawer.  The returned drawer has a
 name of \"RESULTS\"."
   (apply #'org-element-set-contents
-         (list 'drawer (list :drawer-name "RESULTS"))
+         (list 'drawer (list
+                        :drawer-name "RESULTS"
+                        :pre-blank 0
+                        :post-blank 0))
          (cl-loop
           for res in results
           if (jupyter-org-object-p res)
@@ -1227,7 +1396,7 @@ will be inserted by calling `org-element-interpret-data' first.
 The returned result should be a representation of a MIME type's
 CONTENT. CONTENT is a property list like
 
-    \='(:data DATA :metadata METADATA)
+    \\='(:data DATA :metadata METADATA)
 
 that contains the DATA/METADATA of the mime type.  As an example,
 if MIME is `:text/markdown', then DATA should be the markdown
@@ -1311,8 +1480,7 @@ those mime types instead."
                   (jupyter-org-result mime content block-params))))
             (let ((warning
                    (format
-                    "%s did not return requested mimetype(s): %s"
-                    (jupyter-message-type (jupyter-request-last-message req))
+                    "No valid mimetype found from one of: %s"
                     mime-types)))
               (display-warning 'jupyter warning)
               nil))))))
@@ -1791,32 +1959,32 @@ If INDENTATION is nil, it defaults to `current-indentation'."
           (goto-char (match-beginning 0)))
       (put-text-property (1- (point)) (point) 'jupyter-stream-newline t))))
 
-(defun jupyter-org--insert-nonstream (context result)
+(defun jupyter-org--insert-display-element (context element)
   (cond
    ((jupyter-org--first-result-context-p context)
     (insert (org-element-interpret-data
-             (if (jupyter-org-babel-result-p result)
-                 result
-               ;; Wrap the result if it can't be removed by
+             (if (jupyter-org-babel-result-p element)
+                 element
+               ;; Wrap the element if it can't be removed by
                ;; `org-babel'.
-               (jupyter-org-results-drawer result)))))
+               (jupyter-org-results-drawer element)))))
    (t
     (let ((elems (jupyter-org--prepare-context context)))
       (insert (org-element-interpret-data
                (if elems
                    (apply #'jupyter-org-results-drawer
-                          (append elems (list result)))
-                 (if (or (jupyter-org-babel-result-p result)
+                          (append elems (list element)))
+                 (if (or (jupyter-org-babel-result-p element)
                          (eq (org-element-type context) 'drawer))
-                     result
-                   (jupyter-org-results-drawer result))))))))
+                     element
+                   (jupyter-org-results-drawer element))))))))
   (when (/= (point) (line-beginning-position))
     ;; Org objects such as file links do not have a newline added when
     ;; converting to their string representation by
     ;; `org-element-interpret-data' so insert one in these cases.
     (insert "\n"))
   (when (and jupyter-org-toggle-latex
-             (memq (org-element-type result)
+             (memq (org-element-type element)
                    '(latex-fragment latex-environment)))
     (save-excursion
       ;; Go to a position contained in the fragment
@@ -1829,15 +1997,14 @@ If INDENTATION is nil, it defaults to `current-indentation'."
 
 (defun jupyter-org-insert-result (req result)
   (pcase-let (((cl-struct jupyter-org-request
-                          inline-block-p block-params client)
+                          inline-block-p block-params)
                req))
     (jupyter-org-with-point-at req
       (if inline-block-p
           (org-babel-insert-result
            (if (stringp result) result
              (or (org-element-property :value result) ""))
-           (alist-get :result-params block-params)
-           nil nil (jupyter-kernel-language client))
+           (alist-get :result-params block-params))
         (let ((res-begin (org-babel-where-is-src-block-result 'insert)))
           (goto-char res-begin)
           (let ((context (org-element-context))
@@ -1857,14 +2024,18 @@ If INDENTATION is nil, it defaults to `current-indentation'."
                   (jupyter-org--insert-stream context result)
                 (when (eq (org-element-type result) 'pandoc)
                   (setq result (jupyter-org-pandoc-placeholder-element req result)))
-                (jupyter-org--insert-nonstream context result)))))))))
+                (jupyter-org--insert-display-element context result)))))))))
 
 (defun jupyter-org-inserted-result (data &optional metadata)
-  "Return a monadic value that inserts DATA and METADATA as an Org element."
+  "Return a value that inserts DATA and METADATA as an Org element.
+It returns the result inserted, if a result could not be
+obtained, it returns nil."
   (jupyter-mlet* ((req (jupyter-get-state)))
-    (let ((result (jupyter-org-get-result req data metadata)))
-      (jupyter-org-insert-result req result)
-      (jupyter-return result))))
+    (if-let* ((result (jupyter-org-get-result req data metadata)))
+        (progn
+          (jupyter-org-insert-result req result)
+          (jupyter-return result))
+      (jupyter-return nil))))
 
 (defun jupyter-org--start-pandoc-conversion (el cb)
   (jupyter-pandoc-convert
@@ -1937,29 +2108,6 @@ EL is an Org element with the properties
 ;;; org-babel functions
 ;; These are meant to be called by `org-babel-execute:jupyter'
 
-(defun jupyter-org-pending-async-results (req)
-  "Finish up bookkeeping for an asynchronous source block REQ.
-Setup `org-babel-after-execute-hook' to insert the ID of REQ as
-the result of the associated source block, to signify that the
-results of REQ are pending, and run any other hook functions that
-were present before this function was called.
-
-This function always returns nil and is intended to be used as
-the return value for asynchronous Jupyter source blocks in
-`org-babel-execute:jupyter'."
-  (prog1 nil
-    (let ((log-max message-log-max)
-          (hook org-babel-after-execute-hook))
-      (setq message-log-max nil)
-      (setq org-babel-after-execute-hook
-            (list (lambda ()
-                    (setq message-log-max log-max)
-                    (unwind-protect
-                        (jupyter-org--add-result
-                         req (list :text/plain (jupyter-org-request-id req)))
-                      (setq org-babel-after-execute-hook hook)
-                      (run-hooks 'org-babel-after-execute-hook))))))))
-
 (defun jupyter-org--coalesce-stream-results (results)
   "Return RESULTS with all contiguous stream results concatenated."
   (let (lst str)
@@ -1999,21 +2147,31 @@ the return value for asynchronous Jupyter source blocks in
   "Return the result string in org syntax for the results of REQ.
 Meant to be used as the return value of
 `org-babel-execute:jupyter'."
-  (pcase-let (((cl-struct jupyter-org-request block-params
-                          results silent-p block-params)
+  (pcase-let (((cl-struct jupyter-org-request
+                          results silent-p
+                          inline-block-p block-params)
                req))
-    (setq results (jupyter-org--coalesce-stream-results (nreverse results)))
-    (if silent-p
-        (org-babel-script-escape
-         (mapconcat
-          (lambda (result)
-            (if (consp result)
-                (or (jupyter-mime-value result :text/plain) "")
-              (cl-check-type result string)
-              result))
-          results
-          "\n"))
-      (when-let* ((results
+    (if inline-block-p
+        ;; When evaluating a source block synchronously, only the
+        ;; :execute-result will be in `jupyter-org-request-results'
+        ;; since stream results and any displayed data will be placed
+        ;; in a separate buffer.
+        (let ((el (jupyter-org-get-result
+                   req (car results))))
+          (if (stringp el) el
+            (org-element-property :value el)))
+      (setq results (jupyter-org--coalesce-stream-results (nreverse results)))
+      (if silent-p
+          (org-babel-script-escape
+           (mapconcat
+            (lambda (result)
+              (if (consp result)
+                  (or (jupyter-mime-value result :text/plain) "")
+                (cl-check-type result string)
+                result))
+            results
+            "\n"))
+        (if-let* ((results
                    (mapcar (lambda (r)
                         (if (jupyter-org--stream-result-p r)
                             (jupyter-org-scalar
@@ -2023,12 +2181,12 @@ Meant to be used as the return value of
                        (mapcar (apply-partially #'jupyter-org-get-result req)
                           results))))
                   (result-params (alist-get :result-params block-params)))
-        (org-element-interpret-data
-         (if (or (and (= (length results) 1)
+            (org-element-interpret-data
+             (if (and (= (length results) 1)
                       (jupyter-org-babel-result-p (car results)))
-                 (member "raw" result-params))
-             (car results)
-           (apply #'jupyter-org-results-drawer results)))))))
+                 (car results)
+               (apply #'jupyter-org-results-drawer results)))
+          "")))))
 
 (provide 'jupyter-org-client)
 

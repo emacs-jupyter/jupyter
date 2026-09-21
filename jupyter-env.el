@@ -85,8 +85,9 @@ As a side effect, the variable `jupyter-runtime-directory' is set
 to the local runtime directory if it is nil."
   (unless jupyter-runtime-directory
     (setq jupyter-runtime-directory
-          (let ((default-directory (expand-file-name "~" user-emacs-directory)))
-            (file-name-as-directory (jupyter-command "--runtime-dir")))))
+          (let* ((default-directory (expand-file-name "~" user-emacs-directory)))
+            (when-let* ((dir (ignore-errors (jupyter-command "--runtime-dir"))))
+              (file-name-as-directory dir)))))
   (let ((dir (if (file-remote-p default-directory)
                  (jupyter-command "--runtime-dir")
                jupyter-runtime-directory)))
@@ -98,13 +99,13 @@ to the local runtime directory if it is nil."
 
 (defun jupyter-locate-python ()
   "Return the path to the python executable in use by Jupyter.
+Specifically, the `file-local-name' of the path.
+
 If the `default-directory' is a remote directory, search on that
 remote.  Raise an error if the executable could not be found.
 
 The paths examined are the data paths of \"jupyter --paths\" in
-the order specified.
-
-This function always returns the `file-local-name' of the path."
+the order specified."
   (let* ((remote (file-remote-p default-directory))
          (paths (mapcar (lambda (x) (concat remote x))
                    (or (plist-get
@@ -174,16 +175,10 @@ The session can be used to write a connection file, see
                           (file-remote-p default-directory))
                         (match-string 1)))
             (conn-info (jupyter-read-connection conn-file)))
-        ;; Tell the `jupyter kernel` process to shutdown itself and
-        ;; the launched kernel.
-        (interrupt-process process)
-        ;; Wait until the connection file is cleaned up before
-        ;; forgetting about the process completely.
-        (jupyter-with-timeout
-            (nil (if (file-remote-p conn-file) 0 jupyter-default-timeout)
-                 (delete-file conn-file))
-          (not (file-exists-p conn-file)))
-        (delete-process process)
+        (signal-process process 'SIGTERM)
+        (jupyter-with-timeout (nil jupyter-default-timeout
+                                   (delete-process process))
+          (not (process-live-p process)))
         (let ((new-key (jupyter-new-uuid)))
           (plist-put conn-info :key new-key)
           (jupyter-session
