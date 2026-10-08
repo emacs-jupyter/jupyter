@@ -931,17 +931,23 @@ attempting to access the rest of the stream")
 		 for alive-p = (jupyter-alive-p client channel)
 		 do (should-not alive-p))))))
 
+(defvar jupyter-inhibit-handlers)
+
 (ert-deftest jupyter-inhibited-handlers ()
   :tags '(client handlers)
   (jupyter-test-with-python-client client
     (jupyter-run-with-client client
       (jupyter-mlet* ((req (jupyter-kernel-info-request
                             :handlers '(not "stream"))))
+        ;; FIXME Remove this slot as `jupyter-inhibit-handlers' is now
+        ;; let bound when processing messages.
         (should (equal (jupyter-request-inhibited-handlers req)
                        '("stream")))
-        (should-not (jupyter--request-allows-handler-p
-                     req (jupyter-test-message
-                          req "stream" (list :name "stdout" :text "foo"))))
+        (let ((jupyter-inhibit-handlers
+               (jupyter-request-inhibited-handlers req)))
+          (should-not (jupyter-allow-handler-p
+                       (jupyter-test-message
+                        req "stream" (list :name "stdout" :text "foo")))))
         (should-error (jupyter-kernel-info-request
                        :handlers '(not "foo")))
         (jupyter-return nil)))))
