@@ -384,10 +384,19 @@ Ex. Subscribe to a publisher and unsubscribe after receiving two
                   (jupyter-request-id req))))))
     (jupyter-return req)))
 
-(defun jupyter-idle (dreq &optional timeout)
+(defun jupyter-idle (&optional dreq timeout)
   "Wait until DREQ has become idle, return DREQ.
 Signal a `jupyter-timeout-before-idle' error if TIMEOUT seconds
-elapses and the request has not become idle yet."
+elapses and the request has not become idle yet.
+
+If REQ is nil, it defaults to a request that solely syncs the client's
+execution state of the kernel."
+  (or dreq (setq dreq
+                 (jupyter-execute-request
+                  :silent t
+                  :store-history nil
+                  :code ""
+                  :handlers nil)))
   (jupyter-mlet* ((req (jupyter-sent dreq)))
     (or (jupyter-wait-until-idle req timeout)
         (signal 'jupyter-timeout-before-idle (list req)))
