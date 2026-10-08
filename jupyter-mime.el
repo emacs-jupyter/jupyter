@@ -445,13 +445,24 @@ image."
            :matchers ,(plist-get org-format-latex-options :matchers))))
     (jupyter-with-insertion-bounds
         beg end (insert tex)
-      ;; FIXME: Best way to cleanup these files? Just delete them by reading
-      ;; the image data and using that for the image instead?
-      (org-format-latex
-       "ltximg" beg end org-babel-jupyter-resource-directory
-       'overlays nil 'forbuffer
-       ;; Use the default method for creating image files
-       org-preview-latex-default-process)
+      (let ((buf (current-buffer)))
+        (with-temp-buffer
+          (org-mode)
+          (insert tex)
+          ;; FIXME: Best way to cleanup these files? Just delete
+          ;; them by reading the image data and using that for
+          ;; the image instead?
+          (org-format-latex
+           "ltximg" (point-min) (point-max)
+           org-babel-jupyter-resource-directory
+           'overlays nil 'forbuffer
+           ;; Use the default method for creating image files
+           org-preview-latex-default-process)
+          (let ((org-overlay (car (overlays-at (point-min))))
+                (overlay (make-overlay beg end buf)))
+            (let ((props (overlay-properties org-overlay)))
+              (while props
+                (overlay-put overlay (pop props) (pop props)))))))
       ;; Avoid deleting the image overlays due to text property changes
       (dolist (o (overlays-in beg end))
         (when (eq (overlay-get o 'org-overlay-type)
