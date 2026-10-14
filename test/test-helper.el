@@ -624,7 +624,7 @@ bindings occur from within the test buffer."
          (let ((s (concat ":session " jupyter-org-test-session)))
            (while args
              (setq s (concat (symbol-name (car args)) " "
-                             (format "%s" (cadr args)) " "
+                             (format "%S" (cadr args)) " "
                              s))
              (setq args (cddr args)))
            s)))
