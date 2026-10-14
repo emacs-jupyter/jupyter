@@ -1962,6 +1962,11 @@ If INDENTATION is nil, it defaults to `current-indentation'."
             ;; Skip past the #+RESULTS line
             (forward-line 1)
             (unless (bolp) (insert "\n"))
+            ;; FIXME This macro is not exactly correct in that the
+            ;; body doesn't always insert at `point' so either make
+            ;; that restriction or figure out how to tap into the
+            ;; before and after change functions to capture a
+            ;; collection of inserted regions to indent.
             (jupyter-org-indent-inserted-region indent
               (if (jupyter-org--stream-result-p result)
                   (jupyter-org--insert-stream context result)
